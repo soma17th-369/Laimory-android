@@ -43,7 +43,6 @@ dependencies {
     implementation(project(":feature:home"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
-    implementation(project(":core:domain"))
 
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
