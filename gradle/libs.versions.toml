@@ -9,7 +9,8 @@ espressoCore = "3.7.0"
 composeBom = "2024.06.00"
 composeActivity = "1.9.0"
 composeNavigation = "2.7.7"
-composeLifecycle = "2.7.0"
+composeLifecycle = "2.9.0"
+lifecycleViewmodel = "2.9.0"
 hilt = "2.51"
 hiltNavigationCompose = "1.2.0"
 retrofit = "2.11.0"
@@ -37,6 +38,7 @@ compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 compose-activity = { group = "androidx.activity", name = "activity-compose", version.ref = "composeActivity" }
 compose-navigation = { group = "androidx.navigation", name = "navigation-compose", version.ref = "composeNavigation" }
 compose-lifecycle = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "composeLifecycle" }
+lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodel" }
 
 # Hilt
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
