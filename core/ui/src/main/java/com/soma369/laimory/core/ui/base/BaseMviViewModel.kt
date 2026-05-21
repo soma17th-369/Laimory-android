@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.ui.base
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.channels.Channel
@@ -36,7 +37,7 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     /** 일회성 부수 효과. UI에서 LaunchedEffect 안에서 collect한다. */
     val sideEffect = _sideEffect.receiveAsFlow()
 
-    private val intentChannel = Channel<I>(Channel.UNLIMITED)
+    private val intentChannel = Channel<I>(Channel.BUFFERED)
 
     init {
         viewModelScope.launch {
@@ -49,10 +50,15 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     /**
      * UI에서 사용자 액션을 ViewModel로 전달한다.
      *
+     * 버퍼가 가득 찬 경우 Intent가 유실되며 로그로 알린다.
+     *
      * @param intent 처리할 [UiIntent]
      */
     fun sendIntent(intent: I) {
-        intentChannel.trySend(intent)
+        val result = intentChannel.trySend(intent)
+        if (!result.isSuccess) {
+            Log.w(TAG, "Intent dropped: $intent")
+        }
     }
 
     /**
@@ -76,9 +82,17 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     /**
      * 일회성 부수 효과를 발행한다.
      *
+     * intent 처리 루프를 블로킹하지 않도록 별도 코루틴에서 전송한다.
+     *
      * @param effect 발행할 [UiSideEffect]
      */
-    protected suspend fun sendEffect(effect: E) {
-        _sideEffect.send(effect)
+    protected fun sendEffect(effect: E) {
+        viewModelScope.launch {
+            _sideEffect.send(effect)
+        }
+    }
+
+    companion object {
+        private const val TAG = "BaseMviViewModel"
     }
 }
