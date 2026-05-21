@@ -29,7 +29,7 @@
 ## 프로젝트 기본 정보
 
 ```
-Package name    : com.laimory
+Package name    : com.soma369.laimory
 Minimum SDK     : API 28 (Android 9.0)
 Target SDK      : 최신
 Repository      : laimory-android
