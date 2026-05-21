@@ -19,8 +19,19 @@ abstract class MviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     private val _sideEffect = Channel<E>(Channel.BUFFERED)
     val sideEffect = _sideEffect.receiveAsFlow()
 
+    // Intent를 Channel로 받아 단일 collector에서 순차 처리 → 상태/사이드이펙트 순서 보장
+    private val intentChannel = Channel<I>(Channel.UNLIMITED)
+
+    init {
+        viewModelScope.launch {
+            for (intent in intentChannel) {
+                handleIntent(intent)
+            }
+        }
+    }
+
     fun sendIntent(intent: I) {
-        viewModelScope.launch { handleIntent(intent) }
+        intentChannel.trySend(intent)
     }
 
     protected abstract suspend fun handleIntent(intent: I)
