@@ -20,14 +20,12 @@ object NetworkModule {
     /**
      * JSON 파서 설정.
      * - [ignoreUnknownKeys]: 서버가 클라이언트 모델에 없는 필드를 내려줘도 무시
-     * - [coerceInputValues]: null 불허 필드에 null이 오면 기본값으로 대체
      */
     @Provides
     @Singleton
     fun provideJson(): Json =
         Json {
             ignoreUnknownKeys = true
-            coerceInputValues = true
         }
 
     /**
