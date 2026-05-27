@@ -1,7 +1,8 @@
 package com.soma369.laimory.core.data.network.adapter
 
-import com.soma369.laimory.core.data.dto.common.ApiResponse
 import com.soma369.laimory.core.data.exception.ApiException
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import okhttp3.Request
 import okio.Timeout
 import retrofit2.Call
@@ -9,50 +10,40 @@ import retrofit2.CallAdapter
 import retrofit2.Callback
 import retrofit2.Response
 import retrofit2.Retrofit
+import java.io.IOException
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
 
 /**
- * Retrofit의 [Call]을 감싸서 응답을 [Result]로 변환하는 래퍼.
+ * 서버 응답을 [Result]로 변환하는 래퍼.
  *
- * 서버 응답([ApiResponse])을 받아 아래 규칙으로 [Result]를 만든다.
- * - `success == true && data != null` → [Result.success]
- * - `success == false` → [Result.failure] ([ApiException.fromCode])
- * - HTTP 에러 코드 → [Result.failure] ([ApiException.fromCode])
- * - 네트워크 단절 등 [java.io.IOException] → [Result.failure] ([ApiException.NetworkException])
+ * HTTP 상태 코드를 성공/실패의 기준으로 삼는다.
+ * - HTTP 2xx + body 존재 → [Result.success]
+ * - HTTP 2xx + body null → [Result.failure] ([ApiException.UnknownException])
+ * - HTTP 4xx/5xx → errorBody를 파싱해 메시지 추출 후 [Result.failure] ([ApiException.fromCode])
+ * - 네트워크 오류 ([IOException]) → [Result.failure] ([ApiException.NetworkException])
  * - 그 외 예외 → [Result.failure] ([ApiException.UnknownException])
  */
 internal class ResultCall<T>(
-    private val delegate: Call<ApiResponse<T>>,
+    private val delegate: Call<T>,
+    private val json: Json,
 ) : Call<Result<T>> {
     override fun enqueue(callback: Callback<Result<T>>) {
         delegate.enqueue(
-            object : Callback<ApiResponse<T>> {
+            object : Callback<T> {
                 override fun onResponse(
-                    call: Call<ApiResponse<T>>,
-                    response: Response<ApiResponse<T>>,
+                    call: Call<T>,
+                    response: Response<T>,
                 ) {
-                    val body = response.body()
-                    val result =
-                        if (response.isSuccessful && body != null) {
-                            if (body.success && body.data != null) {
-                                Result.success(body.data)
-                            } else {
-                                val message = body.error?.message
-                                Result.failure(ApiException.fromCode(response.code(), message))
-                            }
-                        } else {
-                            Result.failure(ApiException.fromCode(response.code()))
-                        }
-                    callback.onResponse(this@ResultCall, Response.success(result))
+                    callback.onResponse(this@ResultCall, Response.success(response.toResult()))
                 }
 
                 override fun onFailure(
-                    call: Call<ApiResponse<T>>,
+                    call: Call<T>,
                     t: Throwable,
                 ) {
                     val exception =
-                        if (t is java.io.IOException) {
+                        if (t is IOException) {
                             ApiException.NetworkException()
                         } else {
                             ApiException.UnknownException(t.message)
@@ -63,7 +54,22 @@ internal class ResultCall<T>(
         )
     }
 
-    override fun clone(): Call<Result<T>> = ResultCall(delegate.clone())
+    private fun Response<T>.toResult(): Result<T> =
+        if (isSuccessful) {
+            body()?.let { Result.success(it) }
+                ?: Result.failure(ApiException.UnknownException())
+        } else {
+            Result.failure(ApiException.fromCode(code(), parseErrorMessage()))
+        }
+
+    private fun Response<T>.parseErrorMessage(): String? =
+        try {
+            errorBody()?.string()?.let { json.decodeFromString<ErrorBody>(it).message }
+        } catch (e: Exception) {
+            null
+        }
+
+    override fun clone(): Call<Result<T>> = ResultCall(delegate.clone(), json)
 
     // 비동기 전용 어댑터이므로 동기 실행은 지원하지 않음
     override fun execute(): Response<Result<T>> = throw UnsupportedOperationException("ResultCall does not support synchronous execution")
@@ -84,14 +90,16 @@ internal class ResultCall<T>(
  *
  * Retrofit이 `Call<Result<T>>`를 반환하는 API 메서드를 만날 때 이 어댑터가 사용된다.
  *
- * @param responseType 실제 서버 응답 타입 ([ApiResponse]의 제네릭 T)
+ * @param responseType API 메서드의 실제 반환 타입 T
+ * @param json 에러 바디 파싱에 사용할 [Json] 인스턴스
  */
 internal class ResultCallAdapter<T>(
     private val responseType: Type,
-) : CallAdapter<ApiResponse<T>, Call<Result<T>>> {
+    private val json: Json,
+) : CallAdapter<T, Call<Result<T>>> {
     override fun responseType(): Type = responseType
 
-    override fun adapt(call: Call<ApiResponse<T>>): Call<Result<T>> = ResultCall(call)
+    override fun adapt(call: Call<T>): Call<Result<T>> = ResultCall(call, json)
 }
 
 /**
@@ -103,11 +111,13 @@ internal class ResultCallAdapter<T>(
  * 사용 예:
  * ```kotlin
  * Retrofit.Builder()
- *     .addCallAdapterFactory(ResultCallAdapterFactory())
+ *     .addCallAdapterFactory(ResultCallAdapterFactory(json))
  *     ...
  * ```
+ *
+ * @param json 에러 바디 파싱에 사용할 [Json] 인스턴스
  */
-class ResultCallAdapterFactory : CallAdapter.Factory() {
+class ResultCallAdapterFactory(private val json: Json) : CallAdapter.Factory() {
     override fun get(
         returnType: Type,
         annotations: Array<out Annotation>,
@@ -122,25 +132,16 @@ class ResultCallAdapterFactory : CallAdapter.Factory() {
         if (getRawType(callType) != Result::class.java) return null
 
         val resultType = getParameterUpperBound(0, callType as ParameterizedType)
-        val responseType = ParameterizedTypeImpl(ApiResponse::class.java, resultType)
 
-        return ResultCallAdapter<Any>(responseType)
+        return ResultCallAdapter<Any>(resultType, json)
     }
 }
 
 /**
- * 런타임에 제네릭 타입([ApiResponse]<T>)을 구성하기 위한 [ParameterizedType] 구현체.
- *
- * Java 리플렉션은 제네릭 타입 정보를 런타임에 직접 생성할 수 없으므로,
- * Retrofit이 올바른 역직렬화 타입을 인식할 수 있도록 직접 구현한다.
+ * 에러 바디에서 메시지만 추출하기 위한 최소 구조체.
+ * 서버 에러 포맷의 최상위 [message] 필드만 파싱한다.
  */
-private class ParameterizedTypeImpl(
-    private val rawType: Class<*>,
-    private val typeArgument: Type,
-) : ParameterizedType {
-    override fun getActualTypeArguments(): Array<Type> = arrayOf(typeArgument)
-
-    override fun getRawType(): Type = rawType
-
-    override fun getOwnerType(): Type? = null
-}
+@Serializable
+private data class ErrorBody(
+    val message: String? = null,
+)
