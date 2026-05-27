@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -6,12 +8,23 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val properties =
+    Properties().apply {
+        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+    }
+
 android {
     namespace = "com.soma369.laimory.core.data"
     compileSdk = 36
 
     defaultConfig {
         minSdk = 28
+
+        buildConfigField("String", "BASE_URL", properties.getProperty("BASE_URL"))
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     kotlin {
