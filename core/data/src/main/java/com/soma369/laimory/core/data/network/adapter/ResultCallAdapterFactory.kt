@@ -1,6 +1,6 @@
 package com.soma369.laimory.core.data.network.adapter
 
-import com.soma369.laimory.core.data.dto.common.ApiResponse
+import com.soma369.laimory.core.data.model.common.ApiResponse
 import com.soma369.laimory.core.domain.exception.ApiException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json

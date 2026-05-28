@@ -2,6 +2,8 @@ package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.BuildConfig
 import com.soma369.laimory.core.data.network.adapter.ResultCallAdapterFactory
+import com.soma369.laimory.core.data.network.api.Feature1Api
+import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -17,10 +19,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
-    /**
-     * JSON 파서 설정.
-     * - [ignoreUnknownKeys]: 서버가 클라이언트 모델에 없는 필드를 내려줘도 무시
-     */
     @Provides
     @Singleton
     fun provideJson(): Json =
@@ -28,16 +26,13 @@ object NetworkModule {
             ignoreUnknownKeys = true
         }
 
-    /**
-     * OkHttpClient 제공.
-     * - Debug 빌드에서만 요청/응답 로그를 출력 (BODY 레벨)
-     */
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
             .apply {
                 if (BuildConfig.DEBUG) {
+                    addInterceptor(MockInterceptor())
                     addInterceptor(
                         HttpLoggingInterceptor().apply {
                             level = HttpLoggingInterceptor.Level.BODY
@@ -47,12 +42,6 @@ object NetworkModule {
             }
             .build()
 
-    /**
-     * Retrofit 인스턴스 제공.
-     * - [ResultCallAdapterFactory]: API 메서드 반환 타입을 `Result<T>`로 처리
-     * - kotlinx.serialization converter: JSON ↔ DTO 변환
-     * - BASE_URL은 BuildConfig를 통해 local.properties에서 주입
-     */
     @Provides
     @Singleton
     fun provideRetrofit(
@@ -65,4 +54,8 @@ object NetworkModule {
             .addCallAdapterFactory(ResultCallAdapterFactory(json))
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
+
+    @Provides
+    @Singleton
+    fun provideFeature1Api(retrofit: Retrofit): Feature1Api = retrofit.create(Feature1Api::class.java)
 }
