@@ -1,10 +1,15 @@
 package com.soma369.laimory.core.data.network.adapter
 
 import com.soma369.laimory.core.data.exception.ApiException
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.serializer
 import okhttp3.Request
 import okio.Timeout
 import retrofit2.Call
@@ -19,29 +24,33 @@ import java.lang.reflect.Type
 /**
  * 서버 응답을 [Result]로 변환하는 래퍼.
  *
- * HTTP 상태 코드를 성공/실패의 기준으로 삼는다.
- * - HTTP 2xx + body 존재 → [Result.success]
+ * Retrofit이 응답 바디를 [JsonElement]로 역직렬화한 뒤,
+ * [ApiResponse] 래퍼 구조를 직접 파싱해 [dataSerializer]로 data 필드를 역직렬화한다.
+ *
+ * - HTTP 2xx + success=true → [Result.success]
+ * - HTTP 2xx + success=false → [Result.failure] ([ApiException], message 필드 활용)
  * - HTTP 2xx + body null → [Result.failure] ([ApiException.UnknownException])
  * - HTTP 4xx/5xx → errorBody를 파싱해 메시지 추출 후 [Result.failure] ([ApiException.fromCode])
  * - 네트워크 오류 ([IOException]) → [Result.failure] ([ApiException.NetworkException])
  * - 그 외 예외 → [Result.failure] ([ApiException.UnknownException])
  */
 internal class ResultCall<T>(
-    private val delegate: Call<T>,
+    private val delegate: Call<JsonElement>,
     private val json: Json,
+    private val dataSerializer: KSerializer<T>,
 ) : Call<Result<T>> {
     override fun enqueue(callback: Callback<Result<T>>) {
         delegate.enqueue(
-            object : Callback<T> {
+            object : Callback<JsonElement> {
                 override fun onResponse(
-                    call: Call<T>,
-                    response: Response<T>,
+                    call: Call<JsonElement>,
+                    response: Response<JsonElement>,
                 ) {
                     callback.onResponse(this@ResultCall, Response.success(response.toResult()))
                 }
 
                 override fun onFailure(
-                    call: Call<T>,
+                    call: Call<JsonElement>,
                     t: Throwable,
                 ) {
                     val exception =
@@ -56,15 +65,31 @@ internal class ResultCall<T>(
         )
     }
 
-    private fun Response<T>.toResult(): Result<T> =
-        if (isSuccessful) {
-            body()?.let { Result.success(it) }
-                ?: Result.failure(ApiException.UnknownException())
-        } else {
-            Result.failure(ApiException.fromCode(code(), parseErrorMessage()))
+    private fun Response<JsonElement>.toResult(): Result<T> {
+        if (!isSuccessful) {
+            return Result.failure(ApiException.fromCode(code(), parseErrorMessage()))
         }
+        val jsonObject =
+            body() as? JsonObject
+                ?: return Result.failure(ApiException.UnknownException())
+        val success =
+            jsonObject["success"]?.jsonPrimitive?.booleanOrNull
+                ?: return Result.failure(ApiException.UnknownException())
+        val message = jsonObject["message"]?.jsonPrimitive?.contentOrNull
 
-    private fun Response<T>.parseErrorMessage(): String? =
+        return if (success) {
+            val dataElement = jsonObject["data"] ?: JsonNull
+            try {
+                Result.success(json.decodeFromJsonElement(dataSerializer, dataElement))
+            } catch (e: Exception) {
+                Result.failure(ApiException.UnknownException(e.message))
+            }
+        } else {
+            Result.failure(ApiException.fromCode(code(), message))
+        }
+    }
+
+    private fun Response<JsonElement>.parseErrorMessage(): String? =
         try {
             errorBody()?.string()?.let { body ->
                 (json.parseToJsonElement(body) as? JsonObject)
@@ -76,7 +101,7 @@ internal class ResultCall<T>(
             null
         }
 
-    override fun clone(): Call<Result<T>> = ResultCall(delegate.clone(), json)
+    override fun clone(): Call<Result<T>> = ResultCall(delegate.clone(), json, dataSerializer)
 
     // 비동기 전용 어댑터이므로 동기 실행은 지원하지 않음
     override fun execute(): Response<Result<T>> = throw UnsupportedOperationException("ResultCall does not support synchronous execution")
@@ -95,25 +120,23 @@ internal class ResultCall<T>(
 /**
  * [ResultCall]을 생성하는 [CallAdapter].
  *
- * Retrofit이 `Call<Result<T>>`를 반환하는 API 메서드를 만날 때 이 어댑터가 사용된다.
- *
- * @param responseType API 메서드의 실제 반환 타입 T
- * @param json 에러 바디 파싱에 사용할 [Json] 인스턴스
+ * [responseType]은 [JsonElement]로 고정해 Retrofit이 바디를 raw JSON으로 수신하도록 하고,
+ * [dataSerializer]로 data 필드를 T로 역직렬화한다.
  */
 internal class ResultCallAdapter<T>(
-    private val responseType: Type,
+    private val dataSerializer: KSerializer<T>,
     private val json: Json,
-) : CallAdapter<T, Call<Result<T>>> {
-    override fun responseType(): Type = responseType
+) : CallAdapter<JsonElement, Call<Result<T>>> {
+    override fun responseType(): Type = JsonElement::class.java
 
-    override fun adapt(call: Call<T>): Call<Result<T>> = ResultCall(call, json)
+    override fun adapt(call: Call<JsonElement>): Call<Result<T>> = ResultCall(call, json, dataSerializer)
 }
 
 /**
  * [ResultCallAdapter]를 Retrofit에 등록하기 위한 팩토리.
  *
- * Retrofit 빌더에 [addCallAdapterFactory]로 추가하면,
  * 반환 타입이 `Call<Result<T>>`인 API 메서드에 자동으로 적용된다.
+ * `serializer(resultType)`으로 T의 [KSerializer]를 런타임에 조회해 어댑터에 전달한다.
  *
  * 사용 예:
  * ```kotlin
@@ -121,8 +144,6 @@ internal class ResultCallAdapter<T>(
  *     .addCallAdapterFactory(ResultCallAdapterFactory(json))
  *     ...
  * ```
- *
- * @param json 에러 바디 파싱에 사용할 [Json] 인스턴스
  */
 class ResultCallAdapterFactory(private val json: Json) : CallAdapter.Factory() {
     override fun get(
@@ -130,16 +151,17 @@ class ResultCallAdapterFactory(private val json: Json) : CallAdapter.Factory() {
         annotations: Array<out Annotation>,
         retrofit: Retrofit,
     ): CallAdapter<*, *>? {
-        // 반환 타입이 Call이 아니면 이 팩토리가 처리하지 않음
         if (getRawType(returnType) != Call::class.java) return null
 
         val callType = getParameterUpperBound(0, returnType as ParameterizedType)
 
-        // Call의 타입 파라미터가 Result가 아니면 처리하지 않음
         if (getRawType(callType) != Result::class.java) return null
 
         val resultType = getParameterUpperBound(0, callType as ParameterizedType)
 
-        return ResultCallAdapter<Any>(resultType, json)
+        @Suppress("UNCHECKED_CAST")
+        val dataSerializer = serializer(resultType) as KSerializer<Any>
+
+        return ResultCallAdapter<Any>(dataSerializer, json)
     }
 }
