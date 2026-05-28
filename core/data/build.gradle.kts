@@ -52,4 +52,8 @@ dependencies {
     implementation(libs.datastore.preferences)
 
     implementation(libs.coroutines.android)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.mockwebserver)
 }

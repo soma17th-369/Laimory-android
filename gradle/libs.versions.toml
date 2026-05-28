@@ -23,6 +23,8 @@ serializationJson = "1.6.3"
 ktlint = "12.1.1"
 ksp = "2.1.0-1.0.29"
 kotlinJvm = "2.1.0"
+coroutinesTest = "1.8.1"
+mockwebserver = "4.12.0"
 
 [libraries]
 # AndroidX Core
@@ -74,6 +76,8 @@ serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serializ
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
