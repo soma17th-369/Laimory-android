@@ -1,4 +1,4 @@
-package com.soma369.laimory.core.data.exception
+package com.soma369.laimory.core.domain.exception
 
 import java.io.IOException
 
