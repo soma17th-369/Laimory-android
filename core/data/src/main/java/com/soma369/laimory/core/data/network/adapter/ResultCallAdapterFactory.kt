@@ -23,13 +23,67 @@ import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
 
 /**
+ * [ResultCallAdapter]를 Retrofit에 등록하기 위한 팩토리.
+ *
+ * 반환 타입이 `Call<Result<T>>`인 API 메서드에 자동으로 적용된다.
+ * `serializer(resultType)`으로 T의 [KSerializer]를 런타임에 조회해 어댑터에 전달한다.
+ * 조회 실패 시(직렬화 불가 타입) null을 반환해 다른 어댑터로 위임한다.
+ *
+ * 사용 예:
+ * ```kotlin
+ * Retrofit.Builder()
+ *     .addCallAdapterFactory(ResultCallAdapterFactory(json))
+ *     ...
+ * ```
+ */
+class ResultCallAdapterFactory(private val json: Json) : CallAdapter.Factory() {
+    override fun get(
+        returnType: Type,
+        annotations: Array<out Annotation>,
+        retrofit: Retrofit,
+    ): CallAdapter<*, *>? {
+        if (getRawType(returnType) != Call::class.java) return null
+
+        val callType = getParameterUpperBound(0, returnType as ParameterizedType)
+
+        if (getRawType(callType) != Result::class.java) return null
+
+        val resultType = getParameterUpperBound(0, callType as ParameterizedType)
+
+        val dataSerializer =
+            try {
+                serializer(resultType)
+            } catch (_: Exception) {
+                return null
+            }
+
+        return ResultCallAdapter(dataSerializer, json)
+    }
+}
+
+/**
+ * [ResultCall]을 생성하는 [CallAdapter].
+ *
+ * [responseType]은 [JsonElement]로 고정해 Retrofit이 바디를 raw JSON으로 수신하도록 하고,
+ * [dataSerializer]로 data 필드를 T로 역직렬화한다.
+ */
+internal class ResultCallAdapter<T>(
+    private val dataSerializer: KSerializer<T>,
+    private val json: Json,
+) : CallAdapter<JsonElement, Call<Result<T>>> {
+    override fun responseType(): Type = JsonElement::class.java
+
+    override fun adapt(call: Call<JsonElement>): Call<Result<T>> = ResultCall(call, json, dataSerializer)
+}
+
+/**
  * 서버 응답을 [Result]로 변환하는 래퍼.
  *
  * Retrofit이 응답 바디를 [JsonElement]로 역직렬화한 뒤,
  * [ApiResponse] 래퍼 구조를 직접 파싱해 [dataSerializer]로 data 필드를 역직렬화한다.
  *
  * - HTTP 2xx + success=true → [Result.success]
- * - HTTP 2xx + success=false → [Result.failure] ([ApiException], message 필드 활용)
+ * - HTTP 2xx + success=false → [Result.failure] ([ApiException.UnknownException], message 필드 활용)
  * - HTTP 2xx + body null → [Result.failure] ([ApiException.UnknownException])
  * - HTTP 4xx/5xx → errorBody를 파싱해 메시지 추출 후 [Result.failure] ([ApiException.fromCode])
  * - 네트워크 오류 ([IOException]) → [Result.failure] ([ApiException.NetworkException])
@@ -117,57 +171,4 @@ internal class ResultCall<T>(
     override fun request(): Request = delegate.request()
 
     override fun timeout(): Timeout = delegate.timeout()
-}
-
-/**
- * [ResultCall]을 생성하는 [CallAdapter].
- *
- * [responseType]은 [JsonElement]로 고정해 Retrofit이 바디를 raw JSON으로 수신하도록 하고,
- * [dataSerializer]로 data 필드를 T로 역직렬화한다.
- */
-internal class ResultCallAdapter<T>(
-    private val dataSerializer: KSerializer<T>,
-    private val json: Json,
-) : CallAdapter<JsonElement, Call<Result<T>>> {
-    override fun responseType(): Type = JsonElement::class.java
-
-    override fun adapt(call: Call<JsonElement>): Call<Result<T>> = ResultCall(call, json, dataSerializer)
-}
-
-/**
- * [ResultCallAdapter]를 Retrofit에 등록하기 위한 팩토리.
- *
- * 반환 타입이 `Call<Result<T>>`인 API 메서드에 자동으로 적용된다.
- * `serializer(resultType)`으로 T의 [KSerializer]를 런타임에 조회해 어댑터에 전달한다.
- *
- * 사용 예:
- * ```kotlin
- * Retrofit.Builder()
- *     .addCallAdapterFactory(ResultCallAdapterFactory(json))
- *     ...
- * ```
- */
-class ResultCallAdapterFactory(private val json: Json) : CallAdapter.Factory() {
-    override fun get(
-        returnType: Type,
-        annotations: Array<out Annotation>,
-        retrofit: Retrofit,
-    ): CallAdapter<*, *>? {
-        if (getRawType(returnType) != Call::class.java) return null
-
-        val callType = getParameterUpperBound(0, returnType as ParameterizedType)
-
-        if (getRawType(callType) != Result::class.java) return null
-
-        val resultType = getParameterUpperBound(0, callType as ParameterizedType)
-
-        val dataSerializer =
-            try {
-                serializer(resultType)
-            } catch (_: Exception) {
-                return null
-            }
-
-        return ResultCallAdapter(dataSerializer, json)
-    }
 }
