@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.data.network.adapter
 
+import com.soma369.laimory.core.data.dto.common.ApiResponse
 import com.soma369.laimory.core.data.exception.ApiException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
@@ -85,7 +86,8 @@ internal class ResultCall<T>(
                 Result.failure(ApiException.UnknownException(e.message))
             }
         } else {
-            Result.failure(ApiException.fromCode(code(), message))
+            // HTTP 코드가 아닌 서버 비즈니스 로직 실패이므로 message를 그대로 사용
+            Result.failure(ApiException.UnknownException(message))
         }
     }
 
@@ -159,9 +161,13 @@ class ResultCallAdapterFactory(private val json: Json) : CallAdapter.Factory() {
 
         val resultType = getParameterUpperBound(0, callType as ParameterizedType)
 
-        @Suppress("UNCHECKED_CAST")
-        val dataSerializer = serializer(resultType) as KSerializer<Any>
+        val dataSerializer =
+            try {
+                serializer(resultType)
+            } catch (_: Exception) {
+                return null
+            }
 
-        return ResultCallAdapter<Any>(dataSerializer, json)
+        return ResultCallAdapter(dataSerializer, json)
     }
 }
