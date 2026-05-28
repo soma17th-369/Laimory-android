@@ -99,6 +99,19 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     }
 
     /**
+     * 예외를 안전하게 처리하는 코루틴 래퍼.
+     *
+     * 블록 내 예외 발생 시 기본적으로 [handleException]을 호출한다.
+     * 특수 케이스는 [onError]를 오버라이드해 처리할 수 있다.
+     */
+    protected fun safeLaunch(
+        onError: (Throwable) -> Unit = { handleException(it) },
+        block: suspend () -> Unit,
+    ) = viewModelScope.launch {
+        runCatching { block() }.onFailure(onError)
+    }
+
+    /**
      * [ApiException] 타입에 따라 적절한 스낵바 메시지를 발행한다.
      * 서브클래스에서 특수 케이스를 오버라이드할 수 있다.
      */
