@@ -3,6 +3,7 @@ package com.soma369.laimory.core.ui.base
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.soma369.laimory.core.domain.exception.ApiException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,11 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
 
     /** 일회성 부수 효과. UI에서 LaunchedEffect 안에서 collect한다. */
     val sideEffect = _sideEffect.receiveAsFlow()
+
+    private val _snackbar = Channel<String>(Channel.BUFFERED)
+
+    /** 스낵바 메시지. UI에서 LaunchedEffect 안에서 collect한다. */
+    val snackbar = _snackbar.receiveAsFlow()
 
     private val intentChannel = Channel<I>(Channel.BUFFERED)
 
@@ -90,6 +96,37 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
         viewModelScope.launch {
             _sideEffect.send(effect)
         }
+    }
+
+    /**
+     * 예외를 안전하게 처리하는 코루틴 래퍼.
+     *
+     * 블록 내 예외 발생 시 기본적으로 [handleException]을 호출한다.
+     * 특수 케이스는 [onError]를 오버라이드해 처리할 수 있다.
+     */
+    protected fun safeLaunch(
+        onError: (Throwable) -> Unit = { handleException(it) },
+        block: suspend () -> Unit,
+    ) = viewModelScope.launch {
+        runCatching { block() }.onFailure(onError)
+    }
+
+    /**
+     * [ApiException] 타입에 따라 적절한 스낵바 메시지를 발행한다.
+     * 서브클래스에서 특수 케이스를 오버라이드할 수 있다.
+     */
+    protected open fun handleException(e: Throwable) {
+        val message =
+            when (e) {
+                is ApiException.NetworkException -> ApiException.NETWORK_ERROR
+                is ApiException.UnauthorizedException -> e.message
+                is ApiException.ServerException -> ApiException.SERVER_ERROR
+                is ApiException.ClientException -> e.message
+                is ApiException.ConflictException -> e.message
+                is ApiException -> e.message
+                else -> ApiException.UNKNOWN_ERROR
+            }
+        viewModelScope.launch { _snackbar.send(message) }
     }
 
     companion object {
