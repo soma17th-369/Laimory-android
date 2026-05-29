@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.feature1.screen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,33 +15,31 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.Feature1Item
+import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.feature.feature1.state.Feature1UiIntent
 import com.soma369.laimory.feature.feature1.viewmodel.Feature1ViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Feature1Screen(
+    innerPadding: PaddingValues,
     onBack: () -> Unit,
     viewModel: Feature1ViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = LocalSnackbarHostState.current
 
     LaunchedEffect(Unit) {
         viewModel.snackbar.collect { message ->
@@ -48,29 +47,22 @@ fun Feature1Screen(
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = { Text("Feature 1") },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("← 뒤로") }
-                },
-            )
-        },
-    ) { paddingValues ->
+    Column(modifier = Modifier.padding(innerPadding)) {
+        TopAppBar(
+            title = { Text("Feature 1") },
+            navigationIcon = {
+                TextButton(onClick = onBack) { Text("← 뒤로") }
+            },
+        )
         if (state.isLoading) {
             Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator()
             }
         } else {
-            LazyColumn(contentPadding = paddingValues) {
+            LazyColumn {
                 items(state.items) { item ->
                     Feature1ItemCard(item = item)
                 }
