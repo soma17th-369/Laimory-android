@@ -167,7 +167,7 @@ sealed class ApiException(override val message: String) : IOException(message) {
 
 ### 파일 네이밍
 ```
-Screen          → TimelineScreen.kt
+Screen          → TimelineScreen.kt  ← Route / Content / Screen 세 함수 모두 같은 파일
 ViewModel       → TimelineViewModel.kt
 UiState         → TimelineUiState.kt
 UseCase         → GetTimelineUseCase.kt
