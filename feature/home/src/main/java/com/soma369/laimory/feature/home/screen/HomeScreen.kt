@@ -21,19 +21,38 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
+import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
+import kotlinx.coroutines.flow.Flow
 
 @Composable
-fun HomeScreen(
+fun HomeRoute(
     innerPadding: PaddingValues,
     onNavigateToFeature1: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    HomeContent(
+        innerPadding = innerPadding,
+        state = state,
+        onNavigateToFeature1 = onNavigateToFeature1,
+        onIntent = viewModel::sendIntent,
+        sideEffectFlow = viewModel.sideEffect,
+    )
+}
+
+@Composable
+private fun HomeContent(
+    innerPadding: PaddingValues,
+    state: HomeUiState,
+    onNavigateToFeature1: () -> Unit,
+    onIntent: (HomeUiIntent) -> Unit,
+    sideEffectFlow: Flow<HomeUiSideEffect>,
+) {
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
-        viewModel.sideEffect.collect { effect ->
+        sideEffectFlow.collect { effect ->
             when (effect) {
                 is HomeUiSideEffect.ShowToast ->
                     Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
@@ -41,6 +60,21 @@ fun HomeScreen(
         }
     }
 
+    HomeScreen(
+        innerPadding = innerPadding,
+        state = state,
+        onNavigateToFeature1 = onNavigateToFeature1,
+        onIntent = onIntent,
+    )
+}
+
+@Composable
+private fun HomeScreen(
+    innerPadding: PaddingValues,
+    state: HomeUiState,
+    onNavigateToFeature1: () -> Unit,
+    onIntent: (HomeUiIntent) -> Unit,
+) {
     Column(
         modifier =
             Modifier
@@ -55,17 +89,17 @@ fun HomeScreen(
             modifier = Modifier.padding(top = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Button(onClick = { viewModel.sendIntent(HomeUiIntent.Decrement) }) {
+            Button(onClick = { onIntent(HomeUiIntent.Decrement) }) {
                 Text("-")
             }
-            Button(onClick = { viewModel.sendIntent(HomeUiIntent.Increment) }) {
+            Button(onClick = { onIntent(HomeUiIntent.Increment) }) {
                 Text("+")
             }
         }
 
         Button(
             modifier = Modifier.padding(top = 16.dp),
-            onClick = { viewModel.sendIntent(HomeUiIntent.ShowToast) },
+            onClick = { onIntent(HomeUiIntent.ShowToast) },
         ) {
             Text("Toast")
         }
