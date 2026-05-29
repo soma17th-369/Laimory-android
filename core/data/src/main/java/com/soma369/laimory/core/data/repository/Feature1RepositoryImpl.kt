@@ -11,4 +11,10 @@ class Feature1RepositoryImpl
         private val remoteDataSource: Feature1RemoteDataSource,
     ) : Feature1Repository {
         override suspend fun getItems(): List<Feature1Item> = remoteDataSource.getItems()
+
+        override suspend fun triggerServerError() = remoteDataSource.triggerServerError()
+
+        override suspend fun triggerUnauthorizedError() = remoteDataSource.triggerUnauthorizedError()
+
+        override suspend fun triggerNetworkError() = remoteDataSource.triggerNetworkError()
     }

@@ -5,13 +5,22 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import java.io.IOException
 
 class MockInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val path = chain.request().url.encodedPath
-        if (!path.contains("feature1/items")) return chain.proceed(chain.request())
 
-        val (code, body) = 200 to FEATURE1_ITEMS_RESPONSE
+        if (path.contains("feature1/error/network")) throw IOException("Mock network error")
+
+        val (code, body) =
+            when {
+                path.contains("feature1/items") -> 200 to FEATURE1_ITEMS_RESPONSE
+                path.contains("feature1/error/server") -> 500 to ""
+                path.contains("feature1/error/unauthorized") -> 401 to ""
+                else -> return chain.proceed(chain.request())
+            }
+
         return Response.Builder()
             .request(chain.request())
             .protocol(Protocol.HTTP_1_1)

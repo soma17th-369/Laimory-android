@@ -1,6 +1,9 @@
 package com.soma369.laimory.feature.feature1.viewmodel
 
 import com.soma369.laimory.core.domain.usecase.GetFeature1ItemsUseCase
+import com.soma369.laimory.core.domain.usecase.TriggerNetworkErrorUseCase
+import com.soma369.laimory.core.domain.usecase.TriggerServerErrorUseCase
+import com.soma369.laimory.core.domain.usecase.TriggerUnauthorizedErrorUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.feature1.state.Feature1UiIntent
 import com.soma369.laimory.feature.feature1.state.Feature1UiSideEffect
@@ -13,6 +16,9 @@ class Feature1ViewModel
     @Inject
     constructor(
         private val getFeature1Items: GetFeature1ItemsUseCase,
+        private val triggerServerError: TriggerServerErrorUseCase,
+        private val triggerUnauthorizedError: TriggerUnauthorizedErrorUseCase,
+        private val triggerNetworkError: TriggerNetworkErrorUseCase,
     ) : BaseMviViewModel<Feature1UiState, Feature1UiIntent, Feature1UiSideEffect>(Feature1UiState()) {
         init {
             sendIntent(Feature1UiIntent.LoadItems)
@@ -21,6 +27,9 @@ class Feature1ViewModel
         override suspend fun handleIntent(intent: Feature1UiIntent) {
             when (intent) {
                 Feature1UiIntent.LoadItems -> loadItems()
+                Feature1UiIntent.TriggerServerError -> safeLaunch { triggerServerError() }
+                Feature1UiIntent.TriggerUnauthorizedError -> safeLaunch { triggerUnauthorizedError() }
+                Feature1UiIntent.TriggerNetworkError -> safeLaunch { triggerNetworkError() }
             }
         }
 
