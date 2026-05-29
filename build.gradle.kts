@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.ktlint)
+    alias(libs.plugins.dependency.graph.generator)
 }
 
 ktlint {
@@ -21,4 +22,12 @@ ktlint {
 
 subprojects {
     apply(plugin = "org.jlleitschuh.gradle.ktlint")
+}
+
+dependencyGraphGenerator {
+    projectGenerators.add(
+        com.vanniktech.dependency.graph.generator.DependencyGraphGeneratorExtension.ProjectGenerator(
+            name = "modules",
+        ),
+    )
 }
