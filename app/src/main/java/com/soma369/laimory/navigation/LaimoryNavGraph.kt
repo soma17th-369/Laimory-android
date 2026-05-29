@@ -10,8 +10,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
-import com.soma369.laimory.feature.feature1.screen.Feature1Screen
-import com.soma369.laimory.feature.home.screen.HomeScreen
+import com.soma369.laimory.feature.feature1.screen.Feature1Route
+import com.soma369.laimory.feature.home.screen.HomeRoute
 
 @Composable
 fun LaimoryNavGraph() {
@@ -27,13 +27,13 @@ fun LaimoryNavGraph() {
                 startDestination = "home",
             ) {
                 composable("home") {
-                    HomeScreen(
+                    HomeRoute(
                         innerPadding = innerPadding,
                         onNavigateToFeature1 = { navController.navigate("feature1") { launchSingleTop = true } },
                     )
                 }
                 composable("feature1") {
-                    Feature1Screen(
+                    Feature1Route(
                         innerPadding = innerPadding,
                         onBack = { navController.popBackStack() },
                     )
