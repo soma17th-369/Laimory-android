@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.home.screen
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -24,6 +25,7 @@ import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 
 @Composable
 fun HomeScreen(
+    innerPadding: PaddingValues,
     onNavigateToFeature1: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -40,7 +42,10 @@ fun HomeScreen(
     }
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
