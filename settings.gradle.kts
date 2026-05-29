@@ -18,6 +18,7 @@ rootProject.name = "Laimory"
 
 include(":app")
 include(":feature:home")
+include(":feature:feature1")
 include(":core:domain")
 include(":core:data")
 include(":core:ui")

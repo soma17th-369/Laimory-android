@@ -23,7 +23,10 @@ import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 
 @Composable
-fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
+fun HomeScreen(
+    onNavigateToFeature1: () -> Unit,
+    viewModel: HomeViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -60,6 +63,13 @@ fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
             onClick = { viewModel.sendIntent(HomeUiIntent.ShowToast) },
         ) {
             Text("Toast")
+        }
+
+        Button(
+            modifier = Modifier.padding(top = 8.dp),
+            onClick = onNavigateToFeature1,
+        ) {
+            Text("Feature 1으로 이동")
         }
     }
 }
