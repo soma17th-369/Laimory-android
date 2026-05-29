@@ -16,7 +16,7 @@ fun LaimoryNavGraph() {
         startDestination = "home",
     ) {
         composable("home") {
-            HomeScreen(onNavigateToFeature1 = { navController.navigate("feature1") })
+            HomeScreen(onNavigateToFeature1 = { navController.navigate("feature1") { launchSingleTop = true } })
         }
         composable("feature1") {
             Feature1Screen(onBack = { navController.popBackStack() })
