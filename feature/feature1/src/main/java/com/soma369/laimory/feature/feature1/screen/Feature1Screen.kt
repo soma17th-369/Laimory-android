@@ -29,24 +29,58 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.Feature1Item
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.feature.feature1.state.Feature1UiIntent
+import com.soma369.laimory.feature.feature1.state.Feature1UiState
 import com.soma369.laimory.feature.feature1.viewmodel.Feature1ViewModel
+import kotlinx.coroutines.flow.Flow
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Feature1Screen(
+fun Feature1Route(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
     viewModel: Feature1ViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    Feature1Content(
+        innerPadding = innerPadding,
+        state = state,
+        onBack = onBack,
+        onIntent = viewModel::sendIntent,
+        snackbarFlow = viewModel.snackbar,
+    )
+}
+
+@Composable
+private fun Feature1Content(
+    innerPadding: PaddingValues,
+    state: Feature1UiState,
+    onBack: () -> Unit,
+    onIntent: (Feature1UiIntent) -> Unit,
+    snackbarFlow: Flow<String>,
+) {
     val snackbarHostState = LocalSnackbarHostState.current
 
     LaunchedEffect(Unit) {
-        viewModel.snackbar.collect { message ->
+        snackbarFlow.collect { message ->
             snackbarHostState.showSnackbar(message)
         }
     }
 
+    Feature1Screen(
+        innerPadding = innerPadding,
+        state = state,
+        onBack = onBack,
+        onIntent = onIntent,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Feature1Screen(
+    innerPadding: PaddingValues,
+    state: Feature1UiState,
+    onBack: () -> Unit,
+    onIntent: (Feature1UiIntent) -> Unit,
+) {
     Column(modifier = Modifier.padding(innerPadding)) {
         TopAppBar(
             title = { Text("Feature 1") },
@@ -75,19 +109,19 @@ fun Feature1Screen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Button(
-                            onClick = { viewModel.sendIntent(Feature1UiIntent.TriggerServerError) },
+                            onClick = { onIntent(Feature1UiIntent.TriggerServerError) },
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("서버 오류")
                         }
                         Button(
-                            onClick = { viewModel.sendIntent(Feature1UiIntent.TriggerUnauthorizedError) },
+                            onClick = { onIntent(Feature1UiIntent.TriggerUnauthorizedError) },
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("인증 오류")
                         }
                         Button(
-                            onClick = { viewModel.sendIntent(Feature1UiIntent.TriggerNetworkError) },
+                            onClick = { onIntent(Feature1UiIntent.TriggerNetworkError) },
                             modifier = Modifier.weight(1f),
                         ) {
                             Text("네트워크 오류")
