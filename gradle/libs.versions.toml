@@ -21,6 +21,7 @@ coil = "2.7.0"
 datastore = "1.1.1"
 serializationJson = "1.6.3"
 ktlint = "12.1.1"
+dependencyGraphGenerator = "0.8.0"
 ksp = "2.1.0-1.0.29"
 kotlinJvm = "2.1.0"
 coroutinesTest = "1.8.1"
@@ -89,4 +90,4 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlinJvm" }
-dependency-graph-generator = { id = "com.vanniktech.dependency.graph.generator", version = "0.8.0" }
+dependency-graph-generator = { id = "com.vanniktech.dependency.graph.generator", version.ref = "dependencyGraphGenerator" }
