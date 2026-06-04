@@ -8,4 +8,6 @@ sealed interface HomeUiIntent : UiIntent {
     data object Decrement : HomeUiIntent
 
     data object ShowToast : HomeUiIntent
+
+    data object LoadIntroInfo : HomeUiIntent
 }

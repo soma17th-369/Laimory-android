@@ -83,6 +83,11 @@ private fun HomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        state.introInfo?.let { intro ->
+            Text(text = "minApp: ${intro.minAppVersion} / recommend: ${intro.recommendAppVersion}")
+            Text(text = intro.debugTestMessage)
+        }
+
         Text(text = "${state.counter}", fontSize = 48.sp)
 
         Row(
