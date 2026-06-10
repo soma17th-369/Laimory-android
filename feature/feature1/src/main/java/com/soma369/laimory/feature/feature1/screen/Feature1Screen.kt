@@ -73,9 +73,36 @@ private fun Feature1Content(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Feature1Screen(
+    innerPadding: PaddingValues,
+    state: Feature1UiState,
+    onBack: () -> Unit,
+    onIntent: (Feature1UiIntent) -> Unit,
+) {
+    if (state.isLoading) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator()
+        }
+    } else {
+        Feature1ScreenBody(
+            innerPadding = innerPadding,
+            state = state,
+            onBack = onBack,
+            onIntent = onIntent,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Feature1ScreenBody(
     innerPadding: PaddingValues,
     state: Feature1UiState,
     onBack: () -> Unit,
@@ -88,44 +115,35 @@ private fun Feature1Screen(
                 TextButton(onClick = onBack) { Text("← 뒤로") }
             },
         )
-        if (state.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
+        LazyColumn {
+            items(state.items) { item ->
+                Feature1ItemCard(item = item)
             }
-        } else {
-            LazyColumn {
-                items(state.items) { item ->
-                    Feature1ItemCard(item = item)
-                }
-                item {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            item {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = { onIntent(Feature1UiIntent.TriggerServerError) },
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Button(
-                            onClick = { onIntent(Feature1UiIntent.TriggerServerError) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("서버 오류")
-                        }
-                        Button(
-                            onClick = { onIntent(Feature1UiIntent.TriggerUnauthorizedError) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("인증 오류")
-                        }
-                        Button(
-                            onClick = { onIntent(Feature1UiIntent.TriggerNetworkError) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("네트워크 오류")
-                        }
+                        Text("서버 오류")
+                    }
+                    Button(
+                        onClick = { onIntent(Feature1UiIntent.TriggerUnauthorizedError) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("인증 오류")
+                    }
+                    Button(
+                        onClick = { onIntent(Feature1UiIntent.TriggerNetworkError) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("네트워크 오류")
                     }
                 }
             }
