@@ -3,6 +3,7 @@ package com.soma369.laimory.core.data.di
 import com.soma369.laimory.core.data.BuildConfig
 import com.soma369.laimory.core.data.network.adapter.ResultCallAdapterFactory
 import com.soma369.laimory.core.data.network.api.Feature1Api
+import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
 import dagger.Module
 import dagger.Provides
@@ -58,4 +59,8 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideFeature1Api(retrofit: Retrofit): Feature1Api = retrofit.create(Feature1Api::class.java)
+
+    @Provides
+    @Singleton
+    fun provideIntroApi(retrofit: Retrofit): IntroApi = retrofit.create(IntroApi::class.java)
 }
