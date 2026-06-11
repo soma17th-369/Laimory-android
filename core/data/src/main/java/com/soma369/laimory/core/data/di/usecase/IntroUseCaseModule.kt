@@ -6,10 +6,12 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 object IntroUseCaseModule {
     @Provides
+    @Singleton
     fun provideGetIntroInfoUseCase(repository: IntroRepository): GetIntroInfoUseCase = GetIntroInfoUseCase(repository)
 }
