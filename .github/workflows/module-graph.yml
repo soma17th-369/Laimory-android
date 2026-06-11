@@ -1,0 +1,67 @@
+name: Update Module Graph
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: write
+
+jobs:
+  update-module-graph:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Generate DOT file
+        run: ./gradlew generateModuleGraph
+
+      - name: Install Graphviz
+        run: sudo apt-get install -y graphviz
+
+      - name: Generate PNG from DOT
+        run: dot -Tpng docs/dependency-graph/modules.dot -o docs/dependency-graph/modules-graph.png
+
+      - name: Update README module graph section
+        run: |
+          DATE=$(TZ='Asia/Seoul' date +'%Y-%m-%d')
+          cat > /tmp/update_readme.py << 'PYEOF'
+          import sys, re, pathlib
+          date = sys.argv[1]
+          readme = pathlib.Path('README.md')
+          content = readme.read_text()
+          section = (
+              "<!-- MODULE_GRAPH_START -->\n"
+              "## 모듈 의존성 그래프\n\n"
+              f"> 마지막 업데이트: {date}\n\n"
+              "![Module Graph](docs/dependency-graph/modules-graph.png)\n"
+              "<!-- MODULE_GRAPH_END -->"
+          )
+          if '<!-- MODULE_GRAPH_START -->' in content:
+              content = re.sub(
+                  r'<!-- MODULE_GRAPH_START -->.*?<!-- MODULE_GRAPH_END -->',
+                  section,
+                  content,
+                  flags=re.DOTALL,
+              )
+          else:
+              content = content.rstrip('\n') + '\n\n' + section + '\n'
+          readme.write_text(content)
+          PYEOF
+          python3 /tmp/update_readme.py "$DATE"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/dependency-graph/ README.md
+          git diff --staged --quiet || git commit -m "chore: 모듈 그래프 업데이트 [skip ci]"
+          git push
