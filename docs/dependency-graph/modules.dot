@@ -3,31 +3,22 @@ edge ["dir"="forward"]
 graph ["dpi"="150" "rankdir"="TB"]
 node ["shape"="rectangle" "style"="filled"]
 
-// app
 "app" ["label"="app" "fillcolor"="#AED6F1"]
-
-// feature modules
-"feature-home"     ["label"="feature:home"     "fillcolor"="#A9DFBF"]
-"feature-feature1" ["label"="feature:feature1" "fillcolor"="#A9DFBF"]
-
-// core modules
-"core-ui"   ["label"="core:ui"   "fillcolor"="#FAD7A0"]
 "core-data" ["label"="core:data" "fillcolor"="#FAD7A0"]
-
-// domain
 "core-domain" ["label"="core:domain" "fillcolor"="#D2B4DE"]
+"core-ui" ["label"="core:ui" "fillcolor"="#FAD7A0"]
+"feature-feature1" ["label"="feature:feature1" "fillcolor"="#A9DFBF"]
+"feature-home" ["label"="feature:home" "fillcolor"="#A9DFBF"]
 
 // edges
-"app" -> "feature-home"
-"app" -> "feature-feature1"
-"app" -> "core-ui"
 "app" -> "core-data"
-
-"feature-home"     -> "core-ui"
-"feature-home"     -> "core-domain"
-"feature-feature1" -> "core-ui"
-"feature-feature1" -> "core-domain"
-
-"core-ui"   -> "core-domain"
+"app" -> "core-ui"
+"app" -> "feature-feature1"
+"app" -> "feature-home"
 "core-data" -> "core-domain"
+"core-ui" -> "core-domain"
+"feature-feature1" -> "core-domain"
+"feature-feature1" -> "core-ui"
+"feature-home" -> "core-domain"
+"feature-home" -> "core-ui"
 }

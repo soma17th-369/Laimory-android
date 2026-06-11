@@ -16,7 +16,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,14 +35,12 @@ import kotlinx.coroutines.flow.Flow
 @Composable
 fun Feature1Route(
     innerPadding: PaddingValues,
-    onBack: () -> Unit,
     viewModel: Feature1ViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Feature1Content(
         innerPadding = innerPadding,
         state = state,
-        onBack = onBack,
         onIntent = viewModel::sendIntent,
         snackbarFlow = viewModel.snackbar,
     )
@@ -53,7 +50,6 @@ fun Feature1Route(
 private fun Feature1Content(
     innerPadding: PaddingValues,
     state: Feature1UiState,
-    onBack: () -> Unit,
     onIntent: (Feature1UiIntent) -> Unit,
     snackbarFlow: Flow<String>,
 ) {
@@ -68,64 +64,75 @@ private fun Feature1Content(
     Feature1Screen(
         innerPadding = innerPadding,
         state = state,
-        onBack = onBack,
         onIntent = onIntent,
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Feature1Screen(
     innerPadding: PaddingValues,
     state: Feature1UiState,
-    onBack: () -> Unit,
+    onIntent: (Feature1UiIntent) -> Unit,
+) {
+    if (state.isLoading) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator()
+        }
+    } else {
+        Feature1ScreenBody(
+            innerPadding = innerPadding,
+            state = state,
+            onIntent = onIntent,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Feature1ScreenBody(
+    innerPadding: PaddingValues,
+    state: Feature1UiState,
     onIntent: (Feature1UiIntent) -> Unit,
 ) {
     Column(modifier = Modifier.padding(innerPadding)) {
         TopAppBar(
             title = { Text("Feature 1") },
-            navigationIcon = {
-                TextButton(onClick = onBack) { Text("← 뒤로") }
-            },
         )
-        if (state.isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
+        LazyColumn {
+            items(state.items) { item ->
+                Feature1ItemCard(item = item)
             }
-        } else {
-            LazyColumn {
-                items(state.items) { item ->
-                    Feature1ItemCard(item = item)
-                }
-                item {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            item {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Button(
+                        onClick = { onIntent(Feature1UiIntent.TriggerServerError) },
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Button(
-                            onClick = { onIntent(Feature1UiIntent.TriggerServerError) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("서버 오류")
-                        }
-                        Button(
-                            onClick = { onIntent(Feature1UiIntent.TriggerUnauthorizedError) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("인증 오류")
-                        }
-                        Button(
-                            onClick = { onIntent(Feature1UiIntent.TriggerNetworkError) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text("네트워크 오류")
-                        }
+                        Text("서버 오류")
+                    }
+                    Button(
+                        onClick = { onIntent(Feature1UiIntent.TriggerUnauthorizedError) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("인증 오류")
+                    }
+                    Button(
+                        onClick = { onIntent(Feature1UiIntent.TriggerNetworkError) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("네트워크 오류")
                     }
                 }
             }
