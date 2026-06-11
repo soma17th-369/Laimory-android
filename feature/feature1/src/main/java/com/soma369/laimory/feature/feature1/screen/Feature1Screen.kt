@@ -16,7 +16,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,14 +35,12 @@ import kotlinx.coroutines.flow.Flow
 @Composable
 fun Feature1Route(
     innerPadding: PaddingValues,
-    onBack: () -> Unit,
     viewModel: Feature1ViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Feature1Content(
         innerPadding = innerPadding,
         state = state,
-        onBack = onBack,
         onIntent = viewModel::sendIntent,
         snackbarFlow = viewModel.snackbar,
     )
@@ -53,7 +50,6 @@ fun Feature1Route(
 private fun Feature1Content(
     innerPadding: PaddingValues,
     state: Feature1UiState,
-    onBack: () -> Unit,
     onIntent: (Feature1UiIntent) -> Unit,
     snackbarFlow: Flow<String>,
 ) {
@@ -68,7 +64,6 @@ private fun Feature1Content(
     Feature1Screen(
         innerPadding = innerPadding,
         state = state,
-        onBack = onBack,
         onIntent = onIntent,
     )
 }
@@ -77,7 +72,6 @@ private fun Feature1Content(
 private fun Feature1Screen(
     innerPadding: PaddingValues,
     state: Feature1UiState,
-    onBack: () -> Unit,
     onIntent: (Feature1UiIntent) -> Unit,
 ) {
     if (state.isLoading) {
@@ -94,7 +88,6 @@ private fun Feature1Screen(
         Feature1ScreenBody(
             innerPadding = innerPadding,
             state = state,
-            onBack = onBack,
             onIntent = onIntent,
         )
     }
@@ -105,15 +98,11 @@ private fun Feature1Screen(
 private fun Feature1ScreenBody(
     innerPadding: PaddingValues,
     state: Feature1UiState,
-    onBack: () -> Unit,
     onIntent: (Feature1UiIntent) -> Unit,
 ) {
     Column(modifier = Modifier.padding(innerPadding)) {
         TopAppBar(
             title = { Text("Feature 1") },
-            navigationIcon = {
-                TextButton(onClick = onBack) { Text("← 뒤로") }
-            },
         )
         LazyColumn {
             items(state.items) { item ->

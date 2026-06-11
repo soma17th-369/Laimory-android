@@ -35,7 +35,6 @@ fun LaimoryNavGraph() {
                 composable("feature1") {
                     Feature1Route(
                         innerPadding = innerPadding,
-                        onBack = { navController.popBackStack() },
                     )
                 }
             }
