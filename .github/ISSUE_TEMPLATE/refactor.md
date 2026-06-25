@@ -2,7 +2,7 @@
 name: Refactor
 about: 리팩터링 대상, 사유, 완료 조건을 정리합니다.
 title: "[Refactor] "
-labels: refactor
+labels: android
 assignees: ""
 ---
 
