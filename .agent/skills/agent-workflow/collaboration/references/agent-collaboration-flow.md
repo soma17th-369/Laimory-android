@@ -1,5 +1,5 @@
 ---
-name: agent-collaboration-flow
+name: agent-collaboration-flow-guide
 description: Laimory Android 저장소에서 Codex와 Claude가 기획, 리뷰, 구현, 반영을 나누어 수행하는 6단계 협업 흐름입니다.
 ---
 

@@ -1,10 +1,11 @@
 ---
 name: planning-reviewer
 description: Codex가 작성한 기획과 작업 범위를 Claude 구현 관점에서 검토하고, 누락된 요구사항과 구현 리스크를 지적합니다.
-tools: Read, Grep, Glob, Bash
 ---
 
 # 기획 리뷰어
+
+이 파일은 실행 가능한 서브에이전트 설정이 아니라, Agent 역할 정의 문서입니다.
 
 ## 역할
 

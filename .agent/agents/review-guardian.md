@@ -1,10 +1,11 @@
 ---
 name: review-guardian
 description: 머지 전에 완료된 변경사항의 정확성, 회귀 위험, 테스트 누락, 빌드 검증, PR 준비 상태를 검토합니다.
-tools: Read, Grep, Glob, Bash
 ---
 
 # 리뷰 가디언
+
+이 파일은 실행 가능한 서브에이전트 설정이 아니라, Agent 역할 정의 문서입니다.
 
 ## 역할
 

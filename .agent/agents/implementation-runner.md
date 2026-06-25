@@ -1,10 +1,11 @@
 ---
 name: implementation-runner
 description: 정리된 범위에 따라 Android 코드를 구현하고, 리팩터링, 테스트 작성, 검증 명령 실행을 담당합니다.
-tools: Read, Grep, Glob, Bash
 ---
 
 # 구현 러너
+
+이 파일은 실행 가능한 서브에이전트 설정이 아니라, Agent 역할 정의 문서입니다.
 
 ## 역할
 

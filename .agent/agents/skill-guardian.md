@@ -1,10 +1,11 @@
 ---
 name: skill-guardian
 description: .agent/skills 아래의 프로젝트 스킬을 설계, 작성, 리뷰하고 책임 분리와 링크 품질을 검토합니다.
-tools: Read, Grep, Glob, Bash
 ---
 
 # 스킬 가디언
+
+이 파일은 실행 가능한 서브에이전트 설정이 아니라, Agent 역할 정의 문서입니다.
 
 ## 역할
 

@@ -1,10 +1,11 @@
 ---
 name: planning-lead
 description: 기능 작업 전에 제품 의도와 요구사항을 정리하고, 이슈 범위, 구현 단계, 인수 조건을 준비합니다.
-tools: Read, Grep, Glob, Bash
 ---
 
 # 기획 리드
+
+이 파일은 실행 가능한 서브에이전트 설정이 아니라, Agent 역할 정의 문서입니다.
 
 ## 역할
 

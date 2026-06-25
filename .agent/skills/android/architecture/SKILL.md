@@ -5,13 +5,13 @@ description: Codex와 Claude가 함께 사용하는 Android 아키텍처 및 구
 
 # Laimory Android - 공용 Agent 지침
 
-이 프로젝트에서 Codex와 Claude가 기획, 구현, 리뷰를 수행할 때 아래 레퍼런스를 참조한다.
+이 프로젝트에서 Codex와 Claude가 기획, 구현, 리뷰를 수행할 때 아래 레퍼런스를 참조합니다.
 
 ## Agent 역할
 
 - Codex: 1단계 기획, 3단계 기획 리뷰 반영, 5단계 구현 리뷰
 - Claude: 2단계 기획 리뷰, 4단계 구현, 6단계 구현 리뷰 반영
-- 공통: `.agent` 문서를 프로젝트 규칙과 아키텍처의 기준으로 사용한다.
+- 공통: `.agent` 문서를 프로젝트 규칙과 아키텍처의 기준으로 사용합니다.
 
 ---
 
@@ -19,9 +19,9 @@ description: Codex와 Claude가 함께 사용하는 Android 아키텍처 및 구
 
 [프로젝트 초기 세팅](references/project-initial-setup.md)
 
-기술 스택, 모듈 구조, 레이어 설계, MVI 패턴, API 응답 구조, 코드 컨벤션, 세팅 순서를 담고 있다.
+기술 스택, 모듈 구조, 레이어 설계, MVI 패턴, API 응답 구조, 코드 컨벤션, 세팅 순서를 담고 있습니다.
 
-**언제 참조하나:**
+**언제 참조하나요:**
 - 모듈 추가 및 build.gradle.kts 작성 시
 - Clean Architecture + MVI 레이어 코드 작성 시
 - ViewModel, UiState, UiIntent, UiSideEffect 구현 시
@@ -31,7 +31,7 @@ description: Codex와 Claude가 함께 사용하는 Android 아키텍처 및 구
 
 ## 2. 화면 컴포저블 3계층 구조
 
-모든 Feature 화면은 **Route → Content → Screen** 3계층으로 작성한다.
+모든 Feature 화면은 **Route → Content → Screen** 3계층으로 작성합니다.
 
 ### 계층 정의
 
@@ -48,7 +48,7 @@ description: Codex와 Claude가 함께 사용하는 Android 아키텍처 및 구
 @Composable
 fun TimelineRoute(
     innerPadding: PaddingValues,
-    onNavigateToDetail: (id: Long) -> Unit,
+    onNavigateToDetail: (id: MomentId) -> Unit,
     viewModel: TimelineViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -67,7 +67,7 @@ fun TimelineRoute(
 private fun TimelineContent(
     innerPadding: PaddingValues,
     state: TimelineUiState,
-    onNavigateToDetail: (id: Long) -> Unit,
+    onNavigateToDetail: (id: MomentId) -> Unit,
     onIntent: (TimelineUiIntent) -> Unit,
     snackbarFlow: Flow<String>,
     sideEffectFlow: Flow<TimelineUiSideEffect>,
@@ -109,11 +109,12 @@ private fun TimelineScreen(
 
 ### 규칙 요약
 
-- **Route**만 `hiltViewModel()`을 호출한다. Content/Screen은 ViewModel을 직접 참조하지 않는다.
-- **Content**에서 `LocalSnackbarHostState.current`로 스낵바를 표시하고, `sideEffect`로 네비게이션을 실행한다.
-- **다이얼로그**는 Content에서 state 조건으로 오버레이한다. Screen 내부에 두지 않는다.
-- **Screen**은 파라미터만으로 렌더링이 결정되어야 한다. Preview 작성이 가능한 상태를 유지한다.
-- NavGraph에서는 항상 **Route** 함수만 참조한다.
+- **Route**만 `hiltViewModel()`을 호출합니다. Content/Screen은 ViewModel을 직접 참조하지 않습니다.
+- **Content**에서 `LocalSnackbarHostState.current`로 스낵바를 표시하고, `sideEffect`로 네비게이션을 실행합니다.
+- **다이얼로그**는 Content에서 state 조건으로 오버레이합니다. Screen 내부에 두지 않습니다.
+- **Screen**은 파라미터만으로 렌더링이 결정되어야 합니다. Preview 작성이 가능한 상태를 유지합니다.
+- NavGraph에서는 항상 **Route** 함수만 참조합니다.
+- 도메인 식별자는 `Long` 같은 primitive 대신 `MomentId` 같은 VO를 우선 사용합니다.
 
 ### 파일 네이밍
 
@@ -123,7 +124,7 @@ TimelineScreen.kt  ← Route / Content / Screen 세 함수 모두 같은 파일�
 
 ### 스낵바 인프라
 
-스낵바는 `LaimoryNavGraph` 레벨의 단일 `Scaffold`에서 중앙 관리한다.
+스낵바는 `LaimoryNavGraph` 레벨의 단일 `Scaffold`에서 중앙 관리합니다.
 
 ```kotlin
 // core:ui 모듈

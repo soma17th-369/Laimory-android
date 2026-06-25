@@ -1,10 +1,11 @@
 ---
 name: architecture-guardian
 description: 변경된 Kotlin/Gradle 파일에서 Android 아키텍처 위반을 검토합니다. 레이어 의존성 방향, 모듈/파일 배치, MVI 계약, 디자인 토큰 사용, DTO/VO 규칙, 네이밍을 확인합니다. 기능 코드 구현 또는 수정 후 사용합니다.
-tools: Read, Grep, Glob, Bash
 ---
 
 # 아키텍처 가디언
+
+이 파일은 실행 가능한 서브에이전트 설정이 아니라, Agent 역할 정의 문서입니다.
 
 ## 역할
 
