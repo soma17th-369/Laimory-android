@@ -2,7 +2,7 @@
 name: Feature
 about: 새 기능 또는 화면 개발 요구사항을 정리합니다.
 title: "[Feature] "
-labels: enhancement
+labels: android
 assignees: ""
 ---
 

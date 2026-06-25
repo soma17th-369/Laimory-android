@@ -21,6 +21,7 @@ GitHub 워크플로우 지침을 이 문서에 추가합니다.
 
 이슈는 `.github/ISSUE_TEMPLATE` 아래의 템플릿을 기준으로 작성합니다.
 
+- 라벨 기준: [라벨 가이드](label-guide.md)
 - 버그: `.github/ISSUE_TEMPLATE/bug_report.md`
 - 기능: `.github/ISSUE_TEMPLATE/feature_request.md`
 - 리팩터링: `.github/ISSUE_TEMPLATE/refactor.md`

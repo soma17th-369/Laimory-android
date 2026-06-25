@@ -11,6 +11,7 @@ GitHub 이슈 작성, Pull Request 흐름, 리뷰 프로세스 기준은 이 스
 
 - [GitHub 워크플로우 가이드](references/github-workflow-guide.md)
 - [이슈 생성 가이드](references/issue-creation-guide.md)
+- [라벨 가이드](references/label-guide.md)
 - [PR 리뷰 코멘트 처리 가이드](references/pr-review-comment-guide.md)
 - [PR 리뷰 코멘트 판단 기준](references/pr-review-disposition-guide.md)
 - [gh 명령어 가이드](references/gh-command-guide.md)

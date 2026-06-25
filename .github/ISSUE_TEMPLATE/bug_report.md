@@ -2,7 +2,7 @@
 name: Bug
 about: 발견된 버그를 제보하고 해결 방향을 정리합니다.
 title: "[Bug] "
-labels: bug
+labels: android
 assignees: ""
 ---
 
