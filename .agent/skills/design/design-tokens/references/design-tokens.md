@@ -24,7 +24,7 @@ Semantic (역할 토큰, Light/Dark 2모드)  →  lightColorScheme / darkColorS
 
 ## 2. Primitives (raw 값)
 
-`core:designsystem/.../theme/Color.kt` — `private val`로 둔다. 화면에서 직접 참조 금지.
+`core:ui/.../theme/Color.kt` — `private val`로 둔다. 화면에서 직접 참조 금지. (Theme/DesignSystem은 `:core:ui`에 둔다 — [Android 아키텍처](../../../android/architecture/SKILL.md))
 
 ```kotlin
 // Neutral (warm gray)
@@ -103,7 +103,7 @@ internal val LaimoryDarkColorScheme = darkColorScheme(
 )
 ```
 
-> `text-primary` = `onSurface`, `text-secondary` = `onSurfaceVariant`, `border` = `outline`. (Figma 이슈 #74의 단순화 명칭 ↔ M3 매핑)
+> `text-primary` = `onSurface`, `text-secondary` = `onSurfaceVariant`, `border` = `outline`. (Figma의 단순화 명칭 ↔ M3 역할 매핑)
 
 ## 4. 확장색 — LaimoryColors
 
@@ -165,7 +165,9 @@ fun Emotion.containerColor(): Color = with(LocalLaimoryColors.current) {
 
 ## 5. Typography (M3, Noto Sans KR)
 
-Figma는 Noto Sans KR로 디자인했다. 앱은 **Pretendard** 번들을 권장(파스텔 톤에 잘 맞고 한글 가독성 우수)하되, 없으면 Noto Sans KR로 폴백한다.
+Foundation(Figma)의 타입 기준은 **Noto Sans KR**이다. 매핑 스펙은 이 기준을 그대로 따른다.
+
+> 다른 폰트(예: Pretendard)로 전환하려면 Figma Foundation의 폰트·자간까지 함께 바꿔야 하므로 **별도 결정 항목**으로 분리한다. 코드만 폰트를 바꾸면 디자인-코드 스펙이 어긋난다.
 
 | Style | size / lineHeight | weight |
 |---|---|---|
@@ -183,17 +185,20 @@ Figma는 Noto Sans KR로 디자인했다. 앱은 **Pretendard** 번들을 권장
 | labelMedium | 12 / 16 | Medium |
 | labelSmall | 11 / 16 | Medium |
 
+자간(letterSpacing)은 Figma가 **% 단위**라 Compose에서는 `.em`으로 환산한다 (`% / 100`). 예: Display `-0.5%` → `(-0.005).em`. Figma 자간 값: Display/Large -0.5%, Display/Small -0.4%, Headline/Large -0.3%, Headline/Medium -0.2%, Title/Large -0.1%, Label/Large 0.1%, Label/Medium 0.2%, Label/Small 0.3%, 나머지 0.
+
 ```kotlin
-private val Pretendard = FontFamily(/* R.font.pretendard_regular/medium/bold ... */)
+// Foundation 기준 폰트 = Noto Sans KR (Pretendard 전환은 별도 결정 항목)
+private val NotoSansKr = FontFamily(/* R.font.noto_sans_kr_regular/medium/bold ... */)
 
 val LaimoryTypography = Typography(
-    displayLarge = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp, letterSpacing = (-0.5).sp),
-    displaySmall = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp),
-    headlineMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Medium, fontSize = 22.sp, lineHeight = 30.sp),
-    titleMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 22.sp),
-    labelMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
-    // ... 나머지 13단계 동일 패턴
+    displayLarge = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp, letterSpacing = (-0.005).em),
+    displaySmall = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp, letterSpacing = (-0.004).em),
+    headlineMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Medium, fontSize = 22.sp, lineHeight = 30.sp, letterSpacing = (-0.002).em),
+    titleMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 22.sp),
+    labelMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = (0.002).em),
+    // ... 나머지 13단계 동일 패턴 (자간은 위 % 값을 .em으로 환산)
 )
 ```
 

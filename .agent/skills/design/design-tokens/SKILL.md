@@ -8,7 +8,7 @@ description: Figma Variables(Primitives/Semantic)를 Jetpack Compose 테마(Colo
 Figma 디자인 시스템의 토큰을 Compose 코드로 옮기거나, 테마(`LaimoryTheme`)·색·타이포·간격을 구현/수정할 때 이 스킬을 사용합니다.
 
 **언제 참조하나요:**
-- `core:designsystem`(테마 모듈)의 `Color.kt` / `Type.kt` / `Shape.kt` / `Theme.kt` 작성·수정 시
+- `core:ui` 모듈(공통 Composable·Theme·DesignSystem)의 `Color.kt` / `Type.kt` / `Shape.kt` / `Theme.kt` 작성·수정 시
 - Figma `Semantic` 토큰을 `MaterialTheme.colorScheme.*`로 매핑할 때
 - M3에 없는 확장색(success/warning/info/감정 5색)을 `LaimoryColors`로 추가할 때
 - 라이트/다크 모드 색을 정의할 때

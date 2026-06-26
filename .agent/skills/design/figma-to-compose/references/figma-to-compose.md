@@ -54,7 +54,7 @@ data class TimelineUiState(
 
 ## 3. 컴포넌트 인스턴스 → 공용 컴포저블
 
-Figma `00 Foundation`의 컴포넌트는 `core:designsystem`의 공용 컴포저블과 1:1로 대응시킨다. 화면마다 새로 그리지 말고 공용 컴포저블을 호출한다.
+Figma `00 Foundation`의 컴포넌트는 `core:ui`의 공통 컴포저블과 1:1로 대응시킨다. 화면마다 새로 그리지 말고 공용 컴포저블을 호출한다. (Theme·DesignSystem·공통 Composable은 `:core:ui`에 둔다)
 
 | Figma 컴포넌트 (variants) | Compose 컴포저블 |
 |---|---|
@@ -67,7 +67,7 @@ Figma `00 Foundation`의 컴포넌트는 `core:designsystem`의 공용 컴포저
 | Snackbar (Default/Error/Action) | 공용 Snackbar 인프라(`LocalSnackbarHostState`) + variant |
 | State (Empty/Loading/Error) | `EmptyState` / `LoadingState` / `ErrorState` |
 
-> Dialog/Snackbar/Error State는 **#54 공통 에러 처리(MessageHelper)** 와 직결된다. 에러 표현은 임의로 만들지 말고 이 컴포넌트로 통일한다.
+> Dialog/Snackbar/Error State는 프로젝트의 **Exception 처리 기준**을 따른다. 에러 표현(이 컴포넌트들)은 임의로 만들지 말고 통일하되, **트리거는 UI helper가 아니라** 공통 정책성 Exception은 UseCase의 의미 수준 포트, 화면별 Exception은 ViewModel의 `UiSideEffect`로 흘려서 Compose가 collect해 표시한다.
 
 ## 4. 토큰으로 스타일링
 
