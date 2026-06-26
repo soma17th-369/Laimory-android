@@ -32,6 +32,9 @@ Claude는 6단계 Agent 협업 플로우 중 **2. 기획 리뷰**, **4. 구현**
 - [Android 스킬 인덱스](.agent/skills/android/index.md)
 - [Android 아키텍처 지침](.agent/skills/android/architecture/SKILL.md)
 - [프로젝트 초기 세팅](.agent/skills/android/architecture/references/project-initial-setup.md)
+- [디자인 스킬 인덱스](.agent/skills/design/index.md)
+- [디자인 토큰 매핑 (Figma → Compose 테마)](.agent/skills/design/design-tokens/SKILL.md)
+- [Figma → Compose 구현 워크플로우](.agent/skills/design/figma-to-compose/SKILL.md)
 
 새 제품/도메인 용어가 생기거나 기존 용어와 충돌할 때만 [Ubiquitous Language 용어 사전](docs/ubiquitous-language/glossary.md)을 참조합니다.
 
