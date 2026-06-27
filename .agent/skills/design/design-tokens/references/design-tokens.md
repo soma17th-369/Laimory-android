@@ -163,11 +163,11 @@ fun Emotion.containerColor(): Color = with(LocalLaimoryColors.current) {
 }
 ```
 
-## 5. Typography (M3, Noto Sans KR)
+## 5. Typography (M3, Pretendard)
 
-Foundation(Figma)의 타입 기준은 **Noto Sans KR**이다. 매핑 스펙은 이 기준을 그대로 따른다.
+Foundation(Figma)의 타입 기준은 **Pretendard**이다. 매핑 스펙은 이 기준을 그대로 따른다.
 
-> 다른 폰트(예: Pretendard)로 전환하려면 Figma Foundation의 폰트·자간까지 함께 바꿔야 하므로 **별도 결정 항목**으로 분리한다. 코드만 폰트를 바꾸면 디자인-코드 스펙이 어긋난다.
+> Figma Foundation의 타입 스타일 13개를 Pretendard로 전환 완료(size·lineHeight·자간 동일, 굵기 Regular/Medium/Bold 1:1 매핑). Pretendard는 Figma **데스크톱 로컬 설치 폰트**로 적용한다 — Figma 웹/MCP 폰트 세트엔 Pretendard가 없어 에이전트(MCP)는 해당 텍스트를 편집할 수 없으므로, **Figma 타입 스타일 변경은 데스크톱에서 수동**으로 한다. 앱은 Pretendard `.ttf`를 `res/font`에 번들한다.
 
 | Style | size / lineHeight | weight |
 |---|---|---|
@@ -188,16 +188,16 @@ Foundation(Figma)의 타입 기준은 **Noto Sans KR**이다. 매핑 스펙은 �
 자간(letterSpacing)은 Figma가 **% 단위**라 Compose에서는 `.em`으로 환산한다 (`% / 100`). 예: Display `-0.5%` → `(-0.005).em`. Figma 자간 값: Display/Large -0.5%, Display/Small -0.4%, Headline/Large -0.3%, Headline/Medium -0.2%, Title/Large -0.1%, Label/Large 0.1%, Label/Medium 0.2%, Label/Small 0.3%, 나머지 0.
 
 ```kotlin
-// Foundation 기준 폰트 = Noto Sans KR (Pretendard 전환은 별도 결정 항목)
-private val NotoSansKr = FontFamily(/* R.font.noto_sans_kr_regular/medium/bold ... */)
+// Foundation 기준 폰트 = Pretendard (Figma 데스크톱 로컬폰트로 적용 / 앱은 res/font 번들)
+private val Pretendard = FontFamily(/* R.font.pretendard_regular/medium/bold ... */)
 
 val LaimoryTypography = Typography(
-    displayLarge = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp, letterSpacing = (-0.005).em),
-    displaySmall = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp, letterSpacing = (-0.004).em),
-    headlineMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Medium, fontSize = 22.sp, lineHeight = 30.sp, letterSpacing = (-0.002).em),
-    titleMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 22.sp),
-    labelMedium = TextStyle(fontFamily = NotoSansKr, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = (0.002).em),
+    displayLarge = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 44.sp, letterSpacing = (-0.005).em),
+    displaySmall = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 36.sp, letterSpacing = (-0.004).em),
+    headlineMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Medium, fontSize = 22.sp, lineHeight = 30.sp, letterSpacing = (-0.002).em),
+    titleMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 24.sp),
+    bodyMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 22.sp),
+    labelMedium = TextStyle(fontFamily = Pretendard, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = (0.002).em),
     // ... 나머지 13단계 동일 패턴 (자간은 위 % 값을 .em으로 환산)
 )
 ```
