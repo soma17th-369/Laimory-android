@@ -1,6 +1,6 @@
 package com.soma369.laimory.core.data.di.usecase
 
-import com.soma369.laimory.core.domain.notification.UserNotifier
+import com.soma369.laimory.core.domain.notification.MessageHelper
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.usecase.GetFeature1ItemsUseCase
 import com.soma369.laimory.core.domain.usecase.TriggerNetworkErrorUseCase
@@ -19,27 +19,27 @@ object Feature1UseCaseModule {
     @Singleton
     fun provideGetFeature1ItemsUseCase(
         repository: Feature1Repository,
-        notifier: UserNotifier,
-    ): GetFeature1ItemsUseCase = GetFeature1ItemsUseCase(repository, notifier)
+        messageHelper: MessageHelper,
+    ): GetFeature1ItemsUseCase = GetFeature1ItemsUseCase(repository, messageHelper)
 
     @Provides
     @Singleton
     fun provideTriggerServerErrorUseCase(
         repository: Feature1Repository,
-        notifier: UserNotifier,
-    ): TriggerServerErrorUseCase = TriggerServerErrorUseCase(repository, notifier)
+        messageHelper: MessageHelper,
+    ): TriggerServerErrorUseCase = TriggerServerErrorUseCase(repository, messageHelper)
 
     @Provides
     @Singleton
     fun provideTriggerUnauthorizedErrorUseCase(
         repository: Feature1Repository,
-        notifier: UserNotifier,
-    ): TriggerUnauthorizedErrorUseCase = TriggerUnauthorizedErrorUseCase(repository, notifier)
+        messageHelper: MessageHelper,
+    ): TriggerUnauthorizedErrorUseCase = TriggerUnauthorizedErrorUseCase(repository, messageHelper)
 
     @Provides
     @Singleton
     fun provideTriggerNetworkErrorUseCase(
         repository: Feature1Repository,
-        notifier: UserNotifier,
-    ): TriggerNetworkErrorUseCase = TriggerNetworkErrorUseCase(repository, notifier)
+        messageHelper: MessageHelper,
+    ): TriggerNetworkErrorUseCase = TriggerNetworkErrorUseCase(repository, messageHelper)
 }

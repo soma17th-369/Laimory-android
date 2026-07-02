@@ -1,6 +1,6 @@
 package com.soma369.laimory.core.data.di.usecase
 
-import com.soma369.laimory.core.domain.notification.UserNotifier
+import com.soma369.laimory.core.domain.notification.MessageHelper
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.usecase.GetIntroInfoUseCase
 import dagger.Module
@@ -16,6 +16,6 @@ object IntroUseCaseModule {
     @Singleton
     fun provideGetIntroInfoUseCase(
         repository: IntroRepository,
-        notifier: UserNotifier,
-    ): GetIntroInfoUseCase = GetIntroInfoUseCase(repository, notifier)
+        messageHelper: MessageHelper,
+    ): GetIntroInfoUseCase = GetIntroInfoUseCase(repository, messageHelper)
 }
