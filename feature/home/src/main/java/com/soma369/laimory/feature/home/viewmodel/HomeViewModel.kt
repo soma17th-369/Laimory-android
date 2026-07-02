@@ -27,16 +27,14 @@ class HomeViewModel
             }
         }
 
-        private fun loadIntroInfo() {
-            safeLaunch(
-                onError = { e ->
-                    updateState { copy(isLoading = false) }
-                    handleException(e)
-                },
-            ) {
+        private fun loadIntroInfo() =
+            safeLaunch {
                 updateState { copy(isLoading = true) }
-                val introInfo = getIntroInfoUseCase()
-                updateState { copy(introInfo = introInfo, isLoading = false) }
+                getIntroInfoUseCase()
+                    .onSuccess { info -> updateState { copy(introInfo = info, isLoading = false) } }
+                    .onFailure { e ->
+                        updateState { copy(isLoading = false) }
+                        handleFailure(e)
+                    }
             }
-        }
     }

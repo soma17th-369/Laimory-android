@@ -2,6 +2,7 @@ package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.feature1.Feature1ItemResponse
 import com.soma369.laimory.core.data.network.api.Feature1Api
+import com.soma369.laimory.core.data.network.safeApiCall
 import javax.inject.Inject
 
 class Feature1RemoteDataSourceImpl
@@ -9,17 +10,17 @@ class Feature1RemoteDataSourceImpl
     constructor(
         private val api: Feature1Api,
     ) : Feature1RemoteDataSource {
-        override suspend fun getItems(): List<Feature1ItemResponse> = api.getItems().getOrThrow()
+        override suspend fun getItems(): List<Feature1ItemResponse> = safeApiCall { api.getItems() }
 
         override suspend fun triggerServerError() {
-            api.triggerServerError().getOrThrow()
+            safeApiCall { api.triggerServerError() }
         }
 
         override suspend fun triggerUnauthorizedError() {
-            api.triggerUnauthorizedError().getOrThrow()
+            safeApiCall { api.triggerUnauthorizedError() }
         }
 
         override suspend fun triggerNetworkError() {
-            api.triggerNetworkError().getOrThrow()
+            safeApiCall { api.triggerNetworkError() }
         }
     }

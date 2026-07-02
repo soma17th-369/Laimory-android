@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.data.di.usecase
 
+import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.usecase.GetIntroInfoUseCase
 import dagger.Module
@@ -13,5 +14,8 @@ import javax.inject.Singleton
 object IntroUseCaseModule {
     @Provides
     @Singleton
-    fun provideGetIntroInfoUseCase(repository: IntroRepository): GetIntroInfoUseCase = GetIntroInfoUseCase(repository)
+    fun provideGetIntroInfoUseCase(
+        repository: IntroRepository,
+        messageHelper: MessageHelper,
+    ): GetIntroInfoUseCase = GetIntroInfoUseCase(repository, messageHelper)
 }

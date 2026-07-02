@@ -32,10 +32,10 @@ class MockInterceptor : Interceptor {
 
     companion object {
         private val FEATURE1_ITEMS_RESPONSE =
-            """{"success":true,"message":"ok","data":[""" +
+            """{"header":{"code":"COMMON_0000","message":"success","transactionId":"mock-tx-items"},"body":[""" +
                 """{"id":1,"title":"아이템 1","description":"첫 번째 아이템입니다"},""" +
                 """{"id":2,"title":"아이템 2","description":"두 번째 아이템입니다"},""" +
                 """{"id":3,"title":"아이템 3","description":"세 번째 아이템입니다"}""" +
-                """],"error":null}"""
+                """]}"""
     }
 }

@@ -1,0 +1,39 @@
+package com.soma369.laimory.core.domain.base
+
+import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.HandledException
+import com.soma369.laimory.core.domain.helper.MessageHelper
+import com.soma369.laimory.core.domain.message.UserMessage
+
+/**
+ * 공통 정책성 예외를 UseCase에서 한 번만 처리하는 base UseCase.
+ *
+ * 일회성 UseCase는 [execute]로 repository 호출을 감싸 `Result<T>`를 반환한다.
+ * 공통 정책(세션 만료 / 일시 오류)은 [MessageHelper]로 알린 뒤 [HandledException]으로 감싸
+ * 반환하므로, ViewModel은 이를 재알림하지 않는다. (중복 처리 방지)
+ */
+abstract class BaseUseCase(
+    private val messageHelper: MessageHelper,
+) {
+    /** repository 호출을 감싸 성공/실패를 `Result<T>`로 반환한다. 공통 정책은 여기서 1회 처리된다. */
+    protected suspend fun <T> execute(block: suspend () -> T): Result<T> =
+        try {
+            Result.success(block())
+        } catch (e: ApiException) {
+            Result.failure(handlePolicy(e))
+        }
+
+    private fun handlePolicy(e: ApiException): Throwable {
+        val message = e.toCommonMessage() ?: return e
+        messageHelper.send(message)
+        return HandledException(e)
+    }
+
+    private fun ApiException.toCommonMessage(): UserMessage? =
+        when (rawCode) {
+            401 -> UserMessage.SessionExpired
+            404 -> UserMessage.UnsupportedFeature
+            in 500..599 -> UserMessage.TemporaryUnavailable
+            else -> null // 403/409/400 계열·네트워크·비즈니스 에러는 화면별(ViewModel) 처리
+        }
+}
