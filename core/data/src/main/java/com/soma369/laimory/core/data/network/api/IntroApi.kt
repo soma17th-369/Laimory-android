@@ -1,9 +1,11 @@
 package com.soma369.laimory.core.data.network.api
 
+import com.soma369.laimory.core.data.model.common.ApiResponse
 import com.soma369.laimory.core.data.model.intro.IntroResponse
+import retrofit2.Response
 import retrofit2.http.GET
 
 interface IntroApi {
     @GET("v1/intro")
-    suspend fun getIntroInfo(): IntroResponse
+    suspend fun getIntroInfo(): Response<ApiResponse<IntroResponse>>
 }

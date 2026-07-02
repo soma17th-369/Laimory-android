@@ -1,25 +1,23 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.feature1.Feature1ItemResponse
+import com.soma369.laimory.core.data.network.BaseRemoteDataSource
 import com.soma369.laimory.core.data.network.api.Feature1Api
+import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
 class Feature1RemoteDataSourceImpl
     @Inject
     constructor(
         private val api: Feature1Api,
-    ) : Feature1RemoteDataSource {
-        override suspend fun getItems(): List<Feature1ItemResponse> = api.getItems().getOrThrow()
+        json: Json,
+    ) : BaseRemoteDataSource(json),
+        Feature1RemoteDataSource {
+        override suspend fun getItems(): List<Feature1ItemResponse> = safeApiCall { api.getItems() }
 
-        override suspend fun triggerServerError() {
-            api.triggerServerError().getOrThrow()
-        }
+        override suspend fun triggerServerError() = safeApiCallForCompletion { api.triggerServerError() }
 
-        override suspend fun triggerUnauthorizedError() {
-            api.triggerUnauthorizedError().getOrThrow()
-        }
+        override suspend fun triggerUnauthorizedError() = safeApiCallForCompletion { api.triggerUnauthorizedError() }
 
-        override suspend fun triggerNetworkError() {
-            api.triggerNetworkError().getOrThrow()
-        }
+        override suspend fun triggerNetworkError() = safeApiCallForCompletion { api.triggerNetworkError() }
     }
