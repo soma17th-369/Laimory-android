@@ -12,6 +12,7 @@ node ["shape"="rectangle" "style"="filled"]
 
 // edges
 "app" -> "core-data"
+"app" -> "core-domain"
 "app" -> "core-ui"
 "app" -> "feature-feature1"
 "app" -> "feature-home"
