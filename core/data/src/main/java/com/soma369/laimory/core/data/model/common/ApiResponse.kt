@@ -2,10 +2,21 @@ package com.soma369.laimory.core.data.model.common
 
 import kotlinx.serialization.Serializable
 
+/**
+ * 서버 공통 응답 래퍼. 모든 응답은 [header](메타) + [body](payload) 구조로 온다.
+ */
 @Serializable
 data class ApiResponse<T>(
-    val success: Boolean,
-    val message: String?,
-    val data: T?,
-    val error: ApiError?,
+    val header: ApiHeader,
+    val body: T?,
 )
+
+@Serializable
+data class ApiHeader(
+    val code: String,
+    val message: String? = null,
+    val transactionId: String? = null,
+)
+
+/** 서버 공통 성공 코드. `header.code`가 이 값이면 성공으로 간주한다. */
+const val SUCCESS_CODE: String = "COMMON_0000"

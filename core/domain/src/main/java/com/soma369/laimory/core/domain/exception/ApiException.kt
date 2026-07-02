@@ -2,8 +2,8 @@ package com.soma369.laimory.core.domain.exception
 
 import java.io.IOException
 
-sealed class ApiException(override val message: String) : IOException(message) {
-    class UnknownException(message: String? = null) : ApiException(message ?: UNKNOWN_ERROR)
+sealed class ApiException(override val message: String, val errorCode: String? = null) : IOException(message) {
+    class UnknownException(message: String? = null, errorCode: String? = null) : ApiException(message ?: UNKNOWN_ERROR, errorCode)
 
     class NetworkException : ApiException(NETWORK_ERROR)
 

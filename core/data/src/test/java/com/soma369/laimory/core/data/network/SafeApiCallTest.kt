@@ -21,9 +21,9 @@ import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.GET
 
-class BaseRemoteDataSourceTest {
+class SafeApiCallTest {
     private lateinit var mockWebServer: MockWebServer
-    private lateinit var dataSource: TestRemoteDataSource
+    private lateinit var api: TestApi
 
     @Serializable
     data class TestDto(
@@ -34,13 +34,6 @@ class BaseRemoteDataSourceTest {
     interface TestApi {
         @GET("/test")
         suspend fun getTest(): Response<ApiResponse<TestDto>>
-    }
-
-    private class TestRemoteDataSource(
-        private val api: TestApi,
-        json: Json,
-    ) : BaseRemoteDataSource(json) {
-        suspend fun getTest(): TestDto = safeApiCall { api.getTest() }
     }
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -55,14 +48,13 @@ class BaseRemoteDataSourceTest {
                 explicitNulls = false
                 coerceInputValues = true
             }
-        val api =
+        api =
             Retrofit.Builder()
                 .baseUrl(mockWebServer.url("/"))
                 .client(OkHttpClient())
                 .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
                 .build()
                 .create(TestApi::class.java)
-        dataSource = TestRemoteDataSource(api, json)
     }
 
     @After
@@ -71,91 +63,74 @@ class BaseRemoteDataSourceTest {
     }
 
     @Test
-    fun `HTTP 200 success=true이면 data 반환`() =
+    fun `header code가 성공이면 body 반환`() =
         runTest {
             mockWebServer.enqueue(
                 MockResponse()
                     .setResponseCode(200)
-                    .setBody("""{"success":true,"message":"ok","data":{"id":1,"name":"test"},"error":null}"""),
+                    .setBody("""{"header":{"code":"COMMON_0000","message":"success"},"body":{"id":1,"name":"test"}}"""),
             )
 
-            val result = dataSource.getTest()
+            val result = safeApiCall { api.getTest() }
 
             assertEquals(TestDto(id = 1, name = "test"), result)
         }
 
     @Test
-    fun `HTTP 200 success=false이면 UnknownException 던짐`() =
+    fun `header code가 성공이 아니면 UnknownException + errorCode 보존`() =
         runTest {
             mockWebServer.enqueue(
                 MockResponse()
                     .setResponseCode(200)
-                    .setBody("""{"success":false,"message":"비즈니스 오류","data":null,"error":null}"""),
+                    .setBody("""{"header":{"code":"AUTH_0001","message":"권한이 없습니다"},"body":null}"""),
             )
 
-            val error = runCatching { dataSource.getTest() }.exceptionOrNull()
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull()
 
             assertTrue(error is ApiException.UnknownException)
-            assertEquals("비즈니스 오류", error?.message)
+            assertEquals("권한이 없습니다", error?.message)
+            assertEquals("AUTH_0001", (error as ApiException).errorCode)
         }
 
     @Test
-    fun `HTTP 401이면 UnauthorizedException 던짐`() =
+    fun `HTTP 401이면 UnauthorizedException`() =
         runTest {
-            mockWebServer.enqueue(MockResponse().setResponseCode(401).setBody("""{"message":"인증이 필요합니다"}"""))
-
-            val error = runCatching { dataSource.getTest() }.exceptionOrNull()
-
-            assertTrue(error is ApiException.UnauthorizedException)
+            mockWebServer.enqueue(MockResponse().setResponseCode(401))
+            assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.UnauthorizedException)
         }
 
     @Test
-    fun `HTTP 404이면 ClientException 던짐`() =
+    fun `HTTP 404이면 ClientException`() =
         runTest {
-            mockWebServer.enqueue(MockResponse().setResponseCode(404).setBody("""{"message":"찾을 수 없음"}"""))
-
-            val error = runCatching { dataSource.getTest() }.exceptionOrNull()
-
-            assertTrue(error is ApiException.ClientException)
+            mockWebServer.enqueue(MockResponse().setResponseCode(404))
+            assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.ClientException)
         }
 
     @Test
-    fun `HTTP 500이면 ServerException 던짐`() =
+    fun `HTTP 500이면 ServerException`() =
         runTest {
-            mockWebServer.enqueue(MockResponse().setResponseCode(500).setBody("""{"message":"서버 오류"}"""))
-
-            val error = runCatching { dataSource.getTest() }.exceptionOrNull()
-
-            assertTrue(error is ApiException.ServerException)
+            mockWebServer.enqueue(MockResponse().setResponseCode(500))
+            assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.ServerException)
         }
 
     @Test
-    fun `HTTP 409이면 ConflictException 던짐`() =
+    fun `HTTP 409이면 ConflictException`() =
         runTest {
-            mockWebServer.enqueue(MockResponse().setResponseCode(409).setBody("""{"message":"중복된 요청"}"""))
-
-            val error = runCatching { dataSource.getTest() }.exceptionOrNull()
-
-            assertTrue(error is ApiException.ConflictException)
+            mockWebServer.enqueue(MockResponse().setResponseCode(409))
+            assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.ConflictException)
         }
 
     @Test
-    fun `네트워크 오류면 NetworkException 던짐`() =
+    fun `네트워크 오류면 NetworkException`() =
         runTest {
             mockWebServer.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
-
-            val error = runCatching { dataSource.getTest() }.exceptionOrNull()
-
-            assertTrue(error is ApiException.NetworkException)
+            assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.NetworkException)
         }
 
     @Test
-    fun `역직렬화 불가 응답이면 UnknownException 던짐`() =
+    fun `역직렬화 불가면 UnknownException`() =
         runTest {
             mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("not json"))
-
-            val error = runCatching { dataSource.getTest() }.exceptionOrNull()
-
-            assertTrue(error is ApiException.UnknownException)
+            assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.UnknownException)
         }
 }
