@@ -27,22 +27,25 @@ class Feature1ViewModel
         override suspend fun handleIntent(intent: Feature1UiIntent) {
             when (intent) {
                 Feature1UiIntent.LoadItems -> loadItems()
-                Feature1UiIntent.TriggerServerError -> safeLaunch { triggerServerError() }
-                Feature1UiIntent.TriggerUnauthorizedError -> safeLaunch { triggerUnauthorizedError() }
-                Feature1UiIntent.TriggerNetworkError -> safeLaunch { triggerNetworkError() }
+                Feature1UiIntent.TriggerServerError -> trigger { triggerServerError() }
+                Feature1UiIntent.TriggerUnauthorizedError -> trigger { triggerUnauthorizedError() }
+                Feature1UiIntent.TriggerNetworkError -> trigger { triggerNetworkError() }
             }
         }
 
-        private fun loadItems() {
-            safeLaunch(
-                onError = { e ->
-                    updateState { copy(isLoading = false) }
-                    handleException(e)
-                },
-            ) {
+        private fun loadItems() =
+            safeLaunch {
                 updateState { copy(isLoading = true) }
-                val items = getFeature1Items()
-                updateState { copy(isLoading = false, items = items) }
+                getFeature1Items()
+                    .onSuccess { items -> updateState { copy(isLoading = false, items = items) } }
+                    .onFailure { e ->
+                        updateState { copy(isLoading = false) }
+                        handleFailure(e)
+                    }
             }
-        }
+
+        private fun trigger(block: suspend () -> Result<Unit>) =
+            safeLaunch {
+                block().onFailure { handleFailure(it) }
+            }
     }

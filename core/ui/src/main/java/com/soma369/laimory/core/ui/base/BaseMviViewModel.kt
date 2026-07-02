@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.HandledException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -105,17 +106,20 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
      * 특수 케이스는 [onError]를 오버라이드해 처리할 수 있다.
      */
     protected fun safeLaunch(
-        onError: (Throwable) -> Unit = { handleException(it) },
+        onError: (Throwable) -> Unit = { handleFailure(it) },
         block: suspend () -> Unit,
     ) = viewModelScope.launch {
         runCatching { block() }.onFailure(onError)
     }
 
     /**
-     * [ApiException] 타입에 따라 적절한 스낵바 메시지를 발행한다.
-     * 서브클래스에서 특수 케이스를 오버라이드할 수 있다.
+     * 실패를 화면 피드백(스낵바)으로 표면화한다.
+     *
+     * 단, [HandledException]은 UseCase에서 이미 공통 정책으로 처리(알림)됐으므로 무시한다.
+     * (중복 알림 방지) 서브클래스에서 특수 케이스를 오버라이드할 수 있다.
      */
-    protected open fun handleException(e: Throwable) {
+    protected open fun handleFailure(e: Throwable) {
+        if (e is HandledException) return
         val message =
             when (e) {
                 is ApiException.NetworkException -> ApiException.NETWORK_ERROR
