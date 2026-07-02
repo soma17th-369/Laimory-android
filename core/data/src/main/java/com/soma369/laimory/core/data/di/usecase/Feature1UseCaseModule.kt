@@ -1,6 +1,6 @@
 package com.soma369.laimory.core.data.di.usecase
 
-import com.soma369.laimory.core.domain.notification.MessageHelper
+import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.usecase.GetFeature1ItemsUseCase
 import com.soma369.laimory.core.domain.usecase.TriggerNetworkErrorUseCase

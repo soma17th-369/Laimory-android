@@ -1,6 +1,6 @@
 package com.soma369.laimory.core.data.di.usecase
 
-import com.soma369.laimory.core.domain.notification.MessageHelper
+import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.usecase.GetIntroInfoUseCase
 import dagger.Module

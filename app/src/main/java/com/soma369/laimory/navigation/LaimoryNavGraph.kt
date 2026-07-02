@@ -10,7 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.soma369.laimory.core.domain.notification.UserMessage
+import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.HomeRoute

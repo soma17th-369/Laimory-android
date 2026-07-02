@@ -1,6 +1,6 @@
 package com.soma369.laimory.notification
 
-import com.soma369.laimory.core.domain.notification.MessageHelper
+import com.soma369.laimory.core.domain.helper.MessageHelper
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn

@@ -1,4 +1,4 @@
-package com.soma369.laimory.core.domain.notification
+package com.soma369.laimory.core.domain.message
 
 /**
  * 공통 정책성 사용자 메시지의 의미 수준 표현.

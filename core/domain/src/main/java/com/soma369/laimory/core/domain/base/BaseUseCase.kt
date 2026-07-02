@@ -2,8 +2,8 @@ package com.soma369.laimory.core.domain.base
 
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
-import com.soma369.laimory.core.domain.notification.MessageHelper
-import com.soma369.laimory.core.domain.notification.UserMessage
+import com.soma369.laimory.core.domain.helper.MessageHelper
+import com.soma369.laimory.core.domain.message.UserMessage
 
 /**
  * 공통 정책성 예외를 UseCase에서 한 번만 처리하는 base UseCase.

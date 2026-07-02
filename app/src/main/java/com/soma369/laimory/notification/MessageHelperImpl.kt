@@ -1,7 +1,7 @@
 package com.soma369.laimory.notification
 
-import com.soma369.laimory.core.domain.notification.MessageHelper
-import com.soma369.laimory.core.domain.notification.UserMessage
+import com.soma369.laimory.core.domain.helper.MessageHelper
+import com.soma369.laimory.core.domain.message.UserMessage
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
