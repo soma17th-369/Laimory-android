@@ -6,8 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.navigation.LaimoryNavGraph
-import com.soma369.laimory.notification.MessageHelperImpl
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
