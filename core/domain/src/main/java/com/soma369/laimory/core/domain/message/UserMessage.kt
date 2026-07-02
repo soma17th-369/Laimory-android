@@ -9,6 +9,9 @@ sealed interface UserMessage {
     /** 세션 만료 — 재로그인 유도. */
     data object SessionExpired : UserMessage
 
+    /** 현재 앱 버전에서 지원하지 않는 기능. */
+    data object UnsupportedFeature : UserMessage
+
     /** 일시적 오류 — 잠시 후 재시도. */
     data object TemporaryUnavailable : UserMessage
 }

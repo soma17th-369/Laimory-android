@@ -133,4 +133,30 @@ class SafeApiCallTest {
             mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("not json"))
             assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.UnknownException)
         }
+
+    @Test
+    fun `HTTP 실패 시 errorBody의 message를 예외 메시지로 전달`() =
+        runTest {
+            mockWebServer.enqueue(
+                MockResponse().setResponseCode(400).setBody("""{"message":"잘못된 파라미터"}"""),
+            )
+
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull()
+
+            assertTrue(error is ApiException.ClientException)
+            assertEquals("잘못된 파라미터", error?.message)
+        }
+
+    @Test
+    fun `errorBody에 message가 없으면 error 필드를 사용`() =
+        runTest {
+            mockWebServer.enqueue(
+                MockResponse().setResponseCode(500).setBody("""{"status":500,"error":"서버 내부 오류"}"""),
+            )
+
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull()
+
+            assertTrue(error is ApiException.ServerException)
+            assertEquals("서버 내부 오류", error?.message)
+        }
 }

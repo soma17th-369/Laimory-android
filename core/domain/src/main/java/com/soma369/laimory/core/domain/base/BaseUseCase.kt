@@ -30,9 +30,10 @@ abstract class BaseUseCase(
     }
 
     private fun ApiException.toCommonMessage(): UserMessage? =
-        when (this) {
-            is ApiException.UnauthorizedException -> UserMessage.SessionExpired
-            is ApiException.ServerException -> UserMessage.TemporaryUnavailable
-            else -> null
+        when (rawCode) {
+            401 -> UserMessage.SessionExpired
+            404 -> UserMessage.UnsupportedFeature
+            in 500..599 -> UserMessage.TemporaryUnavailable
+            else -> null // 403/409/400 계열·네트워크·비즈니스 에러는 화면별(ViewModel) 처리
         }
 }
