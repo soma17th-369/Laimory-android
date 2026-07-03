@@ -10,4 +10,6 @@ sealed interface HomeUiIntent : UiIntent {
     data object ShowToast : HomeUiIntent
 
     data object LoadIntroInfo : HomeUiIntent
+
+    data object NavigateToFeature1 : HomeUiIntent
 }

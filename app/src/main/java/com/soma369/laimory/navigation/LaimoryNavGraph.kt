@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.navigation.HomePage
+import com.soma369.laimory.core.domain.navigation.NavSignal
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -21,7 +22,10 @@ import kotlinx.coroutines.flow.emptyFlow
  * 단일 [Scaffold]/[SnackbarHost]가 chrome을 소유하고 [AppNavHost]가 content를 채운다.
  */
 @Composable
-fun LaimoryNavGraph(messages: Flow<UserMessage> = emptyFlow()) {
+fun LaimoryNavGraph(
+    messages: Flow<UserMessage> = emptyFlow(),
+    navigationFlow: Flow<NavSignal> = emptyFlow(),
+) {
     val backStack = rememberNavBackStack(GenericNavKey(HomePage.PATH))
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -38,6 +42,7 @@ fun LaimoryNavGraph(messages: Flow<UserMessage> = emptyFlow()) {
             AppNavHost(
                 backStack = backStack,
                 innerPadding = innerPadding,
+                navigationFlow = navigationFlow,
             )
         }
     }

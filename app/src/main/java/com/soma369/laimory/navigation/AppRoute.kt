@@ -27,10 +27,7 @@ val appRoutes: List<AppRoute> =
     listOf(
         AppRoute(
             path = HomePage.PATH,
-            render = { innerPadding, _ ->
-                // 전진 이동(→ Feature1)은 후속 커밋에서 NavigationHelper 단일 채널로 연결된다.
-                HomeRoute(innerPadding = innerPadding, onNavigateToFeature1 = {})
-            },
+            render = { innerPadding, _ -> HomeRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = Feature1Page.PATH,

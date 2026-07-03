@@ -82,6 +82,35 @@ fun AppNavHost(backStack: NavBackStack<NavKey>, innerPadding: PaddingValues) {
 }
 ```
 
+## 이동 단일 채널 (NavigationHelper)
+
+앱의 모든 이동(전진·후진, 나아가 정책성 이동)은 도메인 포트 `NavigationHelper` 한 곳으로 발행되고, `AppNavHost`가 수집해 backStack 조작으로 매핑한다. feature/ViewModel은 이동 람다를 받지 않고 포트를 주입받아 부른다.
+
+```kotlin
+// core.domain.helper — 포트 (Nav3/NavController 무의존, 의미 수준 Page만 안다)
+interface NavigationHelper {
+    fun navigateTo(page: Page)
+    fun navigateToBack()
+}
+
+// core.data.helper — 브릿지 (MessageHelperImpl과 동일: @Singleton Channel → Flow)
+@Singleton
+class NavigationHelperImpl @Inject constructor() : NavigationHelper {
+    private val channel = Channel<NavSignal>(Channel.BUFFERED)
+    val navigationFlow: Flow<NavSignal> = channel.receiveAsFlow()
+    override fun navigateTo(page: Page) { channel.trySend(NavSignal.GoToDestPage(page.toRoute())) }
+    override fun navigateToBack() { channel.trySend(NavSignal.Back) }
+}
+```
+
+- `NavSignal` = `GoToDestPage(route)` · `Back` (`core.domain.navigation`). presentation은 `GoToDestPage`→push(동일 키 중복 방지 bring-to-front), `Back`→`removeLastOrNull()`로 매핑.
+- **배선**: `HelperModule`이 `@Binds`(Context 불필요). app(`MainActivity`)이 concrete `NavigationHelperImpl`을 주입받아 `navigationFlow`를 `LaimoryNavGraph`→`AppNavHost`로 넘긴다. (MessageHelper와 동일 배선)
+- **호출**: ViewModel이 `NavigationHelper`를 주입받아 `navigationHelper.navigateTo(Feature1Page)`. Composable 이동 람다 없음.
+
+### 공통 정책과의 연결 지점
+
+`BaseUseCase`의 공통 정책(401/404 등)은 지금 `MessageHelper`로 메시지만 발행한다. **auth/Login 화면이 생기면** 401 세션 만료 시 `MessageHelper.send(SessionExpired)`와 함께 `NavigationHelper.navigateTo(LoginPage)`로 로그인으로 보낸다. (현재는 Login 목적지가 없어 연결하지 않음)
+
 ## 화면(목적지) 추가 절차
 
 1. 도메인에 `Page` 객체 추가 (`PATH` + `toRoute()`).

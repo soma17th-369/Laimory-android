@@ -28,14 +28,12 @@ import kotlinx.coroutines.flow.Flow
 @Composable
 fun HomeRoute(
     innerPadding: PaddingValues,
-    onNavigateToFeature1: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeContent(
         innerPadding = innerPadding,
         state = state,
-        onNavigateToFeature1 = onNavigateToFeature1,
         onIntent = viewModel::sendIntent,
         sideEffectFlow = viewModel.sideEffect,
     )
@@ -45,7 +43,6 @@ fun HomeRoute(
 private fun HomeContent(
     innerPadding: PaddingValues,
     state: HomeUiState,
-    onNavigateToFeature1: () -> Unit,
     onIntent: (HomeUiIntent) -> Unit,
     sideEffectFlow: Flow<HomeUiSideEffect>,
 ) {
@@ -63,7 +60,6 @@ private fun HomeContent(
     HomeScreen(
         innerPadding = innerPadding,
         state = state,
-        onNavigateToFeature1 = onNavigateToFeature1,
         onIntent = onIntent,
     )
 }
@@ -72,7 +68,6 @@ private fun HomeContent(
 private fun HomeScreen(
     innerPadding: PaddingValues,
     state: HomeUiState,
-    onNavigateToFeature1: () -> Unit,
     onIntent: (HomeUiIntent) -> Unit,
 ) {
     Column(
@@ -111,7 +106,7 @@ private fun HomeScreen(
 
         Button(
             modifier = Modifier.padding(top = 8.dp),
-            onClick = onNavigateToFeature1,
+            onClick = { onIntent(HomeUiIntent.NavigateToFeature1) },
         ) {
             Text("Feature 1으로 이동")
         }
