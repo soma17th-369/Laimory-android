@@ -7,19 +7,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
+import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
-import com.soma369.laimory.feature.feature1.screen.Feature1Route
-import com.soma369.laimory.feature.home.screen.HomeRoute
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
+/**
+ * Navigation 3 라우트 테이블 기반 앱 내비게이션의 진입 Composable.
+ *
+ * backStack(`NavBackStack<NavKey>`)을 app이 소유하고, 화면 분기는 [appRouteByPath]가 담당한다.
+ * 단일 [Scaffold]/[SnackbarHost]가 chrome을 소유하고 [AppNavHost]가 content를 채운다.
+ */
 @Composable
 fun LaimoryNavGraph(messages: Flow<UserMessage> = emptyFlow()) {
-    val navController = rememberNavController()
+    val backStack = rememberNavBackStack(GenericNavKey(HomePage.PATH))
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(messages) {
@@ -32,22 +35,10 @@ fun LaimoryNavGraph(messages: Flow<UserMessage> = emptyFlow()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) { innerPadding ->
-            NavHost(
-                navController = navController,
-                startDestination = "home",
-            ) {
-                composable("home") {
-                    HomeRoute(
-                        innerPadding = innerPadding,
-                        onNavigateToFeature1 = { navController.navigate("feature1") { launchSingleTop = true } },
-                    )
-                }
-                composable("feature1") {
-                    Feature1Route(
-                        innerPadding = innerPadding,
-                    )
-                }
-            }
+            AppNavHost(
+                backStack = backStack,
+                innerPadding = innerPadding,
+            )
         }
     }
 }
