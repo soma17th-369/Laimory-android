@@ -1,6 +1,5 @@
 package com.soma369.laimory.navigation
 
-import android.util.Log
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -8,6 +7,8 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import com.soma369.laimory.core.common.logging.LogDomain
+import com.soma369.laimory.core.common.logging.Logger
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.NavRoute
 import com.soma369.laimory.core.domain.navigation.NavSignal
@@ -49,7 +50,7 @@ fun AppNavHost(
                     // 미등록 path는 blank 대신 Home으로 graceful fallback + ERROR 로그로 조기 노출.
                     val route = appRouteByPath[navKey.path]
                     if (route == null) {
-                        Log.e(TAG, "등록되지 않은 nav path: ${navKey.path} — Home로 fallback (appRoutes 확인)")
+                        Logger.e(LogDomain.NAVIGATION, "등록되지 않은 nav path: ${navKey.path} — Home로 fallback (appRoutes 확인)")
                         appRouteByPath.getValue(HomePage.PATH).render(innerPadding, emptyMap())
                         return@entry
                     }
@@ -66,7 +67,7 @@ fun AppNavHost(
  */
 private fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
     if (appRouteByPath[route.path] == null) {
-        Log.w(TAG, "Unhandled NavRoute: ${route.path}")
+        Logger.w(LogDomain.NAVIGATION, "Unhandled NavRoute: ${route.path}")
         return
     }
     val key = GenericNavKey.of(route)
@@ -74,5 +75,3 @@ private fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
     removeAll { it == key }
     add(key)
 }
-
-private const val TAG = "[Navigation]"
