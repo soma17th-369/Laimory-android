@@ -1,7 +1,9 @@
 package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
+import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.helper.MessageHelper
+import com.soma369.laimory.core.domain.helper.NavigationHelper
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -14,4 +16,8 @@ abstract class HelperModule {
     @Binds
     @Singleton
     abstract fun bindMessageHelper(impl: MessageHelperImpl): MessageHelper
+
+    @Binds
+    @Singleton
+    abstract fun bindNavigationHelper(impl: NavigationHelperImpl): NavigationHelper
 }
