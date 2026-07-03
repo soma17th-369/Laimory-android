@@ -1,8 +1,9 @@
 package com.soma369.laimory.core.ui.base
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.soma369.laimory.core.common.logging.LogDomain
+import com.soma369.laimory.core.common.logging.Logger
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import kotlinx.coroutines.channels.Channel
@@ -64,7 +65,8 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     fun sendIntent(intent: I) {
         val result = intentChannel.trySend(intent)
         if (!result.isSuccess) {
-            Log.w(TAG, "Intent dropped: $intent")
+            // 민감정보 방지: intent 객체 전체가 아니라 타입명만 남긴다.
+            Logger.w(LogDomain.MVI, "Intent dropped: ${intent::class.simpleName}")
         }
     }
 
@@ -131,9 +133,5 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
                 else -> ApiException.UNKNOWN_ERROR
             }
         viewModelScope.launch { _snackbar.send(message) }
-    }
-
-    companion object {
-        private const val TAG = "BaseMviViewModel"
     }
 }
