@@ -35,4 +35,13 @@ val appRoutes: List<AppRoute> =
         ),
     )
 
-val appRouteByPath: Map<String, AppRoute> = appRoutes.associateBy { it.path }
+/**
+ * path → AppRoute 조회 맵. 중복 path는 시작 시점에 fail-fast 한다.
+ * (associateBy는 같은 path를 조용히 마지막 항목으로 덮어써 잘못된 화면 회귀를 숨긴다.)
+ */
+val appRouteByPath: Map<String, AppRoute> =
+    buildMap {
+        appRoutes.forEach { route ->
+            require(put(route.path, route) == null) { "중복된 route path: ${route.path}" }
+        }
+    }

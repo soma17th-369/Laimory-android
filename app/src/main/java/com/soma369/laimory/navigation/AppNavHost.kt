@@ -8,6 +8,7 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.NavRoute
 import com.soma369.laimory.core.domain.navigation.NavSignal
 import kotlinx.coroutines.flow.Flow
@@ -17,7 +18,7 @@ import kotlinx.coroutines.flow.emptyFlow
  * 단일 [GenericNavKey] 디스패처. 실제 화면 결정은 [appRouteByPath]가 담당한다.
  *
  * app이 backStack을 소유하고 [NavDisplay]가 마지막 key를 렌더한다.
- * [navigationFlow]([NavSignal])를 수집해 전진/후진을 backStack 조작으로 매핑한다. 미등록 path는 무시 + 경고 로그.
+ * [navigationFlow]([NavSignal])를 수집해 전진/후진을 backStack 조작으로 매핑한다.
  */
 @Composable
 fun AppNavHost(
@@ -29,21 +30,27 @@ fun AppNavHost(
         navigationFlow.collect { signal ->
             when (signal) {
                 is NavSignal.GoToDestPage -> backStack.navigateTo(signal.route)
-                NavSignal.Back -> backStack.removeLastOrNull()
+                // 루트(마지막 한 개)에서 pop 하면 스택이 비어 NavDisplay가 크래시한다.
+                // 시스템 back(onBack)은 NavDisplay가 루트에서 자동으로 막지만, 이 공통 back 채널은
+                // 직접 조작이므로 size > 1일 때만 pop 한다(루트 back은 무시).
+                NavSignal.Back -> if (backStack.size > 1) backStack.removeLastOrNull()
             }
         }
     }
 
     NavDisplay(
         backStack = backStack,
-        // onBack 기본 pop, predictive back 내장.
+        // onBack 기본 pop, predictive back 내장. NavDisplay가 루트에선 호출하지 않는다.
         onBack = { backStack.removeLastOrNull() },
         entryProvider =
             entryProvider {
                 entry<GenericNavKey> { navKey ->
+                    // path는 문자열 계약이라 오타·미등록·stale 복원이 컴파일을 통과할 수 있다.
+                    // 미등록 path는 blank 대신 Home으로 graceful fallback + ERROR 로그로 조기 노출.
                     val route = appRouteByPath[navKey.path]
                     if (route == null) {
-                        Log.w(TAG, "Unknown path on render: ${navKey.path}")
+                        Log.e(TAG, "등록되지 않은 nav path: ${navKey.path} — Home로 fallback (appRoutes 확인)")
+                        appRouteByPath.getValue(HomePage.PATH).render(innerPadding, emptyMap())
                         return@entry
                     }
                     route.render(innerPadding, navKey.args)
