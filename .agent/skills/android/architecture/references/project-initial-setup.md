@@ -49,6 +49,7 @@ Repository      : laimory-android
 :feature:home          ← 초반에는 timeline/search/insight 전부 여기
 :core:domain           ← 순수 Kotlin only, 외부 의존성 없음
 :core:data             ← Repository 구현체, DataSource
+:core:collection       ← 라이프로그 수집 영역 (Collector 구현 + 수집 로컬 DB 소유)
 :core:ui               ← 공통 Composable, Theme, DesignSystem
 ```
 
@@ -58,6 +59,7 @@ Repository      : laimory-android
 - `:feature:home` → UI(Screen) + ViewModel만 포함
 - `:core:domain` → Model, Repository interface, UseCase
 - `:core:data` → RepositoryImpl, RemoteDataSource, LocalDataSource, Mapper
+- `:core:collection` → 카테고리별 Collector 구현, 수집 데이터 Room DB, SourceItemRepository 구현
 - `:core:ui` → 공통 컴포넌트, MVI 베이스 클래스, Theme
 
 ### 4.2 나중에 분리 예정 (기능 완성 후)
