@@ -69,7 +69,7 @@ import java.time.ZoneOffset
 @Composable
 fun PhotoCollectionTab(viewModel: CollectionViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    CollectionContent(
+    PhotoCollectionContent(
         state = state,
         onIntent = viewModel::sendIntent,
         snackbarFlow = viewModel.snackbar,
@@ -78,7 +78,7 @@ fun PhotoCollectionTab(viewModel: CollectionViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun CollectionContent(
+private fun PhotoCollectionContent(
     state: CollectionUiState,
     onIntent: (CollectionUiIntent) -> Unit,
     snackbarFlow: Flow<String>,
@@ -117,7 +117,7 @@ private fun CollectionContent(
         }
     }
 
-    CollectionScreen(
+    PhotoCollectionScreen(
         state = state,
         onIntent = onIntent,
         onPickDate = onPickDate,
@@ -142,7 +142,7 @@ private fun CollectionContent(
 }
 
 @Composable
-private fun CollectionScreen(
+private fun PhotoCollectionScreen(
     state: CollectionUiState,
     onIntent: (CollectionUiIntent) -> Unit,
     onPickDate: () -> Unit,
