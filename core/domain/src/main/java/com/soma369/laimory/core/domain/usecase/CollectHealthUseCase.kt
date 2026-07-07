@@ -7,8 +7,9 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
 /**
  * 걸음수·수면 등 건강 데이터를 수집해 로컬 저장소에 저장한다.
  *
- * HEALTH collector 를 [collectors] 레지스트리에서 찾아 실행한 뒤 [SourceItemRepository.addAll] 로 저장하고,
- * 실제로 새로 저장된 건수를 반환한다(중복은 저장 계층 멱등이 무시). HEALTH collector 가 없으면 0.
+ * HEALTH collector 를 [collectors] 레지스트리에서 찾아 실행한 뒤 [SourceItemRepository.upsertAll] 로 저장한다.
+ * 걸음수 일별 집계는 하루 동안 값이 변하는 aggregate 라, 불변 이벤트용 addAll(멱등 무시) 대신 upsert 로
+ * 같은 날짜 bucket 을 갱신한다(최초 rawId 유지). 반환값은 새로 삽입된 건수. HEALTH collector 가 없으면 0.
  */
 class CollectHealthUseCase(
     private val collectors: Map<ItemType, Collector>,
@@ -16,6 +17,6 @@ class CollectHealthUseCase(
 ) {
     suspend operator fun invoke(): Int {
         val collector = collectors[ItemType.HEALTH] ?: return 0
-        return repository.addAll(collector.collect())
+        return repository.upsertAll(collector.collect())
     }
 }

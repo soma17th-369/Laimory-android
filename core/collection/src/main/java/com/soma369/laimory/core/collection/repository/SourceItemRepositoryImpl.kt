@@ -21,6 +21,8 @@ internal class SourceItemRepositoryImpl
                 .insertOrIgnore(items.map(SourceItem::toEntity))
                 .count { rowId -> rowId != IGNORED_ROW_ID }
 
+        override suspend fun upsertAll(items: List<SourceItem>): Int = sourceItemDao.upsertAll(items.map(SourceItem::toEntity))
+
         override fun observeAll(): Flow<List<SourceItem>> =
             sourceItemDao.observeAll().map { entities ->
                 entities.map { entity -> entity.toDomain() }
