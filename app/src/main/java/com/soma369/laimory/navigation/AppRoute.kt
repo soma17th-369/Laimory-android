@@ -12,7 +12,7 @@ import com.soma369.laimory.core.domain.navigation.Feature1Page
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
-import com.soma369.laimory.feature.collection.screen.CollectionRoute
+import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.ui.PlaceholderScreen
@@ -62,7 +62,7 @@ val appRoutes: List<AppRoute> =
         ),
         AppRoute(
             path = CollectionPage.PATH,
-            render = { innerPadding, _ -> CollectionRoute(innerPadding = innerPadding) },
+            render = { innerPadding, _ -> CollectionLabRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = Feature1Page.PATH,
