@@ -2,18 +2,22 @@ package com.soma369.laimory.core.collection.di
 
 import com.soma369.laimory.core.domain.collector.Collector
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.repository.NotificationFilterRepository
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.ClearCollectedCalendarUseCase
 import com.soma369.laimory.core.domain.usecase.ClearCollectedHealthUseCase
+import com.soma369.laimory.core.domain.usecase.ClearCollectedNotificationsUseCase
 import com.soma369.laimory.core.domain.usecase.ClearCollectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectCalendarUseCase
 import com.soma369.laimory.core.domain.usecase.CollectHealthUseCase
 import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosOnDateUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveNotificationFilterUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.UpdateNotificationFilterUseCase
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -82,4 +86,19 @@ internal object CollectionUseCaseModule {
     @Singleton
     fun provideClearCollectedHealthUseCase(repository: SourceItemRepository): ClearCollectedHealthUseCase =
         ClearCollectedHealthUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideObserveNotificationFilterUseCase(repository: NotificationFilterRepository): ObserveNotificationFilterUseCase =
+        ObserveNotificationFilterUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideUpdateNotificationFilterUseCase(repository: NotificationFilterRepository): UpdateNotificationFilterUseCase =
+        UpdateNotificationFilterUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideClearCollectedNotificationsUseCase(repository: SourceItemRepository): ClearCollectedNotificationsUseCase =
+        ClearCollectedNotificationsUseCase(repository)
 }

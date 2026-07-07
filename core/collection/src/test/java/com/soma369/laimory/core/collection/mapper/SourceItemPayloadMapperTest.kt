@@ -80,6 +80,7 @@ class SourceItemPayloadMapperTest {
                 packageName = "com.kakao.talk",
                 title = "라이모리",
                 text = "내일 모임 10시로 변경됐어요",
+                collectReason = NotificationPayload.CollectReason.KEYWORD,
             )
 
         assertEquals(payload, roundTrip(payload))
