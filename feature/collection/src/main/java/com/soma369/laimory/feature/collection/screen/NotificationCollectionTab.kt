@@ -68,6 +68,7 @@ fun NotificationCollectionTab(viewModel: NotificationCollectionViewModel = hiltV
     NotificationCollectionContent(
         state = state,
         onIntent = viewModel::sendIntent,
+        snackbarFlow = viewModel.snackbar,
         sideEffectFlow = viewModel.sideEffect,
     )
 }
@@ -76,11 +77,15 @@ fun NotificationCollectionTab(viewModel: NotificationCollectionViewModel = hiltV
 private fun NotificationCollectionContent(
     state: NotificationUiState,
     onIntent: (NotificationUiIntent) -> Unit,
+    snackbarFlow: Flow<String>,
     sideEffectFlow: Flow<NotificationUiSideEffect>,
 ) {
     val snackbarHostState = LocalSnackbarHostState.current
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        snackbarFlow.collect { message -> snackbarHostState.showSnackbar(message) }
+    }
     LaunchedEffect(Unit) {
         sideEffectFlow.collect { effect ->
             when (effect) {

@@ -12,6 +12,7 @@ import com.soma369.laimory.feature.collection.state.NotificationUiIntent
 import com.soma369.laimory.feature.collection.state.NotificationUiSideEffect
 import com.soma369.laimory.feature.collection.state.NotificationUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 @HiltViewModel
@@ -19,7 +20,7 @@ class NotificationCollectionViewModel
     @Inject
     constructor(
         observeSourceItemsUseCase: ObserveSourceItemsUseCase,
-        observeNotificationFilterUseCase: ObserveNotificationFilterUseCase,
+        private val observeNotificationFilterUseCase: ObserveNotificationFilterUseCase,
         private val updateNotificationFilterUseCase: UpdateNotificationFilterUseCase,
         private val clearCollectedNotificationsUseCase: ClearCollectedNotificationsUseCase,
         private val installedAppsProvider: InstalledAppsProvider,
@@ -71,17 +72,19 @@ class NotificationCollectionViewModel
             }
         }
 
-        /** 현재 상태의 필터에 [transform] 을 적용해 저장한다. 저장 결과는 관찰 flow 로 다시 상태에 반영된다. */
-        private fun updateFilter(transform: NotificationFilter.() -> NotificationFilter) =
-            safeLaunch {
-                val current =
-                    NotificationFilter(
-                        mode = state.value.mode,
-                        keywords = state.value.keywords,
-                        allowedPackages = state.value.allowedPackages,
-                    )
+        /**
+         * 저장된 필터를 소스에서 읽어 [transform] 적용 후 저장한다.
+         *
+         * handleIntent 의 순차 처리 안에서 suspend 로 직접 실행하고(별도 코루틴 X), state.value(관찰 flow 로
+         * 지연 반영) 대신 저장소 최신값을 읽어 변형한다. 앱 토글/키워드를 빠르게 연속 입력해도 이전 스냅샷을
+         * 덮어쓰지 않는다. 실패는 intent 루프를 죽이지 않도록 잡아 공통 실패 처리로 넘긴다.
+         */
+        private suspend fun updateFilter(transform: NotificationFilter.() -> NotificationFilter) {
+            runCatching {
+                val current = observeNotificationFilterUseCase().first()
                 updateNotificationFilterUseCase(current.transform())
-            }
+            }.onFailure(::handleFailure)
+        }
 
         private fun clearStaged() =
             safeLaunch {
