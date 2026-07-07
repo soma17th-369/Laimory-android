@@ -23,6 +23,7 @@ node ["shape"="rectangle" "style"="filled"]
 "app" -> "feature-feature1"
 "app" -> "feature-home"
 "core-collection" -> "core-domain"
+"core-collection" -> "core-util"
 "core-data" -> "core-domain"
 "core-ui" -> "core-domain"
 "core-ui" -> "core-util"
