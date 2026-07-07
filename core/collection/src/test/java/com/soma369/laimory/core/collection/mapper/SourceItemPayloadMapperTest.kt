@@ -34,6 +34,8 @@ class SourceItemPayloadMapperTest {
             MovementPayload(
                 start = GeoPoint(latitude = 37.1538856, longitude = 127.0781832),
                 end = GeoPoint(latitude = 37.16312, longitude = 127.08514),
+                distanceMeters = 1352.4,
+                transports = MovementPayload.Transport.WALKING,
             )
 
         assertEquals(payload, roundTrip(payload))

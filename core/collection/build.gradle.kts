@@ -45,6 +45,8 @@ dependencies {
 
     implementation(libs.coroutines.android)
 
+    implementation(libs.lifecycle.process)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
 }
