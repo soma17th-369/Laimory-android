@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,14 +62,14 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
+/**
+ * 수집 실험실의 "사진" 탭. [CollectionLabRoute] 가 호스트하며, 화면 인셋(innerPadding)은 컨테이너가 소유하므로
+ * 이 탭은 전달받은 슬롯을 채우고 자체 여백만 준다.
+ */
 @Composable
-fun CollectionRoute(
-    innerPadding: PaddingValues,
-    viewModel: CollectionViewModel = hiltViewModel(),
-) {
+fun PhotoCollectionTab(viewModel: CollectionViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     CollectionContent(
-        innerPadding = innerPadding,
         state = state,
         onIntent = viewModel::sendIntent,
         snackbarFlow = viewModel.snackbar,
@@ -80,7 +79,6 @@ fun CollectionRoute(
 
 @Composable
 private fun CollectionContent(
-    innerPadding: PaddingValues,
     state: CollectionUiState,
     onIntent: (CollectionUiIntent) -> Unit,
     snackbarFlow: Flow<String>,
@@ -120,7 +118,6 @@ private fun CollectionContent(
     }
 
     CollectionScreen(
-        innerPadding = innerPadding,
         state = state,
         onIntent = onIntent,
         onPickDate = onPickDate,
@@ -146,17 +143,13 @@ private fun CollectionContent(
 
 @Composable
 private fun CollectionScreen(
-    innerPadding: PaddingValues,
     state: CollectionUiState,
     onIntent: (CollectionUiIntent) -> Unit,
     onPickDate: () -> Unit,
 ) {
     if (state.isLoading) {
         Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
             CircularProgressIndicator()
@@ -168,7 +161,6 @@ private fun CollectionScreen(
         modifier =
             Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
