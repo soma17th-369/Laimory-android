@@ -16,4 +16,13 @@
     <!-- 일정 수집(CalendarContract). 개인(owner-access) 캘린더 일정을 읽는다. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
 
+    <!-- 건강 수집(Health Connect). 초기 범위 걸음수·수면. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+
+    <!-- Health Connect 앱(권한 화면/가용성 확인)에 대한 패키지 visibility. -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
 </manifest>

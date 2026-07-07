@@ -51,6 +51,7 @@ fun CollectionLabRoute(innerPadding: PaddingValues) {
             when (selectedTab) {
                 CollectionLabTab.PHOTO -> PhotoCollectionTab()
                 CollectionLabTab.CALENDAR -> CalendarCollectionTab()
+                CollectionLabTab.HEALTH -> HealthCollectionTab()
                 else -> ComingSoonTab(source = selectedTab.label)
             }
         }

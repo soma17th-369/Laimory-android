@@ -6,8 +6,10 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.ClearCollectedCalendarUseCase
+import com.soma369.laimory.core.domain.usecase.ClearCollectedHealthUseCase
 import com.soma369.laimory.core.domain.usecase.ClearCollectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectCalendarUseCase
+import com.soma369.laimory.core.domain.usecase.CollectHealthUseCase
 import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosOnDateUseCase
@@ -68,4 +70,16 @@ internal object CollectionUseCaseModule {
     @Singleton
     fun provideClearCollectedCalendarUseCase(repository: SourceItemRepository): ClearCollectedCalendarUseCase =
         ClearCollectedCalendarUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideCollectHealthUseCase(
+        collectors: Map<ItemType, @JvmSuppressWildcards Collector>,
+        repository: SourceItemRepository,
+    ): CollectHealthUseCase = CollectHealthUseCase(collectors, repository)
+
+    @Provides
+    @Singleton
+    fun provideClearCollectedHealthUseCase(repository: SourceItemRepository): ClearCollectedHealthUseCase =
+        ClearCollectedHealthUseCase(repository)
 }

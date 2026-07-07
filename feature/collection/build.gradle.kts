@@ -36,4 +36,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.coil.compose)
+
+    // Health Connect 권한 요청 contract·가용성 확인 (수집 구현은 :core:collection)
+    implementation(libs.health.connect)
 }

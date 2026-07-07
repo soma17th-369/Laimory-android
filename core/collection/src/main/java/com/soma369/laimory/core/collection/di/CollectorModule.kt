@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.collection.di
 
 import com.soma369.laimory.core.collection.collector.CalendarCollector
+import com.soma369.laimory.core.collection.collector.HealthCollector
 import com.soma369.laimory.core.collection.collector.PhotoCollector
 import com.soma369.laimory.core.domain.collector.Collector
 import com.soma369.laimory.core.domain.model.collection.ItemType
@@ -26,4 +27,9 @@ internal abstract class CollectorModule {
     @IntoMap
     @ItemTypeKey(ItemType.CALENDAR)
     abstract fun bindCalendarCollector(collector: CalendarCollector): Collector
+
+    @Binds
+    @IntoMap
+    @ItemTypeKey(ItemType.HEALTH)
+    abstract fun bindHealthCollector(collector: HealthCollector): Collector
 }

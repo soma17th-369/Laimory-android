@@ -39,6 +39,8 @@ dependencies {
 
     implementation(libs.exifinterface)
 
+    implementation(libs.health.connect)
+
     implementation(libs.coroutines.android)
 
     testImplementation(libs.junit)
