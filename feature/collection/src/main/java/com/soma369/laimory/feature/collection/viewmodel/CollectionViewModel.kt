@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.collection.state.CollectionUiIntent
@@ -21,6 +22,7 @@ class CollectionViewModel
     constructor(
         observeSourceItemsUseCase: ObserveSourceItemsUseCase,
         private val addSourceItemsUseCase: AddSourceItemsUseCase,
+        private val collectPhotosUseCase: CollectPhotosUseCase,
     ) : BaseMviViewModel<CollectionUiState, CollectionUiIntent, CollectionUiSideEffect>(CollectionUiState()) {
         init {
             safeLaunch {
@@ -33,8 +35,15 @@ class CollectionViewModel
         override suspend fun handleIntent(intent: CollectionUiIntent) {
             when (intent) {
                 CollectionUiIntent.InsertTestItems -> insertTestItems()
+                CollectionUiIntent.CollectPhotos -> collectPhotos()
             }
         }
+
+        private fun collectPhotos() =
+            safeLaunch {
+                val inserted = collectPhotosUseCase()
+                sendEffect(CollectionUiSideEffect.ShowMessage("사진 수집 완료 — 새로 저장 ${inserted}건"))
+            }
 
         private fun insertTestItems() =
             safeLaunch {
