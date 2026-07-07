@@ -40,8 +40,15 @@ data class LocationPayload(
 data class MovementPayload(
     val start: GeoPoint,
     val end: GeoPoint,
+    /** 이동 경로 누적 거리(m). 샘플 간 거리 합. */
+    val distanceMeters: Double,
+    /** 이동수단. Phase 1 은 평균 속도로 추론한다(정식 Activity Recognition 은 후속 확장). */
+    val transports: Transport,
 ) : SourceItemPayload {
     override val itemType: ItemType get() = ItemType.MOVEMENT
+
+    /** 이동수단. 값은 Activity Recognition/서버 계약 명칭을 따른다. */
+    enum class Transport { WALKING, RUNNING, ON_BICYCLE, IN_VEHICLE, UNKNOWN }
 }
 
 /** 캘린더 일정. */
