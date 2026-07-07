@@ -56,6 +56,8 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
+    // material3 1.4+ 는 material-icons 를 트랜지티브로 제공하지 않아 바텀탭 아이콘용으로 명시 추가.
+    implementation(libs.compose.material.icons.core)
     implementation(libs.compose.activity)
 
     implementation(libs.hilt.android)
