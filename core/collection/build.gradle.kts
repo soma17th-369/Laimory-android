@@ -26,6 +26,7 @@ ksp {
 
 dependencies {
     implementation(project(":core:domain"))
+    implementation(project(":core:util"))
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -35,6 +36,8 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.serialization.json)
+
+    implementation(libs.exifinterface)
 
     implementation(libs.coroutines.android)
 
