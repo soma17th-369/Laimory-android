@@ -1,7 +1,10 @@
 package com.soma369.laimory.core.collection.di
 
+import com.soma369.laimory.core.domain.collector.Collector
+import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import dagger.Module
 import dagger.Provides
@@ -24,4 +27,11 @@ internal object CollectionUseCaseModule {
     @Provides
     @Singleton
     fun provideAddSourceItemsUseCase(repository: SourceItemRepository): AddSourceItemsUseCase = AddSourceItemsUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideCollectPhotosUseCase(
+        collectors: Map<ItemType, @JvmSuppressWildcards Collector>,
+        repository: SourceItemRepository,
+    ): CollectPhotosUseCase = CollectPhotosUseCase(collectors, repository)
 }

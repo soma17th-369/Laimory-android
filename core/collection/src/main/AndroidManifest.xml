@@ -1,2 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 사진 수집(MediaStore). 수집 영역이 MediaStore 접근을 소유하므로 이 모듈에서 선언한다. -->
+    <!-- Android 12 이하: 저장소 읽기. Android 13+에서는 세분화 권한으로 대체되므로 maxSdkVersion 을 둔다. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- Android 13+(API 33): 이미지 전용 권한. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Android 14+(API 34): 부분 허용(선택한 사진만) 상태를 표현. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!-- 사진 EXIF 위치 읽기. Android 10+는 위치가 redact 되므로 이 권한 + setRequireOriginal 이 필요하다. -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+
+</manifest>

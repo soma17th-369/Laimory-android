@@ -1,9 +1,12 @@
 package com.soma369.laimory.feature.collection.screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,8 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -30,6 +35,7 @@ import com.soma369.laimory.feature.collection.state.CollectionUiSideEffect
 import com.soma369.laimory.feature.collection.state.CollectionUiState
 import com.soma369.laimory.feature.collection.viewmodel.CollectionViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -58,6 +64,8 @@ private fun CollectionContent(
     sideEffectFlow: Flow<CollectionUiSideEffect>,
 ) {
     val snackbarHostState = LocalSnackbarHostState.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         snackbarFlow.collect { message ->
@@ -72,10 +80,28 @@ private fun CollectionContent(
         }
     }
 
+    // 권한 요청 UI 는 UI 계층 책임(Collector 는 권한 무지성). 허용/부분 허용이면 수집 intent 를 보낸다.
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            if (PhotoPermission.canCollect(result)) {
+                onIntent(CollectionUiIntent.CollectPhotos)
+            } else {
+                scope.launch { snackbarHostState.showSnackbar("사진 접근 권한이 필요합니다.") }
+            }
+        }
+    val onCollectPhotos: () -> Unit = {
+        if (PhotoPermission.canCollect(context)) {
+            onIntent(CollectionUiIntent.CollectPhotos)
+        } else {
+            permissionLauncher.launch(PhotoPermission.required())
+        }
+    }
+
     CollectionScreen(
         innerPadding = innerPadding,
         state = state,
         onIntent = onIntent,
+        onCollectPhotos = onCollectPhotos,
     )
 }
 
@@ -84,6 +110,7 @@ private fun CollectionScreen(
     innerPadding: PaddingValues,
     state: CollectionUiState,
     onIntent: (CollectionUiIntent) -> Unit,
+    onCollectPhotos: () -> Unit,
 ) {
     if (state.isLoading) {
         Box(
@@ -100,6 +127,7 @@ private fun CollectionScreen(
             innerPadding = innerPadding,
             state = state,
             onIntent = onIntent,
+            onCollectPhotos = onCollectPhotos,
         )
     }
 }
@@ -109,6 +137,7 @@ private fun CollectionScreenBody(
     innerPadding: PaddingValues,
     state: CollectionUiState,
     onIntent: (CollectionUiIntent) -> Unit,
+    onCollectPhotos: () -> Unit,
 ) {
     Column(
         modifier =
@@ -122,11 +151,16 @@ private fun CollectionScreenBody(
             style = MaterialTheme.typography.titleLarge,
         )
 
-        Button(
+        Row(
             modifier = Modifier.padding(top = 8.dp),
-            onClick = { onIntent(CollectionUiIntent.InsertTestItems) },
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("테스트 아이템 삽입")
+            Button(onClick = { onIntent(CollectionUiIntent.InsertTestItems) }) {
+                Text("테스트 아이템 삽입")
+            }
+            Button(onClick = onCollectPhotos) {
+                Text("사진 수집")
+            }
         }
 
         if (state.items.isEmpty()) {
