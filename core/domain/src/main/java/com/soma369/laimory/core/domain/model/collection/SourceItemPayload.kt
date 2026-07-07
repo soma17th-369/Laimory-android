@@ -85,8 +85,18 @@ data class NotificationPayload(
     val packageName: String,
     val title: String?,
     val text: String?,
+    /** 선택 수집에서 이 알림이 잡힌 이유(로컬 닷 레이블용). 서버 업로드 projection 에서는 제외될 수 있다. */
+    val collectReason: CollectReason,
 ) : SourceItemPayload {
     override val itemType: ItemType get() = ItemType.NOTIFICATION
+
+    /**
+     * 알림이 수집된 경로.
+     * - [ALL]: "모든 알림 수집" 모드로 무조건 수집.
+     * - [KEYWORD]/[APP]: "선택 수집"에서 키워드/앱 필터에 매칭돼 수집.
+     * - [CLICK]: 사용자가 알림창에서 클릭해 수집(제거 reason=click).
+     */
+    enum class CollectReason { ALL, KEYWORD, APP, CLICK }
 }
 
 /**
