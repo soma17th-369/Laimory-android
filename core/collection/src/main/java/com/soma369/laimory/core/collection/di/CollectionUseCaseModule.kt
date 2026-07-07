@@ -5,7 +5,9 @@ import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.ClearCollectedCalendarUseCase
 import com.soma369.laimory.core.domain.usecase.ClearCollectedPhotosUseCase
+import com.soma369.laimory.core.domain.usecase.CollectCalendarUseCase
 import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosOnDateUseCase
@@ -54,4 +56,16 @@ internal object CollectionUseCaseModule {
     @Singleton
     fun provideClearCollectedPhotosUseCase(repository: SourceItemRepository): ClearCollectedPhotosUseCase =
         ClearCollectedPhotosUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideCollectCalendarUseCase(
+        collectors: Map<ItemType, @JvmSuppressWildcards Collector>,
+        repository: SourceItemRepository,
+    ): CollectCalendarUseCase = CollectCalendarUseCase(collectors, repository)
+
+    @Provides
+    @Singleton
+    fun provideClearCollectedCalendarUseCase(repository: SourceItemRepository): ClearCollectedCalendarUseCase =
+        ClearCollectedCalendarUseCase(repository)
 }

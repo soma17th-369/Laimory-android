@@ -13,4 +13,7 @@
     <!-- 사진 EXIF 위치 읽기. Android 10+는 위치가 redact 되므로 이 권한 + setRequireOriginal 이 필요하다. -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
+    <!-- 일정 수집(CalendarContract). 개인(owner-access) 캘린더 일정을 읽는다. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
 </manifest>

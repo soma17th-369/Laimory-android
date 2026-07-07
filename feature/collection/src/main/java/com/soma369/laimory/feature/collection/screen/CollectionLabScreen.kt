@@ -50,6 +50,7 @@ fun CollectionLabRoute(innerPadding: PaddingValues) {
         Box(modifier = Modifier.fillMaxSize()) {
             when (selectedTab) {
                 CollectionLabTab.PHOTO -> PhotoCollectionTab()
+                CollectionLabTab.CALENDAR -> CalendarCollectionTab()
                 else -> ComingSoonTab(source = selectedTab.label)
             }
         }
