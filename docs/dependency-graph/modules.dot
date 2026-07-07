@@ -9,6 +9,7 @@ node ["shape"="rectangle" "style"="filled"]
 "core-domain" ["label"="core:domain" "fillcolor"="#D2B4DE"]
 "core-ui" ["label"="core:ui" "fillcolor"="#FAD7A0"]
 "core-util" ["label"="core:util" "fillcolor"="#FAD7A0"]
+"feature-collection" ["label"="feature:collection" "fillcolor"="#A9DFBF"]
 "feature-feature1" ["label"="feature:feature1" "fillcolor"="#A9DFBF"]
 "feature-home" ["label"="feature:home" "fillcolor"="#A9DFBF"]
 
@@ -18,12 +19,15 @@ node ["shape"="rectangle" "style"="filled"]
 "app" -> "core-domain"
 "app" -> "core-ui"
 "app" -> "core-util"
+"app" -> "feature-collection"
 "app" -> "feature-feature1"
 "app" -> "feature-home"
 "core-collection" -> "core-domain"
 "core-data" -> "core-domain"
 "core-ui" -> "core-domain"
 "core-ui" -> "core-util"
+"feature-collection" -> "core-domain"
+"feature-collection" -> "core-ui"
 "feature-feature1" -> "core-domain"
 "feature-feature1" -> "core-ui"
 "feature-home" -> "core-domain"
