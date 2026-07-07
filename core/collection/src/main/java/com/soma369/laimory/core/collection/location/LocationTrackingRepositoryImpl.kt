@@ -1,32 +1,27 @@
 package com.soma369.laimory.core.collection.location
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
-/** 추적 토글을 DataStore 에 저장하고, 상태에 따라 [LocationTrackingManager] 를 시작/중지한다. */
+/**
+ * 추적 토글을 [LocationTrackingManager] 의 세션 상태에 위임한다.
+ *
+ * Phase 1 은 foreground 한정이라 토글을 영속 저장하지 않는다 — 콜드 스타트마다 off 로 시작한다(재실행 시
+ * 자동 재개하면 추적이 실제로는 죽어있는데 토글만 켜진 것처럼 보이는 불일치가 생기므로). 백그라운드 지속·부팅
+ * 복원은 Phase 2 몫이다.
+ */
 internal class LocationTrackingRepositoryImpl
     @Inject
     constructor(
-        @LocationTrackingDataStore private val dataStore: DataStore<Preferences>,
         private val manager: LocationTrackingManager,
     ) : LocationTrackingRepository {
-        override fun observeEnabled(): Flow<Boolean> = dataStore.data.map { prefs -> prefs[KEY_ENABLED] ?: false }
+        override fun observeEnabled(): Flow<Boolean> = manager.isTracking
 
         override fun observeStatus(): Flow<LocationTrackingStatus?> = manager.status
 
         override suspend fun setEnabled(enabled: Boolean) {
-            dataStore.edit { prefs -> prefs[KEY_ENABLED] = enabled }
             if (enabled) manager.start() else manager.stop()
-        }
-
-        private companion object {
-            val KEY_ENABLED = booleanPreferencesKey("enabled")
         }
     }

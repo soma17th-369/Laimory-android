@@ -49,6 +49,14 @@ internal class LocationTrackingManager
         private val locationManager = context.getSystemService(LocationManager::class.java)
         private var segmenter: LocationSegmenter? = null
 
+        private val _isTracking = MutableStateFlow(false)
+
+        /**
+         * 추적 활성 여부(세션 한정). @Singleton 이라 프로세스 생명주기와 함께하며, 콜드 스타트마다 false 로
+         * 시작한다(Phase 1 은 foreground 한정이라 재실행 시 자동 재개하지 않고 사용자가 다시 켠다).
+         */
+        val isTracking: StateFlow<Boolean> = _isTracking.asStateFlow()
+
         private val _status = MutableStateFlow<LocationTrackingStatus?>(null)
 
         /** 진행 중 세그먼트의 라이브 상태(체류 중/이동 중). 샘플마다 갱신되고, 중지 시 null. */
@@ -79,6 +87,8 @@ internal class LocationTrackingManager
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) LocationManager.FUSED_PROVIDER else LocationManager.GPS_PROVIDER
             runCatching {
                 manager.requestLocationUpdates(provider, MIN_TIME_MS, MIN_DISTANCE_M, listener, Looper.getMainLooper())
+            }.onSuccess {
+                _isTracking.value = true
             }.onFailure { e ->
                 // 권한 미허용은 SecurityException — 계약대로 무동작.
                 Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e.message}")
@@ -90,6 +100,7 @@ internal class LocationTrackingManager
             val active = segmenter ?: return
             locationManager?.removeUpdates(listener)
             segmenter = null
+            _isTracking.value = false
             _status.value = null
             val remaining = active.flush()
             if (remaining.isNotEmpty()) saveEvents(remaining)
