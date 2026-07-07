@@ -47,6 +47,7 @@ Repository      : laimory-android
 ```
 :app
 :feature:home          ← 초반에는 timeline/search/insight 전부 여기
+:feature:collection    ← 수집 데이터 디버그 뷰 (source_item rows 확인)
 :core:domain           ← 순수 Kotlin only, 외부 의존성 없음
 :core:data             ← Repository 구현체, DataSource
 :core:collection       ← 라이프로그 수집 영역 (Collector 구현 + 수집 로컬 DB 소유)
@@ -58,6 +59,8 @@ Repository      : laimory-android
 
 - `:app` → 진입점, Hilt Application, Navigation 루트
 - `:feature:home` → UI(Screen) + ViewModel만 포함
+- `:feature:collection` → 수집 데이터 디버그 뷰. `:core:domain` 계약(`SourceItemRepository`)만
+  의존하고 `:core:collection` 내부(Room/DAO)에 직접 의존하지 않는다.
 - `:core:domain` → Model, Repository interface, UseCase
 - `:core:data` → RepositoryImpl, RemoteDataSource, LocalDataSource, Mapper
 - `:core:collection` → 카테고리별 Collector 구현, 수집 데이터 Room DB, SourceItemRepository 구현
