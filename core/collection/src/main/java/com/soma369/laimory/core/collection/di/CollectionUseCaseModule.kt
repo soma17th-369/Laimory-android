@@ -3,8 +3,12 @@ package com.soma369.laimory.core.collection.di
 import com.soma369.laimory.core.domain.collector.Collector
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
+import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.ClearCollectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
+import com.soma369.laimory.core.domain.usecase.CollectSelectedPhotosUseCase
+import com.soma369.laimory.core.domain.usecase.GetPhotosOnDateUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import dagger.Module
 import dagger.Provides
@@ -34,4 +38,20 @@ internal object CollectionUseCaseModule {
         collectors: Map<ItemType, @JvmSuppressWildcards Collector>,
         repository: SourceItemRepository,
     ): CollectPhotosUseCase = CollectPhotosUseCase(collectors, repository)
+
+    @Provides
+    @Singleton
+    fun provideGetPhotosOnDateUseCase(photoSource: PhotoSource): GetPhotosOnDateUseCase = GetPhotosOnDateUseCase(photoSource)
+
+    @Provides
+    @Singleton
+    fun provideCollectSelectedPhotosUseCase(
+        photoSource: PhotoSource,
+        repository: SourceItemRepository,
+    ): CollectSelectedPhotosUseCase = CollectSelectedPhotosUseCase(photoSource, repository)
+
+    @Provides
+    @Singleton
+    fun provideClearCollectedPhotosUseCase(repository: SourceItemRepository): ClearCollectedPhotosUseCase =
+        ClearCollectedPhotosUseCase(repository)
 }
