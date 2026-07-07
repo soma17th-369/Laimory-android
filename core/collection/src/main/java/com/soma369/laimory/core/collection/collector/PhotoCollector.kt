@@ -1,11 +1,14 @@
 package com.soma369.laimory.core.collection.collector
 
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import androidx.exifinterface.media.ExifInterface
 import com.soma369.laimory.core.domain.collector.Collector
 import com.soma369.laimory.core.domain.model.collection.ItemType
@@ -55,17 +58,25 @@ internal class PhotoCollector
         /**
          * MediaStore 를 최신순으로 조회해 최대 [BATCH_SIZE] 건을 [PhotoMediaRow] 로 읽는다.
          * 권한 미허용/조회 실패 시 빈 목록.
+         *
+         * API 30+ 는 쿼리 args 의 [ContentResolver.QUERY_ARG_LIMIT] 로 커서 자체를 [BATCH_SIZE] 로 제한한다.
+         * 그 이전은 query args LIMIT 을 지원하지 않으므로 정렬 문자열만 주고 [readRows] 의 순회 상한으로 제한한다.
          */
         private fun queryRows(): List<PhotoMediaRow> {
+            val resolver = context.contentResolver
             val cursor =
                 runCatching {
-                    context.contentResolver.query(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        PROJECTION,
-                        null,
-                        null,
-                        "${MediaStore.Images.Media.DATE_ADDED} DESC",
-                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, PROJECTION, limitedQueryArgs(), null)
+                    } else {
+                        resolver.query(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                            PROJECTION,
+                            null,
+                            null,
+                            "${MediaStore.Images.Media.DATE_ADDED} DESC",
+                        )
+                    }
                 }.getOrElse { e ->
                     // 권한 미허용은 SecurityException 으로 온다 — 계약대로 빈 목록.
                     Logger.w(LogDomain.COLLECTION, "MediaStore 사진 조회 실패: ${e.message}")
@@ -75,13 +86,22 @@ internal class PhotoCollector
             return cursor.use { readRows(it) }
         }
 
+        @RequiresApi(Build.VERSION_CODES.R)
+        private fun limitedQueryArgs(): Bundle =
+            Bundle().apply {
+                putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, arrayOf(MediaStore.Images.Media.DATE_ADDED))
+                putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING)
+                putInt(ContentResolver.QUERY_ARG_LIMIT, BATCH_SIZE)
+            }
+
         private fun readRows(cursor: Cursor): List<PhotoMediaRow> {
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
             val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
 
-            val rows = ArrayList<PhotoMediaRow>(minOf(cursor.count, BATCH_SIZE))
+            // 전체 결과 카운트를 강제하지 않도록 cursor.count 대신 상한으로 초기 용량만 잡는다.
+            val rows = ArrayList<PhotoMediaRow>(BATCH_SIZE)
             while (cursor.moveToNext() && rows.size < BATCH_SIZE) {
                 val id = cursor.getLong(idColumn)
                 val baseUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
@@ -91,8 +111,9 @@ internal class PhotoCollector
                         id = id,
                         displayName = cursor.getString(nameColumn).orEmpty(),
                         clientPhotoUri = baseUri.toString(),
-                        dateTakenMillis = cursor.getLong(dateTakenColumn).takeIf { !cursor.isNull(dateTakenColumn) },
-                        dateAddedSeconds = cursor.getLong(dateAddedColumn).takeIf { !cursor.isNull(dateAddedColumn) },
+                        // null 컬럼에서 getLong 반환값이 커서 구현체마다 애매하므로 isNull 을 먼저 본다.
+                        dateTakenMillis = if (cursor.isNull(dateTakenColumn)) null else cursor.getLong(dateTakenColumn),
+                        dateAddedSeconds = if (cursor.isNull(dateAddedColumn)) null else cursor.getLong(dateAddedColumn),
                         latitude = location?.get(0),
                         longitude = location?.get(1),
                     ),
