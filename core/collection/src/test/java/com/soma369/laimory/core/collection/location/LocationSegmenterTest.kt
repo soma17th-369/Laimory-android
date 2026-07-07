@@ -47,7 +47,7 @@ class LocationSegmenterTest {
         events += s.onSample(placeLat, placeLng, minute)
         events += s.onSample(placeLat, placeLng, 2 * minute)
         // 5km 떨어진 Q 로 빠르게 이동(1분).
-        val qLat = 37.545
+        val qLat = 37.54515
         val qLng = 127.0
         events += s.onSample(qLat, qLng, 3 * minute)
         // Q 에 안착(체류 판정 시간 이상).

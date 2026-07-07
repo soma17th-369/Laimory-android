@@ -184,7 +184,9 @@ internal class LocationSegmenter(
 
     companion object {
         const val DEFAULT_DWELL_RADIUS_METERS = 80.0
-        const val DEFAULT_STAY_MILLIS = 3 * 60_000L
+
+        /** 체류로 인정하는 최소 머문 시간(5분). 교통 정차 등 짧은 멈춤은 걸러 의미있는 방문만 남긴다. */
+        const val DEFAULT_STAY_MILLIS = 5 * 60_000L
 
         /** 도보 상한 ~8km/h, 자전거 상한 ~25km/h. 그 이상은 차량. */
         private const val WALKING_MAX_MPS = 2.2

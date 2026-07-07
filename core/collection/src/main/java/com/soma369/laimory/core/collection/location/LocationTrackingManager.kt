@@ -149,7 +149,10 @@ internal class LocationTrackingManager
             }
 
         private companion object {
-            const val MIN_TIME_MS = 15_000L
-            const val MIN_DISTANCE_M = 20f
+            const val MIN_TIME_MS = 30_000L
+
+            // 0 = 이동 여부와 무관하게 주기적으로 위치를 받는다. 20m 이상 이동해야만 업데이트가 오면
+            // 정지 중엔 샘플이 끊겨 체류 시간이 안 쌓인다.
+            const val MIN_DISTANCE_M = 0f
         }
     }
