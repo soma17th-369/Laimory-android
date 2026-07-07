@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -14,9 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 
 /**
  * 수집 디버그 진입 화면. 소스별 탭(실험실/Lab) 컨테이너다.
@@ -52,8 +49,8 @@ fun CollectionLabRoute(innerPadding: PaddingValues) {
                 CollectionLabTab.PHOTO -> PhotoCollectionTab()
                 CollectionLabTab.CALENDAR -> CalendarCollectionTab()
                 CollectionLabTab.HEALTH -> HealthCollectionTab()
+                CollectionLabTab.LOCATION -> LocationCollectionTab()
                 CollectionLabTab.NOTIFICATION -> NotificationCollectionTab()
-                else -> ComingSoonTab(source = selectedTab.label)
             }
         }
     }
@@ -72,18 +69,4 @@ enum class CollectionLabTab(val label: String) {
     HEALTH("헬스"),
     LOCATION("위치"),
     NOTIFICATION("알림"),
-}
-
-@Composable
-private fun ComingSoonTab(source: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "$source 수집은 준비 중입니다.",
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
 }
