@@ -37,6 +37,8 @@ dependencies {
 
     implementation(libs.serialization.json)
 
+    implementation(libs.datastore.preferences)
+
     implementation(libs.exifinterface)
 
     implementation(libs.health.connect)

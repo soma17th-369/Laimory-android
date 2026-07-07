@@ -90,6 +90,8 @@ internal data class NotificationPayloadDto(
     val packageName: String,
     val title: String?,
     val text: String?,
+    // 로컬 저장 전용. 기존 저장분/누락 시 ALL 로 읽는다(ignoreUnknownKeys 와 함께 안전한 진화).
+    val collectReason: String = NotificationPayload.CollectReason.ALL.name,
 )
 
 @Serializable
@@ -157,6 +159,7 @@ private fun NotificationPayload.toDto() =
         packageName = packageName,
         title = title,
         text = text,
+        collectReason = collectReason.name,
     )
 
 private fun NotificationPayloadDto.toDomain() =
@@ -165,6 +168,9 @@ private fun NotificationPayloadDto.toDomain() =
         packageName = packageName,
         title = title,
         text = text,
+        collectReason =
+            runCatching { NotificationPayload.CollectReason.valueOf(collectReason) }
+                .getOrDefault(NotificationPayload.CollectReason.ALL),
     )
 
 private fun PhotoPayload.toDto() =

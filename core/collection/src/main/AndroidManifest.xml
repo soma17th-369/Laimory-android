@@ -20,9 +20,26 @@
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
 
-    <!-- Health Connect 앱(권한 화면/가용성 확인)에 대한 패키지 visibility. -->
+    <!-- 패키지 visibility(Android 11+). Health Connect 앱 + 알림 필터 앱 선택용 런처 앱 목록. -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
+
+    <!-- 알림 실시간 수집 리스너. 시스템이 BIND 권한으로 바인딩한다(사용자가 '알림 접근'을 켠 동안). -->
+    <application>
+        <service
+            android:name="com.soma369.laimory.core.collection.notification.LaimoryNotificationListenerService"
+            android:exported="false"
+            android:label="Laimory 알림 수집"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
 
 </manifest>
