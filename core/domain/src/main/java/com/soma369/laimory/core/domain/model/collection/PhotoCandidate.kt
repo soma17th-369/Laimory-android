@@ -10,7 +10,7 @@ import java.time.Instant
  *
  * - [id]: MediaStore `_ID`. 수집 요청과 `sourceKey` 파생의 기준.
  * - [contentUri]: 썸네일 로딩용 content URI 문자열(`ContentUris.withAppendedId(...)`).
- * - [takenAt]: `DATE_TAKEN` 기준 촬영 시각. 날짜 선택/정렬의 기준이다.
+ * - [takenAt]: 촬영 시각(`DATE_TAKEN`) 우선, 없으면 추가 시각(`DATE_ADDED`) fallback. 날짜 선택/정렬의 기준이다.
  */
 data class PhotoCandidate(
     val id: Long,
