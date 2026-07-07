@@ -1,4 +1,4 @@
-package com.soma369.laimory.core.common.logging
+package com.soma369.laimory.core.util.logging
 
 /**
  * 로그 영역 분류 태그. [Logger]의 domain 파라미터(= Logcat tag)로 사용한다.

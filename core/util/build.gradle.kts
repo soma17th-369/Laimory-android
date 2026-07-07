@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.soma369.laimory.core.common"
+    namespace = "com.soma369.laimory.core.util"
     compileSdk = 36
 
     defaultConfig {

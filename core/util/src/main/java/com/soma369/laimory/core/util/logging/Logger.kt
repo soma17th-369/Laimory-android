@@ -1,7 +1,7 @@
-package com.soma369.laimory.core.common.logging
+package com.soma369.laimory.core.util.logging
 
 import android.util.Log
-import com.soma369.laimory.core.common.BuildConfig
+import com.soma369.laimory.core.util.BuildConfig
 
 /**
  * 로컬 Logcat 전용 로거 래퍼. `android.util.Log`를 직접 쓰는 대신 이 래퍼를 쓴다.
