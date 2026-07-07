@@ -4,12 +4,10 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
-import androidx.exifinterface.media.ExifInterface
 import com.soma369.laimory.core.domain.collector.Collector
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.SourceItem
@@ -39,6 +37,7 @@ internal class PhotoCollector
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
+        private val exifLocationReader: PhotoExifLocationReader,
     ) : Collector {
         override val itemType: ItemType = ItemType.PHOTO
 
@@ -105,7 +104,7 @@ internal class PhotoCollector
             while (cursor.moveToNext() && rows.size < BATCH_SIZE) {
                 val id = cursor.getLong(idColumn)
                 val baseUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-                val location = readExifLocation(baseUri)
+                val location = exifLocationReader.read(baseUri)
                 rows.add(
                     PhotoMediaRow(
                         id = id,
@@ -120,29 +119,6 @@ internal class PhotoCollector
                 )
             }
             return rows
-        }
-
-        /**
-         * 사진 EXIF 에서 GPS 좌표 `[lat, lng]` 를 읽는다. 없거나 실패(권한 없음/EXIF 없음/IO)하면 null.
-         *
-         * Android 10(Q)+ 는 MediaStore 가 위치를 redact 하므로 [MediaStore.setRequireOriginal] 로 원본 URI 를
-         * 얻어야 하고 `ACCESS_MEDIA_LOCATION` 권한이 필요하다. 그 이전 버전은 파일 EXIF 를 바로 읽는다.
-         */
-        private fun readExifLocation(baseUri: Uri): DoubleArray? {
-            val uri =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    MediaStore.setRequireOriginal(baseUri)
-                } else {
-                    baseUri
-                }
-            return runCatching {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    ExifInterface(stream).latLong
-                }
-            }.getOrElse { e ->
-                Logger.w(LogDomain.COLLECTION, "사진 EXIF 위치 읽기 실패(uri=$baseUri): ${e.message}")
-                null
-            }
         }
 
         private companion object {

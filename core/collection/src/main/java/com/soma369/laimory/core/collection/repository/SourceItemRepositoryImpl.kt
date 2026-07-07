@@ -29,6 +29,8 @@ internal class SourceItemRepositoryImpl
         override suspend fun getLatestCollectedAt(itemType: ItemType): Instant? =
             sourceItemDao.latestCollectedAtUtc(itemType.name)?.let(Instant::ofEpochMilli)
 
+        override suspend fun clear(itemType: ItemType) = sourceItemDao.deleteByItemType(itemType.name)
+
         private companion object {
             const val IGNORED_ROW_ID = -1L
         }

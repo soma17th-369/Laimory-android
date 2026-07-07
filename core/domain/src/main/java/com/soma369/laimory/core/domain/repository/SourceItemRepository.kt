@@ -24,4 +24,7 @@ interface SourceItemRepository {
 
     /** 해당 카테고리에서 마지막으로 수집된 시각. 증분 수집 커서로 사용한다. 없으면 null. */
     suspend fun getLatestCollectedAt(itemType: ItemType): Instant?
+
+    /** 해당 카테고리에 저장된 아이템을 모두 삭제한다(스테이징 일괄 비우기). */
+    suspend fun clear(itemType: ItemType)
 }

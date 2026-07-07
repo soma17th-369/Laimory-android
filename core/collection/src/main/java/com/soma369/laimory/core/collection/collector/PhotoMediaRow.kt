@@ -43,12 +43,7 @@ internal fun PhotoMediaRow.toSourceItem(
     collectedAt: Instant,
     zoneId: ZoneId,
 ): SourceItem? {
-    val startAtMillis =
-        when {
-            dateTakenMillis != null && dateTakenMillis > 0L -> dateTakenMillis
-            dateAddedSeconds != null && dateAddedSeconds > 0L -> dateAddedSeconds * MILLIS_PER_SECOND
-            else -> return null
-        }
+    val startAtMillis = effectiveStartMillis(dateTakenMillis, dateAddedSeconds) ?: return null
 
     return SourceItem(
         rawId = rawId,
@@ -68,5 +63,22 @@ internal fun PhotoMediaRow.toSourceItem(
         collectedAt = collectedAt,
     )
 }
+
+/**
+ * 사진의 유효 시각(epoch millis)을 `DATE_TAKEN` 우선·`DATE_ADDED` fallback 규칙으로 정한다.
+ *
+ * [dateTakenMillis](millis)가 유효하면(> 0) 그 값을, 없으면 [dateAddedSeconds](seconds) * 1000 을 쓴다.
+ * 둘 다 무효면 null. 후보 조회(photosOn)의 날짜 필터와 저장([toSourceItem])의 startAt 매핑이 같은 기준을
+ * 쓰도록 이 함수로 일원화한다.
+ */
+internal fun effectiveStartMillis(
+    dateTakenMillis: Long?,
+    dateAddedSeconds: Long?,
+): Long? =
+    when {
+        dateTakenMillis != null && dateTakenMillis > 0L -> dateTakenMillis
+        dateAddedSeconds != null && dateAddedSeconds > 0L -> dateAddedSeconds * MILLIS_PER_SECOND
+        else -> null
+    }
 
 private const val MILLIS_PER_SECOND = 1_000L

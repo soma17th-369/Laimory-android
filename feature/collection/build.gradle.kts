@@ -34,4 +34,6 @@ dependencies {
     implementation(libs.compose.lifecycle)
     implementation(libs.compose.activity)
     debugImplementation(libs.compose.ui.tooling)
+
+    implementation(libs.coil.compose)
 }

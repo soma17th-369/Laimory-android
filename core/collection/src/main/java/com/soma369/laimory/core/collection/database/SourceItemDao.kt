@@ -21,4 +21,7 @@ internal interface SourceItemDao {
 
     @Query("SELECT MAX(collectedAtUtc) FROM source_item WHERE itemType = :itemType")
     suspend fun latestCollectedAtUtc(itemType: String): Long?
+
+    @Query("DELETE FROM source_item WHERE itemType = :itemType")
+    suspend fun deleteByItemType(itemType: String)
 }
