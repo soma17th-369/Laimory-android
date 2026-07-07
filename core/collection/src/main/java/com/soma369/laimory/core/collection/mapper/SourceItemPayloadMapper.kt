@@ -67,6 +67,9 @@ internal data class LocationPayloadDto(
 internal data class MovementPayloadDto(
     val start: GeoPointDto,
     val end: GeoPointDto,
+    // 기존 저장분/누락 시 기본값으로 읽는다(ignoreUnknownKeys 와 함께 안전한 진화).
+    val distanceMeters: Double = 0.0,
+    val transports: String = "UNKNOWN",
 )
 
 @Serializable
@@ -115,12 +118,18 @@ private fun MovementPayload.toDto() =
     MovementPayloadDto(
         start = start.toDto(),
         end = end.toDto(),
+        distanceMeters = distanceMeters,
+        transports = transports.name,
     )
 
 private fun MovementPayloadDto.toDomain() =
     MovementPayload(
         start = start.toDomain(),
         end = end.toDomain(),
+        distanceMeters = distanceMeters,
+        transports =
+            runCatching { MovementPayload.Transport.valueOf(transports) }
+                .getOrDefault(MovementPayload.Transport.UNKNOWN),
     )
 
 private fun CalendarPayload.toDto() =

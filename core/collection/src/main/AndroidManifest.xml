@@ -20,6 +20,10 @@
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
 
+    <!-- 위치 수집(LocationManager). Phase 1 은 foreground 자동 추적만(백그라운드는 후속). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <!-- 패키지 visibility(Android 11+). Health Connect 앱 + 알림 필터 앱 선택용 런처 앱 목록. -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
