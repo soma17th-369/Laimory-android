@@ -18,3 +18,21 @@ data object Feature1Page : Page {
 
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
+
+data object TimelinePage : Page {
+    const val PATH = "/timeline"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+data object SettingsPage : Page {
+    const val PATH = "/settings"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+data object CollectionPage : Page {
+    const val PATH = "/collection"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}

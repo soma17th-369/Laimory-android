@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
 import com.soma369.laimory.core.domain.usecase.GetIntroInfoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -28,6 +29,7 @@ class HomeViewModel
                 HomeUiIntent.ShowToast -> sendEffect(HomeUiSideEffect.ShowToast("현재 카운터: ${state.value.counter}"))
                 HomeUiIntent.LoadIntroInfo -> loadIntroInfo()
                 HomeUiIntent.NavigateToFeature1 -> navigationHelper.navigateTo(Feature1Page)
+                HomeUiIntent.NavigateToCollection -> navigationHelper.navigateTo(CollectionPage)
             }
         }
 

@@ -12,4 +12,6 @@ sealed interface HomeUiIntent : UiIntent {
     data object LoadIntroInfo : HomeUiIntent
 
     data object NavigateToFeature1 : HomeUiIntent
+
+    data object NavigateToCollection : HomeUiIntent
 }

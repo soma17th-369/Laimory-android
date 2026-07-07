@@ -75,3 +75,18 @@ private fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
     removeAll { it == key }
     add(key)
 }
+
+/**
+ * 바텀바 탭 전환: 백스택을 [탭 루트] 1개로 교체한다 (탭별 백스택 미보존 정책).
+ *
+ * push([NavSignal.GoToDestPage])와 달리 이전 화면을 남기지 않으므로, 어느 탭에서든
+ * back 은 앱 종료 흐름이 된다. 새 키를 먼저 추가한 뒤 이전 항목을 제거한다 —
+ * 반대 순서(clear 후 add)는 스택이 순간적으로 비어 NavDisplay 가 크래시할 수 있다.
+ */
+internal fun NavBackStack<NavKey>.switchTab(path: String) {
+    if (size == 1 && (lastOrNull() as? GenericNavKey)?.path == path) return
+    add(GenericNavKey(path))
+    while (size > 1) {
+        removeAt(0)
+    }
+}

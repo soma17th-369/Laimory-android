@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.emptyFlow
  * Navigation 3 라우트 테이블 기반 앱 내비게이션의 진입 Composable.
  *
  * backStack(`NavBackStack<NavKey>`)을 app이 소유하고, 화면 분기는 [appRouteByPath]가 담당한다.
- * 단일 [Scaffold]/[SnackbarHost]가 chrome을 소유하고 [AppNavHost]가 content를 채운다.
+ * 단일 [Scaffold]가 chrome(스낵바·바텀바)을 소유하고 [AppNavHost]가 content를 채운다.
  */
 @Composable
 fun LaimoryNavGraph(
@@ -28,6 +28,9 @@ fun LaimoryNavGraph(
 ) {
     val backStack = rememberNavBackStack(GenericNavKey(HomePage.PATH))
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // 바텀바 노출·선택 상태는 별도 상태 없이 backStack top 의 path 에서 파생한다.
+    val currentPath = (backStack.lastOrNull() as? GenericNavKey)?.path
 
     LaunchedEffect(messages) {
         messages.collect { message ->
@@ -38,6 +41,15 @@ fun LaimoryNavGraph(
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                // 탭 루트에서만 노출한다. push 된 일반 화면(수집 등)에서는 숨긴다.
+                if (currentPath != null && appRouteByPath[currentPath]?.isBottomTab == true) {
+                    AppBottomBar(
+                        currentPath = currentPath,
+                        onTabSelect = { route -> backStack.switchTab(route.path) },
+                    )
+                }
+            },
         ) { innerPadding ->
             AppNavHost(
                 backStack = backStack,

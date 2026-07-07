@@ -110,5 +110,12 @@ private fun HomeScreen(
         ) {
             Text("Feature 1으로 이동")
         }
+
+        Button(
+            modifier = Modifier.padding(top = 8.dp),
+            onClick = { onIntent(HomeUiIntent.NavigateToCollection) },
+        ) {
+            Text("수집 데이터 확인")
+        }
     }
 }
