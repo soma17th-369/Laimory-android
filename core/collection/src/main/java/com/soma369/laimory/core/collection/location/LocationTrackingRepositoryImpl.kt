@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -17,6 +18,8 @@ internal class LocationTrackingRepositoryImpl
         private val manager: LocationTrackingManager,
     ) : LocationTrackingRepository {
         override fun observeEnabled(): Flow<Boolean> = dataStore.data.map { prefs -> prefs[KEY_ENABLED] ?: false }
+
+        override fun observeStatus(): Flow<LocationTrackingStatus?> = manager.status
 
         override suspend fun setEnabled(enabled: Boolean) {
             dataStore.edit { prefs -> prefs[KEY_ENABLED] = enabled }

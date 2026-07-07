@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.collection.viewmodel
 
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.usecase.ClearCollectedLocationsUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingStatusUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
@@ -18,6 +19,7 @@ class LocationCollectionViewModel
     constructor(
         observeSourceItemsUseCase: ObserveSourceItemsUseCase,
         observeLocationTrackingUseCase: ObserveLocationTrackingUseCase,
+        observeLocationTrackingStatusUseCase: ObserveLocationTrackingStatusUseCase,
         private val setLocationTrackingUseCase: SetLocationTrackingUseCase,
         private val clearCollectedLocationsUseCase: ClearCollectedLocationsUseCase,
     ) : BaseMviViewModel<LocationUiState, LocationUiIntent, LocationUiSideEffect>(LocationUiState()) {
@@ -37,6 +39,9 @@ class LocationCollectionViewModel
             }
             safeLaunch {
                 observeLocationTrackingUseCase().collect { enabled -> updateState { copy(isTracking = enabled) } }
+            }
+            safeLaunch {
+                observeLocationTrackingStatusUseCase().collect { status -> updateState { copy(trackingStatus = status) } }
             }
         }
 

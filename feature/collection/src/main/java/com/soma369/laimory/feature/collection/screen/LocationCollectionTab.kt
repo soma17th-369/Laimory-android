@@ -31,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.LocationPayload
+import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
@@ -124,7 +125,7 @@ private fun LocationCollectionContent(
                 Column {
                     Text("위치 자동 수집", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = if (state.isTracking) "추적 중 (앱이 켜져 있는 동안)" else "꺼짐",
+                        text = trackingStatusText(state),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -231,3 +232,18 @@ private fun SourceItem.timeRangeText(): String {
     val end = endAt?.atZone(timeZoneId)?.format(timeFormatter)
     return if (end != null) "$start ~ $end" else start
 }
+
+/** 토글 카드 부제 — 추적 중이면 라이브 상태(체류 중 N분 / 이동 중 / 위치 확인 중), 아니면 꺼짐. */
+private fun trackingStatusText(state: LocationUiState): String =
+    when {
+        !state.isTracking -> "꺼짐"
+        else ->
+            when (val status = state.trackingStatus) {
+                is LocationTrackingStatus.Dwelling -> {
+                    val minutes = (status.nowMillis - status.sinceMillis) / 60_000L
+                    "체류 중 · ${minutes}분 (%.5f, %.5f)".format(status.latitude, status.longitude)
+                }
+                LocationTrackingStatus.Moving -> "이동 중"
+                null -> "위치 확인 중…"
+            }
+    }

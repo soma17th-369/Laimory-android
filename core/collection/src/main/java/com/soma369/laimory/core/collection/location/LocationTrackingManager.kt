@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Looper
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.LocationPayload
+import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
@@ -20,6 +21,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -44,6 +48,11 @@ internal class LocationTrackingManager
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val locationManager = context.getSystemService(LocationManager::class.java)
         private var segmenter: LocationSegmenter? = null
+
+        private val _status = MutableStateFlow<LocationTrackingStatus?>(null)
+
+        /** 진행 중 세그먼트의 라이브 상태(체류 중/이동 중). 샘플마다 갱신되고, 중지 시 null. */
+        val status: StateFlow<LocationTrackingStatus?> = _status.asStateFlow()
 
         private val listener =
             object : LocationListener {
@@ -81,6 +90,7 @@ internal class LocationTrackingManager
             val active = segmenter ?: return
             locationManager?.removeUpdates(listener)
             segmenter = null
+            _status.value = null
             val remaining = active.flush()
             if (remaining.isNotEmpty()) saveEvents(remaining)
         }
@@ -88,6 +98,7 @@ internal class LocationTrackingManager
         private fun onLocation(location: Location) {
             val active = segmenter ?: return
             val events = active.onSample(location.latitude, location.longitude, location.time)
+            _status.value = active.currentStatus(location.time)
             if (events.isNotEmpty()) saveEvents(events)
         }
 

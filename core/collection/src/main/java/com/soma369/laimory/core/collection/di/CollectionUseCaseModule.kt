@@ -17,6 +17,7 @@ import com.soma369.laimory.core.domain.usecase.CollectHealthUseCase
 import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosOnDateUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingStatusUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveNotificationFilterUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
@@ -115,6 +116,11 @@ internal object CollectionUseCaseModule {
     @Singleton
     fun provideSetLocationTrackingUseCase(repository: LocationTrackingRepository): SetLocationTrackingUseCase =
         SetLocationTrackingUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideObserveLocationTrackingStatusUseCase(repository: LocationTrackingRepository): ObserveLocationTrackingStatusUseCase =
+        ObserveLocationTrackingStatusUseCase(repository)
 
     @Provides
     @Singleton

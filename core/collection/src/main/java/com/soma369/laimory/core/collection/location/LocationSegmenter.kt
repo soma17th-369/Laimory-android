@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.collection.location
 
+import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -139,6 +140,16 @@ internal class LocationSegmenter(
                 )
 
             else -> emptyList()
+        }
+    }
+
+    /** 진행 중인 세그먼트의 현재 상태(라이브 표시용). 장소에 머무는 중이면 Dwelling, 이동 중이면 Moving, 없으면 null. */
+    fun currentStatus(nowMillis: Long): LocationTrackingStatus? {
+        val place = atPlace
+        return when {
+            place != null -> LocationTrackingStatus.Dwelling(place.latitude, place.longitude, place.since, nowMillis)
+            traveling != null -> LocationTrackingStatus.Moving
+            else -> null
         }
     }
 
