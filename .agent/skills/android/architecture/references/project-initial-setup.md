@@ -51,6 +51,7 @@ Repository      : laimory-android
 :core:data             ← Repository 구현체, DataSource
 :core:collection       ← 라이프로그 수집 영역 (Collector 구현 + 수집 로컬 DB 소유)
 :core:ui               ← 공통 Composable, Theme, DesignSystem
+:core:util             ← Android 공용 인프라 (현재 logging, 이후 계측 후보)
 ```
 
 ### 4.1 모듈별 역할
@@ -61,6 +62,8 @@ Repository      : laimory-android
 - `:core:data` → RepositoryImpl, RemoteDataSource, LocalDataSource, Mapper
 - `:core:collection` → 카테고리별 Collector 구현, 수집 데이터 Room DB, SourceItemRepository 구현
 - `:core:ui` → 공통 컴포넌트, MVI 베이스 클래스, Theme
+- `:core:util` → Logger 등 Android 공용 인프라. 기능 도메인 코드, UseCase, Repository 계약,
+  DB/Network 구현은 넣지 않는다. `:core:domain`은 이 모듈에 의존하지 않는다.
 
 ### 4.2 나중에 분리 예정 (기능 완성 후)
 ```

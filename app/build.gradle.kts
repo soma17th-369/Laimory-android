@@ -47,7 +47,7 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:collection"))
     implementation(project(":core:domain"))
-    implementation(project(":core:common"))
+    implementation(project(":core:util"))
 
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.core.ktx)
