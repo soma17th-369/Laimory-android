@@ -17,7 +17,12 @@ data class GeoPoint(
     val longitude: Double,
 )
 
-/** 특정 시점 또는 체류 구간의 위치 샘플. */
+/**
+ * 특정 위치에 일정 시간 머문 위치/체류 이벤트.
+ *
+ * 체류 시간은 payload 에 중복 저장하지 않고 [SourceItem.startAt]/[SourceItem.endAt] 에서
+ * 파생한다. 업로드 payload 에 체류 시간 필드가 필요하면 projection 시 계산해서 채운다.
+ */
 data class LocationPayload(
     val latitude: Double,
     val longitude: Double,
@@ -26,23 +31,17 @@ data class LocationPayload(
 }
 
 /**
- * 시작/도착 좌표와 이동 거리, 이동 수단.
+ * 시작 위치와 도착 위치를 가지는 이동 이벤트.
  *
  * 원시 수집이 아니라 [LocationPayload] 후처리로 파생되는 데이터이므로,
  * 초기 수집 범위에서는 표현 계약만 정의하고 생성은 확장 단계로 분리한다.
+ * 이동 거리와 이동 수단 추론은 후속 확장이며 이 계약에 포함하지 않는다.
  */
 data class MovementPayload(
     val start: GeoPoint,
     val end: GeoPoint,
-    val distanceMeters: Double,
-    val transport: Transport,
 ) : SourceItemPayload {
     override val itemType: ItemType get() = ItemType.MOVEMENT
-
-    enum class Transport {
-        WALKING,
-        IN_VEHICLE,
-    }
 }
 
 /** 캘린더 일정. */
@@ -58,8 +57,8 @@ data class CalendarPayload(
 /**
  * 걸음수, 수면 등 건강 지표.
  *
- * 계산 가능성을 위해 수치([value])와 단위([unit])를 분리해서 저장하고,
- * "10145보" 같은 표시 문자열은 UI 계층에서 조립한다.
+ * 계산 가능성을 위해 수치([value])와 단위([unit])를 분리해서 저장한다.
+ * 업로드 payload 의 "xx보" 같은 표시 문자열은 projection 시 value+unit 으로 렌더링한다.
  */
 data class HealthPayload(
     val metric: Metric,
@@ -74,9 +73,16 @@ data class HealthPayload(
     }
 }
 
-/** 알림 이벤트. 원문 저장 범위는 수집기 구현 단계에서 최소화 정책과 함께 결정한다. */
+/**
+ * 알림 이벤트.
+ *
+ * allowlist 와 sourceKey 구성의 기준은 [packageName] 이다 — [appName] 은 표시명이라
+ * 중복되거나 바뀔 수 있다. 서버 업로드 시 일부 필드는 projection 에서 제외될 수 있다.
+ * 원문 저장 범위는 수집기 구현 단계에서 최소화 정책과 함께 결정한다.
+ */
 data class NotificationPayload(
     val appName: String,
+    val packageName: String,
     val title: String?,
     val text: String?,
 ) : SourceItemPayload {

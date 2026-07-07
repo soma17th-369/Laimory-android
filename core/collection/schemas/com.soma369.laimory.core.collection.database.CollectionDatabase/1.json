@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "ee4a7f391c825ced12d419416477399f",
+    "identityHash": "5789f7016d254ed3c297d3c937703cea",
     "entities": [
       {
         "tableName": "source_item",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`rawId` TEXT NOT NULL, `itemType` TEXT NOT NULL, `startAtUtc` INTEGER NOT NULL, `endAtUtc` INTEGER, `timeZoneId` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `sourceKey` TEXT NOT NULL, `collectedAtUtc` INTEGER NOT NULL, PRIMARY KEY(`rawId`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`rawId` TEXT NOT NULL, `itemType` TEXT NOT NULL, `startAtUtc` INTEGER NOT NULL, `endAtUtc` INTEGER, `timeZoneId` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `sourceName` TEXT NOT NULL, `sourceKey` TEXT NOT NULL, `collectedAtUtc` INTEGER NOT NULL, PRIMARY KEY(`rawId`))",
         "fields": [
           {
             "fieldPath": "rawId",
@@ -45,6 +45,12 @@
             "notNull": true
           },
           {
+            "fieldPath": "sourceName",
+            "columnName": "sourceName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
             "fieldPath": "sourceKey",
             "columnName": "sourceKey",
             "affinity": "TEXT",
@@ -65,13 +71,15 @@
         },
         "indices": [
           {
-            "name": "index_source_item_sourceKey",
+            "name": "index_source_item_itemType_sourceName_sourceKey",
             "unique": true,
             "columnNames": [
+              "itemType",
+              "sourceName",
               "sourceKey"
             ],
             "orders": [],
-            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_source_item_sourceKey` ON `${TABLE_NAME}` (`sourceKey`)"
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_source_item_itemType_sourceName_sourceKey` ON `${TABLE_NAME}` (`itemType`, `sourceName`, `sourceKey`)"
           },
           {
             "name": "index_source_item_itemType_collectedAtUtc",
@@ -90,7 +98,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ee4a7f391c825ced12d419416477399f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5789f7016d254ed3c297d3c937703cea')"
     ]
   }
 }

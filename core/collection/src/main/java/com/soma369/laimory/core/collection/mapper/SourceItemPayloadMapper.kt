@@ -16,8 +16,9 @@ import kotlinx.serialization.json.Json
 /**
  * 카테고리별 payload 를 로컬 저장용 JSON 문자열로 직렬화/역직렬화한다.
  *
- * JSON 필드명은 서버 업로드 포맷의 payload 필드명을 그대로 따라간다 —
- * 업로드 조립 시 payload 는 변환 없이 사용할 수 있게 한다.
+ * JSON 필드명은 서버 업로드 포맷의 payload 필드명을 따라간다. 다만 업로드 envelope 는
+ * 저장 원본이 아니라 projection 결과이므로, 업로드 조립 시 일부 필드는
+ * 렌더링되거나(HEALTH 의 value+unit → "xx보") 제외될 수 있다(NOTIFICATION 의 packageName 등).
  */
 internal object SourceItemPayloadMapper {
     private val json =
@@ -66,8 +67,6 @@ internal data class LocationPayloadDto(
 internal data class MovementPayloadDto(
     val start: GeoPointDto,
     val end: GeoPointDto,
-    val distanceMeters: Double,
-    val transport: String,
 )
 
 @Serializable
@@ -88,6 +87,7 @@ internal data class HealthPayloadDto(
 @Serializable
 internal data class NotificationPayloadDto(
     val appName: String,
+    val packageName: String,
     val title: String?,
     val text: String?,
 )
@@ -113,16 +113,12 @@ private fun MovementPayload.toDto() =
     MovementPayloadDto(
         start = start.toDto(),
         end = end.toDto(),
-        distanceMeters = distanceMeters,
-        transport = transport.name,
     )
 
 private fun MovementPayloadDto.toDomain() =
     MovementPayload(
         start = start.toDomain(),
         end = end.toDomain(),
-        distanceMeters = distanceMeters,
-        transport = MovementPayload.Transport.valueOf(transport),
     )
 
 private fun CalendarPayload.toDto() =
@@ -158,6 +154,7 @@ private fun HealthPayloadDto.toDomain() =
 private fun NotificationPayload.toDto() =
     NotificationPayloadDto(
         appName = appName,
+        packageName = packageName,
         title = title,
         text = text,
     )
@@ -165,6 +162,7 @@ private fun NotificationPayload.toDto() =
 private fun NotificationPayloadDto.toDomain() =
     NotificationPayload(
         appName = appName,
+        packageName = packageName,
         title = title,
         text = text,
     )
