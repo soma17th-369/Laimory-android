@@ -45,6 +45,7 @@ dependencies {
     implementation(project(":feature:feature1"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
+    implementation(project(":core:collection"))
     implementation(project(":core:domain"))
     implementation(project(":core:common"))
 
