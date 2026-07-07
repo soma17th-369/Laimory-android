@@ -9,4 +9,5 @@ object LogDomain {
     const val NETWORK = "Network"
     const val USE_CASE = "UseCase"
     const val REPOSITORY = "Repository"
+    const val COLLECTION = "Collection"
 }
