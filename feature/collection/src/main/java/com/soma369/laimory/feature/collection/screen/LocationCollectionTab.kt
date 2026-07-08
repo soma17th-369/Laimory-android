@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.collection.screen
 
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -81,11 +82,27 @@ private fun LocationCollectionContent(
         }
     }
 
-    // 추적은 위치 권한이 필요하다. 켤 때 권한을 먼저 확보한다(Manager 는 권한 무지성).
+    // location FGS 시작에는 "항상 허용"(백그라운드 위치)이 필요하다. 전경 위치 이후 별도 단계로 요청한다.
+    val backgroundLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                onIntent(LocationUiIntent.SetTracking(true))
+            } else {
+                scope.launch { snackbarHostState.showSnackbar("백그라운드 수집은 '항상 허용'이 필요합니다. 설정에서 허용해 주세요.") }
+            }
+        }
+    val requestBackgroundOrStart: () -> Unit = {
+        if (LocationPermission.hasBackground(context)) {
+            onIntent(LocationUiIntent.SetTracking(true))
+        } else {
+            backgroundLauncher.launch(LocationPermission.background())
+        }
+    }
+    // 추적은 위치 권한이 필요하다. 켤 때 전경 위치(+알림)를 먼저 받고 이어서 백그라운드 위치를 요청한다.
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             if (LocationPermission.canCollect(result)) {
-                onIntent(LocationUiIntent.SetTracking(true))
+                requestBackgroundOrStart()
             } else {
                 scope.launch { snackbarHostState.showSnackbar("위치 권한이 필요합니다.") }
             }
@@ -93,8 +110,8 @@ private fun LocationCollectionContent(
     val onToggle: (Boolean) -> Unit = { enabled ->
         when {
             !enabled -> onIntent(LocationUiIntent.SetTracking(false))
-            LocationPermission.canCollect(context) -> onIntent(LocationUiIntent.SetTracking(true))
-            else -> permissionLauncher.launch(LocationPermission.required())
+            !LocationPermission.canCollect(context) -> permissionLauncher.launch(LocationPermission.required())
+            else -> requestBackgroundOrStart()
         }
     }
 
