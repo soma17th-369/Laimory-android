@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.feature.timeline.BuildConfig
 import com.soma369.laimory.feature.timeline.state.SourceSummaryRow
 import com.soma369.laimory.feature.timeline.state.TimelineUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineUiSideEffect
@@ -126,11 +127,14 @@ private fun TimelineScreen(
             ) {
                 Text(UploadTarget.SERVER_DRAFT.label)
             }
-            OutlinedButton(
-                onClick = { onIntent(TimelineUiIntent.RequestUpload(UploadTarget.DRIVE_TEST)) },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text(UploadTarget.DRIVE_TEST.label)
+            // 임시 테스트 전용(삭제 예정) — Drive 내보내기 버튼은 debug 빌드에만 노출한다.
+            if (BuildConfig.DEBUG) {
+                OutlinedButton(
+                    onClick = { onIntent(TimelineUiIntent.RequestUpload(UploadTarget.DRIVE_TEST)) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(UploadTarget.DRIVE_TEST.label)
+                }
             }
         }
     }
