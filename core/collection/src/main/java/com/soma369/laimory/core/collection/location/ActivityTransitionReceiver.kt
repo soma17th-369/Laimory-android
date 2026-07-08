@@ -30,12 +30,11 @@ internal class ActivityTransitionReceiver : BroadcastReceiver() {
     ) {
         if (!ActivityTransitionResult.hasResult(intent)) return
         val result = ActivityTransitionResult.extractResult(intent) ?: return
-        val latestEnter =
-            result.transitionEvents.lastOrNull {
-                it.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER
-            } ?: return
         val holder = EntryPointAccessors.fromApplication(context.applicationContext, Entry::class.java).holder()
-        holder.update(latestEnter.activityType.toTransport())
+        // 구간 dominant 집계를 위해 진입(ENTER) 전이를 시각과 함께 모두 쌓는다.
+        result.transitionEvents
+            .filter { it.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER }
+            .forEach { holder.onEnter(it.activityType.toTransport(), it.elapsedRealTimeNanos / 1_000_000L) }
     }
 
     private fun Int.toTransport(): MovementPayload.Transport =

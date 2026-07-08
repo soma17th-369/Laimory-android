@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
@@ -162,6 +163,7 @@ internal class LocationCollectionService : Service() {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun unregisterActivityUpdates() {
         runCatching {
             ActivityRecognition.getClient(this).removeActivityTransitionUpdates(activityPendingIntent())
@@ -175,10 +177,16 @@ internal class LocationCollectionService : Service() {
         return PendingIntent.getBroadcast(this, 2, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
     }
 
-    /** 토글 의도를 off 로 내리고 서비스를 종료한다(알림 "중지"·샘플링 실패 공통 경로). */
+    /**
+     * 토글 의도를 off 로 내리고 서비스를 종료한다(알림 "중지"·샘플링 실패 공통 경로).
+     *
+     * 영속 저장이 [onDestroy] 의 scope 취소로 유실되지 않도록 [stopSelf] 는 저장 완료 후 코루틴 안에서 호출한다.
+     */
     private fun disableAndStop() {
-        scope.launch { runCatching { preferences.setEnabled(false) } }
-        stopSelf()
+        scope.launch {
+            runCatching { preferences.setEnabled(false) }
+            stopSelf()
+        }
     }
 
     private fun onLocation(location: Location) {
@@ -192,6 +200,8 @@ internal class LocationCollectionService : Service() {
         val collectedAt = Instant.now()
         val zone = ZoneId.systemDefault()
         val items = events.map { it.toSourceItem(collectedAt, zone) }
+        // 이동을 확정 저장했으면 AR 누적을 비워 다음 구간을 새로 집계한다(dominant 계산 후 호출).
+        if (events.any { it is DetectedEvent.Move }) transportHolder.reset()
         scope.launch {
             runCatching { addSourceItemsUseCase(items) }
                 .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 이벤트 저장 실패: ${e.message}") }
@@ -226,8 +236,10 @@ internal class LocationCollectionService : Service() {
                             start = GeoPoint(startLatitude, startLongitude),
                             end = GeoPoint(endLatitude, endLongitude),
                             distanceMeters = distanceMeters,
-                            // AR 감지값 우선, 없으면(UNKNOWN) 세그먼터의 속도 추론으로 폴백.
-                            transports = transportHolder.current().takeIf { it != MovementPayload.Transport.UNKNOWN } ?: transport,
+                            // 구간 dominant AR 이동수단 우선, 없으면(UNKNOWN) 세그먼터의 속도 추론으로 폴백.
+                            transports =
+                                transportHolder.dominant(SystemClock.elapsedRealtime())
+                                    .takeIf { it != MovementPayload.Transport.UNKNOWN } ?: transport,
                         ),
                     sourceName = SourceName.LOCATION_PROVIDER,
                     sourceKey = "MOVEMENT:$startMillis",
