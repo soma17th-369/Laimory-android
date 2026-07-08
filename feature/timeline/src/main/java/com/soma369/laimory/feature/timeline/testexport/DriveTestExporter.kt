@@ -47,9 +47,10 @@ class DriveTestExporter
             val items = observeSourceItemsUseCase().first().filter { window.contains(it) }
             if (items.isEmpty()) return "$date 창에 내보낼 수집 데이터가 없어요."
 
-            val photoNames = photoFileNames(items)
-            val json = DayBundleJson.build(date, zone, items) { photoNames[it.rawId] }
-            val photos = buildPhotoUploads(items, photoNames)
+            // 사진 바이트를 먼저 확정한다. JSON 은 여기서 성공한 사진만 링크하므로
+            // JSON ↔ photos/ 정합성이 깨지지 않는다(읽기 실패분은 photoFile=null 로 남고 메시지로 보고).
+            val resolved = resolvePhotos(items)
+            val json = DayBundleJson.build(date, zone, items) { resolved.fileNameByRawId[it.rawId] }
 
             return DriveUploader
                 .uploadDayBundle(
@@ -60,42 +61,64 @@ class DriveTestExporter
                     submissionFolderName = "export-${LocalDateTime.now(zone).format(uploadStampFormatter)}",
                     jsonFileName = "$date.json",
                     json = json,
-                    photos = photos,
+                    photos = resolved.uploads,
                 ).fold(
-                    onSuccess = { "$date 내보내기 완료 — $it" },
+                    onSuccess = { summary ->
+                        if (resolved.readFailures.isEmpty()) {
+                            "$date 내보내기 완료 — $summary"
+                        } else {
+                            "$date 내보내기 완료 — $summary " +
+                                "(사진 ${resolved.readFailures.size}장 읽기 실패로 JSON·업로드에서 제외: " +
+                                "${resolved.readFailures.joinToString()})"
+                        }
+                    },
                     onFailure = { "내보내기 실패: ${it.message}" },
                 )
         }
 
-        /** PHOTO 아이템마다 `photos/` 안 파일명을 정한다(순번 접두로 중복 방지). rawId → 파일명. */
-        private fun photoFileNames(items: List<SourceItem>): Map<String, String> =
+        /** 확정된 사진 업로드 목록 + rawId→파일명 링크 + 읽기 실패 파일명. */
+        private class ResolvedPhotos(
+            val uploads: List<DriveUploader.PhotoUpload>,
+            val fileNameByRawId: Map<String, String>,
+            val readFailures: List<String>,
+        )
+
+        /**
+         * PHOTO 아이템의 바이트를 읽어 업로드 목록을 확정한다(순번 접두로 파일명 중복 방지).
+         * 읽기/다운스케일 실패분은 [ResolvedPhotos.readFailures] 로 분리해 조용히 누락되지 않게 한다.
+         */
+        private fun resolvePhotos(items: List<SourceItem>): ResolvedPhotos {
+            val uploads = mutableListOf<DriveUploader.PhotoUpload>()
+            val fileNameByRawId = mutableMapOf<String, String>()
+            val readFailures = mutableListOf<String>()
+
             items
                 .filter { it.itemType == ItemType.PHOTO }
-                .mapIndexedNotNull { index, item ->
-                    val payload = item.payload as? PhotoPayload ?: return@mapIndexedNotNull null
+                .forEachIndexed { index, item ->
+                    val payload = item.payload as? PhotoPayload ?: return@forEachIndexed
                     val base = payload.fileName.ifBlank { "${item.rawId}.jpg" }
-                    item.rawId to "${index.toString().padStart(3, '0')}_$base"
-                }.toMap()
-
-        private fun buildPhotoUploads(
-            items: List<SourceItem>,
-            names: Map<String, String>,
-        ): List<DriveUploader.PhotoUpload> =
-            items.mapNotNull { item ->
-                val payload = item.payload as? PhotoPayload ?: return@mapNotNull null
-                val name = names[item.rawId] ?: return@mapNotNull null
-                val uri = Uri.parse(payload.clientPhotoUri)
-                val bytes =
-                    if (DriveExportConfig.DOWNSCALE_PHOTOS) {
-                        PhotoDownscaler.downscaleJpeg(
-                            context,
-                            uri,
-                            DriveExportConfig.DOWNSCALE_MAX_DIMENSION,
-                            DriveExportConfig.DOWNSCALE_JPEG_QUALITY,
-                        )
+                    val name = "${index.toString().padStart(3, '0')}_$base"
+                    val bytes = readPhotoBytes(Uri.parse(payload.clientPhotoUri))
+                    if (bytes == null) {
+                        readFailures += name
                     } else {
-                        PhotoDownscaler.readOriginal(context, uri)
-                    } ?: return@mapNotNull null
-                DriveUploader.PhotoUpload(fileName = name, bytes = bytes)
+                        fileNameByRawId[item.rawId] = name
+                        uploads += DriveUploader.PhotoUpload(fileName = name, bytes = bytes)
+                    }
+                }
+            return ResolvedPhotos(uploads, fileNameByRawId, readFailures)
+        }
+
+        /** 다운스케일 토글에 따라 사진 바이트를 읽는다. 실패 시 null. */
+        private fun readPhotoBytes(uri: Uri): ByteArray? =
+            if (DriveExportConfig.DOWNSCALE_PHOTOS) {
+                PhotoDownscaler.downscaleJpeg(
+                    context,
+                    uri,
+                    DriveExportConfig.DOWNSCALE_MAX_DIMENSION,
+                    DriveExportConfig.DOWNSCALE_JPEG_QUALITY,
+                )
+            } else {
+                PhotoDownscaler.readOriginal(context, uri)
             }
     }

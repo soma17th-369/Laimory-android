@@ -52,14 +52,19 @@ internal object DriveUploader {
                 val submission = findOrCreateFolder(token, dateFolder, submissionFolderName)
                 uploadMultipart(token, submission, jsonFileName, json.toByteArray(Charsets.UTF_8), "application/json; charset=UTF-8")
                 var photoOk = 0
+                val photoFailures = mutableListOf<String>()
                 if (photos.isNotEmpty()) {
                     val photosFolder = findOrCreateFolder(token, submission, "photos")
+                    // 첫 실패에서 멈추지 않고 전부 시도해, 실패한 파일명을 한 번에 모아 보고한다.
                     photos.forEach { p ->
-                        runCatching {
-                            uploadMultipart(token, photosFolder, p.fileName, p.bytes, "image/jpeg")
-                            photoOk++
-                        }
+                        runCatching { uploadMultipart(token, photosFolder, p.fileName, p.bytes, "image/jpeg") }
+                            .onSuccess { photoOk++ }
+                            .onFailure { photoFailures += p.fileName }
                     }
+                }
+                // JSON 은 이 사진들을 참조하므로, 하나라도 못 올리면 JSON ↔ photos/ 가 어긋난다 → 실패로 취급.
+                if (photoFailures.isNotEmpty()) {
+                    error("사진 ${photoFailures.size}/${photos.size}장 업로드 실패: ${photoFailures.joinToString()}")
                 }
                 "json + 사진 $photoOk/${photos.size}장"
             }
