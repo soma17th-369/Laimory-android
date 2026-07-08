@@ -1,29 +1,22 @@
 package com.soma369.laimory.feature.home.screen
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.feature.home.state.HomeUiIntent
-import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
-import kotlinx.coroutines.flow.Flow
 
 @Composable
 fun HomeRoute(
@@ -31,36 +24,10 @@ fun HomeRoute(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    HomeContent(
-        innerPadding = innerPadding,
-        state = state,
-        onIntent = viewModel::sendIntent,
-        sideEffectFlow = viewModel.sideEffect,
-    )
-}
-
-@Composable
-private fun HomeContent(
-    innerPadding: PaddingValues,
-    state: HomeUiState,
-    onIntent: (HomeUiIntent) -> Unit,
-    sideEffectFlow: Flow<HomeUiSideEffect>,
-) {
-    val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        sideEffectFlow.collect { effect ->
-            when (effect) {
-                is HomeUiSideEffect.ShowToast ->
-                    Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     HomeScreen(
         innerPadding = innerPadding,
         state = state,
-        onIntent = onIntent,
+        onIntent = viewModel::sendIntent,
     )
 }
 
@@ -83,36 +50,8 @@ private fun HomeScreen(
             Text(text = intro.debugTestMessage)
         }
 
-        Text(text = "${state.counter}", fontSize = 48.sp)
-
-        Row(
-            modifier = Modifier.padding(top = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Button(onClick = { onIntent(HomeUiIntent.Decrement) }) {
-                Text("-")
-            }
-            Button(onClick = { onIntent(HomeUiIntent.Increment) }) {
-                Text("+")
-            }
-        }
-
         Button(
             modifier = Modifier.padding(top = 16.dp),
-            onClick = { onIntent(HomeUiIntent.ShowToast) },
-        ) {
-            Text("Toast")
-        }
-
-        Button(
-            modifier = Modifier.padding(top = 8.dp),
-            onClick = { onIntent(HomeUiIntent.NavigateToFeature1) },
-        ) {
-            Text("Feature 1으로 이동")
-        }
-
-        Button(
-            modifier = Modifier.padding(top = 8.dp),
             onClick = { onIntent(HomeUiIntent.NavigateToCollection) },
         ) {
             Text("수집 데이터 확인")
