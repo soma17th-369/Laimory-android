@@ -6,7 +6,6 @@ import com.soma369.laimory.core.ui.base.UiState
 
 @Immutable
 data class HomeUiState(
-    val counter: Int = 0,
     val isLoading: Boolean = false,
     val introInfo: IntroInfo? = null,
 ) : UiState
