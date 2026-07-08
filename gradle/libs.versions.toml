@@ -20,6 +20,8 @@ room = "2.6.1"
 coroutines = "1.8.1"
 coil = "2.7.0"
 healthConnect = "1.1.0"
+# 21.4.0 은 Kotlin 2.3 메타데이터라 우리 2.1.0 컴파일러가 못 읽음 — 21.3.0 이 2.1 호환 상한.
+playServicesLocation = "21.3.0"
 exifinterface = "1.3.7"
 datastore = "1.1.1"
 serializationJson = "1.6.3"
@@ -49,6 +51,7 @@ navigation3-ui = { group = "androidx.navigation3", name = "navigation3-ui", vers
 compose-lifecycle = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "composeLifecycle" }
 lifecycle-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodel" }
 lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycleViewmodel" }
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 
 # Hilt
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }

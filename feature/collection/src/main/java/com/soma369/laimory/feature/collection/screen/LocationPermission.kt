@@ -3,30 +3,51 @@ package com.soma369.laimory.feature.collection.screen
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 
 /**
- * 위치 수집 권한(ACCESS_FINE/COARSE_LOCATION) 판정.
+ * 위치 수집 권한 판정.
  *
- * Phase 1 은 foreground 수집이라 background 권한은 요청하지 않는다. 권한 UX 의 최종 형태는 범위 밖이며,
- * 여기서는 추적 시작을 위한 최소 판정만 한다.
+ * Phase 2 는 `location` 타입 Foreground Service 로 백그라운드에서도 수집한다. Android 14+ 에서는 FGS 시작 시점에
+ * 위치가 "eligible" 해야 하므로(while-in-use 만으로는 거부됨) **`ACCESS_BACKGROUND_LOCATION`("항상 허용")이 필요**하다.
+ * 그래서 켤 때 전경 위치(FINE/COARSE)+알림(Android 13+ `POST_NOTIFICATIONS`)을 먼저 받고, 그다음 백그라운드 위치를
+ * 단계적으로 요청한다(둘은 한 번에 요청할 수 없다).
  */
 internal object LocationPermission {
-    /** 런타임 요청에 넘길 권한 목록. */
+    /** 1단계 요청 목록(전경 위치 + Android 13+ 알림). 백그라운드 위치는 별도 단계로 요청한다. */
     fun required(): Array<String> =
-        arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-        )
+        buildList {
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            // 이동수단 인식(Q+). 거부돼도 수집은 진행되며 속도 추론으로 폴백한다.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }.toTypedArray()
 
-    /** 현재 위치 수집이 가능한 권한 상태인지(정밀 또는 대략 하나라도 허용). */
+    /** 2단계 요청 권한(백그라운드 위치, "항상 허용"). */
+    fun background(): String = Manifest.permission.ACCESS_BACKGROUND_LOCATION
+
+    /** 1단계(전경) 권한 중 하나라도 미허용이면 true — 위치가 이미 허용돼도 알림·활동 권한을 놓치지 않게 한다. */
+    fun needsForegroundRequest(context: Context): Boolean = required().any { !context.isGranted(it) }
+
+    /** 전경 위치 수집 가능 여부(정밀 또는 대략 하나라도 허용). */
     fun canCollect(context: Context): Boolean =
         context.isGranted(Manifest.permission.ACCESS_FINE_LOCATION) ||
             context.isGranted(Manifest.permission.ACCESS_COARSE_LOCATION)
 
-    /** 요청 결과 맵에서 수집 가능 여부를 판정한다. */
+    /** 요청 결과 맵에서 전경 위치 수집 가능 여부를 판정한다. */
     fun canCollect(grantResult: Map<String, Boolean>): Boolean =
         grantResult[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grantResult[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+    /** 백그라운드 위치 허용 여부(Q 미만은 전경 권한으로 커버되므로 항상 true). */
+    fun hasBackground(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            context.isGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
 
     private fun Context.isGranted(permission: String): Boolean = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 }

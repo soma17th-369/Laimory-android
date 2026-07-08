@@ -1,27 +1,37 @@
 package com.soma369.laimory.core.collection.location
 
+import android.content.Context
+import android.content.Intent
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 /**
- * 추적 토글을 [LocationTrackingManager] 의 세션 상태에 위임한다.
+ * 위치 추적 토글을 영속([LocationTrackingPreferences])하고, 수집 FGS([LocationCollectionService])를 구동한다.
  *
- * Phase 1 은 foreground 한정이라 토글을 영속 저장하지 않는다 — 콜드 스타트마다 off 로 시작한다(재실행 시
- * 자동 재개하면 추적이 실제로는 죽어있는데 토글만 켜진 것처럼 보이는 불일치가 생기므로). 백그라운드 지속·부팅
- * 복원은 Phase 2 몫이다.
+ * Phase 2 는 백그라운드 지속을 위해 실제 수집을 Foreground Service 에 위임한다(라이브 상태는
+ * [LocationTrackingState] 공유). 토글 의도는 영속되어 부팅([LocationBootReceiver])·프로세스 재시작에도 복원된다.
  */
 internal class LocationTrackingRepositoryImpl
     @Inject
     constructor(
-        private val manager: LocationTrackingManager,
+        @ApplicationContext private val context: Context,
+        private val preferences: LocationTrackingPreferences,
+        private val trackingState: LocationTrackingState,
     ) : LocationTrackingRepository {
-        override fun observeEnabled(): Flow<Boolean> = manager.isTracking
+        override fun observeEnabled(): Flow<Boolean> = preferences.observeEnabled()
 
-        override fun observeStatus(): Flow<LocationTrackingStatus?> = manager.status
+        override fun observeStatus(): Flow<LocationTrackingStatus?> = trackingState.status
 
         override suspend fun setEnabled(enabled: Boolean) {
-            if (enabled) manager.start() else manager.stop()
+            preferences.setEnabled(enabled)
+            val intent = Intent(context, LocationCollectionService::class.java)
+            if (enabled) {
+                context.startForegroundService(intent)
+            } else {
+                context.stopService(intent)
+            }
         }
     }
