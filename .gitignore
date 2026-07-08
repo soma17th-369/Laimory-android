@@ -31,5 +31,8 @@ render.experimental.xml
 # Google Services (e.g. APIs or Firebase)
 google-services.json
 
+# Drive 테스트 내보내기 자격증명 (임시 테스트 전용, 커밋 금지)
+drive_oauth.json
+
 # Android Profiling
 *.hprof
