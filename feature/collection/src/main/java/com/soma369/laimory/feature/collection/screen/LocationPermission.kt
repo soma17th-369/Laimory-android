@@ -22,6 +22,10 @@ internal object LocationPermission {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 add(Manifest.permission.POST_NOTIFICATIONS)
             }
+            // 이동수단 인식(Q+). 거부돼도 수집은 진행되며 속도 추론으로 폴백한다.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
         }.toTypedArray()
 
     /** 2단계 요청 권한(백그라운드 위치, "항상 허용"). */
