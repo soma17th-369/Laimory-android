@@ -47,6 +47,8 @@ dependencies {
 
     implementation(libs.lifecycle.process)
 
+    implementation(libs.play.services.location)
+
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
 }

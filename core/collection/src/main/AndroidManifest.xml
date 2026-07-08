@@ -32,6 +32,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- FGS 상시 알림 표시(Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 이동수단 인식(Activity Recognition). 정식 transport 판정용(없으면 속도 추론 fallback). -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- 패키지 visibility(Android 11+). Health Connect 앱 + 알림 필터 앱 선택용 런처 앱 목록. -->
     <queries>
@@ -69,6 +71,11 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Activity Recognition 전이 결과 수신(우리 PendingIntent 로만 트리거되므로 exported=false). -->
+        <receiver
+            android:name="com.soma369.laimory.core.collection.location.ActivityTransitionReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

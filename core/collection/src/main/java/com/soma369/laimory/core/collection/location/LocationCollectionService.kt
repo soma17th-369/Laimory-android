@@ -16,6 +16,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
+import com.google.android.gms.location.ActivityRecognition
+import com.google.android.gms.location.ActivityTransition
+import com.google.android.gms.location.ActivityTransitionRequest
+import com.google.android.gms.location.DetectedActivity
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
@@ -49,6 +53,8 @@ internal class LocationCollectionService : Service() {
     @Inject lateinit var trackingState: LocationTrackingState
 
     @Inject lateinit var preferences: LocationTrackingPreferences
+
+    @Inject lateinit var transportHolder: DetectedTransportHolder
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val locationManager by lazy { getSystemService(LocationManager::class.java) }
@@ -118,6 +124,8 @@ internal class LocationCollectionService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) LocationManager.FUSED_PROVIDER else LocationManager.GPS_PROVIDER
         runCatching {
             manager.requestLocationUpdates(provider, MIN_TIME_MS, MIN_DISTANCE_M, listener, Looper.getMainLooper())
+        }.onSuccess {
+            registerActivityUpdates()
         }.onFailure { e ->
             // 권한 미허용은 SecurityException — 의도를 off 로 내려 토글과 일치시키고 종료.
             Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e.message}")
@@ -129,10 +137,42 @@ internal class LocationCollectionService : Service() {
     private fun stopSampling() {
         val active = segmenter ?: return
         locationManager?.removeUpdates(listener)
+        unregisterActivityUpdates()
         segmenter = null
         trackingState.update(null)
         val remaining = active.flush()
         if (remaining.isNotEmpty()) saveEvents(remaining)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun registerActivityUpdates() {
+        val transitions =
+            TRANSPORT_ACTIVITIES.map { activity ->
+                ActivityTransition.Builder()
+                    .setActivityType(activity)
+                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                    .build()
+            }
+        runCatching {
+            ActivityRecognition.getClient(this)
+                .requestActivityTransitionUpdates(ActivityTransitionRequest(transitions), activityPendingIntent())
+        }.onFailure { e ->
+            // ACTIVITY_RECOGNITION 미허용 등 — AR 없이 속도 추론으로 폴백.
+            Logger.w(LogDomain.COLLECTION, "이동수단 인식 등록 실패: ${e.message}")
+        }
+    }
+
+    private fun unregisterActivityUpdates() {
+        runCatching {
+            ActivityRecognition.getClient(this).removeActivityTransitionUpdates(activityPendingIntent())
+        }
+        transportHolder.reset()
+    }
+
+    private fun activityPendingIntent(): PendingIntent {
+        val intent = Intent(this, ActivityTransitionReceiver::class.java)
+        // AR 결과 주입을 위해 MUTABLE 필요.
+        return PendingIntent.getBroadcast(this, 2, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
     }
 
     /** 토글 의도를 off 로 내리고 서비스를 종료한다(알림 "중지"·샘플링 실패 공통 경로). */
@@ -186,7 +226,8 @@ internal class LocationCollectionService : Service() {
                             start = GeoPoint(startLatitude, startLongitude),
                             end = GeoPoint(endLatitude, endLongitude),
                             distanceMeters = distanceMeters,
-                            transports = transport,
+                            // AR 감지값 우선, 없으면(UNKNOWN) 세그먼터의 속도 추론으로 폴백.
+                            transports = transportHolder.current().takeIf { it != MovementPayload.Transport.UNKNOWN } ?: transport,
                         ),
                     sourceName = SourceName.LOCATION_PROVIDER,
                     sourceKey = "MOVEMENT:$startMillis",
@@ -241,5 +282,15 @@ internal class LocationCollectionService : Service() {
 
         // 0 = 이동 여부와 무관하게 주기적으로 위치를 받는다(정지 중 샘플이 끊기지 않도록).
         private const val MIN_DISTANCE_M = 0f
+
+        // AR 전이를 구독할 활동(ENTER). STILL 은 정지 → transport UNKNOWN 리셋(속도 폴백 유도).
+        private val TRANSPORT_ACTIVITIES =
+            listOf(
+                DetectedActivity.IN_VEHICLE,
+                DetectedActivity.ON_BICYCLE,
+                DetectedActivity.WALKING,
+                DetectedActivity.RUNNING,
+                DetectedActivity.STILL,
+            )
     }
 }
