@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.BuildConfig
+import com.soma369.laimory.core.data.network.ApiPrefix
 import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
@@ -53,7 +54,7 @@ object NetworkModule {
         json: Json,
     ): Retrofit =
         Retrofit.Builder()
-            .baseUrl(BuildConfig.BASE_URL)
+            .baseUrl(ApiPrefix.publicBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION))
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()

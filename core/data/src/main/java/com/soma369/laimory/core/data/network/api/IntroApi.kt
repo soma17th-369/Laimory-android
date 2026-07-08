@@ -6,6 +6,6 @@ import retrofit2.Response
 import retrofit2.http.GET
 
 interface IntroApi {
-    @GET("v1/intro")
+    @GET("intro")
     suspend fun getIntroInfo(): Response<ApiResponse<IntroResponse>>
 }
