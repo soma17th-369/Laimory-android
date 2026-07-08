@@ -16,16 +16,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -73,6 +78,8 @@ private fun LocationCollectionContent(
     val snackbarHostState = LocalSnackbarHostState.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // 일괄 삭제 확인 다이얼로그 — LOCATION/MOVEMENT 는 재생성이 어려워 확인 후에만 삭제한다.
+    var showClearConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         snackbarFlow.collect { message -> snackbarHostState.showSnackbar(message) }
@@ -179,9 +186,28 @@ private fun LocationCollectionContent(
                 text = "스테이징 위치 (${state.stagedItems.size}건)",
                 style = MaterialTheme.typography.titleMedium,
             )
-            OutlinedButton(onClick = { onIntent(LocationUiIntent.ClearStaged) }, enabled = state.stagedItems.isNotEmpty()) {
+            OutlinedButton(onClick = { showClearConfirm = true }, enabled = state.stagedItems.isNotEmpty()) {
                 Text("일괄 삭제")
             }
+        }
+
+        if (showClearConfirm) {
+            AlertDialog(
+                onDismissRequest = { showClearConfirm = false },
+                title = { Text("수집된 위치 데이터를 모두 삭제할까요?") },
+                text = { Text("체류와 이동 데이터는 다시 만들기 어려울 수 있습니다.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showClearConfirm = false
+                            onIntent(LocationUiIntent.ClearStaged)
+                        },
+                    ) { Text("삭제") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearConfirm = false }) { Text("취소") }
+                },
+            )
         }
 
         if (state.stagedItems.isEmpty()) {

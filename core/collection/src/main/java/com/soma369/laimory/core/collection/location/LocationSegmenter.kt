@@ -183,9 +183,13 @@ internal class LocationSegmenter(
     )
 
     companion object {
-        const val DEFAULT_DWELL_RADIUS_METERS = 80.0
+        /**
+         * 운영 기본 체류 반경(100m). GPS 오차와 도심 흔들림을 흡수하되, 장소 단위 체류를 권역 단위로
+         * 너무 넓게 합치지 않기 위한 MVP 기준.
+         */
+        const val DEFAULT_DWELL_RADIUS_METERS = 100.0
 
-        /** 체류로 인정하는 최소 머문 시간(5분). 교통 정차 등 짧은 멈춤은 걸러 의미있는 방문만 남긴다. */
+        /** 운영 기본 체류 인정 시간(5분). 교통 정차 등 짧은 멈춤은 걸러 의미있는 방문만 남긴다. */
         const val DEFAULT_STAY_MILLIS = 5 * 60_000L
 
         /** 도보 상한 ~8km/h, 자전거 상한 ~25km/h. 그 이상은 차량. */
