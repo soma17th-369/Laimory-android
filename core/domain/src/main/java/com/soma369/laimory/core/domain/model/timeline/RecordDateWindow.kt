@@ -20,15 +20,21 @@ data class RecordDateWindow(
     val end: Instant,
 ) {
     /**
-     * [item] 의 시간 구간이 이 창 [start, end) 와 겹치면 true.
+     * [item] 의 시간이 이 창 [start, end) 와 겹치면 true.
      *
-     * - 단일 시점 이벤트(사진·알림 등 `endAt == null`)는 startAt 이 창 안이면 포함.
-     * - 자정을 걸친 수면·일정은 한쪽만 창에 들어와도 포함된다(경계 아이템 딸려오기).
+     * - 단일 시점 이벤트(사진·알림 등 `endAt == null`): 시점이 창 안(`start <= t < end`)이면 포함.
+     * - 구간 이벤트(수면·일정·걸음수 day-bucket 등): 두 반열린 구간이 실제로 겹치면
+     *   (`startAt < end && endAt > start`) 포함한다. 자정을 걸친 수면·일정은 겹치므로 그날로 딸려오고,
+     *   창 경계에 맞닿기만 한 구간(예: 어제 걸음수 bucket 이 오늘 00:00 에 끝남)은 제외돼
+     *   인접한 두 날에 이중 계수되지 않는다.
      */
     fun contains(item: SourceItem): Boolean {
-        val itemStart = item.startAt
-        val itemEnd = item.endAt ?: item.startAt
-        return itemStart < end && itemEnd >= start
+        val itemEnd = item.endAt
+        return if (itemEnd == null) {
+            item.startAt >= start && item.startAt < end
+        } else {
+            item.startAt < end && itemEnd > start
+        }
     }
 
     companion object {

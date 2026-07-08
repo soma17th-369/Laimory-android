@@ -108,4 +108,21 @@ class RecordDateWindowTest {
         assertTrue(Duration.between(allDay.startAt, allDay.endAt).toHours() > 24)
         assertTrue(window.contains(allDay))
     }
+
+    @Test
+    fun `창 시작에 맞닿아 끝나는 구간은 그날 창에서 제외`() {
+        // 어제 걸음수 day-bucket `[어제 00:00, 오늘 00:00)` 은 어제 것 — 오늘 창에 이중 계수되면 안 된다.
+        val yesterdayBucket = ranged(start = at(0, 0, date.minusDays(1)), end = at(0, 0))
+        assertFalse(window.contains(yesterdayBucket))
+
+        // 전날 23:00~오늘 00:00 구간도 끝이 창 시작에 맞닿을 뿐이라 제외.
+        val endsAtStart = ranged(start = at(23, 0, date.minusDays(1)), end = at(0, 0))
+        assertFalse(window.contains(endsAtStart))
+    }
+
+    @Test
+    fun `오늘 day-bucket 구간은 오늘 창에 포함`() {
+        val todayBucket = ranged(start = at(0, 0), end = at(0, 0, date.plusDays(1)))
+        assertTrue(window.contains(todayBucket))
+    }
 }
