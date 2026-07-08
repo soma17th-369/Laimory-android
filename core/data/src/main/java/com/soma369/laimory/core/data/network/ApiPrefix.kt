@@ -1,7 +1,7 @@
 package com.soma369.laimory.core.data.network
 
 /**
- * 서버 API prefix 정책. 앱은 Public 범위만 사용한다.
+ * 서버 API prefix 정책. 앱은 Public/Auth 범위만 사용한다.
  *
  * - Public `/api/{applicationVersion}` — 인증 불필요
  * - Auth `/a/api/{applicationVersion}` — 사용자 인증 필요. 토큰 발급/부착(인터셉터)은 인증 도입 시 다룬다.
