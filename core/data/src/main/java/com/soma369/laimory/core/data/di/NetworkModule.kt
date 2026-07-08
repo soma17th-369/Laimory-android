@@ -49,21 +49,41 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(
+    @PublicRetrofit
+    fun providePublicRetrofit(
+        okHttpClient: OkHttpClient,
+        json: Json,
+    ): Retrofit = buildRetrofit(ApiPrefix.publicBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+
+    /** 인증 필요 API 용. 토큰 발급/부착(인터셉터)은 인증 도입 시 추가한다. */
+    @Provides
+    @Singleton
+    @AuthRetrofit
+    fun provideAuthRetrofit(
+        okHttpClient: OkHttpClient,
+        json: Json,
+    ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+
+    private fun buildRetrofit(
+        baseUrl: String,
         okHttpClient: OkHttpClient,
         json: Json,
     ): Retrofit =
         Retrofit.Builder()
-            .baseUrl(ApiPrefix.publicBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION))
+            .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
 
     @Provides
     @Singleton
-    fun provideFeature1Api(retrofit: Retrofit): Feature1Api = retrofit.create(Feature1Api::class.java)
+    fun provideFeature1Api(
+        @PublicRetrofit retrofit: Retrofit,
+    ): Feature1Api = retrofit.create(Feature1Api::class.java)
 
     @Provides
     @Singleton
-    fun provideIntroApi(retrofit: Retrofit): IntroApi = retrofit.create(IntroApi::class.java)
+    fun provideIntroApi(
+        @PublicRetrofit retrofit: Retrofit,
+    ): IntroApi = retrofit.create(IntroApi::class.java)
 }
