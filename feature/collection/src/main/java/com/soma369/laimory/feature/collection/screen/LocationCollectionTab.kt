@@ -1,6 +1,9 @@
 package com.soma369.laimory.feature.collection.screen
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -83,22 +86,38 @@ private fun LocationCollectionContent(
     }
 
     // location FGS 시작에는 "항상 허용"(백그라운드 위치)이 필요하다. 전경 위치 이후 별도 단계로 요청한다.
-    val backgroundLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+    // Android 11+ 는 다이얼로그로 "항상 허용"을 못 받으므로 앱 설정으로 유도하고, 복귀 시 다시 확인해 시작한다.
+    val settingsLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (LocationPermission.hasBackground(context)) {
                 onIntent(LocationUiIntent.SetTracking(true))
             } else {
-                scope.launch { snackbarHostState.showSnackbar("백그라운드 수집은 '항상 허용'이 필요합니다. 설정에서 허용해 주세요.") }
+                scope.launch { snackbarHostState.showSnackbar("'항상 허용'이 설정되지 않아 켜지 못했습니다.") }
+            }
+        }
+    val backgroundLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                onIntent(LocationUiIntent.SetTracking(true))
+            } else {
+                scope.launch { snackbarHostState.showSnackbar("백그라운드 수집은 '항상 허용'이 필요합니다.") }
             }
         }
     val requestBackgroundOrStart: () -> Unit = {
-        if (LocationPermission.hasBackground(context)) {
-            onIntent(LocationUiIntent.SetTracking(true))
-        } else {
-            backgroundLauncher.launch(LocationPermission.background())
+        when {
+            LocationPermission.hasBackground(context) -> onIntent(LocationUiIntent.SetTracking(true))
+            // Android 11+: 인라인 요청 불가 → 앱 설정으로 유도(복귀 시 settingsLauncher 콜백에서 재확인).
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                scope.launch { snackbarHostState.showSnackbar("위치 권한을 '항상 허용'으로 바꿔 주세요.") }
+                settingsLauncher.launch(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                )
+            }
+            // Android 10: 다이얼로그로 백그라운드 위치 인라인 요청 가능.
+            else -> backgroundLauncher.launch(LocationPermission.background())
         }
     }
-    // 추적은 위치 권한이 필요하다. 켤 때 전경 위치(+알림)를 먼저 받고 이어서 백그라운드 위치를 요청한다.
+    // 추적은 위치 권한이 필요하다. 켤 때 전경 권한(위치+알림+활동)을 먼저 받고 이어서 백그라운드 위치를 요청한다.
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             if (LocationPermission.canCollect(result)) {
@@ -110,7 +129,7 @@ private fun LocationCollectionContent(
     val onToggle: (Boolean) -> Unit = { enabled ->
         when {
             !enabled -> onIntent(LocationUiIntent.SetTracking(false))
-            !LocationPermission.canCollect(context) -> permissionLauncher.launch(LocationPermission.required())
+            LocationPermission.needsForegroundRequest(context) -> permissionLauncher.launch(LocationPermission.required())
             else -> requestBackgroundOrStart()
         }
     }

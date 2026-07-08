@@ -31,6 +31,9 @@ internal object LocationPermission {
     /** 2단계 요청 권한(백그라운드 위치, "항상 허용"). */
     fun background(): String = Manifest.permission.ACCESS_BACKGROUND_LOCATION
 
+    /** 1단계(전경) 권한 중 하나라도 미허용이면 true — 위치가 이미 허용돼도 알림·활동 권한을 놓치지 않게 한다. */
+    fun needsForegroundRequest(context: Context): Boolean = required().any { !context.isGranted(it) }
+
     /** 전경 위치 수집 가능 여부(정밀 또는 대략 하나라도 허용). */
     fun canCollect(context: Context): Boolean =
         context.isGranted(Manifest.permission.ACCESS_FINE_LOCATION) ||
