@@ -20,9 +20,18 @@
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
 
-    <!-- 위치 수집(LocationManager). Phase 1 은 foreground 자동 추적만(백그라운드는 후속). -->
+    <!-- 위치 수집(LocationManager). Phase 2 는 Foreground Service 로 백그라운드에서도 지속한다. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- 백그라운드 위치(Android 10+). 부팅/프로세스 재시작 등 앱 미가시 컨텍스트의 수집에 필요. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- Foreground Service(위치). Android 14+는 세분화 타입 권한이 별도. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- 재부팅 후 수집 복원. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- FGS 상시 알림 표시(Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- 패키지 visibility(Android 11+). Health Connect 앱 + 알림 필터 앱 선택용 런처 앱 목록. -->
     <queries>
@@ -33,8 +42,8 @@
         </intent>
     </queries>
 
-    <!-- 알림 실시간 수집 리스너. 시스템이 BIND 권한으로 바인딩한다(사용자가 '알림 접근'을 켠 동안). -->
     <application>
+        <!-- 알림 실시간 수집 리스너. 시스템이 BIND 권한으로 바인딩한다(사용자가 '알림 접근'을 켠 동안). -->
         <service
             android:name="com.soma369.laimory.core.collection.notification.LaimoryNotificationListenerService"
             android:exported="false"
@@ -44,6 +53,22 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- 위치 수집 Foreground Service(백그라운드 지속). 상시 알림으로 수집 상태를 알린다. -->
+        <service
+            android:name="com.soma369.laimory.core.collection.location.LocationCollectionService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- 재부팅 후 수집 복원(추적 원함 상태였으면 FGS 재시작). -->
+        <receiver
+            android:name="com.soma369.laimory.core.collection.location.LocationBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

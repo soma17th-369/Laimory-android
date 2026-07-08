@@ -1,16 +1,34 @@
 package com.soma369.laimory.core.collection.di
 
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStoreFile
+import com.soma369.laimory.core.collection.location.LocationTrackingDataStore
 import com.soma369.laimory.core.collection.location.LocationTrackingRepositoryImpl
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import dagger.Binds
 import dagger.Module
+import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
 
-/** 위치 추적 배선. 토글은 세션 한정이라 매니저 상태에 위임하며 영속 저장하지 않는다(Phase 1). */
+/** 위치 추적 배선. 토글 의도 영속 DataStore + 리포지토리 바인딩(Phase 2: FGS 백그라운드 지속). */
 @Module
 @InstallIn(SingletonComponent::class)
 internal abstract class LocationModule {
     @Binds
     abstract fun bindLocationTrackingRepository(impl: LocationTrackingRepositoryImpl): LocationTrackingRepository
+
+    companion object {
+        @Provides
+        @Singleton
+        @LocationTrackingDataStore
+        fun provideLocationTrackingDataStore(
+            @ApplicationContext context: Context,
+        ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("location_tracking") }
+    }
 }
