@@ -15,6 +15,7 @@ import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.HomeRoute
+import com.soma369.laimory.feature.timeline.screen.TimelineRoute
 import com.soma369.laimory.ui.PlaceholderScreen
 
 /** 바텀바 탭 메타데이터. 탭 루트인 [AppRoute]에만 부여한다. */
@@ -53,7 +54,7 @@ val appRoutes: List<AppRoute> =
         AppRoute(
             path = TimelinePage.PATH,
             tab = BottomTab(label = "타임라인", icon = Icons.Filled.DateRange),
-            render = { innerPadding, _ -> PlaceholderScreen(title = "타임라인", innerPadding = innerPadding) },
+            render = { innerPadding, _ -> TimelineRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = SettingsPage.PATH,

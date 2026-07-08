@@ -44,6 +44,7 @@ dependencies {
     implementation(project(":feature:home"))
     implementation(project(":feature:feature1"))
     implementation(project(":feature:collection"))
+    implementation(project(":feature:timeline"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(project(":core:collection"))
