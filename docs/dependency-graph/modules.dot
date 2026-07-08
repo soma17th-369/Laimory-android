@@ -12,6 +12,7 @@ node ["shape"="rectangle" "style"="filled"]
 "feature-collection" ["label"="feature:collection" "fillcolor"="#A9DFBF"]
 "feature-feature1" ["label"="feature:feature1" "fillcolor"="#A9DFBF"]
 "feature-home" ["label"="feature:home" "fillcolor"="#A9DFBF"]
+"feature-timeline" ["label"="feature:timeline" "fillcolor"="#A9DFBF"]
 
 // edges
 "app" -> "core-collection"
@@ -22,6 +23,7 @@ node ["shape"="rectangle" "style"="filled"]
 "app" -> "feature-collection"
 "app" -> "feature-feature1"
 "app" -> "feature-home"
+"app" -> "feature-timeline"
 "core-collection" -> "core-domain"
 "core-collection" -> "core-util"
 "core-data" -> "core-domain"
@@ -33,4 +35,6 @@ node ["shape"="rectangle" "style"="filled"]
 "feature-feature1" -> "core-ui"
 "feature-home" -> "core-domain"
 "feature-home" -> "core-ui"
+"feature-timeline" -> "core-domain"
+"feature-timeline" -> "core-ui"
 }
