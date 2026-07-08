@@ -17,6 +17,11 @@ android {
     kotlin {
         jvmToolchain(17)
     }
+
+    // 임시 테스트 전용(삭제 예정) — BuildConfig.DEBUG 로 Drive 테스트 버튼/호출을 debug 로만 제한.
+    buildFeatures {
+        buildConfig = true
+    }
 }
 
 dependencies {

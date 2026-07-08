@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.timeline.BuildConfig
 import com.soma369.laimory.feature.timeline.model.TimelineSourceCategory
 import com.soma369.laimory.feature.timeline.state.SourceSummaryRow
 import com.soma369.laimory.feature.timeline.state.TimelineUiIntent
@@ -82,7 +83,8 @@ class TimelineViewModel
                 // 서버 초안 생성은 #120 에서 실제 UseCase 호출로 교체한다.
                 UploadTarget.SERVER_DRAFT ->
                     sendEffect(TimelineUiSideEffect.ShowSnackbar("서버로 초안 생성은 아직 준비 중이에요."))
-                UploadTarget.DRIVE_TEST -> exportToDrive(date)
+                // 임시 테스트 전용(삭제 예정) — 버튼은 debug 로만 노출되지만, 호출부도 debug 로 가드한다.
+                UploadTarget.DRIVE_TEST -> if (BuildConfig.DEBUG) exportToDrive(date)
             }
         }
 
