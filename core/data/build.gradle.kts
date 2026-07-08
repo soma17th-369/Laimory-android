@@ -20,7 +20,7 @@ android {
     defaultConfig {
         minSdk = 28
 
-        buildConfigField("String", "BASE_URL", properties.getProperty("BASE_URL") ?: "\"http://localhost/\"")
+        buildConfigField("String", "BASE_URL", properties.getProperty("DEV_BASE_URL") ?: "\"https://localhost/\"")
     }
 
     buildFeatures {
