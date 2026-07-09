@@ -44,7 +44,12 @@ class DriveTestExporter
                 }
 
             val window = RecordDateWindow.ofDate(date, zone)
-            val items = observeSourceItemsUseCase().first().filter { window.contains(it) }
+            // 서버 초안과 동일하게 시간순(오래된→최신)으로 내보낸다 — 표시용 observeAll 은 최신순(DESC).
+            val items =
+                observeSourceItemsUseCase()
+                    .first()
+                    .filter { window.contains(it) }
+                    .sortedBy { it.startAt }
             if (items.isEmpty()) return "$date 창에 내보낼 수집 데이터가 없어요."
 
             // 사진 바이트를 먼저 확정한다. JSON 은 여기서 성공한 사진만 링크하므로
