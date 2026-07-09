@@ -1,7 +1,10 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
+import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.timeline.BuildConfig
@@ -15,6 +18,7 @@ import com.soma369.laimory.feature.timeline.testexport.DriveTestExporter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
@@ -24,6 +28,7 @@ class TimelineViewModel
     @Inject
     constructor(
         private val observeSourceItemsUseCase: ObserveSourceItemsUseCase,
+        private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val driveTestExporter: DriveTestExporter,
     ) : BaseMviViewModel<TimelineUiState, TimelineUiIntent, TimelineUiSideEffect>(
             TimelineUiState(selectedDate = LocalDate.now(ZoneId.systemDefault())),
@@ -80,12 +85,42 @@ class TimelineViewModel
             val date = state.value.selectedDate
             updateState { copy(pendingUpload = null) }
             when (target) {
-                // 서버 초안 생성은 #120 에서 실제 UseCase 호출로 교체한다.
-                UploadTarget.SERVER_DRAFT ->
-                    sendEffect(TimelineUiSideEffect.ShowSnackbar("서버로 초안 생성은 아직 준비 중이에요."))
+                UploadTarget.SERVER_DRAFT -> createServerDraft(date)
                 // 임시 테스트 전용(삭제 예정) — 버튼은 debug 로만 노출되지만, 호출부도 debug 로 가드한다.
                 UploadTarget.DRIVE_TEST -> if (BuildConfig.DEBUG) exportToDrive(date)
             }
+        }
+
+        /**
+         * 선택 날짜 창 안 아이템으로 서버 초안 생성을 요청한다.
+         *
+         * PHOTO 업로드 → 초안 생성(202)까지가 이 요청의 범위다. 생성된 타임라인 결과 조회/표시는
+         * 후속 작업이라, 여기서는 요청 접수까지만 사용자에게 알린다.
+         */
+        private fun createServerDraft(date: LocalDate) =
+            safeLaunch {
+                sendEffect(TimelineUiSideEffect.ShowSnackbar("서버로 초안 생성 중…"))
+                val window = RecordDateWindow.ofDate(date, zone)
+                val itemsInWindow = observeSourceItemsUseCase().first().filter { window.contains(it) }
+                createTimelineDraftUseCase(date, zone, itemsInWindow)
+                    .onSuccess { sendEffect(TimelineUiSideEffect.ShowSnackbar("초안 생성 요청을 보냈어요.")) }
+                    .onFailure { handleFailure(it) }
+            }
+
+        /**
+         * 이 화면은 base 의 snackbar 채널이 아니라 [sendEffect] 로 스낵바를 흘리므로, 공통 실패도
+         * [TimelineUiSideEffect.ShowSnackbar] 로 라우팅한다. [HandledException] 은 UseCase 공통 정책에서
+         * 이미 알렸으므로 무시한다(중복 방지).
+         */
+        override fun handleFailure(e: Throwable) {
+            if (e is HandledException) return
+            val message =
+                when (e) {
+                    is ApiException.NetworkException -> ApiException.NETWORK_ERROR
+                    is ApiException -> e.message
+                    else -> ApiException.UNKNOWN_ERROR
+                }
+            sendEffect(TimelineUiSideEffect.ShowSnackbar(message))
         }
 
         /**
