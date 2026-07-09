@@ -49,6 +49,7 @@ import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.source.InstalledApp
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.collection.state.NotificationUiIntent
 import com.soma369.laimory.feature.collection.state.NotificationUiSideEffect
 import com.soma369.laimory.feature.collection.state.NotificationUiState
@@ -337,12 +338,13 @@ private fun ReasonBadge(reason: NotificationPayload.CollectReason) {
     }
 }
 
+@Composable
 private fun NotificationPayload.CollectReason.color(): Color =
     when (this) {
-        NotificationPayload.CollectReason.KEYWORD -> Color(0xFF3B82F6)
-        NotificationPayload.CollectReason.APP -> Color(0xFF10B981)
-        NotificationPayload.CollectReason.CLICK -> Color(0xFFF59E0B)
-        NotificationPayload.CollectReason.ALL -> Color(0xFF9CA3AF)
+        NotificationPayload.CollectReason.KEYWORD -> MaterialTheme.laimoryColors.info
+        NotificationPayload.CollectReason.APP -> MaterialTheme.laimoryColors.success
+        NotificationPayload.CollectReason.CLICK -> MaterialTheme.laimoryColors.warning
+        NotificationPayload.CollectReason.ALL -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
 private fun NotificationPayload.CollectReason.label(): String =
