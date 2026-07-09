@@ -49,6 +49,7 @@ fun CollectionLabRoute(innerPadding: PaddingValues) {
                 CollectionLabTab.PHOTO -> PhotoCollectionTab()
                 CollectionLabTab.CALENDAR -> CalendarCollectionTab()
                 CollectionLabTab.HEALTH -> HealthCollectionTab()
+                CollectionLabTab.SLEEP -> SleepInputTab()
                 CollectionLabTab.LOCATION -> LocationCollectionTab()
                 CollectionLabTab.NOTIFICATION -> NotificationCollectionTab()
             }
@@ -67,6 +68,7 @@ enum class CollectionLabTab(val label: String) {
     PHOTO("사진"),
     CALENDAR("일정"),
     HEALTH("헬스"),
+    SLEEP("수면"),
     LOCATION("위치"),
     NOTIFICATION("알림"),
 }

@@ -41,6 +41,12 @@ internal class SleepHealthRecorder(
         end: Instant,
     ): Boolean = gateway.read(start, end).any { it.originPackageName != selfPackageName }
 
+    /** `[start, end)` 구간에 (우리·외부 무관) 수면 세션이 하나라도 있으면 true. 사용자 입력 유도 판단용. */
+    suspend fun hasAnySleep(
+        start: Instant,
+        end: Instant,
+    ): Boolean = gateway.read(start, end).isNotEmpty()
+
     private suspend fun upsert(
         night: LocalDate,
         start: Instant,

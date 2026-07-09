@@ -4,6 +4,8 @@ import android.content.Context
 import com.soma369.laimory.core.collection.health.HealthConnectSleepGateway
 import com.soma369.laimory.core.collection.health.SleepHealthGateway
 import com.soma369.laimory.core.collection.health.SleepHealthRecorder
+import com.soma369.laimory.core.collection.health.SleepRecordRepositoryImpl
+import com.soma369.laimory.core.domain.repository.SleepRecordRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -23,6 +25,9 @@ import javax.inject.Singleton
 internal abstract class SleepHealthModule {
     @Binds
     abstract fun bindSleepHealthGateway(impl: HealthConnectSleepGateway): SleepHealthGateway
+
+    @Binds
+    abstract fun bindSleepRecordRepository(impl: SleepRecordRepositoryImpl): SleepRecordRepository
 
     companion object {
         @Provides
