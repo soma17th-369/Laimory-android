@@ -24,7 +24,7 @@ internal class SleepSegmentProcessor(
         zone: ZoneId,
     ) {
         val confidences = classifyStore.confidencesInWindow(segment.startMillis, segment.endMillis)
-        if (!SleepConfidenceGate.shouldRecord(segment.isSuccessful, confidences)) return
+        if (!SleepConfidenceGate.shouldRecord(segment.status, confidences)) return
 
         val start = Instant.ofEpochMilli(segment.startMillis)
         val end = Instant.ofEpochMilli(segment.endMillis)

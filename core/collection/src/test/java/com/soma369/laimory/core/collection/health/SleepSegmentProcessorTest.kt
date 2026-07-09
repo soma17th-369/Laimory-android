@@ -15,7 +15,7 @@ class SleepSegmentProcessorTest {
     private val startMillis = ZonedDateTime.of(2026, 7, 9, 23, 0, 0, 0, zone).toInstant().toEpochMilli()
     private val endMillis = ZonedDateTime.of(2026, 7, 10, 7, 0, 0, 0, zone).toInstant().toEpochMilli()
 
-    private fun segment(isSuccessful: Boolean = true) = DetectedSleepSegment(startMillis, endMillis, isSuccessful)
+    private fun segment(status: SleepDetectionStatus = SleepDetectionStatus.DETECTED) = DetectedSleepSegment(startMillis, endMillis, status)
 
     private fun processor(
         gateway: CapturingSleepHealthGateway,
@@ -25,8 +25,9 @@ class SleepSegmentProcessorTest {
         FakeSleepClassifyStore(confidences),
     ) { zone }
 
+    // 잘 감지됨: DETECTED + 고신뢰 + 외부 없음 → HC 기록
     @Test
-    fun `성공·고신뢰도이고 외부 기록이 없으면 HC 에 기록한다`() =
+    fun `잘 감지되고 고신뢰도이고 외부 기록이 없으면 HC 에 기록한다`() =
         runTest {
             val gateway = CapturingSleepHealthGateway(selfPackage)
             processor(gateway, confidences = listOf(70, 80)).process(listOf(segment()))
@@ -37,8 +38,9 @@ class SleepSegmentProcessorTest {
             assertEquals(Instant.ofEpochMilli(endMillis), stored[0].end)
         }
 
+    // 잘 감지 안 됨(저신뢰): DETECTED 이지만 평균 신뢰도 미달 → 미기록
     @Test
-    fun `신뢰도가 낮으면 기록하지 않는다`() =
+    fun `잘 감지됐어도 신뢰도가 낮으면 기록하지 않는다`() =
         runTest {
             val gateway = CapturingSleepHealthGateway(selfPackage)
             processor(gateway, confidences = listOf(10, 20)).process(listOf(segment()))
@@ -46,11 +48,24 @@ class SleepSegmentProcessorTest {
             assertEquals(0, gateway.ownCount())
         }
 
+    // 잘 감지 안 됨(데이터 공백): MISSING_DATA → 신뢰도 높아도 미기록
     @Test
-    fun `status 가 성공이 아니면 기록하지 않는다`() =
+    fun `데이터 공백 구간이면 신뢰도가 높아도 기록하지 않는다`() =
         runTest {
             val gateway = CapturingSleepHealthGateway(selfPackage)
-            processor(gateway, confidences = listOf(90, 95)).process(listOf(segment(isSuccessful = false)))
+            processor(gateway, confidences = listOf(90, 95))
+                .process(listOf(segment(SleepDetectionStatus.MISSING_DATA)))
+
+            assertEquals(0, gateway.ownCount())
+        }
+
+    // 아예 감지 안 됨: NOT_DETECTED → 미기록
+    @Test
+    fun `아예 감지되지 않으면 기록하지 않는다`() =
+        runTest {
+            val gateway = CapturingSleepHealthGateway(selfPackage)
+            processor(gateway, confidences = listOf(90, 95))
+                .process(listOf(segment(SleepDetectionStatus.NOT_DETECTED)))
 
             assertEquals(0, gateway.ownCount())
         }

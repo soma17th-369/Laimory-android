@@ -46,7 +46,7 @@ internal class SleepReceiver : BroadcastReceiver() {
                     DetectedSleepSegment(
                         startMillis = it.startTimeMillis,
                         endMillis = it.endTimeMillis,
-                        isSuccessful = it.status == SleepSegmentEvent.STATUS_SUCCESSFUL,
+                        status = detectionStatusOf(it.status),
                     )
                 }
             } else {
@@ -64,4 +64,12 @@ internal class SleepReceiver : BroadcastReceiver() {
             pending.finish()
         }
     }
+
+    /** GMS `SleepSegmentEvent.status` 를 감지 품질 모델로 매핑한다. */
+    private fun detectionStatusOf(status: Int): SleepDetectionStatus =
+        when (status) {
+            SleepSegmentEvent.STATUS_SUCCESSFUL -> SleepDetectionStatus.DETECTED
+            SleepSegmentEvent.STATUS_MISSING_DATA -> SleepDetectionStatus.MISSING_DATA
+            else -> SleepDetectionStatus.NOT_DETECTED
+        }
 }
