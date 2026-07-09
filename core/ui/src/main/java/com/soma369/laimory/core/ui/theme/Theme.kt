@@ -9,7 +9,8 @@ import androidx.compose.runtime.CompositionLocalProvider
  * 앱 공통 테마.
  *
  * [darkTheme] 에 따라 M3 ColorScheme 과 [LaimoryColors] 확장색을 함께 교체한다 — 화면 코드는 모드를
- * 의식하지 않고 토큰만 쓰면 자동 대응된다. Typography/Shape 은 후속(#134 등)에서 채운다.
+ * 의식하지 않고 토큰만 쓰면 자동 대응된다. 기본 타이포는 Pretendard([LaimoryTypography]), 강조용
+ * 시그니처(고운 바탕)는 [MaterialTheme.laimorySignature] 로 명시 사용한다. Shape 은 후속에서 채운다.
  */
 @Composable
 fun LaimoryTheme(
@@ -21,6 +22,7 @@ fun LaimoryTheme(
     CompositionLocalProvider(LocalLaimoryColors provides extendedColors) {
         MaterialTheme(
             colorScheme = colorScheme,
+            typography = LaimoryTypography,
             content = content,
         )
     }
