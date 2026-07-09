@@ -1,7 +1,9 @@
 package com.soma369.laimory.feature.timeline.testexport
 
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
+import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
+import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
@@ -50,10 +52,25 @@ internal object DayBundleJson {
     ): JSONObject =
         JSONObject().apply {
             put("rawId", item.rawId)
-            put("itemType", item.itemType.name)
+            put("itemType", jsonItemType(item.itemType))
             put("startAt", localDateTime(item.startAt, item.timeZoneId))
             put("endAt", item.endAt?.let { localDateTime(it, item.timeZoneId) } ?: JSONObject.NULL)
             put("payload", payloadJson(item.payload, photoFile))
+        }
+
+    /**
+     * Drive JSON 절단면 itemType.
+     *
+     * 체류는 로컬 도메인에서 [ItemType.LOCATION] 이지만 서버 `sourceItems` 계약과 맞추려고
+     * `STAY` 로 내보낸다. 나머지 타입은 도메인 이름을 그대로 유지한다.
+     */
+    private fun jsonItemType(itemType: ItemType): String = if (itemType == ItemType.LOCATION) "STAY" else itemType.name
+
+    /** 좌표를 `{ latitude, longitude }` 객체로 렌더한다. */
+    private fun geoPointJson(point: GeoPoint): JSONObject =
+        JSONObject().apply {
+            put("latitude", point.latitude)
+            put("longitude", point.longitude)
         }
 
     /** [instant] 를 [zone] 기준 로컬 datetime 문자열(오프셋 없음)로 렌더한다. */
@@ -90,6 +107,8 @@ internal object DayBundleJson {
                     put("longitude", payload.longitude)
                 }
                 is MovementPayload -> {
+                    put("start", geoPointJson(payload.start))
+                    put("end", geoPointJson(payload.end))
                     put("distanceMeters", payload.distanceMeters)
                     put("transports", payload.transports.name)
                 }
