@@ -497,14 +497,17 @@ private fun polar(
     return Offset(center.x + radius * cos(radians).toFloat(), center.y + radius * sin(radians).toFloat())
 }
 
-/** 터치 위치 → 24시간 다이얼 시각(5분 반올림). */
+/** 드래그 스냅 단위(분). 타임피커 정밀 입력(1분)과 달리 다이얼은 이 단위로 반올림한다. */
+private const val DRAG_SNAP_MINUTES = 10
+
+/** 터치 위치 → 24시간 다이얼 시각([DRAG_SNAP_MINUTES] 반올림). */
 private fun timeAtOffset(
     position: Offset,
     center: Offset,
 ): LocalTime {
     val angleDeg = Math.toDegrees(atan2((position.y - center.y).toDouble(), (position.x - center.x).toDouble()))
     val hours = (((angleDeg + 90.0) / 360.0 * 24.0) % 24.0 + 24.0) % 24.0
-    val totalMinutes = ((hours * 60.0 / 5.0).roundToInt() * 5) % (24 * 60)
+    val totalMinutes = ((hours * 60.0 / DRAG_SNAP_MINUTES).roundToInt() * DRAG_SNAP_MINUTES) % (24 * 60)
     return LocalTime.of(totalMinutes / 60, totalMinutes % 60)
 }
 
