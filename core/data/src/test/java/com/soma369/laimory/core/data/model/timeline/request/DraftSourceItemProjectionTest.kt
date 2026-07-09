@@ -1,7 +1,9 @@
 package com.soma369.laimory.core.data.model.timeline.request
 
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
+import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
@@ -11,6 +13,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -98,6 +101,30 @@ class DraftSourceItemProjectionTest {
                 .toSourceItemDto(json, null)
         assertEquals("STEPS", dto.payload.str("metric"))
         assertEquals("8421보", dto.payload.str("value"))
+    }
+
+    @Test
+    fun `MOVEMENT 은 start·end 좌표와 distanceMeters 를 유지한다`() {
+        val dto =
+            item(
+                MovementPayload(
+                    start = GeoPoint(37.1538856, 127.0781832),
+                    end = GeoPoint(37.532292, 126.9625982),
+                    distanceMeters = 58137.2,
+                    transports = MovementPayload.Transport.IN_VEHICLE,
+                ),
+            ).toSourceItemDto(json, null)
+
+        assertEquals("MOVEMENT", dto.itemType)
+        val p = dto.payload
+        val startPoint = p["start"]!!.jsonObject
+        assertEquals("37.1538856", startPoint.str("latitude"))
+        assertEquals("127.0781832", startPoint.str("longitude"))
+        val endPoint = p["end"]!!.jsonObject
+        assertEquals("37.532292", endPoint.str("latitude"))
+        assertEquals("126.9625982", endPoint.str("longitude"))
+        assertEquals("58137.2", p.str("distanceMeters"))
+        assertEquals("IN_VEHICLE", p.str("transports"))
     }
 
     @Test

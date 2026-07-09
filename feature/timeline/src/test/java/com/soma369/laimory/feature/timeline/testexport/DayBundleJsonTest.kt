@@ -1,6 +1,9 @@
 package com.soma369.laimory.feature.timeline.testexport
 
+import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
+import com.soma369.laimory.core.domain.model.collection.LocationPayload
+import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
@@ -81,6 +84,50 @@ class DayBundleJsonTest {
 
         assertEquals("8421보", arr.getJSONObject(0).getJSONObject("payload").getString("value"))
         assertEquals("480분", arr.getJSONObject(1).getJSONObject("payload").getString("value"))
+    }
+
+    @Test
+    fun `체류(LOCATION)는 itemType 을 STAY 로 내보낸다`() {
+        val stay = item(LocationPayload(latitude = 37.5, longitude = 127.0), "r1")
+
+        val item0 =
+            JSONObject(DayBundleJson.build(date, zone, listOf(stay)) { null })
+                .getJSONArray("sourceItems")
+                .getJSONObject(0)
+
+        assertEquals("STAY", item0.getString("itemType"))
+        val payload = item0.getJSONObject("payload")
+        assertEquals(37.5, payload.getDouble("latitude"), 0.0)
+        assertEquals(127.0, payload.getDouble("longitude"), 0.0)
+    }
+
+    @Test
+    fun `MOVEMENT payload 는 start·end 좌표와 distanceMeters 를 담는다`() {
+        val movement =
+            item(
+                MovementPayload(
+                    start = GeoPoint(37.1538856, 127.0781832),
+                    end = GeoPoint(37.532292, 126.9625982),
+                    distanceMeters = 58137.2,
+                    transports = MovementPayload.Transport.IN_VEHICLE,
+                ),
+                "r1",
+            )
+
+        val payload =
+            JSONObject(DayBundleJson.build(date, zone, listOf(movement)) { null })
+                .getJSONArray("sourceItems")
+                .getJSONObject(0)
+                .getJSONObject("payload")
+
+        val startPoint = payload.getJSONObject("start")
+        assertEquals(37.1538856, startPoint.getDouble("latitude"), 0.0)
+        assertEquals(127.0781832, startPoint.getDouble("longitude"), 0.0)
+        val endPoint = payload.getJSONObject("end")
+        assertEquals(37.532292, endPoint.getDouble("latitude"), 0.0)
+        assertEquals(126.9625982, endPoint.getDouble("longitude"), 0.0)
+        assertEquals(58137.2, payload.getDouble("distanceMeters"), 0.0)
+        assertEquals("IN_VEHICLE", payload.getString("transports"))
     }
 
     @Test
