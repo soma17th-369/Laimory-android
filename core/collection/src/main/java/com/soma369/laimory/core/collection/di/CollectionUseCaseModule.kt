@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.collector.Collector
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import com.soma369.laimory.core.domain.repository.NotificationFilterRepository
+import com.soma369.laimory.core.domain.repository.SleepDetectionRepository
 import com.soma369.laimory.core.domain.repository.SleepRecordRepository
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
@@ -22,9 +23,11 @@ import com.soma369.laimory.core.domain.usecase.HasSleepForNightUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingStatusUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveNotificationFilterUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveSleepDetectionUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.RecordManualSleepUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
+import com.soma369.laimory.core.domain.usecase.SetSleepDetectionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateNotificationFilterUseCase
 import dagger.Module
 import dagger.Provides
@@ -137,4 +140,14 @@ internal object CollectionUseCaseModule {
     @Provides
     @Singleton
     fun provideHasSleepForNightUseCase(repository: SleepRecordRepository): HasSleepForNightUseCase = HasSleepForNightUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideObserveSleepDetectionUseCase(repository: SleepDetectionRepository): ObserveSleepDetectionUseCase =
+        ObserveSleepDetectionUseCase(repository)
+
+    @Provides
+    @Singleton
+    fun provideSetSleepDetectionUseCase(repository: SleepDetectionRepository): SetSleepDetectionUseCase =
+        SetSleepDetectionUseCase(repository)
 }

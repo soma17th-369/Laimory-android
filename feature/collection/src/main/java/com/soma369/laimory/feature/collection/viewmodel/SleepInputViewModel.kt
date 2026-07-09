@@ -1,7 +1,9 @@
 package com.soma369.laimory.feature.collection.viewmodel
 
 import com.soma369.laimory.core.domain.usecase.HasSleepForNightUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveSleepDetectionUseCase
 import com.soma369.laimory.core.domain.usecase.RecordManualSleepUseCase
+import com.soma369.laimory.core.domain.usecase.SetSleepDetectionUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.collection.screen.SleepInputMath
 import com.soma369.laimory.feature.collection.state.SleepInputUiIntent
@@ -25,6 +27,8 @@ class SleepInputViewModel
     constructor(
         private val recordManualSleepUseCase: RecordManualSleepUseCase,
         private val hasSleepForNightUseCase: HasSleepForNightUseCase,
+        private val observeSleepDetectionUseCase: ObserveSleepDetectionUseCase,
+        private val setSleepDetectionUseCase: SetSleepDetectionUseCase,
     ) : BaseMviViewModel<SleepInputUiState, SleepInputUiIntent, SleepInputUiSideEffect>(
             SleepInputUiState(wakeDate = LocalDate.now(ZoneId.systemDefault()).minusDays(1)),
         ) {
@@ -32,6 +36,7 @@ class SleepInputViewModel
 
         init {
             refreshHasSleep()
+            observeAutoDetection()
         }
 
         override suspend fun handleIntent(intent: SleepInputUiIntent) {
@@ -45,9 +50,29 @@ class SleepInputViewModel
                 SleepInputUiIntent.NextDay -> moveToDate(state.value.wakeDate.plusDays(1))
                 SleepInputUiIntent.ShowDatePicker -> updateState { copy(showDatePicker = true) }
                 SleepInputUiIntent.DismissDatePicker -> updateState { copy(showDatePicker = false) }
+                is SleepInputUiIntent.SetAutoDetection -> setAutoDetection(intent.enabled)
                 SleepInputUiIntent.Save -> save()
             }
         }
+
+        /** 자동 감지 활성 여부를 관찰해 상태에 반영한다(온보딩 카드 토글 소스). */
+        private fun observeAutoDetection() =
+            safeLaunch {
+                observeSleepDetectionUseCase().collect { enabled ->
+                    updateState { copy(autoDetectionEnabled = enabled) }
+                }
+            }
+
+        /** 자동 감지를 켜고/끈다. 권한 확보(활동 인식·HC 쓰기)는 화면이 선행하고, 여기선 의도만 반영한다. */
+        private fun setAutoDetection(enabled: Boolean) =
+            safeLaunch(onError = ::handleFailure) {
+                setSleepDetectionUseCase(enabled)
+                sendEffect(
+                    SleepInputUiSideEffect.ShowMessage(
+                        if (enabled) "수면 자동 감지를 켰어요." else "수면 자동 감지를 껐어요.",
+                    ),
+                )
+            }
 
         /** 대상 밤을 [date] 로 옮긴다. 미래(오늘 이후)는 오늘로 막고, 이미 기록 여부를 다시 조회한다. */
         private fun moveToDate(date: LocalDate) {

@@ -4,15 +4,20 @@ import android.app.Application
 import com.soma369.laimory.core.collection.health.SleepDetectionEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 @HiltAndroidApp
 class LaimoryApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Sleep API 감지 구독. 권한/Play Services 가 있으면 구독하고, 시스템 구독이라 앱이 죽어도 유지된다.
-        EntryPointAccessors
-            .fromApplication(this, SleepDetectionEntryPoint::class.java)
-            .sleepDetectionSubscriber()
-            .start()
+        // 수면 자동 감지 구독 복원. 사용자가 켜둔 상태였을 때만 다시 구독한다(시스템 구독이라 앱이 죽어도 유지).
+        val subscriber =
+            EntryPointAccessors
+                .fromApplication(this, SleepDetectionEntryPoint::class.java)
+                .sleepDetectionSubscriber()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { subscriber.startIfEnabled() }
     }
 }

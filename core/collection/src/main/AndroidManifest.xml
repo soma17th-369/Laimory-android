@@ -83,6 +83,16 @@
         <receiver
             android:name="com.soma369.laimory.core.collection.health.SleepReceiver"
             android:exported="false" />
+
+        <!-- 재부팅 후 수면 감지 구독 복원(사용자가 켜둔 상태였으면 재구독). -->
+        <receiver
+            android:name="com.soma369.laimory.core.collection.health.SleepBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

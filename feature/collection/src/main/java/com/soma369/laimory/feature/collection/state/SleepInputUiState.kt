@@ -13,6 +13,8 @@ data class SleepInputUiState(
     val wakeTime: LocalTime = LocalTime.of(7, 0),
     /** 이 밤에 이미(우리·외부) 수면 기록이 있는지. */
     val alreadyRecorded: Boolean = false,
+    /** 수면 자동 감지(Sleep API → HC) 활성 여부. 온보딩 카드 토글의 소스. */
+    val autoDetectionEnabled: Boolean = false,
     val isSaving: Boolean = false,
     /** 시간 피커 다이얼로그 대상. null 이면 닫힘. */
     val editingField: SleepTimeField? = null,

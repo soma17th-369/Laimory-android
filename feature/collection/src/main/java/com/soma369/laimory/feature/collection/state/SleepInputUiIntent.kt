@@ -24,6 +24,9 @@ sealed interface SleepInputUiIntent : UiIntent {
 
     data object DismissDatePicker : SleepInputUiIntent
 
+    /** 수면 자동 감지를 켜거나 끈다(켜기 전 활동 인식·HC 쓰기 권한 확보는 화면이 선행). */
+    data class SetAutoDetection(val enabled: Boolean) : SleepInputUiIntent
+
     /** 입력한 수면을 Health Connect 에 저장한다(권한 확보는 화면이 선행). */
     data object Save : SleepInputUiIntent
 }

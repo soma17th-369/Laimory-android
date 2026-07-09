@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.collection.screen
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -25,6 +26,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -128,7 +130,44 @@ private fun SleepInputContent(
         }
     }
 
-    SleepInputScreen(state = state, onIntent = onIntent, onSave = onSaveClick)
+    // 자동 감지 켜기: 활동 인식(런타임) → HC 쓰기(sleepProducer) 순으로 확보한 뒤 켠다. 하나라도 거부면 켜지 않는다.
+    val detectionHcLauncher =
+        rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) { granted ->
+            if (granted.containsAll(HealthPermissions.sleepProducer)) {
+                onIntent(SleepInputUiIntent.SetAutoDetection(true))
+            } else {
+                scope.launch { snackbarHostState.showSnackbar("수면 기록 권한이 필요합니다.") }
+            }
+        }
+    val requestHcThenEnable: () -> Unit = {
+        if (HealthPermissions.isAvailable(context)) {
+            detectionHcLauncher.launch(HealthPermissions.sleepProducer)
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Health Connect를 사용할 수 없습니다(미설치/업데이트 필요).") }
+        }
+    }
+    val recognitionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                requestHcThenEnable()
+            } else {
+                scope.launch { snackbarHostState.showSnackbar("자동 감지에는 활동 인식 권한이 필요합니다.") }
+            }
+        }
+    val onToggleAutoDetection: (Boolean) -> Unit = { enabled ->
+        when {
+            !enabled -> onIntent(SleepInputUiIntent.SetAutoDetection(false))
+            SleepDetectionPermission.needsRequest(context) -> recognitionLauncher.launch(SleepDetectionPermission.recognition())
+            else -> requestHcThenEnable()
+        }
+    }
+
+    SleepInputScreen(
+        state = state,
+        onIntent = onIntent,
+        onSave = onSaveClick,
+        onToggleAutoDetection = onToggleAutoDetection,
+    )
 
     state.editingField?.let { field ->
         val initial = if (field == SleepTimeField.BED) state.bedTime else state.wakeTime
@@ -161,6 +200,7 @@ private fun SleepInputScreen(
     state: SleepInputUiState,
     onIntent: (SleepInputUiIntent) -> Unit,
     onSave: () -> Unit,
+    onToggleAutoDetection: (Boolean) -> Unit,
 ) {
     val zone = remember { ZoneId.systemDefault() }
     val durationMinutes = SleepInputMath.durationMinutes(state.wakeDate, state.bedTime, state.wakeTime, zone)
@@ -180,6 +220,11 @@ private fun SleepInputScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            AutoDetectionCard(
+                enabled = state.autoDetectionEnabled,
+                onToggle = onToggleAutoDetection,
+            )
+
             DateHeader(
                 wakeDate = state.wakeDate,
                 canGoNext = state.wakeDate.isBefore(LocalDate.now()),
@@ -241,6 +286,34 @@ private fun SleepInputScreen(
             } else {
                 Text("저장")
             }
+        }
+    }
+}
+
+@Composable
+private fun AutoDetectionCard(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "자동 수면 감지", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = if (enabled) "밤새 감지해 자동으로 기록해요." else "켜면 밤새 감지해 자동으로 기록해요.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = enabled, onCheckedChange = onToggle)
         }
     }
 }

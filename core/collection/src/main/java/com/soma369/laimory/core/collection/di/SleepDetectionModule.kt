@@ -8,8 +8,11 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import com.soma369.laimory.core.collection.health.DataStoreSleepClassifyStore
 import com.soma369.laimory.core.collection.health.SleepClassifyDataStore
 import com.soma369.laimory.core.collection.health.SleepClassifyStore
+import com.soma369.laimory.core.collection.health.SleepDetectionDataStore
+import com.soma369.laimory.core.collection.health.SleepDetectionRepositoryImpl
 import com.soma369.laimory.core.collection.health.SleepHealthRecorder
 import com.soma369.laimory.core.collection.health.SleepSegmentProcessor
+import com.soma369.laimory.core.domain.repository.SleepDetectionRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -31,6 +34,9 @@ internal abstract class SleepDetectionModule {
     @Binds
     abstract fun bindSleepClassifyStore(impl: DataStoreSleepClassifyStore): SleepClassifyStore
 
+    @Binds
+    abstract fun bindSleepDetectionRepository(impl: SleepDetectionRepositoryImpl): SleepDetectionRepository
+
     companion object {
         @Provides
         @Singleton
@@ -38,6 +44,13 @@ internal abstract class SleepDetectionModule {
         fun provideSleepClassifyDataStore(
             @ApplicationContext context: Context,
         ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("sleep_classify") }
+
+        @Provides
+        @Singleton
+        @SleepDetectionDataStore
+        fun provideSleepDetectionDataStore(
+            @ApplicationContext context: Context,
+        ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("sleep_detection") }
 
         @Provides
         @Singleton

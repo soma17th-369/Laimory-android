@@ -23,13 +23,21 @@ import javax.inject.Singleton
  * 시스템이 구독을 관리하므로 FGS 없이 한 번 [start] 하면 앱이 죽어도 [SleepReceiver] 로 이벤트가 전달된다
  * (segment + classify 를 한 구독으로 함께 받는다). Google Play Services 가 없거나 ACTIVITY_RECOGNITION
  * 권한이 없으면 조용히 비활성(구독하지 않음).
+ *
+ * 콜드스타트/부팅 시엔 [startIfEnabled] 로 사용자 의도([SleepDetectionPreferences])를 확인해 복원한다.
  */
 @Singleton
 class SleepDetectionSubscriber
     @Inject
-    constructor(
+    internal constructor(
         @ApplicationContext private val context: Context,
+        private val preferences: SleepDetectionPreferences,
     ) {
+        /** 사용자가 자동 감지를 켜둔 상태였을 때만 구독을 복원한다(콜드스타트·부팅용). */
+        suspend fun startIfEnabled() {
+            if (preferences.isEnabled()) start()
+        }
+
         /** 권한·Play Services 가 갖춰졌으면 감지 구독을 건다(멱등 — 같은 PendingIntent 재요청은 갱신). */
         @SuppressLint("MissingPermission") // 구독 전 hasRecognitionPermission 으로 직접 확인한다.
         fun start() {
