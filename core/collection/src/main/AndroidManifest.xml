@@ -19,6 +19,8 @@
     <!-- 건강 수집(Health Connect). 초기 범위 걸음수·수면. -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <!-- 수면 기록(HC 프로듀서). Sleep API 감지·사용자 입력분을 HC 에 써넣는다(에픽 #142). -->
+    <uses-permission android:name="android.permission.health.WRITE_SLEEP" />
 
     <!-- 위치 수집(LocationManager). Phase 2 는 Foreground Service 로 백그라운드에서도 지속한다. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
