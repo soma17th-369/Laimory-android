@@ -11,3 +11,8 @@ annotation class PublicRetrofit
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class AuthRetrofit
+
+/** S3 presigned 업로드 전용 OkHttpClient. 서버 envelope/인터셉터(특히 debug MockInterceptor)·인증을 타지 않는다. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class S3Client
