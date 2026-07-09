@@ -27,7 +27,10 @@ class CreateTimelineDraftUseCase(
         items: List<SourceItem>,
     ): Result<DraftTaskHandle> =
         execute {
-            val photoItems = items.filter { it.itemType == ItemType.PHOTO }
+            // 서버에는 시간순(오래된→최신)으로 보낸다. 로컬 조회(observeAll)는 표시용 최신순이라
+            // 그 순서가 그대로 전송되지 않도록 전송 직전에 startAt 오름차순으로 재정렬한다.
+            val ordered = items.sortedBy { it.startAt }
+            val photoItems = ordered.filter { it.itemType == ItemType.PHOTO }
             val uploadedByRawId =
                 if (photoItems.isEmpty()) {
                     emptyMap()
@@ -36,6 +39,6 @@ class CreateTimelineDraftUseCase(
                     val filenames = repository.uploadPhotos(uris)
                     photoItems.mapIndexed { index, item -> item.rawId to filenames[index] }.toMap()
                 }
-            repository.createDraft(recordDate, zone, items, uploadedByRawId)
+            repository.createDraft(recordDate, zone, ordered, uploadedByRawId)
         }
 }
