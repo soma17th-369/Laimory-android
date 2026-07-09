@@ -40,8 +40,20 @@ class SleepInputViewModel
                 SleepInputUiIntent.DismissTimePicker -> updateState { copy(editingField = null) }
                 is SleepInputUiIntent.SetBedTime -> updateState { copy(bedTime = intent.time, editingField = null) }
                 is SleepInputUiIntent.SetWakeTime -> updateState { copy(wakeTime = intent.time, editingField = null) }
+                is SleepInputUiIntent.SelectDate -> moveToDate(intent.date)
+                SleepInputUiIntent.PreviousDay -> moveToDate(state.value.wakeDate.minusDays(1))
+                SleepInputUiIntent.NextDay -> moveToDate(state.value.wakeDate.plusDays(1))
+                SleepInputUiIntent.ShowDatePicker -> updateState { copy(showDatePicker = true) }
+                SleepInputUiIntent.DismissDatePicker -> updateState { copy(showDatePicker = false) }
                 SleepInputUiIntent.Save -> save()
             }
+        }
+
+        /** 대상 밤을 [date] 로 옮긴다. 미래(오늘 이후)는 오늘로 막고, 이미 기록 여부를 다시 조회한다. */
+        private fun moveToDate(date: LocalDate) {
+            val clamped = if (date.isAfter(LocalDate.now(zone))) LocalDate.now(zone) else date
+            updateState { copy(wakeDate = clamped, showDatePicker = false) }
+            refreshHasSleep()
         }
 
         private fun save() =
