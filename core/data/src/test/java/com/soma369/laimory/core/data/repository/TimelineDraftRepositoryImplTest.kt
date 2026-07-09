@@ -25,7 +25,7 @@ class TimelineDraftRepositoryImplTest {
 
     private val resolver =
         object : PhotoMetaResolver {
-            override fun resolve(clientPhotoUri: String): PhotoMeta = metaByUri.getValue(clientPhotoUri)
+            override suspend fun resolve(clientPhotoUri: String): PhotoMeta = metaByUri.getValue(clientPhotoUri)
         }
 
     /** S3 PUT 에 넘어온 (uri, uploadUrl, contentType, size) 를 기록한다. */

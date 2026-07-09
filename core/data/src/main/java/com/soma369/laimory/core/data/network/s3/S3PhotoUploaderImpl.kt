@@ -52,8 +52,9 @@ class S3PhotoUploaderImpl
                 }
 
             response.use { res ->
-                if (!res.isSuccessful) {
-                    throw ApiException.fromCode(res.code, "S3 사진 업로드 실패")
+                // 이슈 #120: S3 presigned PUT 성공 기준은 정확히 200 (다른 2xx 는 실패로 본다).
+                if (res.code != 200) {
+                    throw ApiException.fromCode(res.code, "S3 사진 업로드 실패 (기대 200, 실제 ${res.code})")
                 }
             }
         }
