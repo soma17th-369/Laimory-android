@@ -31,6 +31,18 @@ data object SettingsPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+data object CalendarPage : Page {
+    const val PATH = "/calendar"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+data object ReflectionPage : Page {
+    const val PATH = "/reflection"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object CollectionPage : Page {
     const val PATH = "/collection"
 

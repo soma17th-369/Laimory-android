@@ -1,27 +1,31 @@
 package com.soma369.laimory.navigation
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.vector.ImageVector
+import com.soma369.laimory.core.domain.navigation.CalendarPage
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
 import com.soma369.laimory.core.domain.navigation.HomePage
+import com.soma369.laimory.core.domain.navigation.ReflectionPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
-import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRoute
 import com.soma369.laimory.ui.PlaceholderScreen
+import com.soma369.laimory.core.ui.R as UiR
 
-/** 바텀바 탭 메타데이터. 탭 루트인 [AppRoute]에만 부여한다. */
+/**
+ * 바텀바 탭 메타데이터. 탭 루트인 [AppRoute]에만 부여한다.
+ *
+ * 아이콘은 선택/비선택 상태별 드로어블 쌍이다(active=채움꼴, inactive=외곽선꼴). 색은 리소스에
+ * 박힌 값 대신 NavigationBarItem 의 content color 로 틴트되어 다크/라이트 모드에 자동 대응한다.
+ */
 data class BottomTab(
     val label: String,
-    val icon: ImageVector,
+    @DrawableRes val activeIcon: Int,
+    @DrawableRes val inactiveIcon: Int,
 )
 
 /**
@@ -48,19 +52,46 @@ val appRoutes: List<AppRoute> =
     listOf(
         AppRoute(
             path = HomePage.PATH,
-            tab = BottomTab(label = "홈", icon = Icons.Filled.Home),
+            tab =
+                BottomTab(
+                    label = "홈",
+                    activeIcon = UiR.drawable.ico_bot_nav_active_home,
+                    inactiveIcon = UiR.drawable.ico_bot_nav_inactive_home,
+                ),
             render = { innerPadding, _ -> HomeRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
-            path = TimelinePage.PATH,
-            tab = BottomTab(label = "타임라인", icon = Icons.Filled.DateRange),
+            path = CalendarPage.PATH,
+            tab =
+                BottomTab(
+                    label = "캘린더",
+                    activeIcon = UiR.drawable.ico_bot_nav_active_calendar,
+                    inactiveIcon = UiR.drawable.ico_bot_nav_inactive_calendar,
+                ),
+            // 캘린더 화면이 준비되기 전까지 타임라인 셸을 이 탭에서 임시 호스팅한다.
             render = { innerPadding, _ -> TimelineRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
+            path = ReflectionPage.PATH,
+            tab =
+                BottomTab(
+                    label = "회고",
+                    activeIcon = UiR.drawable.ico_bot_nav_active_reflection,
+                    inactiveIcon = UiR.drawable.ico_bot_nav_inactive_reflection,
+                ),
+            render = { innerPadding, _ -> PlaceholderScreen(title = "회고", innerPadding = innerPadding) },
+        ),
+        AppRoute(
             path = SettingsPage.PATH,
-            tab = BottomTab(label = "설정", icon = Icons.Filled.Settings),
+            tab =
+                BottomTab(
+                    label = "설정",
+                    activeIcon = UiR.drawable.ico_bot_nav_active_settings,
+                    inactiveIcon = UiR.drawable.ico_bot_nav_inactive_settings,
+                ),
             render = { innerPadding, _ -> PlaceholderScreen(title = "설정", innerPadding = innerPadding) },
         ),
+        // 아래는 바텀바에 노출하지 않는 non-tab 루트(테스트/디버그 진입점 보존).
         AppRoute(
             path = CollectionPage.PATH,
             render = { innerPadding, _ -> CollectionLabRoute(innerPadding = innerPadding) },
