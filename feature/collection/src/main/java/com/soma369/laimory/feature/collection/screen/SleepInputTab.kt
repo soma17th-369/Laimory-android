@@ -204,6 +204,8 @@ private fun SleepInputScreen(
 ) {
     val zone = remember { ZoneId.systemDefault() }
     val durationMinutes = SleepInputMath.durationMinutes(state.wakeDate, state.bedTime, state.wakeTime, zone)
+    // 외부 앱 기록은 우리 clientRecordId 로 덮어쓸 수 없어(중복 세션이 됨) 저장을 막으므로, 값 편집도 함께 잠근다.
+    val editable = !state.hasExternalRecord
 
     Column(
         modifier =
@@ -236,6 +238,7 @@ private fun SleepInputScreen(
             SleepDialRing(
                 bedTime = state.bedTime,
                 wakeTime = state.wakeTime,
+                editable = editable,
                 onBedTimeChange = { onIntent(SleepInputUiIntent.SetBedTime(it)) },
                 onWakeTimeChange = { onIntent(SleepInputUiIntent.SetWakeTime(it)) },
                 modifier =
@@ -265,12 +268,14 @@ private fun SleepInputScreen(
                 emoji = "🌙",
                 label = "취침 시간",
                 time = state.bedTime,
+                enabled = editable,
                 onClick = { onIntent(SleepInputUiIntent.ShowTimePicker(SleepTimeField.BED)) },
             )
             SleepTimeRow(
                 emoji = "⏰",
                 label = "기상 시간",
                 time = state.wakeTime,
+                enabled = editable,
                 onClick = { onIntent(SleepInputUiIntent.ShowTimePicker(SleepTimeField.WAKE)) },
             )
         }
@@ -367,6 +372,7 @@ private fun DateHeader(
 private fun SleepDialRing(
     bedTime: LocalTime,
     wakeTime: LocalTime,
+    editable: Boolean,
     onBedTimeChange: (LocalTime) -> Unit,
     onWakeTimeChange: (LocalTime) -> Unit,
     modifier: Modifier = Modifier,
@@ -378,9 +384,10 @@ private fun SleepDialRing(
     val wake by rememberUpdatedState(wakeTime)
     var active by remember { mutableStateOf<SleepTimeField?>(null) }
 
-    Box(
-        modifier =
-            modifier.pointerInput(Unit) {
+    // 외부 앱 기록일 땐 드래그 편집을 붙이지 않아 값이 고정된다(핸들은 보여주되 못 움직임).
+    val dragModifier =
+        if (editable) {
+            Modifier.pointerInput(Unit) {
                 detectDragGestures(
                     onDragStart = { position ->
                         val center = Offset(size.width / 2f, size.height / 2f)
@@ -406,7 +413,13 @@ private fun SleepDialRing(
                         }
                     },
                 )
-            },
+            }
+        } else {
+            Modifier
+        }
+
+    Box(
+        modifier = modifier.then(dragModifier),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -460,10 +473,13 @@ private fun SleepTimeRow(
     emoji: String,
     label: String,
     time: LocalTime,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
+        // 외부 앱 기록일 땐 편집을 막으므로 탭도 비활성화한다.
+        enabled = enabled,
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth(),
@@ -480,7 +496,10 @@ private fun SleepTimeRow(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Text(text = "›", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 편집 가능한 행에만 안내 화살표를 둔다(비활성 행은 못 만지는 값이므로 생략).
+            if (enabled) {
+                Text(text = "›", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
