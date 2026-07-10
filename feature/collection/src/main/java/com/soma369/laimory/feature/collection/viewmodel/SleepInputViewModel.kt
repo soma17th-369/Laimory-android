@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.collection.viewmodel
 
+import com.soma369.laimory.core.domain.usecase.HasExternalSleepForNightUseCase
 import com.soma369.laimory.core.domain.usecase.HasSleepForNightUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSleepDetectionUseCase
 import com.soma369.laimory.core.domain.usecase.RecordManualSleepUseCase
@@ -27,6 +28,7 @@ class SleepInputViewModel
     constructor(
         private val recordManualSleepUseCase: RecordManualSleepUseCase,
         private val hasSleepForNightUseCase: HasSleepForNightUseCase,
+        private val hasExternalSleepForNightUseCase: HasExternalSleepForNightUseCase,
         private val observeSleepDetectionUseCase: ObserveSleepDetectionUseCase,
         private val setSleepDetectionUseCase: SetSleepDetectionUseCase,
     ) : BaseMviViewModel<SleepInputUiState, SleepInputUiIntent, SleepInputUiSideEffect>(
@@ -98,12 +100,13 @@ class SleepInputViewModel
             handleFailure(e)
         }
 
-        /** 그 밤에 이미 수면이 있는지 갱신한다. 판정 창 = 기상일 전날 18:00 ~ 기상일 18:00. */
+        /** 그 밤에 이미 수면이 있는지(우리·외부 구분) 갱신한다. 판정 창 = 기상일 전날 18:00 ~ 기상일 18:00. */
         private fun refreshHasSleep() =
             safeLaunch {
                 val (start, end) = nightWindow(state.value.wakeDate)
                 val exists = hasSleepForNightUseCase(start, end)
-                updateState { copy(alreadyRecorded = exists) }
+                val external = if (exists) hasExternalSleepForNightUseCase(start, end) else false
+                updateState { copy(alreadyRecorded = exists, hasExternalRecord = external) }
             }
 
         private fun nightWindow(wakeDate: LocalDate): Pair<Instant, Instant> {

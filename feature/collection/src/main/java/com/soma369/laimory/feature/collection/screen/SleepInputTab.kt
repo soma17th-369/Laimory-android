@@ -248,7 +248,13 @@ private fun SleepInputScreen(
 
             if (state.alreadyRecorded) {
                 Text(
-                    text = "이미 이 밤 수면 기록이 있어요. 저장하면 덮어씁니다.",
+                    text =
+                        if (state.hasExternalRecord) {
+                            // 외부 앱 기록은 우리 clientRecordId 로 덮어쓸 수 없어 저장 시 중복 세션이 생길 수 있다.
+                            "다른 앱의 수면 기록이 있어요. 저장하면 별도로 추가돼 중복될 수 있어요."
+                        } else {
+                            "이미 이 밤을 기록했어요. 저장하면 덮어써요."
+                        },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

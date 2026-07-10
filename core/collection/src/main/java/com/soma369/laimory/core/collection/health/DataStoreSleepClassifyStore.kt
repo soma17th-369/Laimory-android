@@ -4,7 +4,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,13 +33,12 @@ internal class DataStoreSleepClassifyStore
             }
         }
 
-        override suspend fun confidencesInWindow(
-            startMillis: Long,
-            endMillis: Long,
-        ): List<Int> =
-            parse(dataStore.data.first()[KEY_SAMPLES])
-                .filter { it.timestampMillis in startMillis..endMillis }
-                .map { it.confidence }
+        override suspend fun all(): List<SleepClassifySample> =
+            dataStore.data
+                // 디스크 읽기는 DataStore 가 IO 로 처리하고, CSV 파싱(CPU) 은 flowOn 으로 Default 에 고정한다.
+                .map { prefs -> parse(prefs[KEY_SAMPLES]) }
+                .flowOn(Dispatchers.Default)
+                .first()
 
         private companion object {
             val KEY_SAMPLES = stringPreferencesKey("classify_samples")

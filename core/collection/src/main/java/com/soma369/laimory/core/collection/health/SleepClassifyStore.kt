@@ -10,9 +10,6 @@ internal interface SleepClassifyStore {
     /** 표본을 추가한다(오래된 것부터 잘려 최근 것만 유지). */
     suspend fun add(samples: List<SleepClassifySample>)
 
-    /** `[startMillis, endMillis]` 창에 속한 표본의 신뢰도 목록. */
-    suspend fun confidencesInWindow(
-        startMillis: Long,
-        endMillis: Long,
-    ): List<Int>
+    /** 저장된 표본 전체(최근 유지분). 창(window) 필터·신뢰도 판정은 호출자([SleepSegmentProcessor]) 책임. */
+    suspend fun all(): List<SleepClassifySample>
 }

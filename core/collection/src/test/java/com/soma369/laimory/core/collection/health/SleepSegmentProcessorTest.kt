@@ -22,7 +22,8 @@ class SleepSegmentProcessorTest {
         confidences: List<Int>,
     ) = SleepSegmentProcessor(
         SleepHealthRecorder(gateway, selfPackage),
-        FakeSleepClassifyStore(confidences),
+        // 표본은 구간 창(startMillis) 안에 두어 processor 의 창 필터를 통과하게 한다.
+        FakeSleepClassifyStore(confidences.map { SleepClassifySample(startMillis, it) }),
     ) { zone }
 
     // 잘 감지됨: DETECTED + 고신뢰 + 외부 없음 → HC 기록
@@ -89,14 +90,11 @@ class SleepSegmentProcessorTest {
 }
 
 private class FakeSleepClassifyStore(
-    private val confidences: List<Int>,
+    private val samples: List<SleepClassifySample>,
 ) : SleepClassifyStore {
     override suspend fun add(samples: List<SleepClassifySample>) = Unit
 
-    override suspend fun confidencesInWindow(
-        startMillis: Long,
-        endMillis: Long,
-    ): List<Int> = confidences
+    override suspend fun all(): List<SleepClassifySample> = samples
 }
 
 private class CapturingSleepHealthGateway(

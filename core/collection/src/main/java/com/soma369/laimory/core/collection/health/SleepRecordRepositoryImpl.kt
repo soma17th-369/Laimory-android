@@ -21,6 +21,11 @@ internal class SleepRecordRepositoryImpl
             end: Instant,
         ): Boolean = recorder.hasAnySleep(start, end)
 
+        override suspend fun hasExternalSleep(
+            start: Instant,
+            end: Instant,
+        ): Boolean = recorder.hasExternalSleep(start, end)
+
         override suspend fun recordManualSleep(
             night: LocalDate,
             start: Instant,

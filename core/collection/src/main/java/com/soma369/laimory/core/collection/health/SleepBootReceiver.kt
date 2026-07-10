@@ -8,7 +8,6 @@ import com.soma369.laimory.core.util.logging.Logger
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
@@ -30,16 +29,12 @@ internal class SleepBootReceiver : BroadcastReceiver() {
                 .fromApplication(appContext, SleepDetectionEntryPoint::class.java)
                 .sleepDetectionSubscriber()
         val pending = goAsync()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val scope = CoroutineScope(Dispatchers.IO)
         scope.launch {
-            try {
-                subscriber.startIfEnabled()
-            } catch (e: Exception) {
-                Logger.w(LogDomain.COLLECTION, "부팅 후 수면 감지 복원 실패: ${e.message}")
-            } finally {
-                pending.finish()
-                scope.cancel()
-            }
+            runCatching { subscriber.startIfEnabled() }
+                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "부팅 후 수면 감지 복원 실패: ${e.message}") }
+            pending.finish()
+            scope.cancel()
         }
     }
 }

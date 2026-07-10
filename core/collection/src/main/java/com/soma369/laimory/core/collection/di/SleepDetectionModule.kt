@@ -38,19 +38,23 @@ internal abstract class SleepDetectionModule {
     abstract fun bindSleepDetectionRepository(impl: SleepDetectionRepositoryImpl): SleepDetectionRepository
 
     companion object {
+        /** DataStore 파일명. 다른 Preferences 스토어와 겹치지 않게 한곳에서 관리한다. */
+        private const val CLASSIFY_STORE_NAME = "sleep_classify"
+        private const val DETECTION_STORE_NAME = "sleep_detection"
+
         @Provides
         @Singleton
         @SleepClassifyDataStore
         fun provideSleepClassifyDataStore(
             @ApplicationContext context: Context,
-        ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("sleep_classify") }
+        ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile(CLASSIFY_STORE_NAME) }
 
         @Provides
         @Singleton
         @SleepDetectionDataStore
         fun provideSleepDetectionDataStore(
             @ApplicationContext context: Context,
-        ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("sleep_detection") }
+        ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile(DETECTION_STORE_NAME) }
 
         @Provides
         @Singleton

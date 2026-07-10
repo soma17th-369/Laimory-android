@@ -16,6 +16,16 @@ interface SleepRecordRepository {
         end: Instant,
     ): Boolean
 
+    /**
+     * `[start, end)` 창에 우리 앱이 아닌 다른 앱(외부)이 쓴 수면 세션이 있는지.
+     *
+     * 외부 기록은 우리 밤별 clientRecordId 로 덮어쓸 수 없어(별도 세션이 추가됨), 저장 UI 문구·중복 경고 판단에 쓴다.
+     */
+    suspend fun hasExternalSleep(
+        start: Instant,
+        end: Instant,
+    ): Boolean
+
     /** 사용자가 입력한 수면을 HC 에 기록한다(manualEntry). 같은 [night] 이면 새 세션 없이 갱신된다. */
     suspend fun recordManualSleep(
         night: LocalDate,

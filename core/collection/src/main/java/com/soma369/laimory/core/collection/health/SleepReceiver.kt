@@ -13,6 +13,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
@@ -56,12 +57,14 @@ internal class SleepReceiver : BroadcastReceiver() {
 
         val entry = EntryPointAccessors.fromApplication(context.applicationContext, Entry::class.java)
         val pending = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
+        val scope = CoroutineScope(Dispatchers.IO)
+        scope.launch {
             runCatching {
                 if (samples.isNotEmpty()) entry.classifyStore().add(samples)
                 if (segments.isNotEmpty()) entry.segmentProcessor().process(segments)
             }.onFailure { e -> Logger.w(LogDomain.COLLECTION, "수면 이벤트 처리 실패: ${e.message}") }
             pending.finish()
+            scope.cancel()
         }
     }
 
