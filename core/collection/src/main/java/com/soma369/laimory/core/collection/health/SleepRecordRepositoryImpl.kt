@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.collection.health
 
+import com.soma369.laimory.core.domain.model.sleep.SleepNightRecord
 import com.soma369.laimory.core.domain.repository.SleepRecordRepository
 import java.time.Instant
 import java.time.LocalDate
@@ -16,15 +17,10 @@ internal class SleepRecordRepositoryImpl
     constructor(
         private val recorder: SleepHealthRecorder,
     ) : SleepRecordRepository {
-        override suspend fun hasSleep(
+        override suspend fun sleepForNight(
             start: Instant,
             end: Instant,
-        ): Boolean = recorder.hasAnySleep(start, end)
-
-        override suspend fun hasExternalSleep(
-            start: Instant,
-            end: Instant,
-        ): Boolean = recorder.hasExternalSleep(start, end)
+        ): SleepNightRecord? = recorder.sleepInWindow(start, end)
 
         override suspend fun recordManualSleep(
             night: LocalDate,

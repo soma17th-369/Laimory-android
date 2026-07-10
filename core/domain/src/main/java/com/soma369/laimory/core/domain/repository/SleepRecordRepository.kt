@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.repository
 
+import com.soma369.laimory.core.domain.model.sleep.SleepNightRecord
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -10,21 +11,15 @@ import java.time.ZoneOffset
  * Laimory 는 HC 프로듀서라 자체 저장 없이 HC 에 써넣기만 한다 — 수집(read)은 기존 HC-read 경로가 픽업한다.
  */
 interface SleepRecordRepository {
-    /** `[start, end)` 창에 (우리·외부 무관) 수면 세션이 이미 있는지. 사용자 입력 유도 여부 판단에 쓴다. */
-    suspend fun hasSleep(
-        start: Instant,
-        end: Instant,
-    ): Boolean
-
     /**
-     * `[start, end)` 창에 우리 앱이 아닌 다른 앱(외부)이 쓴 수면 세션이 있는지.
+     * `[start, end)` 창에 이미 있는 수면 기록(우리·외부 무관, 가장 긴 세션 1건). 없으면 null.
      *
-     * 외부 기록은 우리 밤별 clientRecordId 로 덮어쓸 수 없어(별도 세션이 추가됨), 저장 UI 문구·중복 경고 판단에 쓴다.
+     * 입력 화면 시간 프리필과 저장 정책([SleepNightRecord.isOurs] — 외부면 막기/우리 것이면 덮어쓰기) 판단에 쓴다.
      */
-    suspend fun hasExternalSleep(
+    suspend fun sleepForNight(
         start: Instant,
         end: Instant,
-    ): Boolean
+    ): SleepNightRecord?
 
     /** 사용자가 입력한 수면을 HC 에 기록한다(manualEntry). 같은 [night] 이면 새 세션 없이 갱신된다. */
     suspend fun recordManualSleep(

@@ -19,8 +19,7 @@ import com.soma369.laimory.core.domain.usecase.CollectHealthUseCase
 import com.soma369.laimory.core.domain.usecase.CollectPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.CollectSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosOnDateUseCase
-import com.soma369.laimory.core.domain.usecase.HasExternalSleepForNightUseCase
-import com.soma369.laimory.core.domain.usecase.HasSleepForNightUseCase
+import com.soma369.laimory.core.domain.usecase.GetSleepForNightUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingStatusUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveNotificationFilterUseCase
@@ -140,12 +139,7 @@ internal object CollectionUseCaseModule {
 
     @Provides
     @Singleton
-    fun provideHasSleepForNightUseCase(repository: SleepRecordRepository): HasSleepForNightUseCase = HasSleepForNightUseCase(repository)
-
-    @Provides
-    @Singleton
-    fun provideHasExternalSleepForNightUseCase(repository: SleepRecordRepository): HasExternalSleepForNightUseCase =
-        HasExternalSleepForNightUseCase(repository)
+    fun provideGetSleepForNightUseCase(repository: SleepRecordRepository): GetSleepForNightUseCase = GetSleepForNightUseCase(repository)
 
     @Provides
     @Singleton

@@ -87,6 +87,37 @@ class SleepHealthRecorderTest {
 
             assertEquals(SleepRecordingMethod.MANUAL, gateway.lastWrite?.recordingMethod)
         }
+
+    @Test
+    fun `sleepInWindow 는 외부 세션을 시간과 isOurs=false 로 준다`() =
+        runTest {
+            val gateway = FakeSleepHealthGateway(selfPackage)
+            gateway.seedExternal(
+                StoredSleepSession(start, end, clientRecordId = null, originPackageName = "com.sec.android.app.shealth"),
+            )
+
+            val record = recorder(gateway).sleepInWindow(start, end)
+            assertEquals(start, record?.start)
+            assertEquals(end, record?.end)
+            assertFalse(record!!.isOurs)
+        }
+
+    @Test
+    fun `sleepInWindow 는 우리 세션을 isOurs=true 로 준다`() =
+        runTest {
+            val gateway = FakeSleepHealthGateway(selfPackage)
+            val recorder = recorder(gateway)
+            recorder.recordManualSleep(night, start, end, ZoneOffset.UTC)
+
+            assertTrue(recorder.sleepInWindow(start, end)!!.isOurs)
+        }
+
+    @Test
+    fun `sleepInWindow 는 기록이 없으면 null`() =
+        runTest {
+            val gateway = FakeSleepHealthGateway(selfPackage)
+            assertEquals(null, recorder(gateway).sleepInWindow(start, end))
+        }
 }
 
 /**

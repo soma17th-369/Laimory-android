@@ -1,7 +1,6 @@
 package com.soma369.laimory.feature.collection.viewmodel
 
-import com.soma369.laimory.core.domain.usecase.HasExternalSleepForNightUseCase
-import com.soma369.laimory.core.domain.usecase.HasSleepForNightUseCase
+import com.soma369.laimory.core.domain.usecase.GetSleepForNightUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSleepDetectionUseCase
 import com.soma369.laimory.core.domain.usecase.RecordManualSleepUseCase
 import com.soma369.laimory.core.domain.usecase.SetSleepDetectionUseCase
@@ -27,8 +26,7 @@ class SleepInputViewModel
     @Inject
     constructor(
         private val recordManualSleepUseCase: RecordManualSleepUseCase,
-        private val hasSleepForNightUseCase: HasSleepForNightUseCase,
-        private val hasExternalSleepForNightUseCase: HasExternalSleepForNightUseCase,
+        private val getSleepForNightUseCase: GetSleepForNightUseCase,
         private val observeSleepDetectionUseCase: ObserveSleepDetectionUseCase,
         private val setSleepDetectionUseCase: SetSleepDetectionUseCase,
     ) : BaseMviViewModel<SleepInputUiState, SleepInputUiIntent, SleepInputUiSideEffect>(
@@ -86,6 +84,11 @@ class SleepInputViewModel
         private fun save() =
             safeLaunch(onError = ::onSaveError) {
                 val current = state.value
+                // 외부 앱 기록은 HC 상 덮어쓸 수 없어 저장하면 중복 세션이 된다 → 저장을 막는다.
+                if (current.hasExternalRecord) {
+                    sendEffect(SleepInputUiSideEffect.ShowMessage("다른 앱의 수면 기록이 있어 저장할 수 없어요."))
+                    return@safeLaunch
+                }
                 updateState { copy(isSaving = true) }
                 val (start, end) =
                     SleepInputMath.sleepInstants(current.wakeDate, current.bedTime, current.wakeTime, zone)
@@ -100,13 +103,28 @@ class SleepInputViewModel
             handleFailure(e)
         }
 
-        /** 그 밤에 이미 수면이 있는지(우리·외부 구분) 갱신한다. 판정 창 = 기상일 전날 18:00 ~ 기상일 18:00. */
+        /**
+         * 그 밤 수면 기록을 갱신한다. 판정 창 = 기상일 전날 18:00 ~ 기상일 18:00.
+         *
+         * 기록이 있으면 취침·기상 시간을 그 값으로 프리필하고, 외부 앱 기록인지([SleepNightRecord.isOurs] 반대)를
+         * 표시한다. 없으면 기본값(23:00/07:00)을 유지한다.
+         */
         private fun refreshHasSleep() =
             safeLaunch {
                 val (start, end) = nightWindow(state.value.wakeDate)
-                val exists = hasSleepForNightUseCase(start, end)
-                val external = if (exists) hasExternalSleepForNightUseCase(start, end) else false
-                updateState { copy(alreadyRecorded = exists, hasExternalRecord = external) }
+                val record = getSleepForNightUseCase(start, end)
+                updateState {
+                    if (record != null) {
+                        copy(
+                            alreadyRecorded = true,
+                            hasExternalRecord = !record.isOurs,
+                            bedTime = record.start.atZone(zone).toLocalTime(),
+                            wakeTime = record.end.atZone(zone).toLocalTime(),
+                        )
+                    } else {
+                        copy(alreadyRecorded = false, hasExternalRecord = false)
+                    }
+                }
             }
 
         private fun nightWindow(wakeDate: LocalDate): Pair<Instant, Instant> {

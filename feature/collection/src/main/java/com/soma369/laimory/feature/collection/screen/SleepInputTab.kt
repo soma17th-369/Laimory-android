@@ -250,8 +250,8 @@ private fun SleepInputScreen(
                 Text(
                     text =
                         if (state.hasExternalRecord) {
-                            // 외부 앱 기록은 우리 clientRecordId 로 덮어쓸 수 없어 저장 시 중복 세션이 생길 수 있다.
-                            "다른 앱의 수면 기록이 있어요. 저장하면 별도로 추가돼 중복될 수 있어요."
+                            // 외부 앱 기록은 우리 clientRecordId 로 덮어쓸 수 없어(중복 세션이 됨), 저장을 막는다.
+                            "다른 앱의 수면 기록이 있어 저장할 수 없어요."
                         } else {
                             "이미 이 밤을 기록했어요. 저장하면 덮어써요."
                         },
@@ -277,7 +277,8 @@ private fun SleepInputScreen(
 
         Button(
             onClick = onSave,
-            enabled = !state.isSaving,
+            // 외부 앱 기록이 있으면 덮어쓸 수 없어 저장을 막는다(우리 기록은 덮어쓰기 허용).
+            enabled = !state.isSaving && !state.hasExternalRecord,
             modifier =
                 Modifier
                     .fillMaxWidth()

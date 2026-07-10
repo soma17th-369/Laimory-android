@@ -1,5 +1,7 @@
 package com.soma369.laimory.core.collection.health
 
+import com.soma369.laimory.core.domain.model.sleep.SleepNightRecord
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -41,11 +43,18 @@ internal class SleepHealthRecorder(
         end: Instant,
     ): Boolean = gateway.read(start, end).any { it.originPackageName != selfPackageName }
 
-    /** `[start, end)` 구간에 (우리·외부 무관) 수면 세션이 하나라도 있으면 true. 사용자 입력 유도 판단용. */
-    suspend fun hasAnySleep(
+    /**
+     * `[start, end)` 창의 수면 세션 중 가장 긴 1건을 도메인 모델로 준다. 없으면 null.
+     *
+     * [SleepNightRecord.isOurs] 는 우리([selfPackageName]) 가 쓴 세션인지 — 입력 화면 프리필·저장 정책 판단용.
+     */
+    suspend fun sleepInWindow(
         start: Instant,
         end: Instant,
-    ): Boolean = gateway.read(start, end).isNotEmpty()
+    ): SleepNightRecord? =
+        gateway.read(start, end)
+            .maxByOrNull { Duration.between(it.start, it.end) }
+            ?.let { SleepNightRecord(it.start, it.end, isOurs = it.originPackageName == selfPackageName) }
 
     private suspend fun upsert(
         night: LocalDate,
