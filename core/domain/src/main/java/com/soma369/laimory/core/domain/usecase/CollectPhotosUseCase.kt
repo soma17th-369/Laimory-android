@@ -3,6 +3,8 @@ package com.soma369.laimory.core.domain.usecase
 import com.soma369.laimory.core.domain.collector.Collector
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * 사진 수집기를 실행하고 결과를 로컬 저장소에 저장한다.
@@ -12,12 +14,15 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
  *
  * [collectors] 는 후속 #92~#95 수집기 확장을 위한 [ItemType] 키 레지스트리다(Hilt multibinding).
  */
-class CollectPhotosUseCase(
-    private val collectors: Map<ItemType, Collector>,
-    private val repository: SourceItemRepository,
-) {
-    suspend operator fun invoke(): Int {
-        val collector = collectors[ItemType.PHOTO] ?: return 0
-        return repository.addAll(collector.collect())
+@Singleton
+class CollectPhotosUseCase
+    @Inject
+    constructor(
+        private val collectors: Map<ItemType, @JvmSuppressWildcards Collector>,
+        private val repository: SourceItemRepository,
+    ) {
+        suspend operator fun invoke(): Int {
+            val collector = collectors[ItemType.PHOTO] ?: return 0
+            return repository.addAll(collector.collect())
+        }
     }
-}

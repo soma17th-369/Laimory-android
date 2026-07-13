@@ -243,21 +243,26 @@ fun MomentResponse.toDomain(): Moment =
 UseCase는 ViewModel이 호출하는 하나의 비즈니스 액션입니다.
 
 ```kotlin
-class GetMomentsUseCase(
-    private val repository: MomentRepository,
-) {
-    suspend operator fun invoke(params: GetMomentsParams): List<Moment> =
-        repository.getMoments(
-            from = params.from,
-            to = params.to,
-        )
-}
+@Singleton
+class GetMomentsUseCase
+    @Inject
+    constructor(
+        private val repository: MomentRepository,
+    ) {
+        suspend operator fun invoke(params: GetMomentsParams): List<Moment> =
+            repository.getMoments(
+                from = params.from,
+                to = params.to,
+            )
+    }
 ```
 
 사용 기준:
 - 하나의 기능/행동을 이름 붙인 클래스로 둡니다.
 - 여러 Repository 조합, validation, 정책 판단이 있으면 UseCase에 둡니다.
 - Clean Architecture 일관성을 위해 얇은 UseCase도 허용합니다.
+- concrete UseCase는 `@Inject constructor`로 생성하고 프로젝트 스코프 정책에 따라 `@Singleton`을 적용합니다.
+- UseCase 생성만을 위한 Hilt `@Provides` 메서드는 만들지 않습니다.
 
 ## 13. Params
 
@@ -380,7 +385,8 @@ abstract class RepositoryModule {
 
 사용 기준:
 - Repository interface와 Impl 연결은 `@Binds`를 우선합니다.
-- Retrofit service, DataSource, Mapper 등 생성이 필요한 객체는 `@Provides`를 사용합니다.
+- 생성자를 직접 제어할 수 있는 concrete class는 `@Inject constructor`를 우선합니다.
+- 외부 라이브러리 타입, Builder 결과, 설정값처럼 생성자를 직접 주입할 수 없는 객체만 `@Provides`를 사용합니다.
 - feature ViewModel에는 UseCase를 주입합니다.
 
 ## 19. Navigation

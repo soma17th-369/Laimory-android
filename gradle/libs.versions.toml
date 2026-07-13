@@ -33,6 +33,7 @@ ksp = "2.1.0-1.0.29"
 kotlinJvm = "2.1.0"
 coroutinesTest = "1.8.1"
 mockwebserver = "4.12.0"
+javaxInject = "1"
 
 [libraries]
 # AndroidX Core
@@ -59,6 +60,7 @@ play-services-location = { group = "com.google.android.gms", name = "play-servic
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }
 hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "hiltNavigationCompose" }
+javax-inject = { group = "javax.inject", name = "javax.inject", version.ref = "javaxInject" }
 
 # Network
 retrofit = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
