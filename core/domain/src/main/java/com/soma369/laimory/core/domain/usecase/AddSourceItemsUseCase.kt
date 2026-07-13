@@ -2,6 +2,8 @@ package com.soma369.laimory.core.domain.usecase
 
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * 수집 아이템을 로컬 저장소에 저장한다.
@@ -10,8 +12,11 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
  *
  * @return 실제로 새로 저장된 아이템 수
  */
-class AddSourceItemsUseCase(
-    private val repository: SourceItemRepository,
-) {
-    suspend operator fun invoke(items: List<SourceItem>): Int = repository.addAll(items)
-}
+@Singleton
+class AddSourceItemsUseCase
+    @Inject
+    constructor(
+        private val repository: SourceItemRepository,
+    ) {
+        suspend operator fun invoke(items: List<SourceItem>): Int = repository.addAll(items)
+    }
