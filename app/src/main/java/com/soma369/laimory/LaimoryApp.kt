@@ -1,7 +1,7 @@
 package com.soma369.laimory
 
 import android.app.Application
-import com.soma369.laimory.core.collection.health.SleepDetectionEntryPoint
+import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetectionEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope

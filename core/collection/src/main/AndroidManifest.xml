@@ -83,12 +83,12 @@
 
         <!-- Sleep API 감지 이벤트(segment·classify) 수신(우리 PendingIntent 로만 트리거되므로 exported=false). -->
         <receiver
-            android:name="com.soma369.laimory.core.collection.health.SleepReceiver"
+            android:name="com.soma369.laimory.core.collection.health.sleep.detection.SleepReceiver"
             android:exported="false" />
 
         <!-- 재부팅 후 수면 감지 구독 복원(사용자가 켜둔 상태였으면 재구독). -->
         <receiver
-            android:name="com.soma369.laimory.core.collection.health.SleepBootReceiver"
+            android:name="com.soma369.laimory.core.collection.health.sleep.detection.SleepBootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
