@@ -1,10 +1,10 @@
 package com.soma369.laimory.core.collection.di
 
 import android.content.Context
-import com.soma369.laimory.core.collection.health.HealthConnectSleepGateway
-import com.soma369.laimory.core.collection.health.SleepHealthGateway
-import com.soma369.laimory.core.collection.health.SleepHealthRecorder
-import com.soma369.laimory.core.collection.health.SleepRecordRepositoryImpl
+import com.soma369.laimory.core.collection.health.sleep.record.HealthConnectSleepGateway
+import com.soma369.laimory.core.collection.health.sleep.record.SleepHealthGateway
+import com.soma369.laimory.core.collection.health.sleep.record.SleepHealthRecorder
+import com.soma369.laimory.core.collection.health.sleep.record.SleepRecordRepositoryImpl
 import com.soma369.laimory.core.domain.repository.SleepRecordRepository
 import dagger.Binds
 import dagger.Module
