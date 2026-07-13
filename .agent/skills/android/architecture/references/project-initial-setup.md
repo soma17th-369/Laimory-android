@@ -48,7 +48,7 @@ Repository      : laimory-android
 :app
 :feature:home          ← 초반에는 timeline/search/insight 전부 여기
 :feature:collection    ← 수집 데이터 디버그 뷰 (source_item rows 확인)
-:core:domain           ← 순수 Kotlin only, 외부 의존성 없음
+:core:domain           ← 순수 Kotlin/JVM, Android 의존성 없음 (`javax.inject` 애노테이션만 사용)
 :core:data             ← Repository 구현체, DataSource
 :core:collection       ← 라이프로그 수집 영역 (Collector 구현 + 수집 로컬 DB 소유)
 :core:ui               ← 공통 Composable, Theme, DesignSystem
@@ -88,7 +88,7 @@ Repository      : laimory-android
 - UiState / UiIntent / UiSideEffect 정의
 
 ### 5.2 도메인 레이어 (:core:domain)
-- 순수 Kotlin, Android 의존성 없음
+- 순수 Kotlin/JVM, Android 의존성 없음 (`javax.inject` 애노테이션만 사용)
 - UseCase (단일 책임, operator fun invoke)
 - Repository Interface (추상화)
 - Domain Model
