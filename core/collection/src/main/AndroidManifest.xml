@@ -19,6 +19,10 @@
     <!-- 건강 수집(Health Connect). 초기 범위 걸음수·수면. -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <!-- 수면 기록(HC 프로듀서). Sleep API 감지·사용자 입력분을 HC 에 써넣는다(에픽 #142). -->
+    <uses-permission android:name="android.permission.health.WRITE_SLEEP" />
+    <!-- 백그라운드 HC 읽기(HC 1.1+). 자동 감지가 백그라운드 receiver 에서 외부 수면 dedup read 를 하므로 필요. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
     <!-- 위치 수집(LocationManager). Phase 2 는 Foreground Service 로 백그라운드에서도 지속한다. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -76,6 +80,21 @@
         <receiver
             android:name="com.soma369.laimory.core.collection.location.ActivityTransitionReceiver"
             android:exported="false" />
+
+        <!-- Sleep API 감지 이벤트(segment·classify) 수신(우리 PendingIntent 로만 트리거되므로 exported=false). -->
+        <receiver
+            android:name="com.soma369.laimory.core.collection.health.SleepReceiver"
+            android:exported="false" />
+
+        <!-- 재부팅 후 수면 감지 구독 복원(사용자가 켜둔 상태였으면 재구독). -->
+        <receiver
+            android:name="com.soma369.laimory.core.collection.health.SleepBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
