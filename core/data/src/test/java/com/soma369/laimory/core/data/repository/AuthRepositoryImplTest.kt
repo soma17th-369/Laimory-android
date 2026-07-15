@@ -6,10 +6,17 @@ import com.soma369.laimory.core.data.session.AuthSessionOperationLock
 import com.soma369.laimory.core.data.session.TokenSession
 import com.soma369.laimory.core.data.session.TokenSessionStore
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -30,6 +37,32 @@ class AuthRepositoryImplTest {
                 listOf(AuthSessionState.Loading, AuthSessionState.Unauthenticated),
                 states,
             )
+        }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `token 교체는 동일한 인증 상태를 중복 방출하지 않는다`() =
+        runTest {
+            val states = mutableListOf<AuthSessionState>()
+            val collectJob =
+                backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                    repository.observeSessionState().toList(states)
+                }
+
+            store.save(TokenSession("first-access", "first-refresh"))
+            runCurrent()
+            store.save(TokenSession("second-access", "second-refresh"))
+            runCurrent()
+
+            assertEquals(
+                listOf(
+                    AuthSessionState.Loading,
+                    AuthSessionState.Unauthenticated,
+                    AuthSessionState.Authenticated,
+                ),
+                states,
+            )
+            collectJob.cancelAndJoin()
         }
 
     @Test
@@ -56,10 +89,27 @@ class AuthRepositoryImplTest {
             assertTrue(store.clearCount > 0)
         }
 
+    @Test
+    fun `logout이 취소되어도 로컬 세션을 제거하고 취소를 전파한다`() =
+        runTest {
+            store.save(TokenSession("access", "refresh"))
+            remote.suspendLogout = true
+            val logoutJob = launch { repository.logout() }
+            remote.logoutStarted.await()
+
+            logoutJob.cancelAndJoin()
+
+            assertTrue(logoutJob.isCancelled)
+            assertNull(store.session)
+            assertTrue(store.clearCount > 0)
+        }
+
     private class FakeAuthRemoteDataSource : AuthRemoteDataSource {
         var issueResponse = TokenResponse("access", "refresh")
         var logoutError: Exception? = null
         var logoutToken: String? = null
+        var suspendLogout = false
+        val logoutStarted = CompletableDeferred<Unit>()
 
         override suspend fun issueTokens(
             appCode: String,
@@ -70,6 +120,10 @@ class AuthRepositoryImplTest {
 
         override suspend fun logout(refreshToken: String) {
             logoutToken = refreshToken
+            if (suspendLogout) {
+                logoutStarted.complete(Unit)
+                awaitCancellation()
+            }
             logoutError?.let { throw it }
         }
     }

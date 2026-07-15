@@ -15,6 +15,7 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AuthStorageModule {
+    /** 변경 시 backup_rules.xml과 data_extraction_rules.xml의 DataStore 제외 경로도 함께 변경한다. */
     const val STORE_FILE_NAME = "auth_session"
 
     @Provides

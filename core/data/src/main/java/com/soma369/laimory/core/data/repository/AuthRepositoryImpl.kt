@@ -6,10 +6,13 @@ import com.soma369.laimory.core.data.session.TokenSessionStore
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 internal class AuthRepositoryImpl
@@ -24,6 +27,7 @@ internal class AuthRepositoryImpl
                 .map { session ->
                     if (session == null) AuthSessionState.Unauthenticated else AuthSessionState.Authenticated
                 }.onStart { emit(AuthSessionState.Loading) }
+                .distinctUntilChanged()
 
         override suspend fun issueTokens(
             appCode: String,
@@ -43,7 +47,9 @@ internal class AuthRepositoryImpl
                 } catch (_: Exception) {
                     // 사용자에게는 로컬 로그아웃 완료가 우선이며 서버 토큰은 만료로 소멸한다.
                 } finally {
-                    sessionStore.clear()
+                    withContext(NonCancellable) {
+                        sessionStore.clear()
+                    }
                 }
             }
     }

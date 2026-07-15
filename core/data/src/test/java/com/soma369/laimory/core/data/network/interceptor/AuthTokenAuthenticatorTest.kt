@@ -98,9 +98,25 @@ class AuthTokenAuthenticatorTest {
         assertEquals(0, remote.refreshCount.get())
     }
 
+    @Test
+    fun `회전된 access token의 재시도도 401이면 refresh하지 않는다`() {
+        val store = FakeTokenSessionStore(TokenSession("new-access", "new-refresh"))
+        val remote = FakeAuthRemoteDataSource(TokenResponse("unused-access", "unused-refresh"))
+        val authenticator = AuthTokenAuthenticator(store, remote, AuthSessionOperationLock())
+        val sessionId = checkNotNull(store.session).sessionId
+        val firstResponse = unauthorizedResponse("old-access", sessionId).withoutBody()
+        val secondResponse = unauthorizedResponse("new-access", sessionId, firstResponse)
+
+        val retried = authenticator.authenticate(null, secondResponse)
+
+        assertNull(retried)
+        assertEquals(0, remote.refreshCount.get())
+    }
+
     private fun unauthorizedResponse(
         accessToken: String,
         sessionId: String,
+        priorResponse: Response? = null,
     ): Response {
         val request =
             Request.Builder()
@@ -114,8 +130,11 @@ class AuthTokenAuthenticatorTest {
             .code(401)
             .message("Unauthorized")
             .body(ByteArray(0).toResponseBody())
+            .priorResponse(priorResponse)
             .build()
     }
+
+    private fun Response.withoutBody(): Response = newBuilder().body(null).build()
 
     private class FakeAuthRemoteDataSource(
         private val response: TokenResponse? = null,

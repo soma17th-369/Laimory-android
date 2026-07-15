@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.usecase.auth
 
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.Flow
@@ -7,6 +8,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,9 +35,34 @@ class IssueAuthTokensUseCaseTest {
         assertFalse(params.toString().contains("secret-verifier"))
     }
 
+    @Test
+    fun `API 실패는 로그인 화면이 처리할 Result로 반환한다`() =
+        runBlocking {
+            val repository = FakeAuthRepository()
+            val error = ApiException.UnauthorizedException(errorCode = "ERROR_2002", rawCode = 401)
+            repository.issueError = error
+
+            val result = IssueAuthTokensUseCase(repository)(IssueAuthTokensParams("code", "verifier"))
+
+            assertSame(error, result.exceptionOrNull())
+        }
+
+    @Test
+    fun `프로그래밍 오류는 로그인 실패로 변환하지 않는다`() {
+        val repository = FakeAuthRepository()
+        repository.issueError = IllegalStateException("unexpected")
+
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                IssueAuthTokensUseCase(repository)(IssueAuthTokensParams("code", "verifier"))
+            }
+        }
+    }
+
     private class FakeAuthRepository : AuthRepository {
         var appCode: String? = null
         var appVerifier: String? = null
+        var issueError: Throwable? = null
 
         override fun observeSessionState(): Flow<AuthSessionState> = emptyFlow()
 
@@ -42,6 +70,7 @@ class IssueAuthTokensUseCaseTest {
             appCode: String,
             appVerifier: String,
         ) {
+            issueError?.let { throw it }
             this.appCode = appCode
             this.appVerifier = appVerifier
         }
