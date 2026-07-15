@@ -2,9 +2,12 @@ package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.BuildConfig
 import com.soma369.laimory.core.data.network.ApiPrefix
+import com.soma369.laimory.core.data.network.api.AuthApi
 import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
+import com.soma369.laimory.core.data.network.interceptor.AuthTokenAuthenticator
+import com.soma369.laimory.core.data.network.interceptor.AuthTokenInterceptor
 import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
 import dagger.Module
 import dagger.Provides
@@ -35,7 +38,8 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(): OkHttpClient =
+    @PublicClient
+    fun providePublicOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
             .apply {
                 if (BuildConfig.DEBUG) {
@@ -49,20 +53,62 @@ object NetworkModule {
             }
             .build()
 
+    /** 토큰 응답과 verifier가 BODY 로그에 노출되지 않는 인증 세션 전용 클라이언트. */
+    @Provides
+    @Singleton
+    @AuthSessionClient
+    fun provideAuthSessionOkHttpClient(): OkHttpClient =
+        OkHttpClient.Builder()
+            .apply {
+                if (BuildConfig.DEBUG) addInterceptor(MockInterceptor())
+            }
+            .build()
+
+    /** Bearer 인증이 필요한 `/a/api` 전용 클라이언트. */
+    @Provides
+    @Singleton
+    @AuthenticatedClient
+    internal fun provideAuthenticatedOkHttpClient(
+        tokenInterceptor: AuthTokenInterceptor,
+        tokenAuthenticator: AuthTokenAuthenticator,
+    ): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(tokenInterceptor)
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    addInterceptor(MockInterceptor())
+                    addInterceptor(
+                        HttpLoggingInterceptor().apply {
+                            redactHeader(AuthTokenInterceptor.AUTHORIZATION)
+                            level = HttpLoggingInterceptor.Level.BODY
+                        },
+                    )
+                }
+            }
+            .authenticator(tokenAuthenticator)
+            .build()
+
     @Provides
     @Singleton
     @PublicRetrofit
     fun providePublicRetrofit(
-        okHttpClient: OkHttpClient,
+        @PublicClient okHttpClient: OkHttpClient,
         json: Json,
     ): Retrofit = buildRetrofit(ApiPrefix.publicBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
 
-    /** 인증 필요 API 용. 토큰 발급/부착(인터셉터)은 인증 도입 시 추가한다. */
+    @Provides
+    @Singleton
+    @AuthSessionRetrofit
+    fun provideAuthSessionRetrofit(
+        @AuthSessionClient okHttpClient: OkHttpClient,
+        json: Json,
+    ): Retrofit = buildRetrofit(ApiPrefix.publicBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+
     @Provides
     @Singleton
     @AuthRetrofit
     fun provideAuthRetrofit(
-        okHttpClient: OkHttpClient,
+        @AuthenticatedClient okHttpClient: OkHttpClient,
         json: Json,
     ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
 
@@ -104,6 +150,12 @@ object NetworkModule {
     fun provideIntroApi(
         @PublicRetrofit retrofit: Retrofit,
     ): IntroApi = retrofit.create(IntroApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideAuthApi(
+        @AuthSessionRetrofit retrofit: Retrofit,
+    ): AuthApi = retrofit.create(AuthApi::class.java)
 
     @Provides
     @Singleton
