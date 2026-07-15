@@ -27,6 +27,16 @@ import kotlin.coroutines.cancellation.CancellationException
  * 성공인데 `body`가 없는 무바디(204형) 응답은 현재 없으므로 다루지 않는다. 실제로 생기면 별도 처리.
  */
 suspend fun <T> safeApiCall(call: suspend () -> Response<ApiResponse<T>>): T {
+    val envelope = executeApiCall(call)
+    return envelope.body ?: throw ApiException.UnknownException()
+}
+
+/** 성공 body가 `null`인 로그아웃 같은 API를 공통 envelope 규칙으로 처리한다. */
+suspend fun safeApiCallUnit(call: suspend () -> Response<ApiResponse<Unit>>) {
+    executeApiCall(call)
+}
+
+private suspend fun <T> executeApiCall(call: suspend () -> Response<ApiResponse<T>>): ApiResponse<T> {
     val response =
         try {
             call()
@@ -39,7 +49,8 @@ suspend fun <T> safeApiCall(call: suspend () -> Response<ApiResponse<T>>): T {
         }
 
     if (!response.isSuccessful) {
-        throw ApiException.fromCode(response.code(), response.parseErrorMessage())
+        val error = response.parseErrorEnvelope()
+        throw ApiException.fromCode(response.code(), error?.message, error?.code)
     }
 
     val envelope = response.body() ?: throw ApiException.UnknownException()
@@ -47,19 +58,30 @@ suspend fun <T> safeApiCall(call: suspend () -> Response<ApiResponse<T>>): T {
     if (header.code != SUCCESS_CODE) {
         throw ApiException.UnknownException(header.message, errorCode = header.code)
     }
-    return envelope.body ?: throw ApiException.UnknownException()
+    return envelope
 }
 
 /** errorBody 파싱 전용 경량 Json (역직렬화 대상이 고정 필드라 컨버터와 분리). */
 private val errorBodyJson = Json { ignoreUnknownKeys = true }
 
-/** HTTP 실패 응답 body에서 서버 메시지를 추출한다. `message` 우선, 없으면 `error`. */
-private fun Response<*>.parseErrorMessage(): String? =
+private data class ErrorEnvelope(
+    val code: String?,
+    val message: String?,
+)
+
+/** HTTP 실패 응답에서 공통 envelope의 에러 코드·메시지를 보존하고 레거시 필드도 지원한다. */
+private fun Response<*>.parseErrorEnvelope(): ErrorEnvelope? =
     try {
         errorBody()?.string()?.takeIf { it.isNotBlank() }?.let { raw ->
             val obj = errorBodyJson.parseToJsonElement(raw) as? JsonObject
-            obj?.get("message")?.jsonPrimitive?.contentOrNull
-                ?: obj?.get("error")?.jsonPrimitive?.contentOrNull
+            val header = obj?.get("header") as? JsonObject
+            ErrorEnvelope(
+                code = header?.get("code")?.jsonPrimitive?.contentOrNull,
+                message =
+                    header?.get("message")?.jsonPrimitive?.contentOrNull
+                        ?: obj?.get("message")?.jsonPrimitive?.contentOrNull
+                        ?: obj?.get("error")?.jsonPrimitive?.contentOrNull,
+            )
         }
     } catch (_: Exception) {
         null
