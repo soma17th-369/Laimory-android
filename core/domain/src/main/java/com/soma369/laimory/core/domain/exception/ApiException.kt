@@ -15,17 +15,29 @@ sealed class ApiException(
 
     class NetworkException : ApiException(NETWORK_ERROR)
 
-    class UnauthorizedException(message: String? = null, rawCode: Int? = null) :
-        ApiException(message ?: UNAUTHORIZED_ERROR, rawCode = rawCode)
+    class UnauthorizedException(
+        message: String? = null,
+        errorCode: String? = null,
+        rawCode: Int? = null,
+    ) : ApiException(message ?: UNAUTHORIZED_ERROR, errorCode = errorCode, rawCode = rawCode)
 
-    class ServerException(message: String? = null, rawCode: Int? = null) :
-        ApiException(message ?: SERVER_ERROR, rawCode = rawCode)
+    class ServerException(
+        message: String? = null,
+        errorCode: String? = null,
+        rawCode: Int? = null,
+    ) : ApiException(message ?: SERVER_ERROR, errorCode = errorCode, rawCode = rawCode)
 
-    class ClientException(message: String? = null, rawCode: Int? = null) :
-        ApiException(message ?: CLIENT_ERROR, rawCode = rawCode)
+    class ClientException(
+        message: String? = null,
+        errorCode: String? = null,
+        rawCode: Int? = null,
+    ) : ApiException(message ?: CLIENT_ERROR, errorCode = errorCode, rawCode = rawCode)
 
-    class ConflictException(message: String? = null, rawCode: Int? = null) :
-        ApiException(message ?: CONFLICT_ERROR, rawCode = rawCode)
+    class ConflictException(
+        message: String? = null,
+        errorCode: String? = null,
+        rawCode: Int? = null,
+    ) : ApiException(message ?: CONFLICT_ERROR, errorCode = errorCode, rawCode = rawCode)
 
     companion object {
         const val UNKNOWN_ERROR = "알 수 없는 에러 발생"
@@ -42,13 +54,14 @@ sealed class ApiException(
         fun fromCode(
             code: Int,
             message: String? = null,
+            errorCode: String? = null,
         ): ApiException =
             when (code) {
-                401, 403 -> UnauthorizedException(message, rawCode = code)
-                409 -> ConflictException(message, rawCode = code)
-                in 400..499 -> ClientException(message, rawCode = code)
-                in 500..599 -> ServerException(message, rawCode = code)
-                else -> UnknownException(message, rawCode = code)
+                401, 403 -> UnauthorizedException(message, errorCode = errorCode, rawCode = code)
+                409 -> ConflictException(message, errorCode = errorCode, rawCode = code)
+                in 400..499 -> ClientException(message, errorCode = errorCode, rawCode = code)
+                in 500..599 -> ServerException(message, errorCode = errorCode, rawCode = code)
+                else -> UnknownException(message, errorCode = errorCode, rawCode = code)
             }
     }
 }

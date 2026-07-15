@@ -1,5 +1,7 @@
 package com.soma369.laimory.core.data.di
 
+import com.soma369.laimory.core.data.datasource.remote.AuthRemoteDataSource
+import com.soma369.laimory.core.data.datasource.remote.AuthRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.Feature1RemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.Feature1RemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.IntroRemoteDataSource
@@ -10,6 +12,10 @@ import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolverImpl
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploaderImpl
+import com.soma369.laimory.core.data.session.AndroidKeystoreSessionCipher
+import com.soma369.laimory.core.data.session.EncryptedTokenSessionStore
+import com.soma369.laimory.core.data.session.SessionCipher
+import com.soma369.laimory.core.data.session.TokenSessionStore
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -19,6 +25,18 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class DataSourceModule {
+    @Binds
+    @Singleton
+    internal abstract fun bindAuthRemoteDataSource(impl: AuthRemoteDataSourceImpl): AuthRemoteDataSource
+
+    @Binds
+    @Singleton
+    internal abstract fun bindTokenSessionStore(impl: EncryptedTokenSessionStore): TokenSessionStore
+
+    @Binds
+    @Singleton
+    internal abstract fun bindSessionCipher(impl: AndroidKeystoreSessionCipher): SessionCipher
+
     @Binds
     @Singleton
     abstract fun bindFeature1RemoteDataSource(impl: Feature1RemoteDataSourceImpl): Feature1RemoteDataSource

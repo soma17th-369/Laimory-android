@@ -34,6 +34,9 @@ class SafeApiCallTest {
     interface TestApi {
         @GET("/test")
         suspend fun getTest(): Response<ApiResponse<TestDto>>
+
+        @GET("/unit")
+        suspend fun getUnit(): Response<ApiResponse<Unit>>
     }
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -97,6 +100,36 @@ class SafeApiCallTest {
         runTest {
             mockWebServer.enqueue(MockResponse().setResponseCode(401))
             assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.UnauthorizedException)
+        }
+
+    @Test
+    fun `HTTP 에러 envelope의 code와 message를 보존한다`() =
+        runTest {
+            mockWebServer.enqueue(
+                MockResponse()
+                    .setResponseCode(401)
+                    .setBody(
+                        """{"header":{"code":"ERROR_2003","message":"다시 로그인해 주세요"},"body":null}""",
+                    ),
+            )
+
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull()
+
+            assertTrue(error is ApiException.UnauthorizedException)
+            assertEquals("ERROR_2003", (error as ApiException).errorCode)
+            assertEquals("다시 로그인해 주세요", error.message)
+        }
+
+    @Test
+    fun `성공 envelope의 body가 null인 API는 Unit으로 처리한다`() =
+        runTest {
+            mockWebServer.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody("""{"header":{"code":"COMMON_0000","message":"success"},"body":null}"""),
+            )
+
+            safeApiCallUnit { api.getUnit() }
         }
 
     @Test
