@@ -31,6 +31,7 @@ fun AppNavHost(
         navigationFlow.collect { signal ->
             when (signal) {
                 is NavSignal.GoToDestPage -> backStack.navigateTo(signal.route)
+                is NavSignal.ReplaceRoot -> backStack.replaceRoot(signal.route)
                 // 루트(마지막 한 개)에서 pop 하면 스택이 비어 NavDisplay가 크래시한다.
                 // 시스템 back(onBack)은 NavDisplay가 루트에서 자동으로 막지만, 이 공통 back 채널은
                 // 직접 조작이므로 size > 1일 때만 pop 한다(루트 back은 무시).
@@ -74,6 +75,20 @@ private fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
     if (lastOrNull() == key) return
     removeAll { it == key }
     add(key)
+}
+
+/** 인증 경계 전환에서 이전 화면으로 돌아갈 수 없도록 스택을 새 루트 한 건으로 교체한다. */
+internal fun NavBackStack<NavKey>.replaceRoot(route: NavRoute) {
+    if (appRouteByPath[route.path] == null) {
+        Logger.w(LogDomain.NAVIGATION, "Unhandled root NavRoute: ${route.path}")
+        return
+    }
+    val key = GenericNavKey.of(route)
+    if (size == 1 && lastOrNull() == key) return
+    add(key)
+    while (size > 1) {
+        removeAt(0)
+    }
 }
 
 /**

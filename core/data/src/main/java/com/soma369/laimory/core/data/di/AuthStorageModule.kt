@@ -5,6 +5,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.soma369.laimory.core.data.auth.EncryptedPendingLoginStore
+import com.soma369.laimory.core.data.auth.PendingLoginStore
+import com.soma369.laimory.core.data.auth.PkceGenerator
+import com.soma369.laimory.core.data.auth.SecurePkceGenerator
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,4 +29,15 @@ object AuthStorageModule {
     fun provideAuthSessionDataStore(
         @ApplicationContext context: Context,
     ): DataStore<Preferences> = PreferenceDataStoreFactory.create { context.preferencesDataStoreFile(STORE_FILE_NAME) }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+internal abstract class AuthStorageBindingModule {
+    @Binds
+    @Singleton
+    abstract fun bindPendingLoginStore(impl: EncryptedPendingLoginStore): PendingLoginStore
+
+    @Binds
+    abstract fun bindPkceGenerator(impl: SecurePkceGenerator): PkceGenerator
 }

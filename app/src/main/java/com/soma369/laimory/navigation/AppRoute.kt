@@ -1,17 +1,23 @@
 package com.soma369.laimory.navigation
 
+import android.content.ActivityNotFoundException
 import androidx.annotation.DrawableRes
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
 import com.soma369.laimory.core.domain.navigation.CalendarPage
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
 import com.soma369.laimory.core.domain.navigation.HomePage
+import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.ReflectionPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
 import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.HomeRoute
+import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRoute
 import com.soma369.laimory.ui.PlaceholderScreen
 import com.soma369.laimory.core.ui.R as UiR
@@ -50,6 +56,10 @@ data class AppRoute(
  */
 val appRoutes: List<AppRoute> =
     listOf(
+        AppRoute(
+            path = LoginPage.PATH,
+            render = { innerPadding, _ -> LoginAppRoute(innerPadding) },
+        ),
         AppRoute(
             path = HomePage.PATH,
             tab =
@@ -115,3 +125,23 @@ val appRouteByPath: Map<String, AppRoute> =
             require(put(route.path, route) == null) { "중복된 route path: ${route.path}" }
         }
     }
+
+@Composable
+private fun LoginAppRoute(innerPadding: PaddingValues) {
+    val context = LocalContext.current
+    LoginRoute(
+        innerPadding = innerPadding,
+        onOpenAuthorizationUrl = { url ->
+            try {
+                CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+                    .build()
+                    .launchUrl(context, url.toUri())
+                true
+            } catch (_: ActivityNotFoundException) {
+                false
+            }
+        },
+    )
+}
