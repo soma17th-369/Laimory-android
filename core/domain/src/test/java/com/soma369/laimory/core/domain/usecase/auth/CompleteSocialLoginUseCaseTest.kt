@@ -2,6 +2,7 @@ package com.soma369.laimory.core.domain.usecase.auth
 
 import com.soma369.laimory.core.domain.exception.SocialLoginException
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginAttempt
 import com.soma369.laimory.core.domain.model.auth.SocialLoginCallback
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
@@ -77,6 +78,8 @@ class CompleteSocialLoginUseCaseTest {
         var issueCount = 0
 
         override fun observeSessionState(): Flow<AuthSessionState> = emptyFlow()
+
+        override fun observeSignedInAccount(): Flow<SignedInAccount?> = emptyFlow()
 
         override suspend fun issueTokens(
             appCode: String,

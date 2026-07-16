@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.login.viewmodel
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginAttempt
 import com.soma369.laimory.core.domain.model.auth.SocialLoginCallback
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
@@ -174,6 +175,8 @@ class LoginViewModelTest {
         var appVerifier: String? = null
 
         override fun observeSessionState(): Flow<AuthSessionState> = emptyFlow()
+
+        override fun observeSignedInAccount(): Flow<SignedInAccount?> = emptyFlow()
 
         override suspend fun issueTokens(
             appCode: String,

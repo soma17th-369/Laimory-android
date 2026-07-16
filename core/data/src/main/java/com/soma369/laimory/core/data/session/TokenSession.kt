@@ -9,6 +9,7 @@ internal class TokenSession(
     val accessToken: String,
     val refreshToken: String,
     val sessionId: String = UUID.randomUUID().toString(),
+    val loginProvider: String? = null,
 ) {
     init {
         require(accessToken.isNotBlank()) { "Access token must not be blank" }
