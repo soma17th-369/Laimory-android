@@ -20,7 +20,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +52,7 @@ import com.soma369.laimory.core.ui.R as CoreUiR
 @Composable
 fun LoginRoute(
     innerPadding: PaddingValues,
-    onOpenAuthorizationUrl: (String) -> Unit,
+    onOpenAuthorizationUrl: (String) -> Boolean,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -72,17 +72,20 @@ private fun LoginContent(
     state: LoginUiState,
     onIntent: (LoginUiIntent) -> Unit,
     sideEffectFlow: Flow<LoginUiSideEffect>,
-    onOpenAuthorizationUrl: (String) -> Unit,
+    onOpenAuthorizationUrl: (String) -> Boolean,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    var browserWasOpened by remember { mutableStateOf(false) }
+    var browserWasOpened by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(sideEffectFlow) {
         sideEffectFlow.collect { effect ->
             when (effect) {
                 is LoginUiSideEffect.OpenAuthorizationUrl -> {
                     browserWasOpened = true
-                    onOpenAuthorizationUrl(effect.url)
+                    if (!onOpenAuthorizationUrl(effect.url)) {
+                        browserWasOpened = false
+                        onIntent(LoginUiIntent.AuthorizationLaunchFailed)
+                    }
                 }
             }
         }

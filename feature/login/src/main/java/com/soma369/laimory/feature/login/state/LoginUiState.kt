@@ -12,10 +12,3 @@ data class LoginUiState(
 ) : UiState {
     val isInteractionDisabled: Boolean get() = phase != LoginPhase.IDLE
 }
-
-enum class LoginPhase {
-    IDLE,
-    PREPARING,
-    WAITING_CALLBACK,
-    EXCHANGING_TOKEN,
-}

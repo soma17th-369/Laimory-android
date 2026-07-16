@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
@@ -60,7 +62,7 @@ fun LaimoryNavGraph(
     }
 
     LaunchedEffect(rootPage) {
-        backStack.replaceRoot(rootPage.toRoute())
+        backStack.syncAuthRoot(rootPage)
     }
 
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
@@ -91,6 +93,14 @@ internal fun AuthSessionState.rootPage(): Page? =
         AuthSessionState.Authenticated -> HomePage
         AuthSessionState.Unauthenticated -> LoginPage
     }
+
+/** 인증 여부가 바뀐 경우에만 Login/Home 경계를 교체하고, 같은 경계의 복원된 백스택은 보존한다. */
+internal fun NavBackStack<NavKey>.syncAuthRoot(targetRoot: Page) {
+    val currentRootPath = (firstOrNull() as? GenericNavKey)?.path
+    val isLoginRoot = currentRootPath == LoginPage.PATH
+    val shouldBeLoginRoot = targetRoot == LoginPage
+    if (isLoginRoot != shouldBeLoginRoot) replaceRoot(targetRoot.toRoute())
+}
 
 /** 의미 수준 메시지를 실제 스낵바 문구로 매핑한다. (presentation 책임) */
 private fun UserMessage.toText(): String =

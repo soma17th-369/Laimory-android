@@ -16,4 +16,6 @@ sealed interface LoginUiIntent : UiIntent {
     }
 
     data object BrowserReturnedWithoutCallback : LoginUiIntent
+
+    data object AuthorizationLaunchFailed : LoginUiIntent
 }

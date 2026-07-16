@@ -1,5 +1,6 @@
 package com.soma369.laimory.navigation
 
+import android.content.ActivityNotFoundException
 import androidx.annotation.DrawableRes
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.PaddingValues
@@ -131,11 +132,16 @@ private fun LoginAppRoute(innerPadding: PaddingValues) {
     LoginRoute(
         innerPadding = innerPadding,
         onOpenAuthorizationUrl = { url ->
-            CustomTabsIntent.Builder()
-                .setShowTitle(true)
-                .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
-                .build()
-                .launchUrl(context, url.toUri())
+            try {
+                CustomTabsIntent.Builder()
+                    .setShowTitle(true)
+                    .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+                    .build()
+                    .launchUrl(context, url.toUri())
+                true
+            } catch (_: ActivityNotFoundException) {
+                false
+            }
         },
     )
 }

@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -105,6 +106,35 @@ class LoginViewModelTest {
             assertEquals("new-verifier", authRepository.appVerifier)
             assertEquals(HomePage, navigationHelper.replacedRoot)
             assertEquals(LoginPhase.IDLE, viewModel.state.value.phase)
+        }
+
+    @Test
+    fun `브라우저를 열 수 없으면 pending 시도를 폐기하고 오류를 표시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(LoginUiIntent.ProviderClicked(SocialLoginProvider.GOOGLE))
+            runCurrent()
+
+            viewModel.sendIntent(LoginUiIntent.AuthorizationLaunchFailed)
+            runCurrent()
+
+            assertEquals(1, socialRepository.clearCount)
+            assertEquals(LoginPhase.IDLE, viewModel.state.value.phase)
+            assertEquals("로그인을 진행할 브라우저를 찾을 수 없습니다.", viewModel.state.value.errorMessage)
+        }
+
+    @Test
+    fun `활성 시도 없이 배달된 오래된 callback은 오류 없이 폐기한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            callbackHandler.handle(SocialLoginCallback(appCode = "stale-code"))
+            runCurrent()
+
+            assertEquals(LoginPhase.IDLE, viewModel.state.value.phase)
+            assertNull(viewModel.state.value.errorMessage)
+            assertNull(authRepository.appCode)
         }
 
     private fun createViewModel(): LoginViewModel =

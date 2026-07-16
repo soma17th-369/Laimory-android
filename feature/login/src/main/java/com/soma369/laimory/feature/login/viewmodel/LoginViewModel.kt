@@ -50,10 +50,11 @@ class LoginViewModel
                     is LoginUiIntent.ProviderClicked -> startLogin(intent.provider)
                     is LoginUiIntent.CallbackReceived -> completeLogin(intent.callback)
                     LoginUiIntent.BrowserReturnedWithoutCallback -> scheduleCancellationCheck()
+                    LoginUiIntent.AuthorizationLaunchFailed -> handleAuthorizationLaunchFailure()
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: Throwable) {
+            } catch (error: Exception) {
                 showFailure(error)
             }
         }
@@ -78,6 +79,7 @@ class LoginViewModel
 
         private suspend fun completeLogin(callback: SocialLoginCallback) {
             if (state.value.phase == LoginPhase.EXCHANGING_TOKEN) return
+            val previousState = state.value
             cancelDetectionJob?.cancel()
             updateState { copy(phase = LoginPhase.EXCHANGING_TOKEN, errorMessage = null) }
 
@@ -85,7 +87,25 @@ class LoginViewModel
                 .onSuccess {
                     updateState { copy(phase = LoginPhase.IDLE, activeProvider = null) }
                     navigationHelper.replaceRoot(HomePage)
-                }.onFailure(::showFailure)
+                }.onFailure { error ->
+                    if (error is SocialLoginException.MissingAttempt && previousState.phase == LoginPhase.IDLE) {
+                        updateState { previousState }
+                    } else {
+                        showFailure(error)
+                    }
+                }
+        }
+
+        private suspend fun handleAuthorizationLaunchFailure() {
+            cancelDetectionJob?.cancel()
+            cancelSocialLogin()
+            updateState {
+                copy(
+                    phase = LoginPhase.IDLE,
+                    activeProvider = null,
+                    errorMessage = BROWSER_UNAVAILABLE_MESSAGE,
+                )
+            }
         }
 
         private fun scheduleCancellationCheck() {
@@ -100,7 +120,7 @@ class LoginViewModel
                         updateState { copy(phase = LoginPhase.IDLE, activeProvider = null) }
                     } catch (error: CancellationException) {
                         throw error
-                    } catch (error: Throwable) {
+                    } catch (error: Exception) {
                         showFailure(error)
                     }
                 }
@@ -133,5 +153,6 @@ class LoginViewModel
         private companion object {
             const val CALLBACK_GRACE_PERIOD_MILLIS = 500L
             const val EXPIRED_APP_CODE = "ERROR_2002"
+            const val BROWSER_UNAVAILABLE_MESSAGE = "로그인을 진행할 브라우저를 찾을 수 없습니다."
         }
     }
