@@ -30,11 +30,15 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,11 +52,14 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiState
 import com.soma369.laimory.feature.settings.viewmodel.SettingsViewModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import com.soma369.laimory.core.ui.R as CoreUiR
 
 @Composable
@@ -67,6 +74,7 @@ fun SettingsRoute(
         appVersionName = appVersionName,
         state = state,
         onIntent = viewModel::sendIntent,
+        snackbarFlow = viewModel.snackbar,
     )
 }
 
@@ -76,7 +84,14 @@ private fun SettingsContent(
     appVersionName: String,
     state: SettingsUiState,
     onIntent: (SettingsUiIntent) -> Unit,
+    snackbarFlow: Flow<String>,
 ) {
+    val snackbarHostState = LocalSnackbarHostState.current
+
+    LaunchedEffect(snackbarFlow) {
+        snackbarFlow.collect { message -> snackbarHostState.showSnackbar(message) }
+    }
+
     SettingsScreen(
         innerPadding = innerPadding,
         appVersionName = appVersionName,
@@ -462,35 +477,42 @@ private fun SettingsDefaultPreview() {
 @Preview(name = "Settings Logout Dialog", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun SettingsDialogPreview() {
-    LaimoryTheme {
-        SettingsContent(
-            innerPadding = PaddingValues(),
-            appVersionName = "1.0.0",
-            state =
-                SettingsUiState(
-                    accountProvider = SocialLoginProvider.KAKAO,
-                    isLogoutDialogVisible = true,
-                ),
-            onIntent = {},
-        )
-    }
+    SettingsContentPreview(
+        state =
+            SettingsUiState(
+                accountProvider = SocialLoginProvider.KAKAO,
+                isLogoutDialogVisible = true,
+            ),
+    )
 }
 
 @Preview(name = "Settings Logout Progress", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun SettingsProgressPreview() {
+    SettingsContentPreview(
+        state =
+            SettingsUiState(
+                accountProvider = SocialLoginProvider.KAKAO,
+                isLogoutDialogVisible = true,
+                isLoggingOut = true,
+            ),
+    )
+}
+
+@Composable
+private fun SettingsContentPreview(state: SettingsUiState) {
     LaimoryTheme {
-        SettingsContent(
-            innerPadding = PaddingValues(),
-            appVersionName = "1.0.0",
-            state =
-                SettingsUiState(
-                    accountProvider = SocialLoginProvider.KAKAO,
-                    isLogoutDialogVisible = true,
-                    isLoggingOut = true,
-                ),
-            onIntent = {},
-        )
+        CompositionLocalProvider(
+            LocalSnackbarHostState provides remember { SnackbarHostState() },
+        ) {
+            SettingsContent(
+                innerPadding = PaddingValues(),
+                appVersionName = "1.0.0",
+                state = state,
+                onIntent = {},
+                snackbarFlow = emptyFlow(),
+            )
+        }
     }
 }
 

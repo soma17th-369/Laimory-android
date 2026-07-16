@@ -19,7 +19,7 @@ import javax.inject.Inject
 class SettingsViewModel
     @Inject
     constructor(
-        private val logout: LogoutUseCase,
+        private val logoutUseCase: LogoutUseCase,
         observeSignedInAccount: ObserveSignedInAccountUseCase,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
@@ -63,7 +63,7 @@ class SettingsViewModel
             if (state.value.isLoggingOut) return
             updateState { copy(isLoggingOut = true) }
             try {
-                logout.invoke()
+                logoutUseCase()
                 // NavigationEntry가 재사용되어도 이전 로그아웃 다이얼로그를 다시 노출하지 않는다.
                 // isLoggingOut은 재인증된 계정을 관찰할 때 해제해 대기 중인 중복 확인도 차단한다.
                 updateState { copy(isLogoutDialogVisible = false) }

@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.settings.viewmodel
 
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
@@ -12,12 +13,15 @@ import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCas
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -110,9 +114,28 @@ class SettingsViewModelTest {
             assertEquals(SocialLoginProvider.GOOGLE, viewModel.state.value.accountProvider)
         }
 
+    @Test
+    fun `로그아웃 실패는 진행 상태를 해제하고 사용자에게 안내한다`() =
+        runTest {
+            repository.logoutError = ApiException.NetworkException()
+            val viewModel = createViewModel()
+            val snackbarMessage = async { viewModel.snackbar.first() }
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.LogoutClicked)
+            viewModel.sendIntent(SettingsUiIntent.LogoutConfirmed)
+            runCurrent()
+
+            assertEquals(1, repository.logoutCount)
+            assertFalse(viewModel.state.value.isLogoutDialogVisible)
+            assertFalse(viewModel.state.value.isLoggingOut)
+            assertNull(navigationHelper.replacedRoot)
+            assertEquals(ApiException.NETWORK_ERROR, snackbarMessage.await())
+        }
+
     private fun createViewModel(): SettingsViewModel =
         SettingsViewModel(
-            logout = LogoutUseCase(repository),
+            logoutUseCase = LogoutUseCase(repository),
             observeSignedInAccount = ObserveSignedInAccountUseCase(repository),
             navigationHelper = navigationHelper,
         )
@@ -121,6 +144,7 @@ class SettingsViewModelTest {
         val account = MutableStateFlow<SignedInAccount?>(null)
         var logoutCount = 0
         var logoutGate: CompletableDeferred<Unit>? = null
+        var logoutError: Throwable? = null
 
         override fun observeSessionState(): Flow<AuthSessionState> = MutableStateFlow(AuthSessionState.Authenticated)
 
@@ -133,6 +157,7 @@ class SettingsViewModelTest {
 
         override suspend fun logout() {
             logoutCount++
+            logoutError?.let { throw it }
             logoutGate?.await()
             account.value = null
         }
