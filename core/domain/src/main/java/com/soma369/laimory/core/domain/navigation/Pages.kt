@@ -13,6 +13,12 @@ data object HomePage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+data object LoginPage : Page {
+    const val PATH = "/login"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object Feature1Page : Page {
     const val PATH = "/feature1"
 

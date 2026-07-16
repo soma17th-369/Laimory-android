@@ -17,10 +17,24 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- #155: 검증되지 않은 HTTPS 딥링크. autoVerify/assetlinks.json은 #156에서 적용한다. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="dev.laimory.app"
+                    android:path="/auth/app" />
             </intent-filter>
 
             <!-- Health Connect 권한 rationale (Android 13 이하 legacy). 이게 없으면 HC 권한 상태가 무효 처리된다. -->

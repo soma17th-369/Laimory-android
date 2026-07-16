@@ -27,6 +27,10 @@ class NavigationHelperImpl
             channel.trySend(NavSignal.GoToDestPage(page.toRoute()))
         }
 
+        override fun replaceRoot(page: Page) {
+            channel.trySend(NavSignal.ReplaceRoot(page.toRoute()))
+        }
+
         override fun navigateToBack() {
             channel.trySend(NavSignal.Back)
         }

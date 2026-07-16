@@ -11,5 +11,8 @@ import com.soma369.laimory.core.domain.navigation.Page
 interface NavigationHelper {
     fun navigateTo(page: Page)
 
+    /** 로그인·로그아웃처럼 이전 화면으로 돌아가면 안 되는 전환에서 백스택 루트를 교체한다. */
+    fun replaceRoot(page: Page)
+
     fun navigateToBack()
 }

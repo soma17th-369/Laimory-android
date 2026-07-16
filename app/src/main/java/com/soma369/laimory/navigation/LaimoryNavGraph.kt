@@ -1,19 +1,30 @@
 package com.soma369.laimory.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.navigation.HomePage
+import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NavSignal
+import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * Navigation 3 라우트 테이블 기반 앱 내비게이션의 진입 Composable.
@@ -25,8 +36,18 @@ import kotlinx.coroutines.flow.emptyFlow
 fun LaimoryNavGraph(
     messages: Flow<UserMessage> = emptyFlow(),
     navigationFlow: Flow<NavSignal> = emptyFlow(),
+    authSessionStates: Flow<AuthSessionState> = flowOf(AuthSessionState.Authenticated),
 ) {
-    val backStack = rememberNavBackStack(GenericNavKey(HomePage.PATH))
+    val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
+    val rootPage = sessionState.rootPage()
+    if (rootPage == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val backStack = rememberNavBackStack(GenericNavKey(rootPage.toRoute().path))
     val snackbarHostState = remember { SnackbarHostState() }
 
     // 바텀바 노출·선택 상태는 별도 상태 없이 backStack top 의 path 에서 파생한다.
@@ -36,6 +57,10 @@ fun LaimoryNavGraph(
         messages.collect { message ->
             snackbarHostState.showSnackbar(message.toText())
         }
+    }
+
+    LaunchedEffect(rootPage) {
+        backStack.replaceRoot(rootPage.toRoute())
     }
 
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
@@ -59,6 +84,13 @@ fun LaimoryNavGraph(
         }
     }
 }
+
+internal fun AuthSessionState.rootPage(): Page? =
+    when (this) {
+        AuthSessionState.Loading -> null
+        AuthSessionState.Authenticated -> HomePage
+        AuthSessionState.Unauthenticated -> LoginPage
+    }
 
 /** 의미 수준 메시지를 실제 스낵바 문구로 매핑한다. (presentation 책임) */
 private fun UserMessage.toText(): String =
