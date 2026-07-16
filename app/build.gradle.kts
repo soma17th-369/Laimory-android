@@ -36,6 +36,10 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     kotlin {
         jvmToolchain(17)
     }
@@ -47,6 +51,7 @@ dependencies {
     implementation(project(":feature:collection"))
     implementation(project(":feature:timeline"))
     implementation(project(":feature:login"))
+    implementation(project(":feature:settings"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(project(":core:collection"))
