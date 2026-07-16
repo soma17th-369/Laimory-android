@@ -46,6 +46,7 @@ dependencies {
     implementation(project(":feature:feature1"))
     implementation(project(":feature:collection"))
     implementation(project(":feature:timeline"))
+    implementation(project(":feature:login"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(project(":core:collection"))
@@ -71,6 +72,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     implementation(libs.navigation3.runtime)
     implementation(libs.navigation3.ui)
+    implementation(libs.androidx.browser)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
