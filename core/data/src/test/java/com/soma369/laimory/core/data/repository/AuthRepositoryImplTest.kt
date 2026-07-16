@@ -1,11 +1,13 @@
 package com.soma369.laimory.core.data.repository
 
+import com.soma369.laimory.core.data.auth.PendingLoginProviderStore
 import com.soma369.laimory.core.data.datasource.remote.AuthRemoteDataSource
 import com.soma369.laimory.core.data.model.auth.response.TokenResponse
 import com.soma369.laimory.core.data.session.AuthSessionOperationLock
 import com.soma369.laimory.core.data.session.TokenSession
 import com.soma369.laimory.core.data.session.TokenSessionStore
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -26,7 +28,8 @@ import org.junit.Test
 class AuthRepositoryImplTest {
     private val remote = FakeAuthRemoteDataSource()
     private val store = FakeTokenSessionStore()
-    private val repository = AuthRepositoryImpl(remote, store, AuthSessionOperationLock())
+    private val providerStore = FakePendingLoginProviderStore()
+    private val repository = AuthRepositoryImpl(remote, store, providerStore, AuthSessionOperationLock())
 
     @Test
     fun `세션 관찰은 Loading 후 저장 상태를 방출한다`() =
@@ -69,11 +72,24 @@ class AuthRepositoryImplTest {
     fun `token 발급 성공 시 access refresh 쌍을 함께 저장한다`() =
         runTest {
             remote.issueResponse = TokenResponse("new-access", "new-refresh")
+            providerStore.provider = SocialLoginProvider.GOOGLE
 
             repository.issueTokens("code", "verifier")
 
             assertEquals("new-access", store.session?.accessToken)
             assertEquals("new-refresh", store.session?.refreshToken)
+            assertEquals(SocialLoginProvider.GOOGLE.name, store.session?.loginProvider)
+            assertNull(providerStore.provider)
+        }
+
+    @Test
+    fun `저장된 세션의 로그인 제공자를 계정 정보로 관찰한다`() =
+        runTest {
+            store.save(TokenSession("access", "refresh", loginProvider = SocialLoginProvider.KAKAO.name))
+
+            val account = repository.observeSignedInAccount().take(1).toList().single()
+
+            assertEquals(SocialLoginProvider.KAKAO, account?.provider)
         }
 
     @Test
@@ -144,6 +160,20 @@ class AuthRepositoryImplTest {
         override suspend fun clear() {
             clearCount++
             state.value = null
+        }
+    }
+
+    private class FakePendingLoginProviderStore : PendingLoginProviderStore {
+        var provider: SocialLoginProvider? = null
+
+        override suspend fun save(provider: SocialLoginProvider) {
+            this.provider = provider
+        }
+
+        override suspend fun get(): SocialLoginProvider? = provider
+
+        override suspend fun clear() {
+            provider = null
         }
     }
 }

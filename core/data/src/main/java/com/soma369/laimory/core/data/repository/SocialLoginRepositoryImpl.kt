@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.repository
 
 import com.soma369.laimory.core.data.auth.OAuthAuthorizationUrlFactory
+import com.soma369.laimory.core.data.auth.PendingLoginProviderStore
 import com.soma369.laimory.core.data.auth.PendingLoginStore
 import com.soma369.laimory.core.data.auth.PkceGenerator
 import com.soma369.laimory.core.domain.model.auth.SocialLoginAttempt
@@ -13,10 +14,12 @@ internal class SocialLoginRepositoryImpl
     constructor(
         private val pkceGenerator: PkceGenerator,
         private val pendingLoginStore: PendingLoginStore,
+        private val pendingLoginProviderStore: PendingLoginProviderStore,
         private val urlFactory: OAuthAuthorizationUrlFactory,
     ) : SocialLoginRepository {
         override suspend fun start(provider: SocialLoginProvider): SocialLoginAttempt {
             val pkce = pkceGenerator.generate()
+            pendingLoginProviderStore.save(provider)
             // save가 기존 값을 원자적으로 덮어써 이전 미완료 시도를 폐기한다.
             pendingLoginStore.save(pkce.verifier)
             return SocialLoginAttempt(urlFactory.create(provider, pkce.challenge))
@@ -24,5 +27,8 @@ internal class SocialLoginRepositoryImpl
 
         override suspend fun consumePendingVerifier(): String? = pendingLoginStore.consume()
 
-        override suspend fun clearPendingAttempt() = pendingLoginStore.clear()
+        override suspend fun clearPendingAttempt() {
+            pendingLoginStore.clear()
+            pendingLoginProviderStore.clear()
+        }
     }

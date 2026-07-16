@@ -6,6 +6,7 @@ import com.soma369.laimory.core.data.session.AuthSessionOperationLock
 import com.soma369.laimory.core.data.session.TokenSession
 import com.soma369.laimory.core.data.session.TokenSessionStore
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -29,7 +30,11 @@ class AuthTokenAuthenticatorTest {
     @Test
     fun `동시 401은 refresh 한 번으로 합치고 모두 회전된 access token을 사용한다`() =
         runTest {
-            val store = FakeTokenSessionStore(TokenSession("old-access", "old-refresh"))
+            val loginProvider = SocialLoginProvider.GOOGLE.name
+            val store =
+                FakeTokenSessionStore(
+                    TokenSession("old-access", "old-refresh", loginProvider = loginProvider),
+                )
             val remote = FakeAuthRemoteDataSource(TokenResponse("new-access", "new-refresh"), delayMillis = 50)
             val authenticator = AuthTokenAuthenticator(store, remote, AuthSessionOperationLock())
             val response = unauthorizedResponse("old-access", checkNotNull(store.session).sessionId)
@@ -42,6 +47,7 @@ class AuthTokenAuthenticatorTest {
             assertEquals(1, remote.refreshCount.get())
             assertTrue(retried.all { it?.header("Authorization") == "Bearer new-access" })
             assertEquals("new-refresh", store.session?.refreshToken)
+            assertEquals(loginProvider, store.session?.loginProvider)
         }
 
     @Test

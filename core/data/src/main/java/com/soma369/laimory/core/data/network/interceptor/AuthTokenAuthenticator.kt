@@ -46,7 +46,10 @@ internal class AuthTokenAuthenticator
 
                     val refreshed =
                         try {
-                            remote.refreshTokens(currentSession.refreshToken).toSession(currentSession.sessionId)
+                            remote.refreshTokens(currentSession.refreshToken).toSession(
+                                sessionId = currentSession.sessionId,
+                                loginProvider = currentSession.loginProvider,
+                            )
                         } catch (error: ApiException.UnauthorizedException) {
                             if (error.errorCode == REFRESH_REJECTED || error.rawCode == 401) {
                                 sessionStore.clear()

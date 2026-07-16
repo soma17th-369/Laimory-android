@@ -6,8 +6,10 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.soma369.laimory.core.data.auth.EncryptedPendingLoginStore
+import com.soma369.laimory.core.data.auth.PendingLoginProviderStore
 import com.soma369.laimory.core.data.auth.PendingLoginStore
 import com.soma369.laimory.core.data.auth.PkceGenerator
+import com.soma369.laimory.core.data.auth.PreferencesPendingLoginProviderStore
 import com.soma369.laimory.core.data.auth.SecurePkceGenerator
 import dagger.Binds
 import dagger.Module
@@ -37,6 +39,10 @@ internal abstract class AuthStorageBindingModule {
     @Binds
     @Singleton
     abstract fun bindPendingLoginStore(impl: EncryptedPendingLoginStore): PendingLoginStore
+
+    @Binds
+    @Singleton
+    abstract fun bindPendingLoginProviderStore(impl: PreferencesPendingLoginProviderStore): PendingLoginProviderStore
 
     @Binds
     abstract fun bindPkceGenerator(impl: SecurePkceGenerator): PkceGenerator

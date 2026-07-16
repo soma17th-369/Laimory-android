@@ -1,12 +1,16 @@
 package com.soma369.laimory.core.domain.repository
 
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import kotlinx.coroutines.flow.Flow
 
 /** 소셜 로그인 토큰 교환과 이 기기의 인증 세션을 관리하는 도메인 계약. */
 interface AuthRepository {
     /** 로컬 토큰 저장 여부를 인증 상태로 변환하며, 저장소 확인 전에는 [AuthSessionState.Loading]을 방출한다. */
     fun observeSessionState(): Flow<AuthSessionState>
+
+    /** 저장된 인증 세션에 연결된 로그인 계정 메타데이터를 관찰한다. */
+    fun observeSignedInAccount(): Flow<SignedInAccount?>
 
     /** 로그인 callback의 일회용 code를 verifier와 교환하고 발급된 토큰 쌍을 하나의 세션으로 저장한다. */
     suspend fun issueTokens(

@@ -2,6 +2,7 @@ package com.soma369.laimory.core.domain.usecase.auth
 
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -65,6 +66,8 @@ class IssueAuthTokensUseCaseTest {
         var issueError: Throwable? = null
 
         override fun observeSessionState(): Flow<AuthSessionState> = emptyFlow()
+
+        override fun observeSignedInAccount(): Flow<SignedInAccount?> = emptyFlow()
 
         override suspend fun issueTokens(
             appCode: String,

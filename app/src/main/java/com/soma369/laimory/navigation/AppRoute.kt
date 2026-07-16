@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
+import com.soma369.laimory.BuildConfig
 import com.soma369.laimory.core.domain.navigation.CalendarPage
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
@@ -18,6 +19,7 @@ import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.login.screen.LoginRoute
+import com.soma369.laimory.feature.settings.screen.SettingsRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRoute
 import com.soma369.laimory.ui.PlaceholderScreen
 import com.soma369.laimory.core.ui.R as UiR
@@ -99,7 +101,12 @@ val appRoutes: List<AppRoute> =
                     activeIcon = UiR.drawable.ico_bot_nav_active_settings,
                     inactiveIcon = UiR.drawable.ico_bot_nav_inactive_settings,
                 ),
-            render = { innerPadding, _ -> PlaceholderScreen(title = "설정", innerPadding = innerPadding) },
+            render = { innerPadding, _ ->
+                SettingsRoute(
+                    innerPadding = innerPadding,
+                    appVersionName = BuildConfig.VERSION_NAME,
+                )
+            },
         ),
         // 아래는 바텀바에 노출하지 않는 non-tab 루트(테스트/디버그 진입점 보존).
         AppRoute(
