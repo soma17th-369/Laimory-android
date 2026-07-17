@@ -4,11 +4,11 @@ import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
-import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -29,7 +29,7 @@ internal object SourceItemPayloadMapper {
 
     fun toJson(payload: SourceItemPayload): String =
         when (payload) {
-            is LocationPayload -> json.encodeToString(payload.toDto())
+            is StayPayload -> json.encodeToString(payload.toDto())
             is MovementPayload -> json.encodeToString(payload.toDto())
             is CalendarPayload -> json.encodeToString(payload.toDto())
             is HealthPayload -> json.encodeToString(payload.toDto())
@@ -42,7 +42,7 @@ internal object SourceItemPayloadMapper {
         payloadJson: String,
     ): SourceItemPayload =
         when (itemType) {
-            ItemType.LOCATION -> json.decodeFromString<LocationPayloadDto>(payloadJson).toDomain()
+            ItemType.STAY -> json.decodeFromString<StayPayloadDto>(payloadJson).toDomain()
             ItemType.MOVEMENT -> json.decodeFromString<MovementPayloadDto>(payloadJson).toDomain()
             ItemType.CALENDAR -> json.decodeFromString<CalendarPayloadDto>(payloadJson).toDomain()
             ItemType.HEALTH -> json.decodeFromString<HealthPayloadDto>(payloadJson).toDomain()
@@ -58,7 +58,7 @@ internal data class GeoPointDto(
 )
 
 @Serializable
-internal data class LocationPayloadDto(
+internal data class StayPayloadDto(
     val latitude: Double,
     val longitude: Double,
 )
@@ -110,9 +110,9 @@ private fun GeoPoint.toDto() = GeoPointDto(latitude = latitude, longitude = long
 
 private fun GeoPointDto.toDomain() = GeoPoint(latitude = latitude, longitude = longitude)
 
-private fun LocationPayload.toDto() = LocationPayloadDto(latitude = latitude, longitude = longitude)
+private fun StayPayload.toDto() = StayPayloadDto(latitude = latitude, longitude = longitude)
 
-private fun LocationPayloadDto.toDomain() = LocationPayload(latitude = latitude, longitude = longitude)
+private fun StayPayloadDto.toDomain() = StayPayload(latitude = latitude, longitude = longitude)
 
 private fun MovementPayload.toDto() =
     MovementPayloadDto(

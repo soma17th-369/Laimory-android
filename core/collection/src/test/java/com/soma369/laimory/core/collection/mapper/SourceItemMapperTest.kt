@@ -1,10 +1,10 @@
 package com.soma369.laimory.core.collection.mapper
 
 import com.soma369.laimory.core.domain.model.collection.ItemType
-import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -20,7 +20,7 @@ class SourceItemMapperTest {
                 startAt = Instant.parse("2026-06-30T01:00:00Z"),
                 endAt = Instant.parse("2026-06-30T04:31:04Z"),
                 timeZoneId = ZoneId.of("Asia/Seoul"),
-                payload = LocationPayload(latitude = 37.1538856, longitude = 127.0781832),
+                payload = StayPayload(latitude = 37.1538856, longitude = 127.0781832),
                 sourceName = SourceName.LOCATION_PROVIDER,
                 sourceKey = "2026-06-30T01:00:00Z",
                 collectedAt = Instant.parse("2026-06-30T13:41:00Z"),
@@ -64,12 +64,12 @@ class SourceItemMapperTest {
                 startAt = Instant.parse("2026-06-30T01:00:00Z"),
                 endAt = null,
                 timeZoneId = ZoneId.of("Asia/Seoul"),
-                payload = LocationPayload(latitude = 0.0, longitude = 0.0),
+                payload = StayPayload(latitude = 0.0, longitude = 0.0),
                 sourceName = SourceName.LOCATION_PROVIDER,
                 sourceKey = "source-key",
                 collectedAt = Instant.parse("2026-06-30T01:00:00Z"),
             )
 
-        assertEquals(ItemType.LOCATION.name, item.toEntity().itemType)
+        assertEquals(ItemType.STAY.name, item.toEntity().itemType)
     }
 }

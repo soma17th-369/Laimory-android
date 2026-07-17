@@ -39,10 +39,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
-import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.feature.collection.state.LocationUiIntent
 import com.soma369.laimory.feature.collection.state.LocationUiSideEffect
@@ -253,7 +253,7 @@ private fun LocationItem(item: SourceItem) {
                         color = MaterialTheme.colorScheme.outline,
                     )
                 }
-                is LocationPayload -> {
+                is StayPayload -> {
                     Text(text = "체류 · ${item.durationMinutes()}분", style = MaterialTheme.typography.titleSmall)
                     Text(text = payload.coord(), style = MaterialTheme.typography.bodySmall)
                     Text(
@@ -279,7 +279,7 @@ private fun MovementPayload.Transport.label(): String =
 
 private fun GeoPoint.coord(): String = "%.5f, %.5f".format(latitude, longitude)
 
-private fun LocationPayload.coord(): String = "%.5f, %.5f".format(latitude, longitude)
+private fun StayPayload.coord(): String = "%.5f, %.5f".format(latitude, longitude)
 
 /** 체류 시간(분) — startAt/endAt 에서 파생(payload 미저장). */
 private fun SourceItem.durationMinutes(): Long {
