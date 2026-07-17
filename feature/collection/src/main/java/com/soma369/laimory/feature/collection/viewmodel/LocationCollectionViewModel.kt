@@ -31,7 +31,7 @@ class LocationCollectionViewModel
                             isLoading = false,
                             stagedItems =
                                 items.filter {
-                                    it.itemType == ItemType.LOCATION || it.itemType == ItemType.MOVEMENT
+                                    it.itemType == ItemType.STAY || it.itemType == ItemType.MOVEMENT
                                 },
                         )
                     }

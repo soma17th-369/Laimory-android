@@ -22,10 +22,10 @@ import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
 import com.google.android.gms.location.DetectedActivity
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
-import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
@@ -42,7 +42,7 @@ import javax.inject.Inject
 
 /**
  * 위치 자동 수집 Foreground Service(Phase 2). LocationManager 업데이트를 [LocationSegmenter] 로 분절해
- * 체류(LOCATION)·이동(MOVEMENT)을 저장하며, 앱이 백그라운드여도 상시 알림과 함께 지속한다.
+ * 체류(STAY)·이동(MOVEMENT)을 저장하며, 앱이 백그라운드여도 상시 알림과 함께 지속한다.
  *
  * 서비스 인스턴스는 시스템이 생성하므로 라이브 상태는 @Singleton [LocationTrackingState] 에 반영하고, 토글 의도는
  * [LocationTrackingPreferences] 에 영속한다. 알림의 "중지" 또는 샘플링 실패 시 의도를 off 로 내려 토글과 일치시킨다.
@@ -219,9 +219,9 @@ internal class LocationCollectionService : Service() {
                     startAt = Instant.ofEpochMilli(startMillis),
                     endAt = Instant.ofEpochMilli(endMillis),
                     timeZoneId = zone,
-                    payload = LocationPayload(latitude = latitude, longitude = longitude),
+                    payload = StayPayload(latitude = latitude, longitude = longitude),
                     sourceName = SourceName.LOCATION_PROVIDER,
-                    sourceKey = "LOCATION:$startMillis",
+                    sourceKey = "STAY:$startMillis",
                     collectedAt = collectedAt,
                 )
 

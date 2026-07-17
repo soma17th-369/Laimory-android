@@ -12,11 +12,15 @@ android {
 
     defaultConfig {
         minSdk = 28
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     kotlin {
         jvmToolchain(17)
     }
+
+    // migration 계측 테스트가 버전별 스키마 JSON 을 assets 로 읽을 수 있게 한다
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 }
 
 // Room 스키마 JSON 을 버전 관리해 migration 작성/검증의 기준으로 삼는다
@@ -51,4 +55,9 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
+
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.coroutines.test)
 }

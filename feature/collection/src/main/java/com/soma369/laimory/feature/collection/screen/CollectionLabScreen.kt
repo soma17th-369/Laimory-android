@@ -61,8 +61,8 @@ fun CollectionLabRoute(innerPadding: PaddingValues) {
 /**
  * 수집 실험실 탭 목록. 수집 기능(이슈) 단위이며 선언 순서 = 탭 노출 순서.
  *
- * [LOCATION] 은 상위 개념 "위치" 로, #94 의 체류(`ItemType.LOCATION`)·이동(`ItemType.MOVEMENT`) 수집을
- * 한 탭에서 함께 다룬다(탭 라벨 "위치" ≠ 체류만 뜻하는 itemType `LOCATION`).
+ * [LOCATION] 은 상위 개념 "위치" 로, #94 의 체류(`ItemType.STAY`)·이동(`ItemType.MOVEMENT`) 수집을
+ * 한 탭에서 함께 다룬다(탭 라벨 "위치" ≠ 체류만 뜻하는 itemType `STAY`).
  * 이후 수집 소스는 여기에 항목만 추가한다.
  */
 enum class CollectionLabTab(val label: String) {

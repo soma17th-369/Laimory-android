@@ -4,12 +4,12 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
-import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -65,8 +65,8 @@ private fun SourceItemPayload.toPayloadJson(
                     allDay = allDay,
                 ),
             )
-        is LocationPayload ->
-            json.encodeToJsonElement(DraftLocationPayloadDto(latitude = latitude, longitude = longitude))
+        is StayPayload ->
+            json.encodeToJsonElement(DraftStayPayloadDto(latitude = latitude, longitude = longitude))
         is MovementPayload ->
             json.encodeToJsonElement(
                 DraftMovementPayloadDto(
@@ -117,7 +117,7 @@ private data class DraftCalendarPayloadDto(
 )
 
 @Serializable
-private data class DraftLocationPayloadDto(
+private data class DraftStayPayloadDto(
     val latitude: Double,
     val longitude: Double,
 )

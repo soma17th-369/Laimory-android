@@ -2,12 +2,12 @@ package com.soma369.laimory.feature.timeline.testexport
 
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
-import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -87,8 +87,8 @@ class DayBundleJsonTest {
     }
 
     @Test
-    fun `체류(LOCATION)는 itemType 을 STAY 로 내보낸다`() {
-        val stay = item(LocationPayload(latitude = 37.5, longitude = 127.0), "r1")
+    fun `체류는 도메인 이름 그대로 itemType STAY 로 내보낸다`() {
+        val stay = item(StayPayload(latitude = 37.5, longitude = 127.0), "r1")
 
         val item0 =
             JSONObject(DayBundleJson.build(date, zone, listOf(stay)) { null })

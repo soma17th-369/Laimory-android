@@ -4,11 +4,11 @@ import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
-import com.soma369.laimory.core.domain.model.collection.LocationPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
@@ -22,8 +22,8 @@ class SourceItemPayloadMapperTest {
     }
 
     @Test
-    fun `LOCATION payload 라운드트립`() {
-        val payload = LocationPayload(latitude = 37.1538856, longitude = 127.0781832)
+    fun `STAY payload 라운드트립`() {
+        val payload = StayPayload(latitude = 37.1538856, longitude = 127.0781832)
 
         assertEquals(payload, roundTrip(payload))
     }
@@ -126,10 +126,10 @@ class SourceItemPayloadMapperTest {
 
         val payload =
             SourceItemPayloadMapper.fromJson(
-                itemType = ItemType.LOCATION,
+                itemType = ItemType.STAY,
                 payloadJson = jsonWithUnknownField,
             )
 
-        assertEquals(LocationPayload(latitude = 37.1538856, longitude = 127.0781832), payload)
+        assertEquals(StayPayload(latitude = 37.1538856, longitude = 127.0781832), payload)
     }
 }

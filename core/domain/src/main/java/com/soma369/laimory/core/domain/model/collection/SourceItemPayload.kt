@@ -18,22 +18,22 @@ data class GeoPoint(
 )
 
 /**
- * 특정 위치에 일정 시간 머문 위치/체류 이벤트.
+ * 특정 위치에 일정 시간 머문 체류(STAY) 이벤트.
  *
  * 체류 시간은 payload 에 중복 저장하지 않고 [SourceItem.startAt]/[SourceItem.endAt] 에서
  * 파생한다. 업로드 payload 에 체류 시간 필드가 필요하면 projection 시 계산해서 채운다.
  */
-data class LocationPayload(
+data class StayPayload(
     val latitude: Double,
     val longitude: Double,
 ) : SourceItemPayload {
-    override val itemType: ItemType get() = ItemType.LOCATION
+    override val itemType: ItemType get() = ItemType.STAY
 }
 
 /**
  * 시작 위치와 도착 위치를 가지는 이동 이벤트.
  *
- * 원시 수집이 아니라 [LocationPayload] 후처리로 파생되는 데이터이므로,
+ * 원시 수집이 아니라 [StayPayload] 후처리로 파생되는 데이터이므로,
  * 초기 수집 범위에서는 표현 계약만 정의하고 생성은 확장 단계로 분리한다.
  * 이동 거리와 이동 수단 추론은 후속 확장이며 이 계약에 포함하지 않는다.
  */

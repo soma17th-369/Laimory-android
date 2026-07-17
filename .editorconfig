@@ -1,2 +1,2 @@
 [*.kt]
-ktlint_function_naming_ignore_when_annotated_with = Composable
+ktlint_function_naming_ignore_when_annotated_with = Composable, Test
