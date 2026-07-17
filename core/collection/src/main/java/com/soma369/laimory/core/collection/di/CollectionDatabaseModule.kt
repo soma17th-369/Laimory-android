@@ -3,6 +3,7 @@ package com.soma369.laimory.core.collection.di
 import android.content.Context
 import androidx.room.Room
 import com.soma369.laimory.core.collection.database.CollectionDatabase
+import com.soma369.laimory.core.collection.database.MIGRATION_1_2
 import com.soma369.laimory.core.collection.database.SourceItemDao
 import dagger.Module
 import dagger.Provides
@@ -21,6 +22,7 @@ internal object CollectionDatabaseModule {
     ): CollectionDatabase =
         Room
             .databaseBuilder(context, CollectionDatabase::class.java, CollectionDatabase.NAME)
+            .addMigrations(MIGRATION_1_2)
             .build()
 
     @Provides
