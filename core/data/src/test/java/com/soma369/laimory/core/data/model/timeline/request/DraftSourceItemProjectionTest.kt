@@ -9,6 +9,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -92,6 +93,19 @@ class DraftSourceItemProjectionTest {
                 .toSourceItemDto(json, "s.jpg")
         assertEquals("2026-07-08T21:30", dto.startAt)
         assertNull(dto.endAt)
+    }
+
+    @Test
+    fun `체류는 서버 계약 itemType STAY 와 좌표 payload 로 투영된다`() {
+        val dto =
+            item(
+                StayPayload(latitude = 37.5431787, longitude = 126.9498206),
+                end = start.plusSeconds(3_600),
+            ).toSourceItemDto(json, null)
+
+        assertEquals("STAY", dto.itemType)
+        assertEquals("37.5431787", dto.payload.str("latitude"))
+        assertEquals("126.9498206", dto.payload.str("longitude"))
     }
 
     @Test
