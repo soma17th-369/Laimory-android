@@ -35,6 +35,7 @@ kotlinJvm = "2.1.0"
 coroutinesTest = "1.8.1"
 mockwebserver = "4.12.0"
 javaxInject = "1"
+testRunner = "1.7.0"
 
 [libraries]
 # AndroidX Core
@@ -73,6 +74,7 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 
 # Coroutines
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -103,6 +105,7 @@ serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serializ
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "mockwebserver" }
 
