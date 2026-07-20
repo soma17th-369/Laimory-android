@@ -42,6 +42,7 @@ internal fun DateHeaderCard(
     onClick: () -> Unit,
     onPhotoClick: () -> Unit,
 ) {
+    val today = rememberToday()
     Surface(
         onClick = onClick,
         enabled = state.draftStatus != DraftCreationStatus.SUBMITTING,
@@ -80,7 +81,7 @@ internal fun DateHeaderCard(
             }
 
             Text(
-                text = momentTitle(state.selectedDate),
+                text = momentTitle(state.selectedDate, today),
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -243,8 +244,10 @@ private fun PhotoPreview(
     }
 }
 
-private fun momentTitle(date: LocalDate): String {
-    val today = LocalDate.now()
+private fun momentTitle(
+    date: LocalDate,
+    today: LocalDate,
+): String {
     val subject =
         when (date) {
             today -> "오늘의 순간들을"

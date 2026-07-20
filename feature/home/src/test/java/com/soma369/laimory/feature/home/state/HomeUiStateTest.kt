@@ -61,6 +61,39 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun `익일 자정 상태에서 당일을 선택하면 종료 시각을 23시 59분으로 보정한다`() {
+        val state =
+            HomeUiState(
+                selectedDate = date,
+                startTime = LocalTime.MIDNIGHT,
+                endDay = DraftEndDay.NEXT_DAY,
+                endTime = LocalTime.MIDNIGHT,
+            )
+
+        val adjusted = state.withEndDaySelection(DraftEndDay.SAME_DAY)
+
+        assertEquals(DraftEndDay.SAME_DAY, adjusted.endDay)
+        assertEquals(LocalTime.of(23, 59), adjusted.endTime)
+        assertNotNull(adjusted.recordDateWindow(zone))
+    }
+
+    @Test
+    fun `당일 종료가 이미 시작보다 뒤라면 기존 종료 시각을 유지한다`() {
+        val state =
+            HomeUiState(
+                selectedDate = date,
+                startTime = LocalTime.of(9, 0),
+                endDay = DraftEndDay.NEXT_DAY,
+                endTime = LocalTime.of(18, 0),
+            )
+
+        val adjusted = state.withEndDaySelection(DraftEndDay.SAME_DAY)
+
+        assertEquals(DraftEndDay.SAME_DAY, adjusted.endDay)
+        assertEquals(LocalTime.of(18, 0), adjusted.endTime)
+    }
+
+    @Test
     fun `선택 범위 안의 사진을 기본으로 모두 선택하고 최신 사진부터 보여준다`() {
         val items =
             listOf(

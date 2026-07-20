@@ -55,6 +55,7 @@ internal fun PhotoSelectionSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val zone = remember { ZoneId.systemDefault() }
+    val today = rememberToday(zone)
     val photosByDate =
         remember(state.availablePhotos, zone) {
             state.availablePhotos
@@ -124,6 +125,7 @@ internal fun PhotoSelectionSheet(
                             PhotoDateHeader(
                                 date = date,
                                 selectedDate = state.selectedDate,
+                                today = today,
                                 selectedCount = photos.count { it.rawId in state.pendingPhotoIds },
                                 photoCount = photos.size,
                                 onToggleAll = { onIntent(HomeUiIntent.TogglePhotoDate(date)) },
@@ -161,6 +163,7 @@ internal fun PhotoSelectionSheet(
 private fun PhotoDateHeader(
     date: LocalDate,
     selectedDate: LocalDate,
+    today: LocalDate,
     selectedCount: Int,
     photoCount: Int,
     onToggleAll: () -> Unit,
@@ -172,7 +175,7 @@ private fun PhotoDateHeader(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = photoDateLabel(date, selectedDate),
+                text = photoDateLabel(date, selectedDate, today),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -269,10 +272,11 @@ private fun SelectablePhoto(
 private fun photoDateLabel(
     date: LocalDate,
     selectedDate: LocalDate,
+    today: LocalDate,
 ): String {
     val relation =
         when (date) {
-            selectedDate -> if (date == LocalDate.now()) "오늘" else "기준일"
+            selectedDate -> if (date == today) "오늘" else "기준일"
             selectedDate.plusDays(1) -> "익일"
             else -> null
         }

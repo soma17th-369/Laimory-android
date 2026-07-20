@@ -75,6 +75,16 @@ enum class DraftCreationStatus {
     FAILED,
 }
 
+internal fun HomeUiState.withEndDaySelection(endDay: DraftEndDay): HomeUiState {
+    val adjustedEndTime =
+        if (endDay == DraftEndDay.SAME_DAY && endTime <= startTime) {
+            LocalTime.of(23, 59)
+        } else {
+            endTime
+        }
+    return copy(endDay = endDay, endTime = adjustedEndTime)
+}
+
 internal fun HomeUiState.refreshSourceSummary(
     items: List<SourceItem>,
     zone: ZoneId,

@@ -37,6 +37,7 @@ internal fun DraftSettingsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isValid = state.recordDateWindow(ZoneId.systemDefault()) != null
+    val isInputEnabled = state.draftStatus != DraftCreationStatus.SUBMITTING
     ModalBottomSheet(
         onDismissRequest = { onIntent(HomeUiIntent.DismissDraftSheet) },
         sheetState = sheetState,
@@ -52,20 +53,22 @@ internal fun DraftSettingsSheet(
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall)) {
                 Text("초안 범위 설정", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "선택한 날짜의 시작 시각부터 당일 또는 익일 종료 시각까지 모은 데이터를 사용해요.",
+                    "기록 날짜는 서버에 저장되는 날짜예요. 설정한 범위에 모인 데이터를 초안에 사용해요.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             SettingRow(
-                label = "기준 날짜",
+                label = "기록 날짜",
                 value = state.selectedDate.format(DATE_FORMAT),
+                enabled = isInputEnabled,
                 onClick = { onIntent(HomeUiIntent.ShowDatePicker) },
             )
             SettingRow(
                 label = "시작 시각",
                 value = state.startTime.format(TIME_FORMAT),
+                enabled = isInputEnabled,
                 onClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
             )
 
@@ -78,11 +81,13 @@ internal fun DraftSettingsSheet(
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
                     FilterChip(
                         selected = state.endDay == DraftEndDay.SAME_DAY,
+                        enabled = isInputEnabled,
                         onClick = { onIntent(HomeUiIntent.SelectEndDay(DraftEndDay.SAME_DAY)) },
                         label = { Text("당일") },
                     )
                     FilterChip(
                         selected = state.endDay == DraftEndDay.NEXT_DAY,
+                        enabled = isInputEnabled,
                         onClick = { onIntent(HomeUiIntent.SelectEndDay(DraftEndDay.NEXT_DAY)) },
                         label = { Text("익일") },
                     )
@@ -91,6 +96,7 @@ internal fun DraftSettingsSheet(
             SettingRow(
                 label = "종료 시각",
                 value = state.endTime.format(TIME_FORMAT),
+                enabled = isInputEnabled,
                 onClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END)) },
             )
 
@@ -136,10 +142,12 @@ internal fun DraftSettingsSheet(
 private fun SettingRow(
     label: String,
     value: String,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,

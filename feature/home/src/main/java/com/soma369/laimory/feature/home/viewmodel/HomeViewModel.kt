@@ -14,6 +14,7 @@ import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.selectedSourceItems
+import com.soma369.laimory.feature.home.state.withEndDaySelection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import java.time.LocalTime
@@ -125,6 +126,7 @@ class HomeViewModel
         }
 
         private fun confirmPhotoSelection() {
+            if (state.value.draftStatus == DraftCreationStatus.SUBMITTING) return
             updateState {
                 copy(
                     selectedPhotoIds = pendingPhotoIds,
@@ -137,6 +139,7 @@ class HomeViewModel
         }
 
         private fun selectDate(date: LocalDate) {
+            if (state.value.draftStatus == DraftCreationStatus.SUBMITTING) return
             updateState {
                 val next =
                     copy(
@@ -155,6 +158,7 @@ class HomeViewModel
             field: HomeTimeField,
             time: LocalTime,
         ) {
+            if (state.value.draftStatus == DraftCreationStatus.SUBMITTING) return
             updateState {
                 val next =
                     when (field) {
@@ -166,8 +170,11 @@ class HomeViewModel
         }
 
         private fun selectEndDay(endDay: DraftEndDay) {
+            if (state.value.draftStatus == DraftCreationStatus.SUBMITTING) return
             updateState {
-                val next = copy(endDay = endDay, draftStatus = DraftCreationStatus.IDLE)
+                val next =
+                    withEndDaySelection(endDay)
+                        .copy(draftStatus = DraftCreationStatus.IDLE)
                 next.refreshSourceSummary(sourceItems, zone, resetPhotoSelection = true)
             }
         }
