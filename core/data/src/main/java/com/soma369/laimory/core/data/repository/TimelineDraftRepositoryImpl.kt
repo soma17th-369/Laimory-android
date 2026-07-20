@@ -4,6 +4,7 @@ import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSo
 import com.soma369.laimory.core.data.model.timeline.request.CreateDraftTaskRequest
 import com.soma369.laimory.core.data.model.timeline.request.PhotoUploadCreateRequest
 import com.soma369.laimory.core.data.model.timeline.request.PhotoUploadItem
+import com.soma369.laimory.core.data.model.timeline.request.TimelineWindowDto
 import com.soma369.laimory.core.data.model.timeline.request.toSourceItemDto
 import com.soma369.laimory.core.data.model.timeline.response.toDomain
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
@@ -12,9 +13,11 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -60,14 +63,25 @@ class TimelineDraftRepositoryImpl
             items: List<SourceItem>,
             uploadedPhotoFilenames: Map<String, String>,
         ): DraftTaskHandle {
+            // recordDate(선택 날짜)가 단일 권위 — 서버는 파생 없이 그대로 쓴다. recordAt 은 실제 작성 시각
+            // 메타데이터라 recordDate 와 날짜가 달라도 된다(서버 미검증). window 는 선택 날짜 창을
+            // 요청 zone 의 로컬 datetime 으로 렌더해 AI 이벤트 생성 범위로 보낸다.
             val request =
                 CreateDraftTaskRequest(
-                    recordAt = recordDate.atStartOfDay().toString(),
+                    recordDate = recordDate.toString(),
+                    recordAt = LocalDateTime.now(zone).toString(),
                     recordTimeZone = zone.id,
+                    timelineWindow = RecordDateWindow.ofDate(recordDate, zone).toRequestDto(zone),
                     sourceItems = items.map { it.toSourceItemDto(json, uploadedPhotoFilenames[it.rawId]) },
                 )
             return remote.createDraft(request).toDomain()
         }
+
+        private fun RecordDateWindow.toRequestDto(zone: ZoneId): TimelineWindowDto =
+            TimelineWindowDto(
+                startTime = start.atZone(zone).toLocalDateTime().toString(),
+                endTime = end.atZone(zone).toLocalDateTime().toString(),
+            )
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = remote.getDraftStatus(taskId).toDomain()
     }

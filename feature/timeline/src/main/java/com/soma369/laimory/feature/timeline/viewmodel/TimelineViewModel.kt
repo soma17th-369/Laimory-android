@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.timeline.viewmodel
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.DefaultRecordDate
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -31,7 +33,8 @@ class TimelineViewModel
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val driveTestExporter: DriveTestExporter,
     ) : BaseMviViewModel<TimelineUiState, TimelineUiIntent, TimelineUiSideEffect>(
-            TimelineUiState(selectedDate = LocalDate.now(ZoneId.systemDefault())),
+            // 기본 선택 날짜: 정오 이전이면 어제("다음날 아침 일기" UX). picker 선택(SelectDate)이 항상 우선한다.
+            TimelineUiState(selectedDate = DefaultRecordDate.at(LocalDateTime.now(ZoneId.systemDefault()))),
         ) {
         private val zone: ZoneId = ZoneId.systemDefault()
 
