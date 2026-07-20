@@ -4,15 +4,25 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /**
- * `POST /timeline/drafts` 요청. 하루치 수집 아이템으로 초안 생성 작업을 만든다.
+ * `POST /timeline/drafts` 요청. 선택한 기록 창의 수집 아이템으로 초안 생성 작업을 만든다.
  *
- * [recordAt] 은 오프셋 없는 로컬 datetime 문자열이고, 기준 시간대는 [recordTimeZone] 로 따로 보낸다.
+ * [recordDate]는 초안의 기준 날짜, [timelineWindow]는 실제 포함 구간이다. [recordAt]은 요청 시점의
+ * 오프셋 없는 로컬 datetime 문자열이고, 기준 시간대는 [recordTimeZone]으로 따로 보낸다.
  */
 @Serializable
 data class CreateDraftTaskRequest(
+    val recordDate: String,
     val recordAt: String,
     val recordTimeZone: String,
+    val timelineWindow: TimelineWindowDto,
     val sourceItems: List<SourceItemDto>,
+)
+
+/** 서버가 초안 생성에 사용할 오프셋 없는 로컬 datetime 반열린 구간 `[startTime, endTime)`. */
+@Serializable
+data class TimelineWindowDto(
+    val startTime: String,
+    val endTime: String,
 )
 
 /**

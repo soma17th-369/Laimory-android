@@ -3,6 +3,7 @@ package com.soma369.laimory.core.domain.repository
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -21,7 +22,7 @@ interface TimelineDraftRepository {
     suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String>
 
     /**
-     * 하루치 [items] 로 초안 생성 작업을 요청하고 [DraftTaskHandle] 을 받는다.
+     * 선택한 [window] 안의 [items] 로 초안 생성 작업을 요청하고 [DraftTaskHandle] 을 받는다.
      *
      * @param uploadedPhotoFilenames PHOTO 아이템의 `rawId` → 업로드된 서버 파일명.
      *   PHOTO payload 의 `filename` 은 이 값으로 채워진다.
@@ -29,6 +30,7 @@ interface TimelineDraftRepository {
     suspend fun createDraft(
         recordDate: LocalDate,
         zone: ZoneId,
+        window: RecordDateWindow,
         items: List<SourceItem>,
         uploadedPhotoFilenames: Map<String, String>,
     ): DraftTaskHandle

@@ -4,6 +4,7 @@ import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSo
 import com.soma369.laimory.core.data.model.timeline.request.CreateDraftTaskRequest
 import com.soma369.laimory.core.data.model.timeline.request.PhotoUploadCreateRequest
 import com.soma369.laimory.core.data.model.timeline.request.PhotoUploadItem
+import com.soma369.laimory.core.data.model.timeline.request.TimelineWindowDto
 import com.soma369.laimory.core.data.model.timeline.request.toSourceItemDto
 import com.soma369.laimory.core.data.model.timeline.response.toDomain
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
@@ -12,9 +13,11 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -57,13 +60,20 @@ class TimelineDraftRepositoryImpl
         override suspend fun createDraft(
             recordDate: LocalDate,
             zone: ZoneId,
+            window: RecordDateWindow,
             items: List<SourceItem>,
             uploadedPhotoFilenames: Map<String, String>,
         ): DraftTaskHandle {
             val request =
                 CreateDraftTaskRequest(
-                    recordAt = recordDate.atStartOfDay().toString(),
+                    recordDate = recordDate.toString(),
+                    recordAt = LocalDateTime.now(zone).toString(),
                     recordTimeZone = zone.id,
+                    timelineWindow =
+                        TimelineWindowDto(
+                            startTime = LocalDateTime.ofInstant(window.start, zone).toString(),
+                            endTime = LocalDateTime.ofInstant(window.end, zone).toString(),
+                        ),
                     sourceItems = items.map { it.toSourceItemDto(json, uploadedPhotoFilenames[it.rawId]) },
                 )
             return remote.createDraft(request).toDomain()

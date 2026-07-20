@@ -101,8 +101,8 @@ class TimelineViewModel
             safeLaunch {
                 sendEffect(TimelineUiSideEffect.ShowSnackbar("서버로 초안 생성 중…"))
                 val window = RecordDateWindow.ofDate(date, zone)
-                val itemsInWindow = observeSourceItemsUseCase().first().filter { window.contains(it) }
-                createTimelineDraftUseCase(date, zone, itemsInWindow)
+                val items = observeSourceItemsUseCase().first()
+                createTimelineDraftUseCase(date, zone, window, items)
                     .onSuccess { sendEffect(TimelineUiSideEffect.ShowSnackbar("초안 생성 요청을 보냈어요.")) }
                     .onFailure { handleFailure(it) }
             }
