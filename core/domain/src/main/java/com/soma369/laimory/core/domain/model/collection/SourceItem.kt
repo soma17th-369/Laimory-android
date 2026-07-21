@@ -6,8 +6,9 @@ import java.time.ZoneId
 /**
  * 수집된 라이프로그 원천 이벤트 1건.
  *
- * 로컬 저장의 기본 단위이며, 서버 업로드 envelope(`recordDate`/`recordTimeZone`/`sourceItems[]`)는
- * 업로드 시점에 이 아이템들을 묶어 조립한다 — 로컬에는 envelope 를 저장하지 않는다.
+ * 로컬 저장의 기본 단위이며, 서버 업로드 envelope
+ * (`recordDate`/`recordTimeZone`/`timelineWindow`/`sourceItems[]`)는 업로드 시점에 이 아이템들을
+ * 묶어 조립한다 — 로컬에는 envelope 를 저장하지 않는다.
  *
  * - [rawId]: 아이템 식별자. 수집기가 생성하며 저장 후 변하지 않는다.
  * - [startAt]/[endAt]: 이벤트 시각의 source of truth 는 UTC instant 다.

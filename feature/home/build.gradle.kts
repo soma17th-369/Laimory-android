@@ -32,5 +32,9 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.lifecycle)
+    implementation(libs.coil.compose)
     debugImplementation(libs.compose.ui.tooling)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
 }

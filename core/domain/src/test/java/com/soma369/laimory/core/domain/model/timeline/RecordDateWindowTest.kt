@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
@@ -124,5 +125,19 @@ class RecordDateWindowTest {
     fun `오늘 day-bucket 구간은 오늘 창에 포함`() {
         val todayBucket = ranged(start = at(0, 0), end = at(0, 0, date.plusDays(1)))
         assertTrue(window.contains(todayBucket))
+    }
+
+    @Test
+    fun `종료가 시작과 같거나 앞선 창은 만들 수 없다`() {
+        assertThrows(IllegalArgumentException::class.java) { RecordDateWindow(at(9), at(9)) }
+        assertThrows(IllegalArgumentException::class.java) { RecordDateWindow(at(10), at(9)) }
+    }
+
+    @Test
+    fun `사용자 창은 익일 종료까지 포함할 수 있다`() {
+        val custom = RecordDateWindow(start = at(9), end = at(2, day = date.plusDays(1)))
+
+        assertTrue(custom.contains(point(at(1, day = date.plusDays(1)))))
+        assertFalse(custom.contains(point(at(3, day = date.plusDays(1)))))
     }
 }

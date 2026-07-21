@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -117,18 +116,12 @@ private fun TimelineScreen(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Button(
-                onClick = { onIntent(TimelineUiIntent.RequestUpload(UploadTarget.SERVER_DRAFT)) },
-                modifier = Modifier.weight(1f),
+        // 임시 테스트 전용(삭제 예정) — Drive 내보내기 버튼은 debug 빌드에만 노출한다.
+        if (BuildConfig.DEBUG) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(UploadTarget.SERVER_DRAFT.label)
-            }
-            // 임시 테스트 전용(삭제 예정) — Drive 내보내기 버튼은 debug 빌드에만 노출한다.
-            if (BuildConfig.DEBUG) {
                 OutlinedButton(
                     onClick = { onIntent(TimelineUiIntent.RequestUpload(UploadTarget.DRIVE_TEST)) },
                     modifier = Modifier.weight(1f),

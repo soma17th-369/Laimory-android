@@ -58,7 +58,8 @@ Repository      : laimory-android
 ### 4.1 모듈별 역할
 
 - `:app` → 진입점, Hilt Application, Navigation 루트
-- `:feature:home` → UI(Screen) + ViewModel만 포함
+- `:feature:home` → 홈 수집 데이터 요약과 초안 날짜·범위 지정 UI 및 생성 진입점. 실제 초안 생성
+  계약과 UseCase는 `:core:domain`에 둔다.
 - `:feature:collection` → 수집 데이터 디버그 뷰. `:core:domain` 계약(`SourceItemRepository`)만
   의존하고 `:core:collection` 내부(Room/DAO)에 직접 의존하지 않는다.
 - `:core:domain` → Model, Repository interface, UseCase

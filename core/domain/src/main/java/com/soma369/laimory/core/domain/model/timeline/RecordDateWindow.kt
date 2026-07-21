@@ -6,9 +6,10 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 /**
- * 선택한 날짜 하루의 "기록 창" — [start] 이상 [end] 미만의 반열린 구간 [start, end).
+ * 선택한 날짜를 기준으로 사용자가 고른 "기록 창" — [start] 이상 [end] 미만의 반열린 구간 [start, end).
  *
- * 창은 선택 날짜의 자정부터 다음 날 자정까지(달력 하루)다. 타임라인 도메인 개념이며
+ * 기본 창은 선택 날짜의 자정부터 다음 날 자정까지(달력 하루)지만, 사용자가 시작·종료 시각을
+ * 바꾸면 종료가 익일까지 확장될 수 있다. 타임라인 도메인 개념이며
  * 수집(collection)이 아니라 타임라인이 소유한다 — 수집 아이템([SourceItem])을 소비할 뿐이다.
  * 홈/타임라인 요약과 초안 생성 입력(#120)이 같은 창을 공유하므로 창 구성은 [ofDate] 한 곳에서 만든다.
  *
@@ -19,6 +20,10 @@ data class RecordDateWindow(
     val start: Instant,
     val end: Instant,
 ) {
+    init {
+        require(start < end) { "기록 창의 종료 시각은 시작 시각보다 뒤여야 합니다." }
+    }
+
     /**
      * [item] 의 시간이 이 창 [start, end) 와 겹치면 true.
      *

@@ -9,6 +9,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -26,6 +27,7 @@ class CreateTimelineDraftUseCaseTest {
     private class CapturingRepository : TimelineDraftRepository {
         var createdItems: List<SourceItem>? = null
         var uploadedUris: List<String>? = null
+        var createdWindow: RecordDateWindow? = null
 
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> {
             uploadedUris = clientPhotoUris
@@ -35,9 +37,11 @@ class CreateTimelineDraftUseCaseTest {
         override suspend fun createDraft(
             recordDate: LocalDate,
             zone: ZoneId,
+            window: RecordDateWindow,
             items: List<SourceItem>,
             uploadedPhotoFilenames: Map<String, String>,
         ): DraftTaskHandle {
+            createdWindow = window
             createdItems = items
             return DraftTaskHandle(taskId = "task-1")
         }
@@ -78,9 +82,11 @@ class CreateTimelineDraftUseCaseTest {
             val middle = item(at(12))
             val oldest = item(at(9))
 
-            val result = useCase(date, zone, listOf(newest, middle, oldest))
+            val window = RecordDateWindow.ofDate(date, zone)
+            val result = useCase(date, zone, window, listOf(newest, middle, oldest))
 
             assertTrue(result.isSuccess)
+            assertEquals(window, repo.createdWindow)
             assertEquals(listOf(oldest, middle, newest), repo.createdItems)
         }
 
@@ -92,11 +98,41 @@ class CreateTimelineDraftUseCaseTest {
             val latePhoto = item(at(20), PhotoPayload("late.jpg", "content://late", null, null, null))
             val earlyPhoto = item(at(8), PhotoPayload("early.jpg", "content://early", null, null, null))
 
-            val result = useCase(date, zone, listOf(latePhoto, earlyPhoto))
+            val result = useCase(date, zone, RecordDateWindow.ofDate(date, zone), listOf(latePhoto, earlyPhoto))
 
             assertTrue(result.isSuccess)
             // 전송 순서는 시간순(early → late), 업로드도 그 순서의 URI 로 나간다.
             assertEquals(listOf(earlyPhoto, latePhoto), repo.createdItems)
             assertEquals(listOf("content://early", "content://late"), repo.uploadedUris)
+        }
+
+    @Test
+    fun `기록 창 밖 아이템은 사진 업로드와 생성 요청에서 모두 제외한다`() =
+        runBlocking {
+            val repo = CapturingRepository()
+            val useCase = CreateTimelineDraftUseCase(repo, noopMessageHelper)
+            val window =
+                RecordDateWindow(
+                    start = at(9),
+                    end = date.plusDays(1).atTime(2, 0).atZone(zone).toInstant(),
+                )
+            val before = item(at(8), PhotoPayload("before.jpg", "content://before", null, null, null))
+            val inside = item(at(20), PhotoPayload("inside.jpg", "content://inside", null, null, null))
+            val nextDayInside =
+                item(
+                    date.plusDays(1).atTime(1, 0).atZone(zone).toInstant(),
+                    PhotoPayload("next.jpg", "content://next", null, null, null),
+                )
+            val after =
+                item(
+                    date.plusDays(1).atTime(3, 0).atZone(zone).toInstant(),
+                    PhotoPayload("after.jpg", "content://after", null, null, null),
+                )
+
+            val result = useCase(date, zone, window, listOf(after, nextDayInside, inside, before))
+
+            assertTrue(result.isSuccess)
+            assertEquals(listOf(inside, nextDayInside), repo.createdItems)
+            assertEquals(listOf("content://inside", "content://next"), repo.uploadedUris)
         }
 }
