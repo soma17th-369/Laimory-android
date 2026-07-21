@@ -1,5 +1,4 @@
 import java.net.URI
-import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -11,18 +10,8 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
-val localProperties =
-    Properties().apply {
-        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
-    }
-
-fun Properties.requireBaseUrl(name: String): String =
-    requireNotNull(getProperty(name)) { "Define $name in local.properties" }
-        .trim()
-        .removeSurrounding("\"")
-
-val debugBaseUrl = localProperties.requireBaseUrl("DEV_BASE_URL")
-val releaseBaseUrl = localProperties.requireBaseUrl("RELEASE_BASE_URL")
+val debugBaseUrl = providers.gradleProperty("laimory.debugBaseUrl").get()
+val releaseBaseUrl = providers.gradleProperty("laimory.releaseBaseUrl").get()
 
 fun String.toAppLinkHost(): String =
     URI(this).host?.takeIf(String::isNotBlank)

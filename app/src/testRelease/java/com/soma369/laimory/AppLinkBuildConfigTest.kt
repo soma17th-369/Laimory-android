@@ -2,12 +2,15 @@ package com.soma369.laimory
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.net.URI
 import com.soma369.laimory.core.data.BuildConfig as DataBuildConfig
 
 class AppLinkBuildConfigTest {
     @Test
-    fun `release API와 callback은 운영 도메인을 사용한다`() {
-        assertEquals("laimory.app", BuildConfig.AUTH_CALLBACK_HOST)
-        assertEquals("https://laimory.app/", DataBuildConfig.BASE_URL)
+    fun `release API와 callback은 같은 HTTPS origin을 사용한다`() {
+        val apiOrigin = URI(DataBuildConfig.BASE_URL)
+
+        assertEquals("https", apiOrigin.scheme)
+        assertEquals(apiOrigin.host, BuildConfig.AUTH_CALLBACK_HOST)
     }
 }
