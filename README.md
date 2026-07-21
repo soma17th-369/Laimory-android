@@ -19,3 +19,14 @@ Firebase 초기 연동(google-services 플러그인)이 배선되어 있어, **�
 > ⚠️ debug 빌드는 `applicationIdSuffix = ".debug"` 때문에 패키지명이 `com.soma369.laimory.debug` 입니다.
 > `google-services.json` 에 **`com.soma369.laimory` 와 `com.soma369.laimory.debug` 두 앱이 모두 등록**되어 있어야 debug 빌드가 통과합니다.
 > (콘솔에서 `com.soma369.laimory.debug` 앱을 추가 등록한 뒤 파일을 다시 받으면 두 패키지가 함께 들어갑니다.)
+
+## 로컬 설정 — 서버 환경
+
+API 요청과 OAuth App Link가 build type에 맞는 서버를 사용하도록 `local.properties`에 환경별 도메인 루트를 설정합니다. 값은 `/`로 끝나야 합니다.
+
+```properties
+DEV_BASE_URL="https://dev.laimory.app/"
+RELEASE_BASE_URL="https://laimory.app/"
+```
+
+`local.properties`는 Git에 커밋하지 않으므로 로컬 및 CI 빌드 환경마다 두 값을 설정해야 합니다.

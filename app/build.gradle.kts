@@ -1,3 +1,6 @@
+import java.net.URI
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,6 +10,23 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
 }
+
+val localProperties =
+    Properties().apply {
+        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+    }
+
+fun Properties.requireBaseUrl(name: String): String =
+    requireNotNull(getProperty(name)) { "Define $name in local.properties" }
+        .trim()
+        .removeSurrounding("\"")
+
+val debugBaseUrl = localProperties.requireBaseUrl("DEV_BASE_URL")
+val releaseBaseUrl = localProperties.requireBaseUrl("RELEASE_BASE_URL")
+
+fun String.toAppLinkHost(): String =
+    URI(this).host?.takeIf(String::isNotBlank)
+        ?: error("App Link base URL must contain a valid host: $this")
 
 android {
     namespace = "com.soma369.laimory"
@@ -26,9 +46,14 @@ android {
         debug {
             isDebuggable = true
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${debugBaseUrl.toAppLinkHost()}\"")
+            manifestPlaceholders["authCallbackHost"] = debugBaseUrl.toAppLinkHost()
         }
+
         release {
             isMinifyEnabled = true
+            buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${releaseBaseUrl.toAppLinkHost()}\"")
+            manifestPlaceholders["authCallbackHost"] = releaseBaseUrl.toAppLinkHost()
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
