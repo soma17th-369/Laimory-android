@@ -42,6 +42,21 @@ class SourceItemPayloadMapperTest {
     }
 
     @Test
+    fun `기존 RUNNING과 ON_BICYCLE 이동 데이터도 계속 읽을 수 있다`() {
+        listOf(MovementPayload.Transport.RUNNING, MovementPayload.Transport.ON_BICYCLE).forEach { transport ->
+            val payload =
+                MovementPayload(
+                    start = GeoPoint(latitude = 37.1538856, longitude = 127.0781832),
+                    end = GeoPoint(latitude = 37.16312, longitude = 127.08514),
+                    distanceMeters = 1352.4,
+                    transports = transport,
+                )
+
+            assertEquals(payload, roundTrip(payload))
+        }
+    }
+
+    @Test
     fun `CALENDAR payload 라운드트립`() {
         val payload =
             CalendarPayload(

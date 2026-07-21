@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.collection.location
 
+import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,12 +27,23 @@ internal class DetectedTransportHolder
             transport: MovementPayload.Transport,
             atMillis: Long,
         ) {
+            // ActivityTransitionReceiver가 MovementTransportClassifier로 정규화한 값만 전달한다.
             synchronized(lock) { events.add(transport to atMillis) }
+        }
+
+        /** 체류 중 누적된 감지값이 새 이동 구간을 오염시키지 않도록 이동 시작 경계에서 비운다. */
+        fun onTrackingStatusChanged(
+            previousStatus: LocationTrackingStatus?,
+            currentStatus: LocationTrackingStatus?,
+        ) {
+            if (previousStatus !is LocationTrackingStatus.Moving && currentStatus is LocationTrackingStatus.Moving) {
+                reset()
+            }
         }
 
         /**
          * 누적 전이에서 시간 기준 dominant 이동수단. 각 전이는 다음 전이(또는 [nowMillis])까지 지속으로 보고,
-         * 실제 이동수단(WALKING/RUNNING/ON_BICYCLE/IN_VEHICLE)만 집계한다. 없으면 UNKNOWN.
+         * 신규 정책의 이동수단(WALKING/IN_VEHICLE)만 집계한다. 감지값이 없으면 UNKNOWN.
          */
         fun dominant(nowMillis: Long): MovementPayload.Transport =
             synchronized(lock) {

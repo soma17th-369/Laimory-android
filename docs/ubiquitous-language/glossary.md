@@ -12,6 +12,7 @@
 | Timeline | 순간 | Moment | 특정 시점에 기록되거나 수집된 개별 단위입니다. | Item, Record처럼 모호한 표현으로 대체하지 않습니다. |
 | Timeline | 기록 창 | RecordDateWindow | 선택한 날짜를 기준으로 한 반열린 기록 구간 `[start, end)` 입니다. 기본값은 `[자정, 다음 날 자정)` 이며, 사용자가 시작 시각과 당일·익일 종료 시각을 지정할 수 있습니다. 경계를 걸친 수면·일정은 겹치면(overlap) 포함하고, 홈 요약과 초안 생성 입력이 같은 창을 공유합니다. | "수면 경계 창"으로 좁혀 부르지 않습니다. 화면이나 Data 계층에서 구간을 다시 계산하지 않고 `RecordDateWindow`를 전달합니다. 수집(collection)이 아니라 타임라인 도메인이 소유합니다. |
 | Collection | 체류 | Stay / `ItemType.STAY` | 한 장소에 일정 시간 머문 이벤트입니다. 체류 시간은 아이템의 `startAt`/`endAt`에서 파생합니다. 서버 초안 계약(`sourceItems[].itemType`)과 같은 이름을 로컬 도메인·로컬 DB에서도 사용합니다. | 체류 의미로 LOCATION을 쓰지 않습니다. UI 상위 개념 "위치"(체류+이동 합산 라벨)와 혼동하지 않습니다. |
+| Collection | 이동수단 | Transport / `MovementPayload.Transport` | 확정된 이동 구간의 방식입니다. 신규 수집은 도보(`WALKING`)와 차량(`IN_VEHICLE`)만 생성합니다. | `RUNNING`, `ON_BICYCLE`, `UNKNOWN`은 기존 저장 데이터 호환과 내부 폴백을 위해서만 유지합니다. |
 
 ## 2. Proposed Terms
 
