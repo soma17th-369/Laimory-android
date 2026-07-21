@@ -4,12 +4,14 @@ import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSo
 import com.soma369.laimory.core.data.model.timeline.request.CreateDraftTaskRequest
 import com.soma369.laimory.core.data.model.timeline.request.PhotoUploadCreateRequest
 import com.soma369.laimory.core.data.model.timeline.response.CreateDraftTaskResponse
+import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.DraftTaskStatusResponse
 import com.soma369.laimory.core.data.model.timeline.response.PhotoUploadCreateResponse
 import com.soma369.laimory.core.data.model.timeline.response.PhotoUploadEntry
 import com.soma369.laimory.core.data.network.s3.PhotoMeta
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -49,6 +51,7 @@ class TimelineDraftRepositoryImplTest {
 
     private class FakeRemote(
         private val uploadsResponse: PhotoUploadCreateResponse,
+        private val statusResponse: DraftTaskStatusResponse = DraftTaskStatusResponse(status = "PROCESSING"),
     ) : TimelineDraftRemoteDataSource {
         var lastPhotoUploadRequest: PhotoUploadCreateRequest? = null
         var lastDraftRequest: CreateDraftTaskRequest? = null
@@ -63,8 +66,33 @@ class TimelineDraftRepositoryImplTest {
             return CreateDraftTaskResponse("t")
         }
 
-        override suspend fun getDraftStatus(taskId: String): DraftTaskStatusResponse = DraftTaskStatusResponse("PROCESSING", null)
+        override suspend fun getDraftStatus(taskId: String): DraftTaskStatusResponse = statusResponse
     }
+
+    @Test
+    fun `getDraftStatus - SUCCESS 결과 식별자를 Domain까지 전달한다`() =
+        runTest {
+            val remote =
+                FakeRemote(
+                    uploadsResponse = PhotoUploadCreateResponse(uploads = emptyList()),
+                    statusResponse =
+                        DraftTaskStatusResponse(
+                            status = "SUCCESS",
+                            result =
+                                DailyTimelineResponse(
+                                    dailyRecordId = 31L,
+                                    recordDate = "2026-07-08",
+                                    events = emptyList(),
+                                ),
+                        ),
+                )
+            val repo = TimelineDraftRepositoryImpl(resolver, remote, RecordingS3Uploader(), Json)
+
+            val snapshot = repo.getDraftStatus("task-1")
+
+            assertEquals(DraftTaskStatus.SUCCESS, snapshot.status)
+            assertEquals(31L, snapshot.result?.dailyRecordId)
+        }
 
     @Test
     fun `uploadPhotos - presign 발급값과 S3 PUT 의 contentType·size 가 정확히 일치한다`() =
