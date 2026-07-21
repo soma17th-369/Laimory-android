@@ -32,18 +32,4 @@ internal object MovementTransportClassifier {
             MovementPayload.Transport.IN_VEHICLE
         }
     }
-
-    /** 과거 enum 값이 신규 수집 경로로 들어와도 저장 전 도보/차량으로 제한한다. */
-    fun normalize(transport: MovementPayload.Transport): MovementPayload.Transport =
-        when (transport) {
-            MovementPayload.Transport.WALKING,
-            MovementPayload.Transport.RUNNING,
-            -> MovementPayload.Transport.WALKING
-
-            MovementPayload.Transport.IN_VEHICLE -> MovementPayload.Transport.IN_VEHICLE
-
-            MovementPayload.Transport.ON_BICYCLE,
-            MovementPayload.Transport.UNKNOWN,
-            -> MovementPayload.Transport.UNKNOWN
-        }
 }

@@ -6,23 +6,26 @@ import org.junit.Test
 
 class DetectedTransportHolderTest {
     @Test
-    fun `과거 달리기는 도보로 정규화하고 자전거는 속도 폴백으로 보낸다`() {
+    fun `UNKNOWN 점유 시간은 다른 이동수단에 귀속하지 않는다`() {
         val holder = DetectedTransportHolder()
-        holder.onEnter(MovementPayload.Transport.RUNNING, atMillis = 0L)
-        assertEquals(MovementPayload.Transport.WALKING, holder.dominant(nowMillis = 10L))
+        holder.onEnter(MovementPayload.Transport.WALKING, atMillis = 0L)
+        holder.onEnter(MovementPayload.Transport.UNKNOWN, atMillis = 10L)
 
-        holder.reset()
-        holder.onEnter(MovementPayload.Transport.ON_BICYCLE, atMillis = 0L)
-        assertEquals(MovementPayload.Transport.UNKNOWN, holder.dominant(nowMillis = 10L))
+        assertEquals(MovementPayload.Transport.WALKING, holder.dominant(nowMillis = 20L))
     }
 
     @Test
-    fun `이동 시작 경계에서 초기화하면 체류 중 감지값이 남지 않는다`() {
+    fun `체류에서 이동으로 전환되면 체류 중 감지값을 초기화한다`() {
+        val segmenter = LocationSegmenter(dwellRadiusMeters = 80.0, stayMillis = 60_000L)
         val holder = DetectedTransportHolder()
-        holder.onEnter(MovementPayload.Transport.ON_BICYCLE, atMillis = 0L)
+        segmenter.onSample(latitude = 37.5, longitude = 127.0, timeMillis = 0L)
+        val previousStatus = segmenter.currentStatus(nowMillis = 0L)
+        holder.onEnter(MovementPayload.Transport.IN_VEHICLE, atMillis = 0L)
 
-        holder.reset()
+        segmenter.onSample(latitude = 37.501, longitude = 127.0, timeMillis = 30_000L)
+        val currentStatus = segmenter.currentStatus(nowMillis = 30_000L)
+        holder.onTrackingStatusChanged(previousStatus, currentStatus)
 
-        assertEquals(MovementPayload.Transport.UNKNOWN, holder.dominant(nowMillis = 20L))
+        assertEquals(MovementPayload.Transport.UNKNOWN, holder.dominant(nowMillis = 30_000L))
     }
 }

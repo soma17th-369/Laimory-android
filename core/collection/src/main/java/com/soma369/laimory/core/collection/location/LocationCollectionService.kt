@@ -22,7 +22,6 @@ import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
 import com.google.android.gms.location.DetectedActivity
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
-import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
@@ -195,10 +194,7 @@ internal class LocationCollectionService : Service() {
         val previousStatus = active.currentStatus(location.time)
         val events = active.onSample(location.latitude, location.longitude, location.time)
         val currentStatus = active.currentStatus(location.time)
-        // 체류 중 쌓인 오탐이 새 이동 구간의 이동수단 판정을 지배하지 않도록 이동 시작 경계에서 비운다.
-        if (previousStatus !is LocationTrackingStatus.Moving && currentStatus is LocationTrackingStatus.Moving) {
-            transportHolder.reset()
-        }
+        transportHolder.onTrackingStatusChanged(previousStatus, currentStatus)
         trackingState.update(currentStatus)
         if (events.isNotEmpty()) saveEvents(events)
     }
