@@ -1,11 +1,12 @@
 package com.soma369.laimory.core.data.model.timeline.response
 
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskFailureReason
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
-import com.soma369.laimory.core.domain.model.timeline.TimelineErrorCode
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -15,7 +16,13 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 class DraftTaskStatusResponseTest {
-    private val json = Json { ignoreUnknownKeys = true }
+    @OptIn(ExperimentalSerializationApi::class)
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            explicitNulls = false
+            coerceInputValues = true
+        }
 
     @Test
     fun `PROCESSING은 optional elapsedSeconds를 보존한다`() {
@@ -76,8 +83,8 @@ class DraftTaskStatusResponseTest {
         val known = decode("""{"status":"FAILED","error":"ERROR_1009"}""")
         val unknown = decode("""{"status":"FAILED","error":"ERROR_1999"}""")
 
-        assertEquals(TimelineErrorCode.AI_DISPATCH_FAILURE, known.failure)
-        assertEquals(TimelineErrorCode.UNKNOWN, unknown.failure)
+        assertEquals(DraftTaskFailureReason.AI_DISPATCH_FAILURE, known.failure)
+        assertEquals(DraftTaskFailureReason.UNKNOWN, unknown.failure)
     }
 
     @Test
@@ -91,7 +98,7 @@ class DraftTaskStatusResponseTest {
             """{"status":"FAILED"}""",
             """{"status":"FAILED","error":"ERROR_1009","result":${SUCCESS_RESULT}}""",
         ).forEach { raw ->
-            assertThrows(ApiException.UnknownException::class.java) { decode(raw) }
+            assertThrows("잘못된 terminal shape: $raw", ApiException.UnknownException::class.java) { decode(raw) }
         }
     }
 
