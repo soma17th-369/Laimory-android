@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,6 +9,13 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
 }
+
+val debugBaseUrl = providers.gradleProperty("laimory.debugBaseUrl").get()
+val releaseBaseUrl = providers.gradleProperty("laimory.releaseBaseUrl").get()
+
+fun String.toAppLinkHost(): String =
+    URI(this).host?.takeIf(String::isNotBlank)
+        ?: error("App Link base URL must contain a valid host: $this")
 
 android {
     namespace = "com.soma369.laimory"
@@ -26,9 +35,14 @@ android {
         debug {
             isDebuggable = true
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${debugBaseUrl.toAppLinkHost()}\"")
+            manifestPlaceholders["authCallbackHost"] = debugBaseUrl.toAppLinkHost()
         }
+
         release {
             isMinifyEnabled = true
+            buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${releaseBaseUrl.toAppLinkHost()}\"")
+            manifestPlaceholders["authCallbackHost"] = releaseBaseUrl.toAppLinkHost()
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

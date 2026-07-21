@@ -24,8 +24,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- #155: 검증되지 않은 HTTPS 딥링크. autoVerify/assetlinks.json은 #156에서 적용한다. -->
-            <intent-filter>
+            <!-- #156: 환경별 서버의 assetlinks.json과 검증하는 OAuth App Link. -->
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
@@ -33,7 +33,7 @@
 
                 <data
                     android:scheme="https"
-                    android:host="dev.laimory.app"
+                    android:host="${authCallbackHost}"
                     android:path="/auth/app" />
             </intent-filter>
 

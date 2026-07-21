@@ -19,3 +19,14 @@ Firebase 초기 연동(google-services 플러그인)이 배선되어 있어, **�
 > ⚠️ debug 빌드는 `applicationIdSuffix = ".debug"` 때문에 패키지명이 `com.soma369.laimory.debug` 입니다.
 > `google-services.json` 에 **`com.soma369.laimory` 와 `com.soma369.laimory.debug` 두 앱이 모두 등록**되어 있어야 debug 빌드가 통과합니다.
 > (콘솔에서 `com.soma369.laimory.debug` 앱을 추가 등록한 뒤 파일을 다시 받으면 두 패키지가 함께 들어갑니다.)
+
+## 서버 환경
+
+API 요청과 OAuth App Link가 build type에 맞는 서버를 사용하도록 공개 기본 URL을 `gradle.properties`에서 관리합니다.
+
+```properties
+laimory.debugBaseUrl=https://dev.laimory.app/
+laimory.releaseBaseUrl=https://laimory.app/
+```
+
+임시 환경이 필요하면 `~/.gradle/gradle.properties`에 같은 키를 설정하거나 Gradle 실행 시 `-P`로 덮어쓸 수 있습니다.

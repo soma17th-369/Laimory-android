@@ -1,5 +1,3 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -8,10 +6,8 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-val properties =
-    Properties().apply {
-        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
-    }
+val debugBaseUrl = providers.gradleProperty("laimory.debugBaseUrl").get()
+val releaseBaseUrl = providers.gradleProperty("laimory.releaseBaseUrl").get()
 
 android {
     namespace = "com.soma369.laimory.core.data"
@@ -20,10 +16,16 @@ android {
     defaultConfig {
         minSdk = 28
 
-        // DEV_BASE_URL 은 도메인 루트만 담는다(비공개) — API prefix/버전 조합은 ApiPrefix 가 한다.
-        buildConfigField("String", "BASE_URL", properties.getProperty("DEV_BASE_URL") ?: "\"https://localhost/\"")
+        // 새 build type은 개발 환경을 기본으로 사용하며 release만 아래에서 운영 환경으로 덮어쓴다.
+        buildConfigField("String", "BASE_URL", "\"$debugBaseUrl\"")
         // 서버 API 계약의 {applicationVersion} — versionName 처럼 빌드 설정 단일 지점에서 관리한다.
         buildConfigField("String", "API_APP_VERSION", "\"v1\"")
+    }
+
+    buildTypes {
+        release {
+            buildConfigField("String", "BASE_URL", "\"$releaseBaseUrl\"")
+        }
     }
 
     buildFeatures {

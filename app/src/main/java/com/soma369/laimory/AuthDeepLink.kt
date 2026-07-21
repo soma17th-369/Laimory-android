@@ -6,14 +6,13 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 private const val CALLBACK_SCHEME = "https"
-private const val CALLBACK_HOST = "dev.laimory.app"
 private const val CALLBACK_PATH = "/auth/app"
 
 /** 앱이 소유한 OAuth callback origin/path만 도메인 결과로 변환한다. */
 internal fun String.toSocialLoginCallbackOrNull(): SocialLoginCallback? {
     val uri = runCatching { URI(this) }.getOrNull() ?: return null
     if (!uri.scheme.equals(CALLBACK_SCHEME, ignoreCase = true)) return null
-    if (!uri.host.equals(CALLBACK_HOST, ignoreCase = true)) return null
+    if (!uri.host.equals(BuildConfig.AUTH_CALLBACK_HOST, ignoreCase = true)) return null
     if (uri.path != CALLBACK_PATH) return null
 
     val query = uri.rawQuery.toQueryMap()
