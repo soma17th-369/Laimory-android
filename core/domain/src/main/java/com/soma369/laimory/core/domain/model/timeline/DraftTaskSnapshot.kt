@@ -11,6 +11,6 @@ package com.soma369.laimory.core.domain.model.timeline
 data class DraftTaskSnapshot(
     val status: DraftTaskStatus,
     val result: DailyTimeline? = null,
-    val failure: TimelineErrorCode? = null,
+    val failure: DraftTaskFailureReason? = null,
     val elapsedSeconds: Long? = null,
 )

@@ -1,9 +1,9 @@
 package com.soma369.laimory.core.data.model.timeline.response
 
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskFailureReason
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
-import com.soma369.laimory.core.domain.model.timeline.TimelineErrorCode
 import kotlinx.serialization.Serializable
 
 /**
@@ -39,7 +39,7 @@ internal fun DraftTaskStatusResponse.toDomain(): DraftTaskSnapshot {
             if (result != null || error.isNullOrBlank() || elapsedSeconds != null) invalidShape()
             DraftTaskSnapshot(
                 status = taskStatus,
-                failure = TimelineErrorCode.fromServerValue(error),
+                failure = error.toFailureReason(),
             )
         }
     }
@@ -47,3 +47,12 @@ internal fun DraftTaskStatusResponse.toDomain(): DraftTaskSnapshot {
 
 private fun DraftTaskStatusResponse.invalidShape(): Nothing =
     throw ApiException.UnknownException("초안 작업 응답 필드가 status=$status 계약과 일치하지 않습니다")
+
+private fun String.toFailureReason(): DraftTaskFailureReason =
+    when (this) {
+        "ERROR_1008" -> DraftTaskFailureReason.AI_REPORTED_FAILURE
+        "ERROR_1009" -> DraftTaskFailureReason.AI_DISPATCH_FAILURE
+        "ERROR_1010" -> DraftTaskFailureReason.STAGING_DATA_MISSING
+        "ERROR_1011" -> DraftTaskFailureReason.FINALIZE_FAILURE
+        else -> DraftTaskFailureReason.UNKNOWN
+    }

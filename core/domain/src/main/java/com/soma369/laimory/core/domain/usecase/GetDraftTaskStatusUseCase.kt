@@ -4,8 +4,6 @@ import com.soma369.laimory.core.domain.base.BaseUseCase
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatusOutcome
-import com.soma369.laimory.core.domain.model.timeline.TimelineErrorCode
-import com.soma369.laimory.core.domain.model.timeline.timelineErrorCode
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -23,11 +21,16 @@ class GetDraftTaskStatusUseCase
                 try {
                     DraftTaskStatusOutcome.Snapshot(repository.getDraftStatus(taskId))
                 } catch (exception: ApiException) {
-                    when (exception.timelineErrorCode) {
-                        TimelineErrorCode.DRAFT_TASK_NOT_FOUND -> DraftTaskStatusOutcome.TaskUnavailable
-                        TimelineErrorCode.RECORD_NOT_FOUND -> DraftTaskStatusOutcome.ResultUnavailable
+                    when (exception.errorCode) {
+                        TASK_UNAVAILABLE_ERROR_CODE -> DraftTaskStatusOutcome.TaskUnavailable
+                        RESULT_UNAVAILABLE_ERROR_CODE -> DraftTaskStatusOutcome.ResultUnavailable
                         else -> throw exception
                     }
                 }
             }
+
+        private companion object {
+            const val TASK_UNAVAILABLE_ERROR_CODE = "ERROR_1001"
+            const val RESULT_UNAVAILABLE_ERROR_CODE = "ERROR_0404"
+        }
     }
