@@ -156,15 +156,7 @@ internal class LocationSegmenter(
     private fun inferTransport(
         distanceMeters: Double,
         durationMillis: Long,
-    ): MovementPayload.Transport {
-        if (durationMillis <= 0L) return MovementPayload.Transport.UNKNOWN
-        val speedMetersPerSecond = distanceMeters / (durationMillis / 1000.0)
-        return when {
-            speedMetersPerSecond < WALKING_MAX_MPS -> MovementPayload.Transport.WALKING
-            speedMetersPerSecond < BICYCLE_MAX_MPS -> MovementPayload.Transport.ON_BICYCLE
-            else -> MovementPayload.Transport.IN_VEHICLE
-        }
-    }
+    ): MovementPayload.Transport = MovementTransportClassifier.fromAverageSpeed(distanceMeters, durationMillis)
 
     private data class AtPlace(
         val latitude: Double,
@@ -191,10 +183,6 @@ internal class LocationSegmenter(
 
         /** 운영 기본 체류 인정 시간(5분). 교통 정차 등 짧은 멈춤은 걸러 의미있는 방문만 남긴다. */
         const val DEFAULT_STAY_MILLIS = 5 * 60_000L
-
-        /** 도보 상한 ~8km/h, 자전거 상한 ~25km/h. 그 이상은 차량. */
-        private const val WALKING_MAX_MPS = 2.2
-        private const val BICYCLE_MAX_MPS = 7.0
 
         /** 두 좌표 사이 대권거리(Haversine, m). */
         fun distanceMeters(

@@ -26,12 +26,12 @@ internal class DetectedTransportHolder
             transport: MovementPayload.Transport,
             atMillis: Long,
         ) {
-            synchronized(lock) { events.add(transport to atMillis) }
+            synchronized(lock) { events.add(MovementTransportClassifier.normalize(transport) to atMillis) }
         }
 
         /**
          * 누적 전이에서 시간 기준 dominant 이동수단. 각 전이는 다음 전이(또는 [nowMillis])까지 지속으로 보고,
-         * 실제 이동수단(WALKING/RUNNING/ON_BICYCLE/IN_VEHICLE)만 집계한다. 없으면 UNKNOWN.
+         * 신규 정책의 이동수단(WALKING/IN_VEHICLE)만 집계한다. 감지값이 없으면 UNKNOWN.
          */
         fun dominant(nowMillis: Long): MovementPayload.Transport =
             synchronized(lock) {

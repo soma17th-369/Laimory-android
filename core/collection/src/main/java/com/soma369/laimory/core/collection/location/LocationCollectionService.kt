@@ -22,6 +22,7 @@ import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
 import com.google.android.gms.location.DetectedActivity
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
+import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
@@ -191,8 +192,14 @@ internal class LocationCollectionService : Service() {
 
     private fun onLocation(location: Location) {
         val active = segmenter ?: return
+        val previousStatus = active.currentStatus(location.time)
         val events = active.onSample(location.latitude, location.longitude, location.time)
-        trackingState.update(active.currentStatus(location.time))
+        val currentStatus = active.currentStatus(location.time)
+        // 체류 중 쌓인 오탐이 새 이동 구간의 이동수단 판정을 지배하지 않도록 이동 시작 경계에서 비운다.
+        if (previousStatus !is LocationTrackingStatus.Moving && currentStatus is LocationTrackingStatus.Moving) {
+            transportHolder.reset()
+        }
+        trackingState.update(currentStatus)
         if (events.isNotEmpty()) saveEvents(events)
     }
 
@@ -236,7 +243,7 @@ internal class LocationCollectionService : Service() {
                             start = GeoPoint(startLatitude, startLongitude),
                             end = GeoPoint(endLatitude, endLongitude),
                             distanceMeters = distanceMeters,
-                            // 구간 dominant AR 이동수단 우선, 없으면(UNKNOWN) 세그먼터의 속도 추론으로 폴백.
+                            // 구간 dominant AR 이동수단 우선, 없으면(UNKNOWN) 도보/차량 속도 추론으로 폴백.
                             transports =
                                 transportHolder.dominant(SystemClock.elapsedRealtime())
                                     .takeIf { it != MovementPayload.Transport.UNKNOWN } ?: transport,
@@ -295,7 +302,7 @@ internal class LocationCollectionService : Service() {
         // 0 = 이동 여부와 무관하게 주기적으로 위치를 받는다(정지 중 샘플이 끊기지 않도록).
         private const val MIN_DISTANCE_M = 0f
 
-        // AR 전이를 구독할 활동(ENTER). STILL 은 정지 → transport UNKNOWN 리셋(속도 폴백 유도).
+        // 과거 세부 활동도 구독하되 신규 기록에는 도보/차량으로 정규화한다. STILL 은 속도 폴백을 유도한다.
         private val TRANSPORT_ACTIVITIES =
             listOf(
                 DetectedActivity.IN_VEHICLE,

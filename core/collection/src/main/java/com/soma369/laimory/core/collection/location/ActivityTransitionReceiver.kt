@@ -5,8 +5,6 @@ import android.content.Context
 import android.content.Intent
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionResult
-import com.google.android.gms.location.DetectedActivity
-import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -34,15 +32,11 @@ internal class ActivityTransitionReceiver : BroadcastReceiver() {
         // 구간 dominant 집계를 위해 진입(ENTER) 전이를 시각과 함께 모두 쌓는다.
         result.transitionEvents
             .filter { it.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER }
-            .forEach { holder.onEnter(it.activityType.toTransport(), it.elapsedRealTimeNanos / 1_000_000L) }
+            .forEach {
+                holder.onEnter(
+                    MovementTransportClassifier.fromDetectedActivity(it.activityType),
+                    it.elapsedRealTimeNanos / 1_000_000L,
+                )
+            }
     }
-
-    private fun Int.toTransport(): MovementPayload.Transport =
-        when (this) {
-            DetectedActivity.IN_VEHICLE -> MovementPayload.Transport.IN_VEHICLE
-            DetectedActivity.ON_BICYCLE -> MovementPayload.Transport.ON_BICYCLE
-            DetectedActivity.RUNNING -> MovementPayload.Transport.RUNNING
-            DetectedActivity.WALKING, DetectedActivity.ON_FOOT -> MovementPayload.Transport.WALKING
-            else -> MovementPayload.Transport.UNKNOWN
-        }
 }
