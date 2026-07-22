@@ -9,4 +9,5 @@ data class TimelineItem(
     val rawId: String,
     val startAt: LocalDateTime,
     val endAt: LocalDateTime?,
+    val photoUrl: String? = null,
 )
