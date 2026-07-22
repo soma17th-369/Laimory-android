@@ -4,6 +4,9 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 @Serializable
 data class TimelineItemResponse(
@@ -15,11 +18,19 @@ data class TimelineItemResponse(
     val payload: JsonElement,
 )
 
-internal fun TimelineItemResponse.toDomain(): TimelineItem =
-    TimelineItem(
+internal fun TimelineItemResponse.toDomain(): TimelineItem {
+    val type = TimelineItemType.entries.firstOrNull { it.name == itemType } ?: TimelineItemType.UNKNOWN
+    return TimelineItem(
         timelineItemId = timelineItemId,
-        itemType = TimelineItemType.entries.firstOrNull { it.name == itemType } ?: TimelineItemType.UNKNOWN,
+        itemType = type,
         rawId = rawId,
         startAt = startAt.parseLocalDateTime("startAt"),
         endAt = endAt?.parseLocalDateTime("endAt"),
+        photoUrl =
+            if (type == TimelineItemType.PHOTO) {
+                ((payload as? JsonObject)?.get("photoUrl") as? JsonPrimitive)?.contentOrNull
+            } else {
+                null
+            },
     )
+}

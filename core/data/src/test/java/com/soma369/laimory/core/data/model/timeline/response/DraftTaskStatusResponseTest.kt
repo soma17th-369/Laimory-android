@@ -60,6 +60,7 @@ class DraftTaskStatusResponseTest {
         assertEquals(51L, item.timelineItemId)
         assertEquals(TimelineItemType.PHOTO, item.itemType)
         assertEquals("photo-raw-id", item.rawId)
+        assertEquals("https://example.com/photo.jpg", item.photoUrl)
     }
 
     @Test

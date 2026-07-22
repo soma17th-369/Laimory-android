@@ -156,6 +156,13 @@ object LaimorySignature {
             fontSize = 18.sp,
             lineHeight = 28.sp,
         )
+    val note =
+        TextStyle(
+            fontFamily = GowunBatang,
+            fontWeight = FontWeight.Normal,
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+        )
 }
 
 // 시그니처 타이포 단축 접근자. 색과 달리 다크/라이트로 바뀌지 않으므로 CompositionLocal 없이 정적으로 노출.
