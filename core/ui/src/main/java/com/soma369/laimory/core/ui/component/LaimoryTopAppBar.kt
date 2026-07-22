@@ -63,7 +63,13 @@ fun LaimoryTopAppBar(
 
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
             ProvideTextStyle(MaterialTheme.typography.titleMedium) {
-                Box(contentAlignment = Alignment.Center) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = TopAppBarTouchTarget),
+                    contentAlignment = Alignment.Center,
+                ) {
                     title()
                 }
             }
