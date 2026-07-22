@@ -9,9 +9,11 @@ import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepositor
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
+import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -89,6 +91,36 @@ class TimelineRecordViewModelTest {
             runCurrent()
 
             assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `Event 선택 Intent는 선택한 Event 편집 이동 효과를 방출한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(timelineEventId = 17L))
+            runCurrent()
+
+            assertEquals(
+                TimelineRecordUiSideEffect.NavigateToEventEditor(timelineEventId = 17L),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `기록 메뉴 Intent는 기록 메뉴 열기 효과를 방출한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenRecordMenu)
+            runCurrent()
+
+            assertEquals(
+                TimelineRecordUiSideEffect.OpenRecordMenu,
+                viewModel.sideEffect.first(),
+            )
         }
 
     private fun createViewModel() =
