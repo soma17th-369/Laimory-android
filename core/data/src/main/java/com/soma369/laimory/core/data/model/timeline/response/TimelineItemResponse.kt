@@ -13,7 +13,7 @@ data class TimelineItemResponse(
     val timelineItemId: Long,
     val itemType: String,
     val rawId: String,
-    val startAt: String,
+    val startAt: String? = null,
     val endAt: String? = null,
     val payload: JsonElement,
 )
@@ -24,7 +24,7 @@ internal fun TimelineItemResponse.toDomain(): TimelineItem {
         timelineItemId = timelineItemId,
         itemType = type,
         rawId = rawId,
-        startAt = startAt.parseLocalDateTime("startAt"),
+        startAt = startAt?.parseLocalDateTime("startAt"),
         endAt = endAt?.parseLocalDateTime("endAt"),
         photoUrl =
             if (type == TimelineItemType.PHOTO) {
