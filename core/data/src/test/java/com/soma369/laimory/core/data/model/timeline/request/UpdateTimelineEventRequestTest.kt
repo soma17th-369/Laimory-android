@@ -5,9 +5,9 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 
@@ -48,9 +48,21 @@ class UpdateTimelineEventRequestTest {
                 photosToAdd = TimelineEventUpdateField.Value(emptyList()),
             ).toRequestJson()
 
-        assertEquals("MEAL", request["eventType"].toString().trim('"'))
+        assertEquals("MEAL", request["eventType"]?.jsonPrimitive?.content)
         assertEquals("null", request["memo"].toString())
         assertEquals("[]", request["photosToAdd"].toString())
+    }
+
+    @Test
+    fun `memo Value 원문은 가공하지 않고 전송한다`() {
+        val memo = "  원문 메모  "
+
+        val request =
+            command(
+                memo = TimelineEventUpdateField.Value(memo),
+            ).toRequestJson()
+
+        assertEquals(memo, request["memo"]?.jsonPrimitive?.content)
     }
 
     @Test
@@ -95,8 +107,6 @@ class UpdateTimelineEventRequestTest {
             ),
             request,
         )
-        assertTrue(request.toString().contains("\"photosToAdd\""))
-        assertFalse(request.toString().contains("\"longitude\""))
     }
 
     private fun command(
