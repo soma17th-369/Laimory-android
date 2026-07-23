@@ -7,6 +7,12 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object OpenRecordMenu : TimelineRecordUiIntent
 
+    data object ConfirmDelete : TimelineRecordUiIntent
+
+    data object DismissDelete : TimelineRecordUiIntent
+
+    data object FinishDelete : TimelineRecordUiIntent
+
     data class SelectEvent(
         val timelineEventId: Long,
     ) : TimelineRecordUiIntent

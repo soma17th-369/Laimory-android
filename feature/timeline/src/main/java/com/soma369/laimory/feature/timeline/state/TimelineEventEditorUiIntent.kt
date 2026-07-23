@@ -57,4 +57,10 @@ sealed interface TimelineEventEditorUiIntent : UiIntent {
     data object DismissDiscard : TimelineEventEditorUiIntent
 
     data object RequestDelete : TimelineEventEditorUiIntent
+
+    data object ConfirmDelete : TimelineEventEditorUiIntent
+
+    data object DismissDelete : TimelineEventEditorUiIntent
+
+    data object FinishDelete : TimelineEventEditorUiIntent
 }

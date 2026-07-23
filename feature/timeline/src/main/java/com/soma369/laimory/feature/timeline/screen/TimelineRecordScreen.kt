@@ -30,14 +30,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
+import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEventCard
 import com.soma369.laimory.feature.timeline.component.TimelinePhotoViewerDialog
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
+import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
@@ -53,7 +56,6 @@ import com.soma369.laimory.core.ui.R as UiR
 @Composable
 fun TimelineRecordRoute(
     innerPadding: PaddingValues,
-    onOpenRecordMenu: () -> Unit = {},
     viewModel: TimelineRecordViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -62,7 +64,6 @@ fun TimelineRecordRoute(
         state = state,
         onIntent = viewModel::sendIntent,
         sideEffectFlow = viewModel.sideEffect,
-        onOpenRecordMenu = onOpenRecordMenu,
     )
 }
 
@@ -72,12 +73,13 @@ private fun TimelineRecordContent(
     state: TimelineRecordUiState,
     onIntent: (TimelineRecordUiIntent) -> Unit,
     sideEffectFlow: Flow<TimelineRecordUiSideEffect>,
-    onOpenRecordMenu: () -> Unit,
 ) {
+    val snackbarHostState = LocalSnackbarHostState.current
     LaunchedEffect(sideEffectFlow) {
         sideEffectFlow.collect { effect ->
             when (effect) {
-                TimelineRecordUiSideEffect.OpenRecordMenu -> onOpenRecordMenu()
+                is TimelineRecordUiSideEffect.ShowSnackbar ->
+                    snackbarHostState.showSnackbar(effect.message)
             }
         }
     }
@@ -86,6 +88,23 @@ private fun TimelineRecordContent(
         innerPadding = innerPadding,
         state = state,
         onIntent = onIntent,
+    )
+
+    TimelineDeleteDialog(
+        state = state.deleteDialogState,
+        confirmationTitle =
+            state.deleteTarget
+                ?.recordDate
+                ?.format(RecordDateFormatter)
+                ?.let { "$it 기록을 삭제할까요?" }
+                ?: "이 하루 기록을 삭제할까요?",
+        confirmationMessage =
+            "이 날짜의 모든 이벤트와 서버 업로드 사진이 삭제됩니다. " +
+                "기기의 원본 사진과 수집 데이터는 삭제되지 않습니다.",
+        successMessage = "하루 기록을 삭제했습니다. 홈에서 새 초안을 만들 수 있어요.",
+        onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmDelete) },
+        onDismiss = { onIntent(TimelineRecordUiIntent.DismissDelete) },
+        onFinish = { onIntent(TimelineRecordUiIntent.FinishDelete) },
     )
 }
 
@@ -114,7 +133,10 @@ private fun TimelineRecordScreen(
             onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
             actions = {
                 if (state.content is TimelineRecordUiContent.Record) {
-                    IconButton(onClick = { onIntent(TimelineRecordUiIntent.OpenRecordMenu) }) {
+                    IconButton(
+                        onClick = { onIntent(TimelineRecordUiIntent.OpenRecordMenu) },
+                        enabled = state.deleteDialogState == TimelineDeleteDialogState.Hidden,
+                    ) {
                         Icon(
                             painter = painterResource(UiR.drawable.ico_default_more),
                             contentDescription = "기록 메뉴",
