@@ -88,6 +88,18 @@ class ObserveDraftTaskUseCaseTest {
         }
 
     @Test
+    fun `복원 작업은 서버 경과 시간이 없어도 요청 시각 기준으로 장기 처리를 판단한다`() =
+        runTest {
+            val repository = QueueRepository(mutableListOf(processing()))
+            val restoredClock = Clock.fixed(requestedAt.plusSeconds(11L * 60L), ZoneId.of("UTC"))
+
+            val events = useCase(repository, restoredClock).invoke("task-1", requestedAt).toList()
+
+            assertEquals(2, events.size)
+            assertEquals(DraftTaskPollingEvent.LongRunning(11L * 60L), events[1])
+        }
+
+    @Test
     fun `계속 대기에서는 장기 처리 경계를 건너뛴다`() =
         runTest {
             val repository =
@@ -120,12 +132,14 @@ class ObserveDraftTaskUseCaseTest {
             assertEquals(1, repository.statusCallCount)
         }
 
-    private fun useCase(repository: TimelineDraftRepository) =
-        ObserveDraftTaskUseCase(
-            getDraftTaskStatusUseCase = GetDraftTaskStatusUseCase(repository, NoOpMessageHelper),
-            policy = DraftPollingPolicy(),
-            clock = clock,
-        )
+    private fun useCase(
+        repository: TimelineDraftRepository,
+        taskClock: Clock = clock,
+    ) = ObserveDraftTaskUseCase(
+        getDraftTaskStatusUseCase = GetDraftTaskStatusUseCase(repository, NoOpMessageHelper),
+        policy = DraftPollingPolicy(),
+        clock = taskClock,
+    )
 
     private fun processing(elapsedSeconds: Long? = null) =
         DraftTaskSnapshot(status = DraftTaskStatus.PROCESSING, elapsedSeconds = elapsedSeconds)

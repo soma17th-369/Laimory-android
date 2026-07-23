@@ -28,6 +28,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -141,6 +142,37 @@ class DefaultDraftTaskCoordinatorTest {
         }
 
     @Test
+    fun `계속 대기 선택은 같은 프로세스의 전경 복귀 후에도 유지한다`() =
+        runTest {
+            val draftRepository =
+                QueueDraftRepository(
+                    processing(elapsedSeconds = 600L),
+                    processing(elapsedSeconds = 601L),
+                    processing(elapsedSeconds = 602L),
+                )
+            val coordinator =
+                coordinator(
+                    draftRepository,
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.LongRunning)
+
+            coordinator.continueWaiting()
+            runCurrent()
+            coordinator.onBackground()
+            coordinator.onForeground()
+            runCurrent()
+
+            assertEquals(3, draftRepository.statusCallCount)
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Processing)
+        }
+
+    @Test
     fun `작업 소멸 응답은 영속 task를 지우고 unavailable 상태를 남긴다`() =
         runTest {
             val activeTask = ActiveDraftTask("task-missing", date, now)
@@ -159,6 +191,48 @@ class DefaultDraftTaskCoordinatorTest {
 
             assertNull(activeRepository.current)
             assertTrue(coordinator.state.value is DraftTaskTrackingState.Unavailable)
+        }
+
+    @Test
+    fun `작업 소멸 처리 중 저장소 정리가 실패하면 재시도 가능 상태로 전환한다`() =
+        runTest {
+            val activeTask = ActiveDraftTask("task-missing", date, now)
+            val activeRepository =
+                FakeActiveDraftTaskRepository(
+                    initial = activeTask,
+                    clearFailure = IOException("disk full"),
+                )
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(TaskUnavailableResponse),
+                    activeRepository,
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            runCurrent()
+
+            assertEquals(activeTask, activeRepository.current)
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.RetryableError)
+        }
+
+    @Test
+    fun `SUCCESS 결과가 계약과 다르면 앱을 종료하지 않고 재시도 가능 상태로 전환한다`() =
+        runTest {
+            val activeTask = ActiveDraftTask("task-invalid", date, now)
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(DraftTaskSnapshot(status = DraftTaskStatus.SUCCESS)),
+                    FakeActiveDraftTaskRepository(activeTask),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            runCurrent()
+
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.RetryableError)
         }
 
     private fun coordinator(
@@ -190,6 +264,7 @@ class DefaultDraftTaskCoordinatorTest {
 
     private class FakeActiveDraftTaskRepository(
         initial: ActiveDraftTask? = null,
+        private val clearFailure: Throwable? = null,
     ) : ActiveDraftTaskRepository {
         private val state = MutableStateFlow(initial)
         val current: ActiveDraftTask? get() = state.value
@@ -203,6 +278,7 @@ class DefaultDraftTaskCoordinatorTest {
         }
 
         override suspend fun clear() {
+            clearFailure?.let { throw it }
             state.value = null
         }
     }

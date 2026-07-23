@@ -10,6 +10,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
 import com.soma369.laimory.core.domain.usecase.ObserveDraftTaskUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,7 @@ class DefaultDraftTaskCoordinator
         private var pollingJob: Job? = null
         private var isForeground = false
         private var hasRestored = false
+        private var pauseAtLongRunning = true
 
         override val state: StateFlow<DraftTaskTrackingState> = mutableState.asStateFlow()
 
@@ -51,8 +53,9 @@ class DefaultDraftTaskCoordinator
                 activeTaskRepository.save(task)
                 activeTask = task
                 hasRestored = true
+                pauseAtLongRunning = true
                 mutableState.value = DraftTaskTrackingState.Processing(task)
-                startPollingLocked(task, pauseAtLongRunning = true)
+                startPollingLocked(task)
             }
         }
 
@@ -70,7 +73,7 @@ class DefaultDraftTaskCoordinator
                     is DraftTaskTrackingState.RetryableError,
                     -> {
                         mutableState.value = DraftTaskTrackingState.Processing(task)
-                        startPollingLocked(task, pauseAtLongRunning = true)
+                        startPollingLocked(task)
                     }
 
                     is DraftTaskTrackingState.Failed,
@@ -96,7 +99,7 @@ class DefaultDraftTaskCoordinator
                     val task = activeTask ?: return@withLock
                     if (mutableState.value !is DraftTaskTrackingState.RetryableError) return@withLock
                     mutableState.value = DraftTaskTrackingState.Processing(task)
-                    startPollingLocked(task, pauseAtLongRunning = true)
+                    startPollingLocked(task)
                 }
             }
         }
@@ -106,8 +109,9 @@ class DefaultDraftTaskCoordinator
                 mutex.withLock {
                     val task = activeTask ?: return@withLock
                     if (mutableState.value !is DraftTaskTrackingState.LongRunning) return@withLock
+                    pauseAtLongRunning = false
                     mutableState.value = DraftTaskTrackingState.Processing(task)
-                    startPollingLocked(task, pauseAtLongRunning = false)
+                    startPollingLocked(task)
                 }
             }
         }
@@ -118,24 +122,36 @@ class DefaultDraftTaskCoordinator
                 pollingJob = null
                 activeTask = null
                 hasRestored = true
+                pauseAtLongRunning = true
                 activeTaskRepository.clear()
                 mutableState.value = DraftTaskTrackingState.Idle
             }
         }
 
-        private fun startPollingLocked(
-            task: ActiveDraftTask,
-            pauseAtLongRunning: Boolean,
-        ) {
+        private fun startPollingLocked(task: ActiveDraftTask) {
             if (!isForeground || pollingJob?.isActive == true) return
+            val shouldPauseAtLongRunning = pauseAtLongRunning
             pollingJob =
                 applicationScope.launch {
-                    observeDraftTaskUseCase(
-                        taskId = task.taskId,
-                        requestedAt = task.requestedAt,
-                        pauseAtLongRunning = pauseAtLongRunning,
-                    ).collect { event -> handlePollingEvent(task, event) }
+                    try {
+                        observeDraftTaskUseCase(
+                            taskId = task.taskId,
+                            requestedAt = task.requestedAt,
+                            pauseAtLongRunning = shouldPauseAtLongRunning,
+                        ).collect { event -> handlePollingEvent(task, event) }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        markRetryableError(task)
+                    }
                 }
+        }
+
+        private suspend fun markRetryableError(task: ActiveDraftTask) {
+            mutex.withLock {
+                if (!isForeground || activeTask?.taskId != task.taskId) return@withLock
+                mutableState.value = DraftTaskTrackingState.RetryableError(task)
+            }
         }
 
         private suspend fun handlePollingEvent(
@@ -170,7 +186,9 @@ class DefaultDraftTaskCoordinator
                             mutableState.value = DraftTaskTrackingState.Processing(task, snapshot.elapsedSeconds)
 
                         DraftTaskStatus.SUCCESS -> {
-                            val timeline = requireNotNull(snapshot.result)
+                            val timeline =
+                                snapshot.result
+                                    ?: return markRetryableErrorLocked(task)
                             if (mutableState.value !is DraftTaskTrackingState.Success) {
                                 saveTimelineRecordUseCase(timeline)
                             }
@@ -181,11 +199,17 @@ class DefaultDraftTaskCoordinator
                             mutableState.value =
                                 DraftTaskTrackingState.Failed(
                                     task = task,
-                                    reason = requireNotNull(snapshot.failure),
+                                    reason =
+                                        snapshot.failure
+                                            ?: return markRetryableErrorLocked(task),
                                 )
                     }
                 }
             }
+        }
+
+        private fun markRetryableErrorLocked(task: ActiveDraftTask) {
+            mutableState.value = DraftTaskTrackingState.RetryableError(task)
         }
 
         private suspend fun markUnavailableLocked(

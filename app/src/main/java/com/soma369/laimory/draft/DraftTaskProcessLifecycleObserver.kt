@@ -20,11 +20,11 @@ class DraftTaskProcessLifecycleObserver
         private val observeAuthSessionUseCase: ObserveAuthSessionUseCase,
         @ApplicationCoroutineScope private val applicationScope: CoroutineScope,
     ) : DefaultLifecycleObserver {
-        private var authJob: Job? = null
+        private var lifecycleJob: Job? = null
 
         override fun onStart(owner: LifecycleOwner) {
-            authJob?.cancel()
-            authJob =
+            lifecycleJob?.cancel()
+            lifecycleJob =
                 applicationScope.launch {
                     observeAuthSessionUseCase().collect { state ->
                         when (state) {
@@ -37,8 +37,7 @@ class DraftTaskProcessLifecycleObserver
         }
 
         override fun onStop(owner: LifecycleOwner) {
-            authJob?.cancel()
-            authJob = null
-            applicationScope.launch { coordinator.onBackground() }
+            lifecycleJob?.cancel()
+            lifecycleJob = applicationScope.launch { coordinator.onBackground() }
         }
     }
