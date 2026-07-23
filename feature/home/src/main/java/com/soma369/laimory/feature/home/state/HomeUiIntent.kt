@@ -51,4 +51,12 @@ sealed interface HomeUiIntent : UiIntent {
     ) : HomeUiIntent
 
     data object CreateDraft : HomeUiIntent
+
+    data object RetryDraft : HomeUiIntent
+
+    data object ContinueWaiting : HomeUiIntent
+
+    data object StartNewDraft : HomeUiIntent
+
+    data object ViewDraft : HomeUiIntent
 }

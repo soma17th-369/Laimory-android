@@ -25,11 +25,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.R
+import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
+import com.soma369.laimory.feature.home.state.HomeSourceSummary
 import com.soma369.laimory.feature.home.state.HomeUiState
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -40,6 +43,7 @@ import java.util.Locale
 internal fun DateHeaderCard(
     state: HomeUiState,
     onClick: () -> Unit,
+    onActionClick: () -> Unit,
     onPhotoClick: () -> Unit,
 ) {
     val today = rememberToday()
@@ -115,6 +119,11 @@ internal fun DateHeaderCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(
+                    modifier =
+                        Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onActionClick)
+                            .padding(Spacing.extraSmall),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -261,10 +270,49 @@ private fun draftActionLabel(status: DraftCreationStatus): String =
     when (status) {
         DraftCreationStatus.IDLE -> "초안 만들기"
         DraftCreationStatus.SUBMITTING -> "생성 중"
-        DraftCreationStatus.SUBMITTED -> "요청 완료"
+        DraftCreationStatus.PROCESSING -> "초안 생성 중"
+        DraftCreationStatus.LONG_RUNNING -> "오래 걸리고 있어요"
+        DraftCreationStatus.SUCCESS -> "초안 보기"
         DraftCreationStatus.FAILED -> "다시 시도"
     }
 
 private fun formatNumber(value: Long): String = String.format(Locale.KOREA, "%,d", value)
 
 private val CARD_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
+
+@Preview(name = "초안 요청 중", showBackground = true)
+@Composable
+private fun DateHeaderCardSubmittingPreview() = DraftStatusPreview(DraftCreationStatus.SUBMITTING)
+
+@Preview(name = "초안 처리 중", showBackground = true)
+@Composable
+private fun DateHeaderCardProcessingPreview() = DraftStatusPreview(DraftCreationStatus.PROCESSING)
+
+@Preview(name = "초안 장기 처리", showBackground = true)
+@Composable
+private fun DateHeaderCardLongRunningPreview() = DraftStatusPreview(DraftCreationStatus.LONG_RUNNING)
+
+@Preview(name = "초안 성공", showBackground = true)
+@Composable
+private fun DateHeaderCardSuccessPreview() = DraftStatusPreview(DraftCreationStatus.SUCCESS)
+
+@Preview(name = "초안 실패", showBackground = true)
+@Composable
+private fun DateHeaderCardFailedPreview() = DraftStatusPreview(DraftCreationStatus.FAILED)
+
+@Composable
+private fun DraftStatusPreview(status: DraftCreationStatus) {
+    LaimoryTheme {
+        DateHeaderCard(
+            state =
+                HomeUiState(
+                    selectedDate = LocalDate.of(2026, 7, 22),
+                    summary = HomeSourceSummary(photoCount = 3, calendarCount = 2, stepCount = 4_821),
+                    draftStatus = status,
+                ),
+            onClick = {},
+            onActionClick = {},
+            onPhotoClick = {},
+        )
+    }
+}

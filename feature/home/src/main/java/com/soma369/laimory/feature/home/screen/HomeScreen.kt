@@ -25,6 +25,7 @@ import com.soma369.laimory.feature.home.component.DraftSettingsSheet
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
 import com.soma369.laimory.feature.home.component.HomeTimePickerDialog
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
+import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
@@ -125,7 +126,16 @@ private fun HomeScreen(
 
         DateHeaderCard(
             state = state,
-            onClick = { onIntent(HomeUiIntent.OpenDraftSheet) },
+            onClick = { onIntent(HomeUiIntent.ShowDatePicker) },
+            onActionClick = {
+                onIntent(
+                    if (state.draftStatus == DraftCreationStatus.SUCCESS) {
+                        HomeUiIntent.ViewDraft
+                    } else {
+                        HomeUiIntent.OpenDraftSheet
+                    },
+                )
+            },
             onPhotoClick = { onIntent(HomeUiIntent.OpenPhotoSheet) },
         )
 
