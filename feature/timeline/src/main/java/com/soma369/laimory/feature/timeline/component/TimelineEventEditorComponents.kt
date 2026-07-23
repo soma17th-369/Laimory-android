@@ -1,8 +1,6 @@
 package com.soma369.laimory.feature.timeline.component
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,10 +39,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
+import com.soma369.laimory.core.ui.component.LaimorySelectField
 import com.soma369.laimory.core.ui.component.LaimoryTextField
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
+import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import com.soma369.laimory.core.ui.R as UiR
@@ -155,6 +154,7 @@ internal fun TimelineEditorTextSection(
 internal fun TimelineEventTimeSection(
     startAt: LocalDateTime,
     endAt: LocalDateTime?,
+    activeField: TimelineEventTimeField?,
     enabled: Boolean,
     error: String?,
     onStartClick: () -> Unit,
@@ -170,6 +170,8 @@ internal fun TimelineEventTimeSection(
             TimelineTimeField(
                 text = startAt.format(TimeFormatter),
                 enabled = enabled,
+                isActive = activeField == TimelineEventTimeField.START,
+                isError = error != null,
                 onClick = onStartClick,
                 modifier = Modifier.weight(1f),
             )
@@ -181,6 +183,8 @@ internal fun TimelineEventTimeSection(
             TimelineTimeField(
                 text = endAt?.format(TimeFormatter) ?: "없음",
                 enabled = enabled,
+                isActive = activeField == TimelineEventTimeField.END,
+                isError = error != null,
                 onClick = onEndClick,
                 modifier = Modifier.weight(1f),
             )
@@ -291,30 +295,21 @@ private fun TimelineEditorSection(
 private fun TimelineTimeField(
     text: String,
     enabled: Boolean,
+    isActive: Boolean,
+    isError: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.height(SingleLineFieldHeight),
-        enabled = enabled,
+    LaimorySelectField(
+        value = text,
         onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.titleSmall,
-                color =
-                    if (enabled) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-            )
-        }
-    }
+        modifier = modifier,
+        enabled = enabled,
+        isActive = isActive,
+        isError = isError,
+        fieldHeight = SingleLineFieldHeight,
+        contentAlignment = Alignment.Center,
+    )
 }
 
 @Composable

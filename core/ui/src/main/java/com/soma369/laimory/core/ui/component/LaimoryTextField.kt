@@ -90,48 +90,21 @@ private fun LaimoryTextFieldLayout(
     modifier: Modifier = Modifier,
 ) {
     val isError = error != null
-    val labelColor =
-        when {
-            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
-            isError -> MaterialTheme.colorScheme.error
-            isFocused -> MaterialTheme.colorScheme.primary
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
-    val borderColor =
-        when {
-            !enabled -> MaterialTheme.colorScheme.outlineVariant
-            isError -> MaterialTheme.colorScheme.error
-            isFocused -> MaterialTheme.colorScheme.primary
-            else -> MaterialTheme.colorScheme.outline
-        }
-    val borderWidth = if (isFocused && enabled && !isError) FocusedBorderWidth else DefaultBorderWidth
-    val fieldColor =
-        if (enabled) {
-            MaterialTheme.colorScheme.surface
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        }
-    val supportingColor =
-        when {
-            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
-            isError -> MaterialTheme.colorScheme.error
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
-    val contentColor =
-        when {
-            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant
-            isFocused || isError -> MaterialTheme.colorScheme.onSurface
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        }
+    val visuals =
+        laimoryFieldVisuals(
+            enabled = enabled,
+            isActive = isFocused,
+            isError = isError,
+        )
 
     Column(
-        modifier = modifier.alpha(if (enabled) ENABLED_ALPHA else DISABLED_ALPHA),
+        modifier = modifier.alpha(visuals.alpha),
         verticalArrangement = Arrangement.spacedBy(TextFieldContentSpacing),
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = labelColor,
+            color = visuals.labelColor,
         )
         BasicTextField(
             value = value,
@@ -147,18 +120,18 @@ private fun LaimoryTextFieldLayout(
                     )
                     .fillMaxWidth()
                     .height(fieldHeight)
-                    .background(fieldColor, MaterialTheme.shapes.medium)
+                    .background(visuals.containerColor, MaterialTheme.shapes.medium)
                     .border(
                         border =
                             BorderStroke(
-                                width = borderWidth,
-                                color = borderColor,
+                                width = visuals.borderWidth,
+                                color = visuals.borderColor,
                             ),
                         shape = MaterialTheme.shapes.medium,
                     ),
             enabled = enabled,
             singleLine = singleLine,
-            textStyle = MaterialTheme.typography.bodyMedium.merge(TextStyle(color = contentColor)),
+            textStyle = MaterialTheme.typography.bodyMedium.merge(TextStyle(color = visuals.contentColor)),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             interactionSource = interactionSource,
             decorationBox = { innerTextField ->
@@ -179,7 +152,7 @@ private fun LaimoryTextFieldLayout(
                             text = placeholder,
                             modifier = if (singleLine) Modifier else Modifier.padding(vertical = Spacing.large),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = contentColor,
+                            color = visuals.contentColor,
                         )
                     }
                     Box(
@@ -200,7 +173,7 @@ private fun LaimoryTextFieldLayout(
                     text = error ?: supportingText.orEmpty(),
                     modifier = Modifier.weight(1f, fill = false),
                     style = MaterialTheme.typography.labelMedium,
-                    color = supportingColor,
+                    color = visuals.supportingColor,
                 )
                 counterText?.let {
                     Text(
@@ -267,8 +240,4 @@ private enum class PreviewState {
 }
 
 private val TextFieldContentSpacing = 6.dp
-private val TextFieldHeight = 48.dp
-private val DefaultBorderWidth = 1.5.dp
-private val FocusedBorderWidth = 2.dp
-private const val ENABLED_ALPHA = 1f
-private const val DISABLED_ALPHA = 0.6f
+private val TextFieldHeight = LaimoryFieldDefaultHeight

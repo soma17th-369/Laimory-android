@@ -286,6 +286,7 @@ private fun TimelineEventEditorBody(
                 TimelineEventTimeSection(
                     startAt = form.startAt,
                     endAt = form.endAt,
+                    activeField = state.editingTimeField,
                     enabled = enabled,
                     error = state.validation.timeError,
                     onStartClick = {
