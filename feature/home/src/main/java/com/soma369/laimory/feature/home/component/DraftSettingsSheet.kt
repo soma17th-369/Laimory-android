@@ -13,6 +13,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -23,9 +24,12 @@ import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.isDateLocked
+import com.soma369.laimory.feature.home.state.isInputLocked
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -37,7 +41,8 @@ internal fun DraftSettingsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isValid = state.recordDateWindow(ZoneId.systemDefault()) != null
-    val isInputEnabled = state.draftStatus != DraftCreationStatus.SUBMITTING
+    val isInputEnabled = !state.draftStatus.isInputLocked
+    val isDateInputEnabled = !state.draftStatus.isDateLocked
     ModalBottomSheet(
         onDismissRequest = { onIntent(HomeUiIntent.DismissDraftSheet) },
         sheetState = sheetState,
@@ -62,7 +67,7 @@ internal fun DraftSettingsSheet(
             SettingRow(
                 label = "기록 날짜",
                 value = state.selectedDate.format(DATE_FORMAT),
-                enabled = isInputEnabled,
+                enabled = isDateInputEnabled,
                 onClick = { onIntent(HomeUiIntent.ShowDatePicker) },
             )
             SettingRow(
@@ -114,27 +119,96 @@ internal fun DraftSettingsSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Button(
-                onClick = { onIntent(HomeUiIntent.CreateDraft) },
-                enabled =
-                    isValid &&
-                        state.summary.totalItemCount > 0 &&
-                        state.draftStatus != DraftCreationStatus.SUBMITTING &&
-                        state.draftStatus != DraftCreationStatus.SUBMITTED,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            state.draftMessage?.let { message ->
                 Text(
-                    if (state.draftStatus == DraftCreationStatus.SUBMITTING) {
-                        "초안 생성 중…"
-                    } else if (state.draftStatus == DraftCreationStatus.SUBMITTED) {
-                        "초안 생성 요청 완료"
-                    } else {
-                        "이 범위로 초안 만들기"
-                    },
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            DraftActionButtons(
+                state = state,
+                isValid = isValid,
+                onIntent = onIntent,
+            )
             Spacer(modifier = Modifier.height(Spacing.large))
         }
+    }
+}
+
+@Composable
+private fun DraftActionButtons(
+    state: HomeUiState,
+    isValid: Boolean,
+    onIntent: (HomeUiIntent) -> Unit,
+) {
+    when (state.draftStatus) {
+        DraftCreationStatus.IDLE ->
+            DraftActionButton(
+                label = "이 범위로 초안 만들기",
+                enabled = isValid && state.summary.totalItemCount > 0,
+                onClick = { onIntent(HomeUiIntent.CreateDraft) },
+            )
+
+        DraftCreationStatus.SUBMITTING,
+        DraftCreationStatus.PROCESSING,
+        ->
+            DraftActionButton(
+                label = "초안 생성 중…",
+                enabled = false,
+                onClick = {},
+            )
+
+        DraftCreationStatus.LONG_RUNNING -> {
+            DraftActionButton(
+                label = "계속 대기",
+                enabled = true,
+                onClick = { onIntent(HomeUiIntent.ContinueWaiting) },
+            )
+            OutlinedButton(
+                onClick = { onIntent(HomeUiIntent.StartNewDraft) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("새로 만들기")
+            }
+        }
+
+        DraftCreationStatus.SUCCESS ->
+            DraftActionButton(
+                label = "초안 보기",
+                enabled = true,
+                onClick = { onIntent(HomeUiIntent.ViewDraft) },
+            )
+
+        DraftCreationStatus.FAILED ->
+            DraftActionButton(
+                label =
+                    if (state.draftRetryMode == DraftRetryMode.POLLING) {
+                        "상태 다시 확인"
+                    } else {
+                        "다시 만들기"
+                    },
+                enabled =
+                    state.draftRetryMode == DraftRetryMode.POLLING ||
+                        (isValid && state.summary.totalItemCount > 0),
+                onClick = { onIntent(HomeUiIntent.RetryDraft) },
+            )
+    }
+}
+
+@Composable
+private fun DraftActionButton(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(label)
     }
 }
 

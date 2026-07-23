@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.home.viewmodel
 
+import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
@@ -7,10 +8,13 @@ import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
@@ -22,9 +26,11 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
@@ -38,6 +44,8 @@ class HomeViewModelTest {
 
     private val sourceRepository = FakeSourceItemRepository()
     private val draftRepository = FakeTimelineDraftRepository()
+    private val draftTaskCoordinator = FakeDraftTaskCoordinator()
+    private val navigationHelper = RecordingNavigationHelper()
 
     @Test
     fun `빈 범위에서는 초안 생성 요청을 보내지 않는다`() =
@@ -72,7 +80,7 @@ class HomeViewModelTest {
 
             draftRepository.createGate?.complete(DraftTaskHandle("task-1"))
             runCurrent()
-            assertEquals(DraftCreationStatus.SUBMITTED, viewModel.state.value.draftStatus)
+            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
         }
 
     @Test
@@ -92,7 +100,7 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(2, draftRepository.createCount)
-            assertEquals(DraftCreationStatus.SUBMITTED, viewModel.state.value.draftStatus)
+            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
         }
 
     @Test
@@ -107,11 +115,11 @@ class HomeViewModelTest {
             sourceRepository.items.value = listOf(todayItem("first"), todayItem("second"))
             runCurrent()
 
-            assertEquals(DraftCreationStatus.SUBMITTED, viewModel.state.value.draftStatus)
+            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
         }
 
     @Test
-    fun `생성 완료 후 범위를 변경하면 다시 생성할 수 있다`() =
+    fun `SUCCESS 초안 보기는 작업을 유지하고 타임라인 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("first"))
             val viewModel = createViewModel()
@@ -119,9 +127,97 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.SelectDate(LocalDate.now().minusDays(1)))
+            draftTaskCoordinator.emitSuccess(LocalDate.now(ZoneId.systemDefault()))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ViewDraft)
             runCurrent()
 
+            assertEquals(0, draftTaskCoordinator.discardCount)
+            assertEquals(listOf(TimelinePage), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `SUCCESS 카드 본문에서 날짜 선택을 요청하면 이동하지 않고 모달을 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitSuccess(LocalDate.now(ZoneId.systemDefault()))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isDatePickerVisible)
+            assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
+    @Test
+    fun `SUCCESS 후 다른 날짜를 선택하면 해당 날짜의 새 초안 상태로 전환한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val draftDate = LocalDate.now(ZoneId.systemDefault())
+            val otherDate = draftDate.minusDays(1)
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitSuccess(draftDate)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(otherDate))
+            runCurrent()
+
+            assertEquals(otherDate, viewModel.state.value.selectedDate)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+            assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
+    @Test
+    fun `polling 오류에서 다시 시도하면 POST가 아니라 상태 조회를 재개한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            draftTaskCoordinator.emitRetryableError(LocalDate.now(ZoneId.systemDefault()))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RetryDraft)
+            runCurrent()
+
+            assertEquals(1, draftRepository.createCount)
+            assertEquals(1, draftTaskCoordinator.retryCount)
+        }
+
+    @Test
+    fun `과거 날짜 활성 작업이 있으면 홈 재진입 시 해당 날짜와 처리 상태를 복원한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val activeDate = LocalDate.now(ZoneId.systemDefault()).minusDays(12)
+            draftTaskCoordinator.emitProcessing(activeDate)
+
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(activeDate, viewModel.state.value.selectedDate)
+            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
+        }
+
+    @Test
+    fun `사용자가 다른 날짜를 선택한 뒤 기존 작업이 재개돼도 선택 날짜를 되돌리지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val activeDate = LocalDate.now(ZoneId.systemDefault())
+            val selectedDate = activeDate.minusDays(1)
+            sourceRepository.items.value = listOf(todayItem("first"))
+            draftTaskCoordinator.emitRetryableError(activeDate)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(selectedDate))
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(activeDate)
+            runCurrent()
+
+            assertEquals(selectedDate, viewModel.state.value.selectedDate)
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
         }
 
@@ -133,7 +229,8 @@ class HomeViewModelTest {
                     repository = draftRepository,
                     messageHelper = NoOpMessageHelper,
                 ),
-            navigationHelper = NoOpNavigationHelper,
+            draftTaskCoordinator = draftTaskCoordinator,
+            navigationHelper = navigationHelper,
         )
 
     private fun todayItem(id: String): SourceItem {
@@ -191,8 +288,65 @@ class HomeViewModelTest {
         override fun send(message: UserMessage) = Unit
     }
 
-    private data object NoOpNavigationHelper : NavigationHelper {
-        override fun navigateTo(page: Page) = Unit
+    private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
+        private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
+        override val state: StateFlow<DraftTaskTrackingState> = mutableState
+        var retryCount = 0
+        var discardCount = 0
+
+        override suspend fun start(
+            taskId: String,
+            recordDate: LocalDate,
+        ) {
+            mutableState.value =
+                DraftTaskTrackingState.Processing(
+                    ActiveDraftTask(taskId, recordDate, Instant.EPOCH),
+                )
+        }
+
+        override suspend fun onForeground() = Unit
+
+        override suspend fun onBackground() = Unit
+
+        override fun retry() {
+            retryCount++
+        }
+
+        override fun continueWaiting() = Unit
+
+        override suspend fun discard() {
+            discardCount++
+            mutableState.value = DraftTaskTrackingState.Idle
+        }
+
+        fun emitSuccess(recordDate: LocalDate) {
+            mutableState.value =
+                DraftTaskTrackingState.Success(
+                    ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                )
+        }
+
+        fun emitProcessing(recordDate: LocalDate) {
+            mutableState.value =
+                DraftTaskTrackingState.Processing(
+                    ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                )
+        }
+
+        fun emitRetryableError(recordDate: LocalDate) {
+            mutableState.value =
+                DraftTaskTrackingState.RetryableError(
+                    ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                )
+        }
+    }
+
+    private class RecordingNavigationHelper : NavigationHelper {
+        val destinations = mutableListOf<Page>()
+
+        override fun navigateTo(page: Page) {
+            destinations += page
+        }
 
         override fun replaceRoot(page: Page) = Unit
 

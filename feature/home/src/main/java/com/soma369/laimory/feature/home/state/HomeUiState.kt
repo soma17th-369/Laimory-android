@@ -29,6 +29,8 @@ data class HomeUiState(
     val isDatePickerVisible: Boolean = false,
     val editingTimeField: HomeTimeField? = null,
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
+    val draftRetryMode: DraftRetryMode? = null,
+    val draftMessage: String? = null,
 ) : UiState {
     fun recordDateWindow(zone: ZoneId): RecordDateWindow? =
         runCatching {
@@ -71,9 +73,25 @@ enum class HomeTimeField {
 enum class DraftCreationStatus {
     IDLE,
     SUBMITTING,
-    SUBMITTED,
+    PROCESSING,
+    LONG_RUNNING,
+    SUCCESS,
     FAILED,
 }
+
+enum class DraftRetryMode {
+    POLLING,
+    NEW_DRAFT,
+}
+
+internal val DraftCreationStatus.isInProgress: Boolean
+    get() = this == DraftCreationStatus.SUBMITTING || this == DraftCreationStatus.PROCESSING
+
+internal val DraftCreationStatus.isDateLocked: Boolean
+    get() = isInProgress || this == DraftCreationStatus.LONG_RUNNING
+
+internal val DraftCreationStatus.isInputLocked: Boolean
+    get() = isDateLocked || this == DraftCreationStatus.SUCCESS
 
 internal fun HomeUiState.withEndDaySelection(endDay: DraftEndDay): HomeUiState {
     val adjustedEndTime =

@@ -10,4 +10,5 @@ object LogDomain {
     const val USE_CASE = "UseCase"
     const val REPOSITORY = "Repository"
     const val COLLECTION = "Collection"
+    const val DRAFT_TASK = "DraftTask"
 }
