@@ -24,7 +24,9 @@ class DeleteDailyRecordUseCase
                 execute {
                     try {
                         repository.deleteDailyRecord(dailyRecordId)
-                        sessionRepository.clear()
+                        if (sessionRepository.timeline.value?.dailyRecordId == dailyRecordId) {
+                            sessionRepository.clear()
+                        }
                     } catch (exception: ApiException) {
                         throw exception.toTimelineRecordDeleteExceptionOrNull() ?: exception
                     }

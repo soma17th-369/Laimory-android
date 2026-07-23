@@ -53,6 +53,21 @@ class DeleteTimelineRecordUseCasesTest {
         }
 
     @Test
+    fun `다른 DailyRecord 삭제 성공 뒤 현재 세션을 유지한다`() =
+        runBlocking {
+            val repository = FakeRecordRepository()
+            val currentTimeline = timeline()
+            val session = FakeSessionRepository(currentTimeline)
+            val useCase = DeleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
+
+            val result = useCase(OTHER_DAILY_RECORD_ID)
+
+            assertTrue(result.isSuccess)
+            assertEquals(OTHER_DAILY_RECORD_ID, repository.deletedDailyRecordId)
+            assertEquals(currentTimeline, session.timeline.value)
+        }
+
+    @Test
     fun `기능 오류 코드는 화면이 처리할 삭제 의미 오류로 변환하고 세션을 유지한다`() =
         runBlocking {
             val cases =
@@ -171,6 +186,7 @@ class DeleteTimelineRecordUseCasesTest {
 
     private companion object {
         const val DAILY_RECORD_ID = 31L
+        const val OTHER_DAILY_RECORD_ID = 32L
         const val FIRST_EVENT_ID = 17L
         const val SECOND_EVENT_ID = 18L
     }
