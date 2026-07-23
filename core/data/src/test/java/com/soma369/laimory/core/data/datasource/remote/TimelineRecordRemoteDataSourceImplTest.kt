@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
+import com.soma369.laimory.core.domain.exception.ApiException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -12,6 +13,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
@@ -84,4 +86,64 @@ class TimelineRecordRemoteDataSourceImplTest {
             assertEquals("""{"title":"수정 제목"}""", request.body.readUtf8())
             assertEquals(17L, response.timelineEventId)
         }
+
+    @Test
+    fun `Event 삭제는 Event ID 경로에 DELETE하고 null body 성공을 처리한다`() =
+        runTest {
+            server.enqueue(successUnitResponse())
+
+            remote.deleteTimelineEvent(17L)
+
+            val request = server.takeRequest()
+            assertEquals("DELETE", request.method)
+            assertEquals("/timeline/events/17", request.path)
+        }
+
+    @Test
+    fun `DailyRecord 삭제는 DailyRecord ID 경로에 DELETE하고 null body 성공을 처리한다`() =
+        runTest {
+            server.enqueue(successUnitResponse())
+
+            remote.deleteDailyRecord(31L)
+
+            val request = server.takeRequest()
+            assertEquals("DELETE", request.method)
+            assertEquals("/timeline/daily-records/31", request.path)
+        }
+
+    @Test
+    fun `사진 삭제 실패 응답은 502와 기능 오류 코드를 보존한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(502)
+                    .setBody(
+                        """
+                        {
+                          "header":{"code":"ERROR_1017","message":"사진 삭제 실패"},
+                          "body":null
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+            val failure = runCatching { remote.deleteTimelineEvent(17L) }.exceptionOrNull()
+
+            assertTrue(failure is ApiException.ServerException)
+            val apiException = failure as ApiException
+            assertEquals(502, apiException.rawCode)
+            assertEquals("ERROR_1017", apiException.errorCode)
+        }
+
+    private fun successUnitResponse() =
+        MockResponse()
+            .setResponseCode(200)
+            .setBody(
+                """
+                {
+                  "header":{"code":"COMMON_0000","message":"success"},
+                  "body":null
+                }
+                """.trimIndent(),
+            )
 }

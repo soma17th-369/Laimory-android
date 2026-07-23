@@ -9,4 +9,8 @@ interface TimelineRecordRemoteDataSource {
         timelineEventId: Long,
         request: JsonObject,
     ): TimelineEventResponse
+
+    suspend fun deleteTimelineEvent(timelineEventId: Long)
+
+    suspend fun deleteDailyRecord(dailyRecordId: Long)
 }

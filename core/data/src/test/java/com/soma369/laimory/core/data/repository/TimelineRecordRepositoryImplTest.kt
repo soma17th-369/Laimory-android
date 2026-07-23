@@ -19,6 +19,8 @@ class TimelineRecordRepositoryImplTest {
     private class FakeRemote : TimelineRecordRemoteDataSource {
         var requestedEventId: Long? = null
         var requestedBody: JsonObject? = null
+        var deletedEventId: Long? = null
+        var deletedDailyRecordId: Long? = null
 
         override suspend fun updateTimelineEvent(
             timelineEventId: Long,
@@ -27,6 +29,14 @@ class TimelineRecordRepositoryImplTest {
             requestedEventId = timelineEventId
             requestedBody = request
             return response
+        }
+
+        override suspend fun deleteTimelineEvent(timelineEventId: Long) {
+            deletedEventId = timelineEventId
+        }
+
+        override suspend fun deleteDailyRecord(dailyRecordId: Long) {
+            deletedDailyRecordId = dailyRecordId
         }
     }
 
@@ -54,6 +64,19 @@ class TimelineRecordRepositoryImplTest {
             assertEquals(TimelineItemType.PHOTO, event.items.single().itemType)
             assertNull(event.items.single().startAt)
             assertEquals("https://cdn/photo.jpg", event.items.single().photoUrl)
+        }
+
+    @Test
+    fun `삭제 요청은 Event와 DailyRecord 경로를 구분해 전달한다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+
+            repository.deleteEvent(17L)
+            repository.deleteDailyRecord(31L)
+
+            assertEquals(17L, remote.deletedEventId)
+            assertEquals(31L, remote.deletedDailyRecordId)
         }
 
     private companion object {

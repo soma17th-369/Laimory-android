@@ -346,6 +346,10 @@ class TimelineEventEditorViewModelTest {
                 memo = (command.memo as? TimelineEventUpdateField.Value)?.value,
             )
         }
+
+        override suspend fun deleteEvent(timelineEventId: Long) = Unit
+
+        override suspend fun deleteDailyRecord(dailyRecordId: Long) = Unit
     }
 
     private class FakeTimelineRecordSessionRepository : TimelineRecordSessionRepository {

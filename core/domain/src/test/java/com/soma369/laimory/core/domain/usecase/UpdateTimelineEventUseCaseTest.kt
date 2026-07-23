@@ -24,6 +24,10 @@ class UpdateTimelineEventUseCaseTest {
         private val result: Result<TimelineEvent>,
     ) : TimelineRecordRepository {
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = result.getOrThrow()
+
+        override suspend fun deleteEvent(timelineEventId: Long) = Unit
+
+        override suspend fun deleteDailyRecord(dailyRecordId: Long) = Unit
     }
 
     private class FakeSessionRepository : TimelineRecordSessionRepository {
