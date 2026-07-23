@@ -18,4 +18,12 @@ class TimelineRecordRepositoryImpl
                 timelineEventId = command.timelineEventId,
                 request = command.toRequestJson(),
             ).toDomain()
+
+        override suspend fun deleteEvent(timelineEventId: Long) {
+            remote.deleteTimelineEvent(timelineEventId)
+        }
+
+        override suspend fun deleteDailyRecord(dailyRecordId: Long) {
+            remote.deleteDailyRecord(dailyRecordId)
+        }
     }

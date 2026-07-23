@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.model.timeline.response.TimelineEventRespon
 import kotlinx.serialization.json.JsonObject
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.PATCH
 import retrofit2.http.Path
 
@@ -15,4 +16,14 @@ interface TimelineRecordApi {
         @Path("timelineEventId") timelineEventId: Long,
         @Body request: JsonObject,
     ): Response<ApiResponse<TimelineEventResponse>>
+
+    @DELETE("timeline/events/{timelineEventId}")
+    suspend fun deleteTimelineEvent(
+        @Path("timelineEventId") timelineEventId: Long,
+    ): Response<ApiResponse<Unit>>
+
+    @DELETE("timeline/daily-records/{dailyRecordId}")
+    suspend fun deleteDailyRecord(
+        @Path("dailyRecordId") dailyRecordId: Long,
+    ): Response<ApiResponse<Unit>>
 }
