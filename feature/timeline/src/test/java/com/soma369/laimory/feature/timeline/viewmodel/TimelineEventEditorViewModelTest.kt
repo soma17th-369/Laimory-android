@@ -18,9 +18,11 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
+import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiSideEffect
@@ -279,6 +281,51 @@ class TimelineEventEditorViewModelTest {
             assertFalse(viewModel.state.value.hasUnsavedChanges)
         }
 
+    @Test
+    fun `Event 삭제는 확인 후 한 번만 실행하고 완료 확인 뒤 이전 화면으로 이동한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            runCurrent()
+            assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.deleteDialogState)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID), recordRepository.deletedEventIds)
+            assertTrue(sessionRepository.timeline.value?.events.orEmpty().isEmpty())
+            assertEquals(TimelineDeleteDialogState.Success, viewModel.state.value.deleteDialogState)
+            assertEquals(0, navigationHelper.backCount)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.FinishDelete)
+            runCurrent()
+
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `사진 삭제 실패는 Event를 유지하고 다이얼로그에서 재시도할 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure = ApiException.ServerException(errorCode = "ERROR_1017", rawCode = 502)
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.deleteDialogState is TimelineDeleteDialogState.RetryableError)
+            assertEquals(listOf(EVENT_ID), sessionRepository.timeline.value?.events?.map(TimelineEvent::timelineEventId))
+
+            recordRepository.failure = null
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertEquals(TimelineDeleteDialogState.Success, viewModel.state.value.deleteDialogState)
+            assertTrue(sessionRepository.timeline.value?.events.orEmpty().isEmpty())
+        }
+
     private fun TestScope.initializedViewModel(): TimelineEventEditorViewModel =
         createViewModel().also {
             it.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
@@ -295,6 +342,12 @@ class TimelineEventEditorViewModelTest {
                 ),
             updateTimelineEventUseCase =
                 UpdateTimelineEventUseCase(
+                    repository = recordRepository,
+                    sessionRepository = sessionRepository,
+                    messageHelper = messageHelper,
+                ),
+            deleteTimelineEventUseCase =
+                DeleteTimelineEventUseCase(
                     repository = recordRepository,
                     sessionRepository = sessionRepository,
                     messageHelper = messageHelper,
@@ -336,6 +389,7 @@ class TimelineEventEditorViewModelTest {
 
     private inner class RecordingTimelineRecordRepository : TimelineRecordRepository {
         val commands = mutableListOf<UpdateTimelineEventCommand>()
+        val deletedEventIds = mutableListOf<Long>()
         var failure: ApiException? = null
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
@@ -347,7 +401,10 @@ class TimelineEventEditorViewModelTest {
             )
         }
 
-        override suspend fun deleteEvent(timelineEventId: Long) = Unit
+        override suspend fun deleteEvent(timelineEventId: Long) {
+            failure?.let { throw it }
+            deletedEventIds += timelineEventId
+        }
 
         override suspend fun deleteDailyRecord(dailyRecordId: Long) = Unit
     }
@@ -367,7 +424,12 @@ class TimelineEventEditorViewModelTest {
                 )
         }
 
-        override fun removeEvent(timelineEventId: Long) = Unit
+        override fun removeEvent(timelineEventId: Long) {
+            mutableTimeline.value =
+                mutableTimeline.value?.copy(
+                    events = mutableTimeline.value.orEmptyEvents().filterNot { it.timelineEventId == timelineEventId },
+                )
+        }
 
         override fun clear() {
             mutableTimeline.value = null
