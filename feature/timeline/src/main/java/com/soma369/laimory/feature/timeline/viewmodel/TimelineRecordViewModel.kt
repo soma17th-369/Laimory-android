@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.timeline.model.toUiModel
@@ -42,7 +43,7 @@ class TimelineRecordViewModel
                 TimelineRecordUiIntent.OpenRecordMenu ->
                     sendEffect(TimelineRecordUiSideEffect.OpenRecordMenu)
                 is TimelineRecordUiIntent.SelectEvent ->
-                    sendEffect(TimelineRecordUiSideEffect.NavigateToEventEditor(intent.timelineEventId))
+                    navigationHelper.navigateTo(TimelineEventEditorPage(intent.timelineEventId))
             }
         }
     }

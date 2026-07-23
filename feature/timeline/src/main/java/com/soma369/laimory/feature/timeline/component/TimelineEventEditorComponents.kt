@@ -1,0 +1,434 @@
+package com.soma369.laimory.feature.timeline.component
+
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
+import com.soma369.laimory.core.ui.component.LaimoryTextField
+import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
+import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import com.soma369.laimory.core.ui.R as UiR
+
+@Composable
+internal fun TimelineEventTypeSection(
+    selectedType: TimelineEventType,
+    enabled: Boolean,
+    onSelect: (TimelineEventType) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TimelineEditorSection(title = "유형", modifier = modifier) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
+        ) {
+            items(
+                items = TimelineEventTypeDisplayOrder,
+                key = TimelineEventType::name,
+            ) { eventType ->
+                val selected = eventType == selectedType
+                Column(
+                    modifier =
+                        Modifier
+                            .width(EventTypeItemWidth)
+                            .clickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onSelect(eventType) },
+                            ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+                ) {
+                    Surface(
+                        modifier = Modifier.size(EventTypeCircleSize),
+                        shape = CircleShape,
+                        color =
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(eventType.iconResource()),
+                                contentDescription = null,
+                                modifier = Modifier.size(EventTypeIconSize),
+                                tint =
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                            )
+                        }
+                    }
+                    Text(
+                        text = eventType.displayLabel(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color =
+                            if (selected) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TimelineEditorTextSection(
+    title: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    error: String?,
+    placeholder: String,
+    supportingText: String?,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+    singleLine: Boolean = true,
+    counter: String? = null,
+) {
+    LaimoryTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = title,
+        placeholder = placeholder,
+        supportingText = supportingText,
+        counterText = counter,
+        error = error,
+        enabled = enabled,
+        singleLine = singleLine,
+        fieldHeight = if (singleLine) SingleLineFieldHeight else MemoFieldHeight,
+        focusRequester = focusRequester,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun TimelineEventTimeSection(
+    startAt: LocalDateTime,
+    endAt: LocalDateTime?,
+    enabled: Boolean,
+    error: String?,
+    onStartClick: () -> Unit,
+    onEndClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TimelineEditorSection(title = "시간", modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TimelineTimeField(
+                text = startAt.format(TimeFormatter),
+                enabled = enabled,
+                onClick = onStartClick,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "~",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TimelineTimeField(
+                text = endAt?.format(TimeFormatter) ?: "없음",
+                enabled = enabled,
+                onClick = onEndClick,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        error?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+@Composable
+internal fun TimelineEventPhotoSection(
+    existingPhotoUrls: List<String>,
+    pendingPhotos: List<TimelineEventPendingPhoto>,
+    enabled: Boolean,
+    onAddClick: () -> Unit,
+    onRemovePending: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TimelineEditorSection(title = "사진", modifier = modifier) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
+        ) {
+            itemsIndexed(
+                items = existingPhotoUrls,
+                key = { index, photoUrl -> "existing-$index-$photoUrl" },
+            ) { _, photoUrl ->
+                TimelineEditorPhoto(
+                    model = photoUrl,
+                    contentDescription = "기존 이벤트 사진",
+                )
+            }
+            items(pendingPhotos, key = TimelineEventPendingPhoto::rawId) { photo ->
+                TimelineEditorPhoto(
+                    model = photo.clientPhotoUri,
+                    contentDescription = "추가할 이벤트 사진",
+                    uploadState = photo.uploadState,
+                    onRemove =
+                        if (enabled) {
+                            { onRemovePending(photo.rawId) }
+                        } else {
+                            null
+                        },
+                )
+            }
+            item(key = "add-photo") {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(PhotoSize)
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .dashedBorder(MaterialTheme.colorScheme.outlineVariant)
+                            .clickable(enabled = enabled, onClick = onAddClick),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(UiR.drawable.ico_timeline_editor_add_photo),
+                        contentDescription = "사진 추가",
+                        modifier = Modifier.size(PhotoIconSize),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineEditorSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    trailing: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(Spacing.medium),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            trailing?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        content()
+    }
+}
+
+@Composable
+private fun TimelineTimeField(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.height(SingleLineFieldHeight),
+        enabled = enabled,
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleSmall,
+                color =
+                    if (enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimelineEditorPhoto(
+    model: String,
+    contentDescription: String,
+    uploadState: TimelineEventPhotoUploadState? = null,
+    onRemove: (() -> Unit)? = null,
+) {
+    val isPreview = LocalInspectionMode.current
+    Box(
+        modifier =
+            Modifier
+                .size(PhotoSize)
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .dashedBorder(MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        if (!isPreview) {
+            AsyncImage(
+                model = model,
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                painter = painterResource(UiR.drawable.ico_timeline_editor_photo_placeholder),
+                contentDescription = contentDescription,
+                modifier =
+                    Modifier
+                        .size(PhotoIconSize)
+                        .align(Alignment.Center),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (uploadState == TimelineEventPhotoUploadState.UPLOADING) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    strokeWidth = 2.dp,
+                )
+            }
+        }
+        if (uploadState == TimelineEventPhotoUploadState.FAILED) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.72f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "재시도",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        }
+        onRemove?.let {
+            Surface(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(2.dp)
+                        .size(22.dp),
+                onClick = it,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.62f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(UiR.drawable.ico_setting_trash),
+                        contentDescription = "추가 대상에서 제외",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.inverseOnSurface,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun Modifier.dashedBorder(color: Color): Modifier =
+    drawWithCache {
+        val strokeWidth = 1.dp.toPx()
+        val radius = 12.dp.toPx()
+        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))
+        onDrawBehind {
+            drawRoundRect(
+                color = color,
+                cornerRadius = CornerRadius(radius, radius),
+                style =
+                    Stroke(
+                        width = strokeWidth,
+                        pathEffect = pathEffect,
+                    ),
+            )
+        }
+    }
+
+private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val EventTypeCircleSize = 44.dp
+private val EventTypeIconSize = 24.dp
+private val EventTypeItemWidth = 44.dp
+private val SingleLineFieldHeight = 48.dp
+private val MemoFieldHeight = 120.dp
+private val PhotoSize = 64.dp
+private val PhotoIconSize = 20.dp

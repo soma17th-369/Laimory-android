@@ -31,6 +31,23 @@ data object TimelinePage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+data class TimelineEventEditorPage(
+    val timelineEventId: Long,
+) : Page {
+    override fun toRoute(): NavRoute =
+        NavRoute(
+            path = PATH,
+            args = mapOf(TIMELINE_EVENT_ID_ARG to timelineEventId.toString()),
+        )
+
+    companion object {
+        const val PATH = "/timeline/event/edit"
+        const val TIMELINE_EVENT_ID_ARG = "timelineEventId"
+
+        fun timelineEventIdFrom(args: Map<String, String>): Long? = args[TIMELINE_EVENT_ID_ARG]?.toLongOrNull()
+    }
+}
+
 data object SettingsPage : Page {
     const val PATH = "/settings"
 
