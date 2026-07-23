@@ -17,6 +17,7 @@ import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.selectedSourceItems
@@ -40,6 +41,7 @@ class HomeViewModel
         ) {
         private val zone: ZoneId = ZoneId.systemDefault()
         private var sourceItems: List<SourceItem> = emptyList()
+        private var hasUserSelectedDate = false
 
         init {
             observeSummary()
@@ -84,7 +86,13 @@ class HomeViewModel
         private fun observeDraftTask() =
             safeLaunch {
                 draftTaskCoordinator.state.collect { trackingState ->
-                    updateState { withDraftTracking(trackingState) }
+                    updateState {
+                        if (hasUserSelectedDate) {
+                            withDraftTrackingForSelectedDate(trackingState)
+                        } else {
+                            withDraftTracking(trackingState)
+                        }
+                    }
                 }
             }
 
@@ -159,20 +167,14 @@ class HomeViewModel
                     isPhotoSheetVisible = false,
                     draftStatus = DraftCreationStatus.IDLE,
                     draftRetryMode = null,
-                    draftElapsedSeconds = null,
                     draftMessage = null,
                 ).refreshSourceSummary(sourceItems, zone)
             }
         }
 
         private fun selectDate(date: LocalDate) {
-            if (
-                state.value.draftStatus == DraftCreationStatus.SUBMITTING ||
-                state.value.draftStatus == DraftCreationStatus.PROCESSING ||
-                state.value.draftStatus == DraftCreationStatus.LONG_RUNNING
-            ) {
-                return
-            }
+            if (state.value.draftStatus.isDateLocked) return
+            hasUserSelectedDate = true
             updateState {
                 if (date == selectedDate) return@updateState copy(isDatePickerVisible = false)
                 val next =
@@ -184,7 +186,6 @@ class HomeViewModel
                         isDatePickerVisible = false,
                         draftStatus = DraftCreationStatus.IDLE,
                         draftRetryMode = null,
-                        draftElapsedSeconds = null,
                         draftMessage = null,
                     )
                 next
@@ -207,7 +208,6 @@ class HomeViewModel
                         editingTimeField = null,
                         draftStatus = DraftCreationStatus.IDLE,
                         draftRetryMode = null,
-                        draftElapsedSeconds = null,
                         draftMessage = null,
                     )
                 next.refreshSourceSummary(sourceItems, zone, resetPhotoSelection = true)
@@ -222,7 +222,6 @@ class HomeViewModel
                         .copy(
                             draftStatus = DraftCreationStatus.IDLE,
                             draftRetryMode = null,
-                            draftElapsedSeconds = null,
                             draftMessage = null,
                         )
                 next.refreshSourceSummary(sourceItems, zone, resetPhotoSelection = true)
@@ -249,7 +248,6 @@ class HomeViewModel
                 copy(
                     draftStatus = DraftCreationStatus.SUBMITTING,
                     draftRetryMode = null,
-                    draftElapsedSeconds = null,
                     draftMessage = null,
                 )
             }
@@ -328,7 +326,6 @@ class HomeViewModel
                     alignedState.copy(
                         draftStatus = DraftCreationStatus.PROCESSING,
                         draftRetryMode = null,
-                        draftElapsedSeconds = trackingState.elapsedSeconds,
                         draftMessage = processingMessage(trackingState.elapsedSeconds),
                     )
 
@@ -336,7 +333,6 @@ class HomeViewModel
                     alignedState.copy(
                         draftStatus = DraftCreationStatus.LONG_RUNNING,
                         draftRetryMode = null,
-                        draftElapsedSeconds = trackingState.elapsedSeconds,
                         draftMessage =
                             "초안 생성 시작 후 ${trackingState.elapsedSeconds / 60}분이 지났어요. " +
                                 "계속 기다리거나 새로 만들 수 있어요.",
@@ -346,7 +342,6 @@ class HomeViewModel
                     alignedState.copy(
                         draftStatus = DraftCreationStatus.SUCCESS,
                         draftRetryMode = null,
-                        draftElapsedSeconds = null,
                         draftMessage = "초안이 준비됐어요.",
                         isDraftSheetVisible = false,
                     )
@@ -355,7 +350,6 @@ class HomeViewModel
                     alignedState.copy(
                         draftStatus = DraftCreationStatus.FAILED,
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                        draftElapsedSeconds = null,
                         draftMessage = "초안을 만들지 못했어요. 다시 시도해주세요.",
                     )
 
@@ -370,7 +364,6 @@ class HomeViewModel
                     alignedState.copy(
                         draftStatus = DraftCreationStatus.FAILED,
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                        draftElapsedSeconds = null,
                         draftMessage =
                             when (trackingState.reason) {
                                 DraftTaskUnavailableReason.TASK -> "초안 작업 정보를 찾을 수 없어요. 새로 만들어주세요."
@@ -393,7 +386,6 @@ class HomeViewModel
             copy(
                 draftStatus = DraftCreationStatus.IDLE,
                 draftRetryMode = null,
-                draftElapsedSeconds = null,
                 draftMessage = null,
             )
 

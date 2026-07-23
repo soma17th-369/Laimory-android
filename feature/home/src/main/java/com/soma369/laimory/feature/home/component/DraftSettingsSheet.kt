@@ -28,6 +28,7 @@ import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -41,10 +42,7 @@ internal fun DraftSettingsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isValid = state.recordDateWindow(ZoneId.systemDefault()) != null
     val isInputEnabled = !state.draftStatus.isInputLocked
-    val isDateInputEnabled =
-        state.draftStatus != DraftCreationStatus.SUBMITTING &&
-            state.draftStatus != DraftCreationStatus.PROCESSING &&
-            state.draftStatus != DraftCreationStatus.LONG_RUNNING
+    val isDateInputEnabled = !state.draftStatus.isDateLocked
     ModalBottomSheet(
         onDismissRequest = { onIntent(HomeUiIntent.DismissDraftSheet) },
         sheetState = sheetState,

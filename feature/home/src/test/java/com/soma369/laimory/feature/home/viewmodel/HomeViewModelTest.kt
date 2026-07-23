@@ -202,6 +202,25 @@ class HomeViewModelTest {
             assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
         }
 
+    @Test
+    fun `사용자가 다른 날짜를 선택한 뒤 기존 작업이 재개돼도 선택 날짜를 되돌리지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val activeDate = LocalDate.now(ZoneId.systemDefault())
+            val selectedDate = activeDate.minusDays(1)
+            sourceRepository.items.value = listOf(todayItem("first"))
+            draftTaskCoordinator.emitRetryableError(activeDate)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(selectedDate))
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(activeDate)
+            runCurrent()
+
+            assertEquals(selectedDate, viewModel.state.value.selectedDate)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+        }
+
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             observeSourceItemsUseCase = ObserveSourceItemsUseCase(sourceRepository),
