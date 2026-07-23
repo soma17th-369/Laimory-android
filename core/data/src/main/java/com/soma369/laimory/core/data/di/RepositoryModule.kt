@@ -6,6 +6,7 @@ import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
 import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineDraftRepositoryImpl
+import com.soma369.laimory.core.data.repository.TimelineRecordRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordSessionRepositoryImpl
 import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
@@ -13,6 +14,7 @@ import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
+import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import dagger.Binds
 import dagger.Module
@@ -50,4 +52,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindTimelineRecordSession(impl: TimelineRecordSessionRepositoryImpl): TimelineRecordSessionRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTimelineRecordRepository(impl: TimelineRecordRepositoryImpl): TimelineRecordRepository
 }

@@ -7,7 +7,7 @@ data class TimelineItem(
     val timelineItemId: Long,
     val itemType: TimelineItemType,
     val rawId: String,
-    val startAt: LocalDateTime,
+    val startAt: LocalDateTime?,
     val endAt: LocalDateTime?,
     val photoUrl: String? = null,
 )

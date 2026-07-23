@@ -8,6 +8,8 @@ import com.soma369.laimory.core.data.datasource.remote.IntroRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.IntroRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSourceImpl
+import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSource
+import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSourceImpl
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolverImpl
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
@@ -48,6 +50,10 @@ abstract class DataSourceModule {
     @Binds
     @Singleton
     abstract fun bindTimelineDraftRemoteDataSource(impl: TimelineDraftRemoteDataSourceImpl): TimelineDraftRemoteDataSource
+
+    @Binds
+    @Singleton
+    abstract fun bindTimelineRecordRemoteDataSource(impl: TimelineRecordRemoteDataSourceImpl): TimelineRecordRemoteDataSource
 
     @Binds
     @Singleton
