@@ -6,6 +6,7 @@ import com.soma369.laimory.core.data.network.api.AuthApi
 import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
+import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenAuthenticator
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenInterceptor
 import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
@@ -162,4 +163,10 @@ object NetworkModule {
     fun provideTimelineDraftApi(
         @AuthRetrofit retrofit: Retrofit,
     ): TimelineDraftApi = retrofit.create(TimelineDraftApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideTimelineRecordApi(
+        @AuthRetrofit retrofit: Retrofit,
+    ): TimelineRecordApi = retrofit.create(TimelineRecordApi::class.java)
 }
