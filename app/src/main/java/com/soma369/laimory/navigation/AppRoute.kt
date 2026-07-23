@@ -15,14 +15,12 @@ import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.ReflectionPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
-import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.settings.screen.SettingsRoute
-import com.soma369.laimory.feature.timeline.screen.TimelineEventEditorRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRecordRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRoute
 import com.soma369.laimory.ui.PlaceholderScreen
@@ -122,21 +120,10 @@ val appRoutes: List<AppRoute> =
             render = { innerPadding, _ -> TimelineRecordRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
-            path = TimelineEventEditorPage.PATH,
-            render = { innerPadding, args ->
-                TimelineEventEditorRoute(
-                    innerPadding = innerPadding,
-                    timelineEventId = TimelineEventEditorPage.timelineEventIdFrom(args) ?: INVALID_TIMELINE_EVENT_ID,
-                )
-            },
-        ),
-        AppRoute(
             path = Feature1Page.PATH,
             render = { innerPadding, _ -> Feature1Route(innerPadding = innerPadding) },
         ),
     )
-
-private const val INVALID_TIMELINE_EVENT_ID = -1L
 
 /** 바텀바에 노출하는 탭 루트 목록. 노출 순서 = 선언 순서. */
 val bottomTabRoutes: List<AppRoute> = appRoutes.filter { it.isBottomTab }

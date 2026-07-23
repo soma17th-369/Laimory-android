@@ -53,6 +53,7 @@ import com.soma369.laimory.core.ui.R as UiR
 @Composable
 fun TimelineRecordRoute(
     innerPadding: PaddingValues,
+    onEditEvent: (timelineEventId: Long) -> Unit = {},
     onOpenRecordMenu: () -> Unit = {},
     viewModel: TimelineRecordViewModel = hiltViewModel(),
 ) {
@@ -62,6 +63,7 @@ fun TimelineRecordRoute(
         state = state,
         onIntent = viewModel::sendIntent,
         sideEffectFlow = viewModel.sideEffect,
+        onEditEvent = onEditEvent,
         onOpenRecordMenu = onOpenRecordMenu,
     )
 }
@@ -72,12 +74,14 @@ private fun TimelineRecordContent(
     state: TimelineRecordUiState,
     onIntent: (TimelineRecordUiIntent) -> Unit,
     sideEffectFlow: Flow<TimelineRecordUiSideEffect>,
+    onEditEvent: (timelineEventId: Long) -> Unit,
     onOpenRecordMenu: () -> Unit,
 ) {
     LaunchedEffect(sideEffectFlow) {
         sideEffectFlow.collect { effect ->
             when (effect) {
                 TimelineRecordUiSideEffect.OpenRecordMenu -> onOpenRecordMenu()
+                is TimelineRecordUiSideEffect.NavigateToEventEditor -> onEditEvent(effect.timelineEventId)
             }
         }
     }

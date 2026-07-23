@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.timeline.component
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -429,7 +430,40 @@ private fun TimelineItemType.label(): String =
         TimelineItemType.UNKNOWN -> "기타"
     }
 
-internal fun TimelineEventType.label(): String = displayLabel()
+internal fun TimelineEventType.label(): String =
+    when (this) {
+        TimelineEventType.WAKE_UP -> "기상"
+        TimelineEventType.SLEEP -> "수면"
+        TimelineEventType.MOVEMENT -> "이동"
+        TimelineEventType.CALENDAR_EVENT -> "일정"
+        TimelineEventType.MEAL -> "식사"
+        TimelineEventType.PHOTO_MOMENT -> "사진"
+        TimelineEventType.MEETING -> "모임"
+        TimelineEventType.CLASS -> "수업"
+        TimelineEventType.WORK -> "업무"
+        TimelineEventType.EXERCISE -> "운동"
+        TimelineEventType.SOCIAL -> "소셜"
+        TimelineEventType.REST -> "휴식"
+        TimelineEventType.UNKNOWN -> "기타"
+    }
+
+@DrawableRes
+private fun TimelineEventType.iconResource(): Int =
+    when (this) {
+        TimelineEventType.WAKE_UP -> UiR.drawable.ico_timeline_event_wake_up
+        TimelineEventType.SLEEP -> UiR.drawable.ico_timeline_event_sleep
+        TimelineEventType.MOVEMENT -> UiR.drawable.ico_timeline_event_movement
+        TimelineEventType.CALENDAR_EVENT -> UiR.drawable.ico_timeline_event_calendar_event
+        TimelineEventType.MEAL -> UiR.drawable.ico_timeline_event_meal
+        TimelineEventType.PHOTO_MOMENT -> UiR.drawable.ico_timeline_event_photo_moment
+        TimelineEventType.MEETING -> UiR.drawable.ico_timeline_event_meeting
+        TimelineEventType.CLASS -> UiR.drawable.ico_timeline_event_class
+        TimelineEventType.WORK -> UiR.drawable.ico_timeline_event_work
+        TimelineEventType.EXERCISE -> UiR.drawable.ico_timeline_event_exercise
+        TimelineEventType.SOCIAL -> UiR.drawable.ico_timeline_event_social
+        TimelineEventType.REST -> UiR.drawable.ico_timeline_event_rest
+        TimelineEventType.UNKNOWN -> UiR.drawable.ico_timeline_event_unknown
+    }
 
 private const val THUMBNAIL_PHOTO_LIMIT = 3
 

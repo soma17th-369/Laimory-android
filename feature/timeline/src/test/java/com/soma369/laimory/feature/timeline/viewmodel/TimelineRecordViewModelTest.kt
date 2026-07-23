@@ -5,7 +5,6 @@ import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.navigation.Page
-import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
@@ -95,7 +94,7 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `Event 선택 Intent는 선택한 Event 편집 화면으로 이동한다`() =
+    fun `Event 선택 Intent는 선택한 Event 편집 이동 효과를 방출한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
             runCurrent()
@@ -103,7 +102,10 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(timelineEventId = 17L))
             runCurrent()
 
-            assertEquals(listOf(TimelineEventEditorPage(timelineEventId = 17L)), navigationHelper.pages)
+            assertEquals(
+                TimelineRecordUiSideEffect.NavigateToEventEditor(timelineEventId = 17L),
+                viewModel.sideEffect.first(),
+            )
         }
 
     @Test
@@ -166,11 +168,8 @@ class TimelineRecordViewModelTest {
 
     private class RecordingNavigationHelper : NavigationHelper {
         var backCount = 0
-        val pages = mutableListOf<Page>()
 
-        override fun navigateTo(page: Page) {
-            pages += page
-        }
+        override fun navigateTo(page: Page) = Unit
 
         override fun replaceRoot(page: Page) = Unit
 
