@@ -6,6 +6,7 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="datastore/auth_session.preferences_pb" />
+        <exclude domain="file" path="datastore/active_timeline_draft.preferences_pb" />
         <!-- TODO: Use <include> and <exclude> to control what is backed up.
         <include .../>
         <exclude .../>
@@ -13,6 +14,7 @@
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/auth_session.preferences_pb" />
+        <exclude domain="file" path="datastore/active_timeline_draft.preferences_pb" />
     </device-transfer>
     <!--
     <device-transfer>
