@@ -8,7 +8,7 @@ import java.time.LocalDateTime
 @Immutable
 data class TimelineEventEditorUiState(
     val timelineEventId: Long? = null,
-    val content: TimelineEventEditorContent = TimelineEventEditorContent.Loading,
+    val content: TimelineEventEditorUiContent = TimelineEventEditorUiContent.Loading,
     val originalForm: TimelineEventEditorForm? = null,
     val form: TimelineEventEditorForm? = null,
     val existingPhotoUrls: List<String> = emptyList(),
@@ -18,28 +18,26 @@ data class TimelineEventEditorUiState(
     val isSaving: Boolean = false,
     val isReadOnly: Boolean = false,
     val isDiscardDialogVisible: Boolean = false,
-    val isSaveCompleted: Boolean = false,
 ) : UiState {
     val hasUnsavedChanges: Boolean
         get() = originalForm != null && (form != originalForm || pendingPhotos.isNotEmpty())
 
     val isSaveEnabled: Boolean
         get() =
-            content == TimelineEventEditorContent.Editor &&
+            content == TimelineEventEditorUiContent.Editor &&
                 form?.title?.isNotBlank() == true &&
                 hasUnsavedChanges &&
                 !isSaving &&
-                !isReadOnly &&
-                !isSaveCompleted
+                !isReadOnly
 }
 
 @Immutable
-sealed interface TimelineEventEditorContent {
-    data object Loading : TimelineEventEditorContent
+sealed interface TimelineEventEditorUiContent {
+    data object Loading : TimelineEventEditorUiContent
 
-    data object Editor : TimelineEventEditorContent
+    data object Editor : TimelineEventEditorUiContent
 
-    data object Unavailable : TimelineEventEditorContent
+    data object Unavailable : TimelineEventEditorUiContent
 }
 
 @Immutable

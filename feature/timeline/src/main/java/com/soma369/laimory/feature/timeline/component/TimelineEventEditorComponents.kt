@@ -376,7 +376,7 @@ private fun TimelineEditorPhoto(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "재시도",
+                    text = "업로드 실패",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )

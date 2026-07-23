@@ -11,8 +11,8 @@ import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
-import com.soma369.laimory.feature.timeline.state.TimelineEventEditorContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorForm
+import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiState
@@ -85,7 +85,7 @@ class TimelineEventEditorViewModel
                 updateState {
                     copy(
                         timelineEventId = timelineEventId,
-                        content = TimelineEventEditorContent.Unavailable,
+                        content = TimelineEventEditorUiContent.Unavailable,
                     )
                 }
                 return
@@ -95,7 +95,7 @@ class TimelineEventEditorViewModel
             updateState {
                 TimelineEventEditorUiState(
                     timelineEventId = timelineEventId,
-                    content = TimelineEventEditorContent.Editor,
+                    content = TimelineEventEditorUiContent.Editor,
                     originalForm = form,
                     form = form,
                     existingPhotoUrls = event.existingPhotoUrls(),
@@ -135,7 +135,16 @@ class TimelineEventEditorViewModel
                             currentForm.copy(startAt = currentForm.startAt.with(normalizedTime))
                         TimelineEventTimeField.END ->
                             currentForm.copy(
-                                endAt = (currentForm.endAt ?: currentForm.startAt).with(normalizedTime),
+                                endAt =
+                                    (currentForm.endAt ?: currentForm.startAt)
+                                        .with(normalizedTime)
+                                        .let { selectedEndAt ->
+                                            if (selectedEndAt < currentForm.startAt) {
+                                                selectedEndAt.plusDays(1)
+                                            } else {
+                                                selectedEndAt
+                                            }
+                                        },
                             )
                     }
                 copy(
@@ -182,7 +191,7 @@ class TimelineEventEditorViewModel
 
         private suspend fun save() {
             val current = state.value
-            if (current.isSaving || current.isSaveCompleted || current.isReadOnly) return
+            if (current.isSaving || current.isReadOnly) return
             if (!current.hasUnsavedChanges) return
             val form = current.form ?: return
             val validation = form.validate()
@@ -262,7 +271,7 @@ class TimelineEventEditorViewModel
                 TimelineEventUpdateException.Reason.PHOTO_LIMIT_EXCEEDED ->
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("추가할 수 있는 사진 수를 초과했어요."))
                 TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE ->
-                    updateState { copy(content = TimelineEventEditorContent.Unavailable) }
+                    updateState { copy(content = TimelineEventEditorUiContent.Unavailable) }
                 TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED -> {
                     updateState { copy(isReadOnly = true) }
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."))
@@ -299,7 +308,7 @@ class TimelineEventEditorViewModel
 
         private fun canEdit(): Boolean =
             with(state.value) {
-                content == TimelineEventEditorContent.Editor && !isSaving && !isReadOnly && !isSaveCompleted
+                content == TimelineEventEditorUiContent.Editor && !isSaving && !isReadOnly
             }
 
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {

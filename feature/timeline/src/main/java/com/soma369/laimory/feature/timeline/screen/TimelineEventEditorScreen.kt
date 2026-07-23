@@ -52,8 +52,8 @@ import com.soma369.laimory.feature.timeline.component.TimelineEditorTextSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventPhotoSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTimeSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTypeSection
-import com.soma369.laimory.feature.timeline.state.TimelineEventEditorContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorForm
+import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiState
@@ -128,7 +128,7 @@ private fun TimelineEventEditorContent(
         }
     }
 
-    BackHandler(enabled = state.content == TimelineEventEditorContent.Editor) {
+    BackHandler(enabled = state.content == TimelineEventEditorUiContent.Editor) {
         onIntent(TimelineEventEditorUiIntent.NavigateBack)
     }
 
@@ -196,7 +196,7 @@ private fun TimelineEventEditorScreen(
             actions = {
                 IconButton(
                     onClick = { onIntent(TimelineEventEditorUiIntent.RequestDelete) },
-                    enabled = !state.isSaving && state.content == TimelineEventEditorContent.Editor,
+                    enabled = !state.isSaving && state.content == TimelineEventEditorUiContent.Editor,
                 ) {
                     Icon(
                         painter = painterResource(UiR.drawable.ico_default_more),
@@ -208,12 +208,12 @@ private fun TimelineEventEditorScreen(
         )
 
         when (state.content) {
-            TimelineEventEditorContent.Loading -> TimelineEventEditorLoading()
-            TimelineEventEditorContent.Unavailable ->
+            TimelineEventEditorUiContent.Loading -> TimelineEventEditorLoading()
+            TimelineEventEditorUiContent.Unavailable ->
                 TimelineEventEditorUnavailable(
                     onBackClick = { onIntent(TimelineEventEditorUiIntent.NavigateBack) },
                 )
-            TimelineEventEditorContent.Editor ->
+            TimelineEventEditorUiContent.Editor ->
                 state.form?.let {
                     TimelineEventEditorBody(
                         state = state,
@@ -529,7 +529,7 @@ private fun previewEditorState(): TimelineEventEditorUiState {
         )
     return TimelineEventEditorUiState(
         timelineEventId = 17L,
-        content = TimelineEventEditorContent.Editor,
+        content = TimelineEventEditorUiContent.Editor,
         originalForm = form,
         form = form,
         existingPhotoUrls = listOf("preview://photo-1", "preview://photo-2"),
