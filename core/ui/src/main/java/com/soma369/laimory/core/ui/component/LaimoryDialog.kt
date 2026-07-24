@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -106,6 +107,7 @@ private fun LaimoryDialogContent(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
+                modifier = Modifier.heightIn(min = DialogBodyMinHeight),
                 text = body,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -321,6 +323,7 @@ enum class LaimoryDialogActionStyle {
 }
 
 private val DialogMaxWidth = 320.dp
+private val DialogBodyMinHeight = 48.dp
 private val DialogCornerRadius = 24.dp
 private val DialogActionHeight = 48.dp
 private val DialogShadowElevation = 8.dp
