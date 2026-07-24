@@ -48,10 +48,12 @@ import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEditorTextSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventPhotoSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTimeSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTypeSection
+import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorForm
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
@@ -71,7 +73,6 @@ import com.soma369.laimory.core.ui.R as UiR
 fun TimelineEventEditorRoute(
     innerPadding: PaddingValues,
     timelineEventId: Long,
-    onRequestDelete: (Long) -> Unit = {},
     viewModel: TimelineEventEditorViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -84,7 +85,6 @@ fun TimelineEventEditorRoute(
         onIntent = viewModel::sendIntent,
         snackbarFlow = viewModel.snackbar,
         sideEffectFlow = viewModel.sideEffect,
-        onRequestDelete = onRequestDelete,
     )
 }
 
@@ -95,7 +95,6 @@ private fun TimelineEventEditorContent(
     onIntent: (TimelineEventEditorUiIntent) -> Unit,
     snackbarFlow: Flow<String>,
     sideEffectFlow: Flow<TimelineEventEditorUiSideEffect>,
-    onRequestDelete: (Long) -> Unit,
 ) {
     val snackbarHostState = LocalSnackbarHostState.current
     val listState = rememberLazyListState()
@@ -121,7 +120,6 @@ private fun TimelineEventEditorContent(
                     listState.animateScrollToItem(TITLE_ITEM_INDEX)
                     titleFocusRequester.requestFocus()
                 }
-                is TimelineEventEditorUiSideEffect.RequestDelete -> onRequestDelete(effect.timelineEventId)
                 is TimelineEventEditorUiSideEffect.ShowSnackbar ->
                     snackbarHostState.showSnackbar(effect.message)
             }
@@ -173,6 +171,23 @@ private fun TimelineEventEditorContent(
             },
         )
     }
+
+    TimelineDeleteDialog(
+        state = state.deleteDialogState,
+        confirmationTitle = "이 이벤트를 삭제할까요?",
+        confirmationMessage =
+            buildString {
+                append("이벤트와 연결된 서버 기록이 함께 삭제됩니다. ")
+                append("기기의 원본 사진과 수집 데이터는 삭제되지 않습니다.")
+                if (state.hasUnsavedChanges) {
+                    append("\n\n저장하지 않은 변경사항도 사라집니다.")
+                }
+            },
+        successMessage = "이벤트를 삭제했습니다.",
+        onConfirm = { onIntent(TimelineEventEditorUiIntent.ConfirmDelete) },
+        onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissDelete) },
+        onFinish = { onIntent(TimelineEventEditorUiIntent.FinishDelete) },
+    )
 }
 
 @Composable
@@ -194,9 +209,10 @@ private fun TimelineEventEditorScreen(
             title = { Text("이벤트 수정") },
             onBackClick = { onIntent(TimelineEventEditorUiIntent.NavigateBack) },
             actions = {
+                // 후속 overflow 메뉴 구현 전까지 Figma의 action 영역을 비활성 상태로 유지한다.
                 IconButton(
-                    onClick = { onIntent(TimelineEventEditorUiIntent.RequestDelete) },
-                    enabled = !state.isSaving && state.content == TimelineEventEditorUiContent.Editor,
+                    onClick = {},
+                    enabled = false,
                 ) {
                     Icon(
                         painter = painterResource(UiR.drawable.ico_default_more),
@@ -235,7 +251,10 @@ private fun TimelineEventEditorBody(
     listState: LazyListState,
     titleFocusRequester: FocusRequester,
 ) {
-    val enabled = !state.isSaving && !state.isReadOnly
+    val enabled =
+        !state.isSaving &&
+            !state.isReadOnly &&
+            state.deleteDialogState == TimelineDeleteDialogState.Hidden
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,

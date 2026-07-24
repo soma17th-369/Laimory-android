@@ -18,6 +18,7 @@ data class TimelineEventEditorUiState(
     val isSaving: Boolean = false,
     val isReadOnly: Boolean = false,
     val isDiscardDialogVisible: Boolean = false,
+    val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
 ) : UiState {
     val hasUnsavedChanges: Boolean
         get() = originalForm != null && (form != originalForm || pendingPhotos.isNotEmpty())
@@ -28,7 +29,11 @@ data class TimelineEventEditorUiState(
                 form?.title?.isNotBlank() == true &&
                 hasUnsavedChanges &&
                 !isSaving &&
-                !isReadOnly
+                !isReadOnly &&
+                deleteDialogState == TimelineDeleteDialogState.Hidden
+
+    val isDeleting: Boolean
+        get() = deleteDialogState == TimelineDeleteDialogState.Deleting
 }
 
 @Immutable

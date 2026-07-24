@@ -7,10 +7,12 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventPhotoAddition
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorForm
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
@@ -32,6 +34,7 @@ class TimelineEventEditorViewModel
         private val observeTimelineRecordUseCase: ObserveTimelineRecordUseCase,
         private val uploadTimelineEventPhotoUseCase: UploadTimelineEventPhotoUseCase,
         private val updateTimelineEventUseCase: UpdateTimelineEventUseCase,
+        private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<TimelineEventEditorUiState, TimelineEventEditorUiIntent, TimelineEventEditorUiSideEffect>(
             TimelineEventEditorUiState(),
@@ -71,6 +74,9 @@ class TimelineEventEditorViewModel
                 TimelineEventEditorUiIntent.DismissDiscard ->
                     updateState { copy(isDiscardDialogVisible = false) }
                 TimelineEventEditorUiIntent.RequestDelete -> requestDelete()
+                TimelineEventEditorUiIntent.ConfirmDelete -> deleteEvent()
+                TimelineEventEditorUiIntent.DismissDelete -> dismissDelete()
+                TimelineEventEditorUiIntent.FinishDelete -> finishDelete()
             }
         }
 
@@ -191,7 +197,12 @@ class TimelineEventEditorViewModel
 
         private suspend fun save() {
             val current = state.value
-            if (current.isSaving || current.isReadOnly) return
+            if (current.isSaving ||
+                current.isReadOnly ||
+                current.deleteDialogState != TimelineDeleteDialogState.Hidden
+            ) {
+                return
+            }
             if (!current.hasUnsavedChanges) return
             val form = current.form ?: return
             val validation = form.validate()
@@ -283,7 +294,7 @@ class TimelineEventEditorViewModel
         }
 
         private fun navigateBack() {
-            if (state.value.isSaving) return
+            if (state.value.isSaving || state.value.isDeleting) return
             if (state.value.hasUnsavedChanges) {
                 updateState { copy(isDiscardDialogVisible = true) }
             } else {
@@ -301,14 +312,76 @@ class TimelineEventEditorViewModel
         }
 
         private fun requestDelete() {
-            val timelineEventId = state.value.timelineEventId ?: return
-            if (state.value.isSaving) return
-            sendEffect(TimelineEventEditorUiSideEffect.RequestDelete(timelineEventId))
+            if (!canEdit() || state.value.timelineEventId == null) return
+            updateState { copy(deleteDialogState = TimelineDeleteDialogState.Confirmation) }
+        }
+
+        private suspend fun deleteEvent() {
+            val current = state.value
+            val timelineEventId = current.timelineEventId ?: return
+            if (current.deleteDialogState != TimelineDeleteDialogState.Confirmation &&
+                current.deleteDialogState !is TimelineDeleteDialogState.RetryableError
+            ) {
+                return
+            }
+
+            updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
+            deleteTimelineEventUseCase(timelineEventId)
+                .onSuccess {
+                    updateState { copy(deleteDialogState = TimelineDeleteDialogState.Success) }
+                }.onFailure(::handleDeleteFailure)
+        }
+
+        private fun dismissDelete() {
+            if (state.value.isDeleting) return
+            updateState { copy(deleteDialogState = TimelineDeleteDialogState.Hidden) }
+        }
+
+        private fun finishDelete() {
+            if (state.value.deleteDialogState != TimelineDeleteDialogState.Success) return
+            clearEditorState()
+            navigationHelper.navigateToBack()
+        }
+
+        private fun handleDeleteFailure(error: Throwable) {
+            when (val action = error.toTimelineDeleteFailureAction()) {
+                TimelineDeleteFailureAction.TargetUnavailable -> {
+                    updateState {
+                        copy(
+                            content = TimelineEventEditorUiContent.Unavailable,
+                            deleteDialogState = TimelineDeleteDialogState.Hidden,
+                        )
+                    }
+                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
+                }
+                TimelineDeleteFailureAction.RecordAlreadySaved -> {
+                    updateState {
+                        copy(
+                            isReadOnly = true,
+                            deleteDialogState = TimelineDeleteDialogState.Hidden,
+                        )
+                    }
+                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."))
+                }
+                TimelineDeleteFailureAction.AlreadyHandled ->
+                    updateState { copy(deleteDialogState = TimelineDeleteDialogState.Hidden) }
+                is TimelineDeleteFailureAction.Retryable ->
+                    showRetryableDeleteError(action.message)
+            }
+        }
+
+        private fun showRetryableDeleteError(message: String) {
+            updateState {
+                copy(deleteDialogState = TimelineDeleteDialogState.RetryableError(message))
+            }
         }
 
         private fun canEdit(): Boolean =
             with(state.value) {
-                content == TimelineEventEditorUiContent.Editor && !isSaving && !isReadOnly
+                content == TimelineEventEditorUiContent.Editor &&
+                    !isSaving &&
+                    !isReadOnly &&
+                    deleteDialogState == TimelineDeleteDialogState.Hidden
             }
 
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {

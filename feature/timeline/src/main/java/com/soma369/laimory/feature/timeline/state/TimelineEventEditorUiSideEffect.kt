@@ -7,10 +7,6 @@ sealed interface TimelineEventEditorUiSideEffect : UiSideEffect {
 
     data object FocusTitle : TimelineEventEditorUiSideEffect
 
-    data class RequestDelete(
-        val timelineEventId: Long,
-    ) : TimelineEventEditorUiSideEffect
-
     data class ShowSnackbar(
         val message: String,
     ) : TimelineEventEditorUiSideEffect
