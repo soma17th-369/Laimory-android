@@ -1,17 +1,11 @@
 package com.soma369.laimory.feature.timeline.component
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import com.soma369.laimory.core.ui.component.LaimoryDialog
+import com.soma369.laimory.core.ui.component.LaimoryDialogActionStyle
+import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
-import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 
 @Composable
@@ -26,8 +20,7 @@ fun TimelineDeleteDialog(
 ) {
     if (state == TimelineDeleteDialogState.Hidden) return
 
-    val isDeleting = state == TimelineDeleteDialogState.Deleting
-    AlertDialog(
+    LaimoryDialog(
         onDismissRequest = {
             when (state) {
                 TimelineDeleteDialogState.Success -> onFinish()
@@ -35,68 +28,54 @@ fun TimelineDeleteDialog(
                 else -> onDismiss()
             }
         },
-        title = {
-            Text(
-                text =
-                    when (state) {
-                        TimelineDeleteDialogState.Confirmation -> confirmationTitle
-                        TimelineDeleteDialogState.Deleting -> "삭제하고 있어요"
-                        is TimelineDeleteDialogState.RetryableError -> "삭제하지 못했어요"
-                        TimelineDeleteDialogState.Success -> "삭제했어요"
-                        TimelineDeleteDialogState.Hidden -> ""
-                    },
-            )
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
-                Text(
-                    text =
-                        when (state) {
-                            TimelineDeleteDialogState.Confirmation -> confirmationMessage
-                            TimelineDeleteDialogState.Deleting -> "잠시만 기다려주세요."
-                            is TimelineDeleteDialogState.RetryableError -> state.message
-                            TimelineDeleteDialogState.Success -> successMessage
-                            TimelineDeleteDialogState.Hidden -> ""
-                        },
-                )
-                if (state is TimelineDeleteDialogState.RetryableError) {
-                    Text(
-                        text = "기존 기록은 그대로 유지됩니다.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        confirmButton = {
+        title =
+            when (state) {
+                TimelineDeleteDialogState.Confirmation -> confirmationTitle
+                TimelineDeleteDialogState.Deleting -> "삭제하고 있어요"
+                is TimelineDeleteDialogState.RetryableError -> "삭제하지 못했어요"
+                TimelineDeleteDialogState.Success -> "삭제했어요"
+                TimelineDeleteDialogState.Hidden -> ""
+            },
+        body =
+            when (state) {
+                TimelineDeleteDialogState.Confirmation -> confirmationMessage
+                TimelineDeleteDialogState.Deleting -> "잠시만 기다려주세요."
+                is TimelineDeleteDialogState.RetryableError ->
+                    "${state.message}\n기존 기록은 그대로 유지됩니다."
+                TimelineDeleteDialogState.Success -> successMessage
+                TimelineDeleteDialogState.Hidden -> ""
+            },
+        buttons =
             when (state) {
                 TimelineDeleteDialogState.Confirmation ->
-                    TextButton(
-                        onClick = onConfirm,
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) {
-                        Text("삭제")
-                    }
+                    LaimoryDialogButtons.Two(
+                        secondaryLabel = "취소",
+                        onSecondaryClick = onDismiss,
+                        primaryLabel = "삭제",
+                        onPrimaryClick = onConfirm,
+                    )
                 TimelineDeleteDialogState.Deleting ->
-                    CircularProgressIndicator()
+                    LaimoryDialogButtons.One(
+                        label = "삭제 중",
+                        onClick = {},
+                        isLoading = true,
+                    )
                 is TimelineDeleteDialogState.RetryableError ->
-                    TextButton(onClick = onConfirm) {
-                        Text("다시 시도")
-                    }
+                    LaimoryDialogButtons.Two(
+                        secondaryLabel = "취소",
+                        onSecondaryClick = onDismiss,
+                        primaryLabel = "다시 시도",
+                        onPrimaryClick = onConfirm,
+                        primaryStyle = LaimoryDialogActionStyle.Destructive,
+                    )
                 TimelineDeleteDialogState.Success ->
-                    TextButton(onClick = onFinish) {
-                        Text("확인")
-                    }
-                TimelineDeleteDialogState.Hidden -> Unit
-            }
-        },
-        dismissButton = {
-            if (!isDeleting && state != TimelineDeleteDialogState.Success) {
-                TextButton(onClick = onDismiss) {
-                    Text("취소")
-                }
-            }
-        },
+                    LaimoryDialogButtons.One(
+                        label = "확인",
+                        onClick = onFinish,
+                    )
+                TimelineDeleteDialogState.Hidden -> return
+            },
+        dismissible = state != TimelineDeleteDialogState.Deleting,
     )
 }
 
