@@ -1,27 +1,29 @@
 package com.soma369.laimory.core.ui.component
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -52,96 +54,200 @@ fun LaimoryDialog(
             DialogProperties(
                 dismissOnBackPress = dismissible,
                 dismissOnClickOutside = dismissible,
+                usePlatformDefaultWidth = false,
             ),
     ) {
-        Surface(
-            modifier = modifier.width(DialogWidth),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = DialogShadowElevation,
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(Spacing.extraLarge2),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                modifier =
-                    Modifier
-                        .padding(horizontal = Spacing.extraLarge2)
-                        .padding(top = DialogTopPadding),
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Spacer(modifier = Modifier.height(Spacing.large))
-                Text(
-                    text = body,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(Spacing.large))
-                DialogActions(buttons = buttons)
-            }
+            LaimoryDialogContent(
+                title = title,
+                body = body,
+                buttons = buttons,
+                modifier = modifier,
+            )
         }
+    }
+}
+
+@Composable
+private fun LaimoryDialogContent(
+    title: String,
+    body: String,
+    buttons: LaimoryDialogButtons,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .widthIn(max = DialogMaxWidth),
+        shape = RoundedCornerShape(DialogCornerRadius),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = DialogShadowElevation,
+    ) {
+        Column(
+            modifier =
+                Modifier.padding(
+                    start = Spacing.extraLarge2,
+                    top = Spacing.extraLarge2,
+                    end = Spacing.extraLarge2,
+                    bottom = Spacing.extraLarge,
+                ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DialogActions(buttons = buttons)
+        }
+    }
+}
+
+@Composable
+private fun LaimoryDialogPreviewContent(buttons: LaimoryDialogButtons) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(Spacing.extraLarge2),
+        contentAlignment = Alignment.Center,
+    ) {
+        LaimoryDialogContent(
+            title = "이벤트 삭제",
+            body = "이 이벤트를 삭제하시겠습니까?\n삭제된 이벤트는 복구할 수 없습니다.",
+            buttons = buttons,
+        )
+    }
+}
+
+@Composable
+private fun LaimoryTwoButtonDialogPreviewContent() {
+    LaimoryDialogPreviewContent(
+        buttons =
+            LaimoryDialogButtons.Two(
+                secondaryLabel = "취소",
+                onSecondaryClick = {},
+                primaryLabel = "삭제",
+                onPrimaryClick = {},
+                primaryStyle = LaimoryDialogActionStyle.Destructive,
+            ),
+    )
+}
+
+@Composable
+private fun LaimoryOneButtonDialogPreviewContent() {
+    LaimoryDialogPreviewContent(
+        buttons =
+            LaimoryDialogButtons.One(
+                label = "확인",
+                onClick = {},
+            ),
+    )
+}
+
+@Preview(name = "Dialog / Two", showBackground = true, widthDp = 360)
+@Composable
+private fun LaimoryTwoButtonDialogPreview() {
+    LaimoryTheme {
+        LaimoryTwoButtonDialogPreviewContent()
+    }
+}
+
+@Preview(name = "Dialog / One", showBackground = true, widthDp = 360)
+@Composable
+private fun LaimoryOneButtonDialogPreview() {
+    LaimoryTheme {
+        LaimoryOneButtonDialogPreviewContent()
+    }
+}
+
+@Preview(name = "Dialog / Two / Dark", showBackground = true, widthDp = 360)
+@Composable
+private fun LaimoryTwoButtonDialogDarkPreview() {
+    LaimoryTheme(darkTheme = true) {
+        LaimoryTwoButtonDialogPreviewContent()
+    }
+}
+
+@Preview(name = "Dialog / One / Dark", showBackground = true, widthDp = 360)
+@Composable
+private fun LaimoryOneButtonDialogDarkPreview() {
+    LaimoryTheme(darkTheme = true) {
+        LaimoryOneButtonDialogPreviewContent()
     }
 }
 
 @Composable
 private fun DialogActions(buttons: LaimoryDialogButtons) {
-    Column {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(DialogDividerHeight)
-                    .background(MaterialTheme.colorScheme.outlineVariant),
-        )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(DialogActionHeight),
-        ) {
-            when (buttons) {
-                is LaimoryDialogButtons.One ->
-                    DialogActionButton(
-                        label = buttons.label,
-                        onClick = buttons.onClick,
-                        style = buttons.style,
-                        enabled = buttons.enabled,
-                        isLoading = buttons.isLoading,
-                        modifier = Modifier.weight(1f),
-                    )
+    when (buttons) {
+        is LaimoryDialogButtons.One ->
+            DialogPrimaryButton(
+                label = buttons.label,
+                onClick = buttons.onClick,
+                style = buttons.style,
+                enabled = buttons.enabled,
+                isLoading = buttons.isLoading,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
-                is LaimoryDialogButtons.Two -> {
-                    DialogActionButton(
-                        label = buttons.secondaryLabel,
-                        onClick = buttons.onSecondaryClick,
-                        style = LaimoryDialogActionStyle.Neutral,
-                        enabled = buttons.enabled,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Box(
-                        modifier =
-                            Modifier
-                                .width(DialogActionDividerWidth)
-                                .fillMaxHeight()
-                                .background(MaterialTheme.colorScheme.outlineVariant),
-                    )
-                    DialogActionButton(
-                        label = buttons.primaryLabel,
-                        onClick = buttons.onPrimaryClick,
-                        style = buttons.primaryStyle,
-                        enabled = buttons.enabled,
-                        isLoading = buttons.isPrimaryLoading,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+        is LaimoryDialogButtons.Two ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+            ) {
+                DialogSecondaryButton(
+                    label = buttons.secondaryLabel,
+                    onClick = buttons.onSecondaryClick,
+                    enabled = buttons.enabled,
+                    modifier = Modifier.weight(1f),
+                )
+                DialogPrimaryButton(
+                    label = buttons.primaryLabel,
+                    onClick = buttons.onPrimaryClick,
+                    style = buttons.primaryStyle,
+                    enabled = buttons.enabled,
+                    isLoading = buttons.isPrimaryLoading,
+                    modifier = Modifier.weight(1f),
+                )
             }
-        }
     }
 }
 
 @Composable
-private fun DialogActionButton(
+private fun DialogSecondaryButton(
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        modifier = modifier.height(DialogActionHeight),
+        enabled = enabled,
+        onClick = onClick,
+        shape = MaterialTheme.shapes.large,
+        contentPadding = DialogActionContentPadding,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
+
+@Composable
+private fun DialogPrimaryButton(
     label: String,
     onClick: () -> Unit,
     style: LaimoryDialogActionStyle,
@@ -149,24 +255,29 @@ private fun DialogActionButton(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
 ) {
-    val contentColor =
+    val containerColor =
         when (style) {
             LaimoryDialogActionStyle.Primary -> MaterialTheme.colorScheme.primary
             LaimoryDialogActionStyle.Destructive -> MaterialTheme.colorScheme.error
-            LaimoryDialogActionStyle.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    val contentColor =
+        when (style) {
+            LaimoryDialogActionStyle.Primary -> MaterialTheme.colorScheme.onPrimary
+            LaimoryDialogActionStyle.Destructive -> MaterialTheme.colorScheme.onError
         }
     val actionEnabled = enabled && !isLoading
 
-    Box(
-        modifier =
-            modifier
-                .fillMaxHeight()
-                .clickable(
-                    enabled = actionEnabled,
-                    role = Role.Button,
-                    onClick = onClick,
-                ).alpha(if (enabled) ENABLED_ALPHA else DISABLED_ALPHA),
-        contentAlignment = Alignment.Center,
+    Button(
+        modifier = modifier.height(DialogActionHeight),
+        enabled = actionEnabled,
+        onClick = onClick,
+        shape = MaterialTheme.shapes.large,
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = containerColor,
+                contentColor = contentColor,
+            ),
+        contentPadding = DialogActionContentPadding,
     ) {
         if (isLoading) {
             CircularProgressIndicator(
@@ -178,7 +289,6 @@ private fun DialogActionButton(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                color = contentColor,
             )
         }
     }
@@ -199,7 +309,7 @@ sealed interface LaimoryDialogButtons {
         val onSecondaryClick: () -> Unit,
         val primaryLabel: String,
         val onPrimaryClick: () -> Unit,
-        val primaryStyle: LaimoryDialogActionStyle = LaimoryDialogActionStyle.Destructive,
+        val primaryStyle: LaimoryDialogActionStyle = LaimoryDialogActionStyle.Primary,
         val enabled: Boolean = true,
         val isPrimaryLoading: Boolean = false,
     ) : LaimoryDialogButtons
@@ -208,88 +318,16 @@ sealed interface LaimoryDialogButtons {
 enum class LaimoryDialogActionStyle {
     Primary,
     Destructive,
-    Neutral,
 }
 
-@Preview(name = "Dialog / Two", showBackground = true, widthDp = 360)
-@Composable
-private fun LaimoryTwoButtonDialogPreview() {
-    LaimoryTheme {
-        LaimoryDialog(
-            title = "이벤트 삭제",
-            body = "이 이벤트를 삭제하시겠습니까?\n삭제된 이벤트는 복구할 수 없습니다.",
-            buttons =
-                LaimoryDialogButtons.Two(
-                    secondaryLabel = "취소",
-                    onSecondaryClick = {},
-                    primaryLabel = "삭제",
-                    onPrimaryClick = {},
-                ),
-            onDismissRequest = {},
-        )
-    }
-}
-
-@Preview(name = "Dialog / One", showBackground = true, widthDp = 360)
-@Composable
-private fun LaimoryOneButtonDialogPreview() {
-    LaimoryTheme {
-        LaimoryDialog(
-            title = "이벤트 삭제",
-            body = "이 이벤트를 삭제하시겠습니까?\n삭제된 이벤트는 복구할 수 없습니다.",
-            buttons =
-                LaimoryDialogButtons.One(
-                    label = "확인",
-                    onClick = {},
-                ),
-            onDismissRequest = {},
-        )
-    }
-}
-
-@Preview(name = "Dialog / Two / Dark", showBackground = true, widthDp = 360)
-@Composable
-private fun LaimoryTwoButtonDialogDarkPreview() {
-    LaimoryTheme(darkTheme = true) {
-        LaimoryDialog(
-            title = "이벤트 삭제",
-            body = "이 이벤트를 삭제하시겠습니까?\n삭제된 이벤트는 복구할 수 없습니다.",
-            buttons =
-                LaimoryDialogButtons.Two(
-                    secondaryLabel = "취소",
-                    onSecondaryClick = {},
-                    primaryLabel = "삭제",
-                    onPrimaryClick = {},
-                ),
-            onDismissRequest = {},
-        )
-    }
-}
-
-@Preview(name = "Dialog / One / Dark", showBackground = true, widthDp = 360)
-@Composable
-private fun LaimoryOneButtonDialogDarkPreview() {
-    LaimoryTheme(darkTheme = true) {
-        LaimoryDialog(
-            title = "이벤트 삭제",
-            body = "이 이벤트를 삭제하시겠습니까?\n삭제된 이벤트는 복구할 수 없습니다.",
-            buttons =
-                LaimoryDialogButtons.One(
-                    label = "확인",
-                    onClick = {},
-                ),
-            onDismissRequest = {},
-        )
-    }
-}
-
-private val DialogWidth = 280.dp
-private val DialogTopPadding = 28.dp
+private val DialogMaxWidth = 320.dp
+private val DialogCornerRadius = 24.dp
 private val DialogActionHeight = 48.dp
-private val DialogDividerHeight = 1.dp
-private val DialogActionDividerWidth = 0.5.dp
 private val DialogShadowElevation = 8.dp
-private val DialogProgressSize = 20.dp
+private val DialogProgressSize = 16.dp
 private val DialogProgressStrokeWidth = 2.dp
-private const val ENABLED_ALPHA = 1f
-private const val DISABLED_ALPHA = 0.38f
+private val DialogActionContentPadding =
+    PaddingValues(
+        horizontal = Spacing.large,
+        vertical = Spacing.medium,
+    )

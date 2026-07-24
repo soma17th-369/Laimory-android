@@ -53,6 +53,7 @@ fun TimelineDeleteDialog(
                         onSecondaryClick = onDismiss,
                         primaryLabel = "삭제",
                         onPrimaryClick = onConfirm,
+                        primaryStyle = LaimoryDialogActionStyle.Destructive,
                     )
                 TimelineDeleteDialogState.Deleting ->
                     LaimoryDialogButtons.One(

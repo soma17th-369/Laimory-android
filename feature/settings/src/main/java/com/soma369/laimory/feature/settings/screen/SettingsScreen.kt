@@ -16,20 +16,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,12 +41,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.LaimoryDialog
+import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
@@ -349,82 +343,21 @@ private fun LogoutConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Dialog(
-        onDismissRequest = { if (!isLoggingOut) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(Spacing.extraLarge2),
-            contentAlignment = Alignment.Center,
-        ) {
-            Surface(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = 320.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 8.dp,
-            ) {
-                Column(
-                    modifier =
-                        Modifier.padding(
-                            start = Spacing.extraLarge2,
-                            top = Spacing.extraLarge2,
-                            end = Spacing.extraLarge2,
-                            bottom = Spacing.extraLarge,
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
-                ) {
-                    Text(
-                        text = "로그아웃할까요?",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(
-                        text = "이 기기에서 로그아웃하고 로그인 화면으로 이동합니다.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
-                    ) {
-                        OutlinedButton(
-                            modifier = Modifier.weight(1f),
-                            enabled = !isLoggingOut,
-                            onClick = onDismiss,
-                            shape = MaterialTheme.shapes.large,
-                            contentPadding = PaddingValues(vertical = Spacing.medium),
-                        ) {
-                            Text("취소")
-                        }
-                        Button(
-                            modifier = Modifier.weight(1f),
-                            enabled = !isLoggingOut,
-                            onClick = onConfirm,
-                            shape = MaterialTheme.shapes.large,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            contentPadding = PaddingValues(vertical = Spacing.medium),
-                        ) {
-                            if (isLoggingOut) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                )
-                            } else {
-                                Text("로그아웃")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    LaimoryDialog(
+        title = "로그아웃할까요?",
+        body = "이 기기에서 로그아웃하고 로그인 화면으로 이동합니다.",
+        buttons =
+            LaimoryDialogButtons.Two(
+                secondaryLabel = "취소",
+                onSecondaryClick = onDismiss,
+                primaryLabel = "로그아웃",
+                onPrimaryClick = onConfirm,
+                enabled = !isLoggingOut,
+                isPrimaryLoading = isLoggingOut,
+            ),
+        onDismissRequest = onDismiss,
+        dismissible = !isLoggingOut,
+    )
 }
 
 private data class SettingsItem(
