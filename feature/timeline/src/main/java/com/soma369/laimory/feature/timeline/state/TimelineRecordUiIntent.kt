@@ -5,7 +5,7 @@ import com.soma369.laimory.core.ui.base.UiIntent
 sealed interface TimelineRecordUiIntent : UiIntent {
     data object NavigateBack : TimelineRecordUiIntent
 
-    data object OpenRecordMenu : TimelineRecordUiIntent
+    data object RequestDelete : TimelineRecordUiIntent
 
     data object ConfirmDelete : TimelineRecordUiIntent
 

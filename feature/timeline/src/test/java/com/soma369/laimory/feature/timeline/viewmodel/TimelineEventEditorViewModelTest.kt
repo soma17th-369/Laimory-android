@@ -326,6 +326,79 @@ class TimelineEventEditorViewModelTest {
             assertTrue(sessionRepository.timeline.value?.events.orEmpty().isEmpty())
         }
 
+    @Test
+    fun `삭제 확인을 취소한 뒤 들어온 확인 Intent는 Event를 삭제하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.DismissDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.deletedEventIds.isEmpty())
+            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
+            assertEquals(listOf(EVENT_ID), sessionRepository.timeline.value?.events?.map(TimelineEvent::timelineEventId))
+        }
+
+    @Test
+    fun `이미 없는 Event 삭제는 사용할 수 없는 상태로 전환하고 안내한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure =
+                ApiException.ClientException(
+                    errorCode = "ERROR_0404",
+                    rawCode = 404,
+                )
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertEquals(TimelineEventEditorUiContent.Unavailable, viewModel.state.value.content)
+            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `작성 완료된 기록의 Event 삭제는 읽기 전용으로 전환하고 안내한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure =
+                ApiException.ConflictException(
+                    errorCode = "ERROR_1003",
+                    rawCode = 409,
+                )
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.isReadOnly)
+            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `공통 정책으로 처리된 Event 삭제 실패는 추가 오류 다이얼로그 없이 닫는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure = ApiException.ServerException(rawCode = 500)
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
+            assertEquals(listOf(EVENT_ID), sessionRepository.timeline.value?.events?.map(TimelineEvent::timelineEventId))
+        }
+
     private fun TestScope.initializedViewModel(): TimelineEventEditorViewModel =
         createViewModel().also {
             it.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))

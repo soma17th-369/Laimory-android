@@ -1,10 +1,8 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
-import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.exception.HandledException
-import com.soma369.laimory.core.domain.exception.TimelineRecordDeleteException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
@@ -50,7 +48,7 @@ class TimelineRecordViewModel
             when (intent) {
                 TimelineRecordUiIntent.NavigateBack ->
                     if (!state.value.isDeleting) navigationHelper.navigateToBack()
-                TimelineRecordUiIntent.OpenRecordMenu -> requestDelete()
+                TimelineRecordUiIntent.RequestDelete -> requestDelete()
                 TimelineRecordUiIntent.ConfirmDelete -> deleteRecord()
                 TimelineRecordUiIntent.DismissDelete -> dismissDelete()
                 TimelineRecordUiIntent.FinishDelete -> finishDelete()
@@ -88,13 +86,21 @@ class TimelineRecordViewModel
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
             deleteDailyRecordUseCase(target.dailyRecordId)
                 .onSuccess {
-                    draftTaskCoordinator.discard()
+                    val activeTask =
+                        (draftTaskCoordinator.state.value as? DraftTaskTrackingState.WithTask)?.task
+                    if (activeTask?.recordDate == target.recordDate) {
+                        draftTaskCoordinator.discard()
+                    }
                     updateState { copy(deleteDialogState = TimelineDeleteDialogState.Success) }
                 }.onFailure(::handleDeleteFailure)
         }
 
         private fun dismissDelete() {
             if (state.value.isDeleting) return
+            clearDeleteDialog()
+        }
+
+        private fun clearDeleteDialog() {
             updateState {
                 copy(
                     deleteTarget = null,
@@ -115,8 +121,8 @@ class TimelineRecordViewModel
         }
 
         private fun handleDeleteFailure(error: Throwable) {
-            when ((error as? TimelineRecordDeleteException)?.reason) {
-                TimelineRecordDeleteException.Reason.TARGET_UNAVAILABLE -> {
+            when (val action = error.toTimelineDeleteFailureAction()) {
+                TimelineDeleteFailureAction.TargetUnavailable -> {
                     updateState {
                         copy(
                             content = TimelineRecordUiContent.Unavailable,
@@ -126,27 +132,13 @@ class TimelineRecordViewModel
                     }
                     sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 기록이에요."))
                 }
-                TimelineRecordDeleteException.Reason.RECORD_ALREADY_SAVED -> {
-                    dismissDelete()
+                TimelineDeleteFailureAction.RecordAlreadySaved -> {
+                    clearDeleteDialog()
                     sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."))
                 }
-                TimelineRecordDeleteException.Reason.DATE_OPERATION_IN_PROGRESS ->
-                    showRetryableDeleteError("같은 날짜의 작업이 진행 중이에요. 잠시 후 다시 시도해주세요.")
-                TimelineRecordDeleteException.Reason.PHOTO_DELETE_FAILED ->
-                    showRetryableDeleteError("서버 사진을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.")
-                null -> {
-                    val apiException =
-                        when (error) {
-                            is ApiException -> error
-                            is HandledException -> error.cause as? ApiException
-                            else -> null
-                        }
-                    if (apiException?.rawCode == 401) {
-                        dismissDelete()
-                    } else {
-                        showRetryableDeleteError("네트워크 상태를 확인한 뒤 다시 시도해주세요.")
-                    }
-                }
+                TimelineDeleteFailureAction.AlreadyHandled -> clearDeleteDialog()
+                is TimelineDeleteFailureAction.Retryable ->
+                    showRetryableDeleteError(action.message)
             }
         }
 

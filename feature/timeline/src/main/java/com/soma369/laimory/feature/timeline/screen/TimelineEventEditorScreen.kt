@@ -209,6 +209,7 @@ private fun TimelineEventEditorScreen(
             title = { Text("이벤트 수정") },
             onBackClick = { onIntent(TimelineEventEditorUiIntent.NavigateBack) },
             actions = {
+                // 후속 overflow 메뉴 구현 전까지 Figma의 action 영역을 비활성 상태로 유지한다.
                 IconButton(
                     onClick = {},
                     enabled = false,

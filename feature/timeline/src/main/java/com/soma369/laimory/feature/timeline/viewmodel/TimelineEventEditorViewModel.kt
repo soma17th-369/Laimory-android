@@ -1,9 +1,6 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
-import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
-import com.soma369.laimory.core.domain.exception.TimelineRecordDeleteException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventPhotoAddition
@@ -322,8 +319,8 @@ class TimelineEventEditorViewModel
         private suspend fun deleteEvent() {
             val current = state.value
             val timelineEventId = current.timelineEventId ?: return
-            if (current.deleteDialogState == TimelineDeleteDialogState.Deleting ||
-                current.deleteDialogState == TimelineDeleteDialogState.Success
+            if (current.deleteDialogState != TimelineDeleteDialogState.Confirmation &&
+                current.deleteDialogState !is TimelineDeleteDialogState.RetryableError
             ) {
                 return
             }
@@ -347,8 +344,8 @@ class TimelineEventEditorViewModel
         }
 
         private fun handleDeleteFailure(error: Throwable) {
-            when ((error as? TimelineRecordDeleteException)?.reason) {
-                TimelineRecordDeleteException.Reason.TARGET_UNAVAILABLE -> {
+            when (val action = error.toTimelineDeleteFailureAction()) {
+                TimelineDeleteFailureAction.TargetUnavailable -> {
                     updateState {
                         copy(
                             content = TimelineEventEditorUiContent.Unavailable,
@@ -357,7 +354,7 @@ class TimelineEventEditorViewModel
                     }
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
                 }
-                TimelineRecordDeleteException.Reason.RECORD_ALREADY_SAVED -> {
+                TimelineDeleteFailureAction.RecordAlreadySaved -> {
                     updateState {
                         copy(
                             isReadOnly = true,
@@ -366,23 +363,10 @@ class TimelineEventEditorViewModel
                     }
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."))
                 }
-                TimelineRecordDeleteException.Reason.DATE_OPERATION_IN_PROGRESS ->
-                    showRetryableDeleteError("같은 날짜의 작업이 진행 중이에요. 잠시 후 다시 시도해주세요.")
-                TimelineRecordDeleteException.Reason.PHOTO_DELETE_FAILED ->
-                    showRetryableDeleteError("서버 사진을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.")
-                null -> {
-                    val apiException =
-                        when (error) {
-                            is ApiException -> error
-                            is HandledException -> error.cause as? ApiException
-                            else -> null
-                        }
-                    if (apiException?.rawCode == 401) {
-                        updateState { copy(deleteDialogState = TimelineDeleteDialogState.Hidden) }
-                    } else {
-                        showRetryableDeleteError("네트워크 상태를 확인한 뒤 다시 시도해주세요.")
-                    }
-                }
+                TimelineDeleteFailureAction.AlreadyHandled ->
+                    updateState { copy(deleteDialogState = TimelineDeleteDialogState.Hidden) }
+                is TimelineDeleteFailureAction.Retryable ->
+                    showRetryableDeleteError(action.message)
             }
         }
 

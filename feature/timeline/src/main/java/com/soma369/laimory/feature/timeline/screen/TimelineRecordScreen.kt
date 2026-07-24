@@ -31,6 +31,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
+import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
+import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItemStyle
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -115,6 +118,7 @@ private fun TimelineRecordScreen(
     onIntent: (TimelineRecordUiIntent) -> Unit,
 ) {
     var photoViewerState by remember { mutableStateOf<TimelinePhotoViewerState?>(null) }
+    var isRecordMenuExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier =
@@ -133,15 +137,31 @@ private fun TimelineRecordScreen(
             onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
             actions = {
                 if (state.content is TimelineRecordUiContent.Record) {
-                    IconButton(
-                        onClick = { onIntent(TimelineRecordUiIntent.OpenRecordMenu) },
-                        enabled = state.deleteDialogState == TimelineDeleteDialogState.Hidden,
-                    ) {
-                        Icon(
-                            painter = painterResource(UiR.drawable.ico_default_more),
-                            contentDescription = "기록 메뉴",
-                            tint = MaterialTheme.colorScheme.onBackground,
-                        )
+                    Box {
+                        IconButton(
+                            onClick = { isRecordMenuExpanded = true },
+                            enabled = state.deleteDialogState == TimelineDeleteDialogState.Hidden,
+                        ) {
+                            Icon(
+                                painter = painterResource(UiR.drawable.ico_default_more),
+                                contentDescription = "기록 메뉴",
+                                tint = MaterialTheme.colorScheme.onBackground,
+                            )
+                        }
+                        LaimoryDropdownMenu(
+                            expanded = isRecordMenuExpanded,
+                            onDismissRequest = { isRecordMenuExpanded = false },
+                        ) {
+                            LaimoryDropdownMenuItem(
+                                label = "삭제하기",
+                                leadingIcon = painterResource(UiR.drawable.ico_setting_trash),
+                                style = LaimoryDropdownMenuItemStyle.Destructive,
+                                onClick = {
+                                    isRecordMenuExpanded = false
+                                    onIntent(TimelineRecordUiIntent.RequestDelete)
+                                },
+                            )
+                        }
                     }
                 }
             },
