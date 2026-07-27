@@ -92,11 +92,14 @@ class MainActivity : ComponentActivity() {
     private fun consumeDraftCompletionNotification(intent: Intent) {
         val taskId = intent.getStringExtra(DraftCompletionSignalParser.TASK_ID_KEY)
         val status = intent.getStringExtra(DraftCompletionSignalParser.STATUS_KEY)
-        if (!draftCompletionPushHandler.onNotificationOpened(taskId, status)) return
-        navigationHelper.replaceRoot(HomePage)
+        if (taskId == null && status == null) return
         intent.removeExtra(DraftCompletionSignalParser.TASK_ID_KEY)
         intent.removeExtra(DraftCompletionSignalParser.STATUS_KEY)
         setIntent(intent)
+        lifecycleScope.launch {
+            if (!draftCompletionPushHandler.onNotificationOpened(taskId, status)) return@launch
+            navigationHelper.replaceRoot(HomePage)
+        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {

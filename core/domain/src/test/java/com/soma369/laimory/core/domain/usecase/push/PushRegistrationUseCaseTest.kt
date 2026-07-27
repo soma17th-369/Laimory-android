@@ -3,6 +3,8 @@ package com.soma369.laimory.core.domain.usecase.push
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runTest
@@ -10,6 +12,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class PushRegistrationUseCaseTest {
     @Test
     fun `등록 UseCase는 FID 원문을 repository에 전달한다`() =
@@ -85,8 +88,32 @@ class PushRegistrationUseCaseTest {
             assertEquals(1, authRepository.logoutCount)
         }
 
+    @Test
+    fun `FID 해제가 끝나지 않아도 3초 뒤 사용자 로그아웃을 계속한다`() =
+        runTest {
+            val authRepository = FakeAuthRepository()
+            val pushRepository =
+                FakePushRegistrationRepository(
+                    onUnregister = { awaitCancellation() },
+                )
+            val logout =
+                LogoutUseCase(
+                    repository = authRepository,
+                    unregisterCurrentPushInstallation =
+                        UnregisterCurrentPushInstallationUseCase(
+                            installationIdProvider = { "current-fid" },
+                            repository = pushRepository,
+                        ),
+                )
+
+            logout()
+
+            assertEquals(3_000L, testScheduler.currentTime)
+            assertEquals(1, authRepository.logoutCount)
+        }
+
     private class FakePushRegistrationRepository(
-        private val onUnregister: () -> Unit = {},
+        private val onUnregister: suspend () -> Unit = {},
     ) : PushRegistrationRepository {
         val registered = mutableListOf<String>()
         val unregistered = mutableListOf<String>()

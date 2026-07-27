@@ -111,6 +111,23 @@ class DraftCompletionPushHandlerTest {
             assertEquals(listOf("task-1"), coordinator.refreshedTaskIds)
         }
 
+    @Test
+    fun `미인증 상태에서는 유효한 알림을 열어도 작업을 새로고침하지 않는다`() =
+        runTest {
+            val coordinator = FakeDraftTaskCoordinator()
+            val handler =
+                handler(
+                    authState = AuthSessionState.Unauthenticated,
+                    pushRepository = FakePushRegistrationRepository(),
+                    coordinator = coordinator,
+                    scope = backgroundScope,
+                )
+
+            assertFalse(handler.onNotificationOpened("task-1", "SUCCESS"))
+
+            assertTrue(coordinator.refreshedTaskIds.isEmpty())
+        }
+
     private fun handler(
         authState: AuthSessionState,
         pushRepository: PushRegistrationRepository,

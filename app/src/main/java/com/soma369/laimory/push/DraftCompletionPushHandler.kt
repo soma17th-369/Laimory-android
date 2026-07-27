@@ -62,7 +62,7 @@ class DraftCompletionPushHandler
             draftTaskCoordinator.refreshFromCompletionSignal(signal.taskId)
         }
 
-        fun onNotificationOpened(
+        suspend fun onNotificationOpened(
             taskId: String?,
             status: String?,
         ): Boolean {
@@ -78,6 +78,14 @@ class DraftCompletionPushHandler
                         )
                         return false
                     }
+            val session =
+                observeAuthSession().first { state ->
+                    state != AuthSessionState.Loading
+                }
+            if (session != AuthSessionState.Authenticated) {
+                Logger.w(LogDomain.PUSH, "미인증 상태라 초안 완료 알림 탭 처리를 건너뜀")
+                return false
+            }
             Logger.i(
                 LogDomain.PUSH,
                 "초안 완료 알림 탭 처리(taskId=${signal.taskId.maskedId()}, status=${signal.status})",
