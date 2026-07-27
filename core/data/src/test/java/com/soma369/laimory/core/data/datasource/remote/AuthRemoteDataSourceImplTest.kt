@@ -82,7 +82,7 @@ class AuthRemoteDataSourceImplTest {
             server.enqueue(
                 MockResponse()
                     .setResponseCode(200)
-                    .setBody("""{"header":{"code":"COMMON_0000","message":"success"},"body":null}"""),
+                    .setBody("""{"header":{"code":0,"message":""},"body":null}"""),
             )
 
             remote.logout("refresh-1")
@@ -93,18 +93,18 @@ class AuthRemoteDataSourceImplTest {
         }
 
     @Test
-    fun `refresh 거절의 ERROR_2003을 보존한다`() =
+    fun `refresh 거절의 -2003을 보존한다`() =
         runTest {
             server.enqueue(
                 MockResponse()
                     .setResponseCode(401)
-                    .setBody("""{"header":{"code":"ERROR_2003","message":"refresh rejected"},"body":null}"""),
+                    .setBody("""{"header":{"code":-2003,"message":"refresh rejected"},"body":null}"""),
             )
 
             val error = runCatching { remote.refreshTokens("invalid") }.exceptionOrNull()
 
             assertTrue(error is ApiException.UnauthorizedException)
-            assertEquals("ERROR_2003", (error as ApiException).errorCode)
+            assertEquals(-2003, (error as ApiException).errorCode)
         }
 
     private fun successTokens(
@@ -116,7 +116,7 @@ class AuthRemoteDataSourceImplTest {
             .setBody(
                 """
                 {
-                  "header": {"code": "COMMON_0000", "message": "success"},
+                  "header": {"code": 0, "message": ""},
                   "body": {"accessToken": "$accessToken", "refreshToken": "$refreshToken"}
                 }
                 """.trimIndent(),

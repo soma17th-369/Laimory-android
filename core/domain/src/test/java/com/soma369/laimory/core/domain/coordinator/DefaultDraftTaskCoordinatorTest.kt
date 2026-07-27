@@ -314,7 +314,7 @@ class DefaultDraftTaskCoordinatorTest {
                 is DraftTaskSnapshot -> response
                 TaskUnavailableResponse ->
                     throw com.soma369.laimory.core.domain.exception.ApiException.ClientException(
-                        errorCode = "ERROR_1001",
+                        errorCode = -1001,
                         rawCode = 404,
                     )
 

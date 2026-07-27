@@ -58,7 +58,7 @@ class TimelineRecordRemoteDataSourceImplTest {
                     .setBody(
                         """
                         {
-                          "header":{"code":"COMMON_0000","message":"success"},
+                          "header":{"code":0,"message":""},
                           "body":{
                             "timelineEventId":17,
                             "eventType":"WORK",
@@ -120,7 +120,7 @@ class TimelineRecordRemoteDataSourceImplTest {
                     .setBody(
                         """
                         {
-                          "header":{"code":"ERROR_1017","message":"사진 삭제 실패"},
+                          "header":{"code":-1017,"message":"사진 삭제 실패"},
                           "body":null
                         }
                         """.trimIndent(),
@@ -132,7 +132,7 @@ class TimelineRecordRemoteDataSourceImplTest {
             assertTrue(failure is ApiException.ServerException)
             val apiException = failure as ApiException
             assertEquals(502, apiException.rawCode)
-            assertEquals("ERROR_1017", apiException.errorCode)
+            assertEquals(-1017, apiException.errorCode)
         }
 
     private fun successUnitResponse() =
@@ -141,7 +141,7 @@ class TimelineRecordRemoteDataSourceImplTest {
             .setBody(
                 """
                 {
-                  "header":{"code":"COMMON_0000","message":"success"},
+                  "header":{"code":0,"message":""},
                   "body":null
                 }
                 """.trimIndent(),

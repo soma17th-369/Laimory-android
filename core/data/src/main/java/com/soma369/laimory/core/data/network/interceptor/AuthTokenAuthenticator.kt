@@ -92,7 +92,7 @@ internal class AuthTokenAuthenticator
         }
 
         private companion object {
-            const val REFRESH_REJECTED = "ERROR_2003"
+            const val REFRESH_REJECTED = -2003
             const val MAX_REQUEST_COUNT = 2
         }
     }

@@ -40,7 +40,7 @@ class IssueAuthTokensUseCaseTest {
     fun `API 실패는 로그인 화면이 처리할 Result로 반환한다`() =
         runBlocking {
             val repository = FakeAuthRepository()
-            val error = ApiException.UnauthorizedException(errorCode = "ERROR_2002", rawCode = 401)
+            val error = ApiException.UnauthorizedException(errorCode = -2002, rawCode = 401)
             repository.issueError = error
 
             val result = IssueAuthTokensUseCase(repository)(IssueAuthTokensParams("code", "verifier"))

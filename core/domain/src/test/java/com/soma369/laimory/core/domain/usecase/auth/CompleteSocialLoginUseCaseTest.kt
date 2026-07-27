@@ -40,7 +40,7 @@ class CompleteSocialLoginUseCaseTest {
         runBlocking {
             socialRepository.pendingVerifier = "verifier"
 
-            val result = useCase(SocialLoginCallback(errorCode = "ERROR_2004"))
+            val result = useCase(SocialLoginCallback(errorCode = "-2004"))
 
             assertTrue(result.exceptionOrNull() is SocialLoginException.ProviderFailure)
             assertEquals(1, socialRepository.clearCount)

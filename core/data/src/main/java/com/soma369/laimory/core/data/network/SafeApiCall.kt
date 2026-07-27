@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import retrofit2.Response
 import java.io.IOException
@@ -44,8 +45,9 @@ private suspend fun <T> executeApiCall(call: suspend () -> Response<ApiResponse<
             throw e
         } catch (e: IOException) {
             throw ApiException.NetworkException()
-        } catch (e: Exception) {
-            throw ApiException.UnknownException(e.message)
+        } catch (_: Exception) {
+            // 역직렬화 예외에는 민감 응답 JSON이 포함될 수 있으므로 상위 레이어로 원문을 전달하지 않는다.
+            throw ApiException.UnknownException()
         }
 
     if (!response.isSuccessful) {
@@ -65,7 +67,7 @@ private suspend fun <T> executeApiCall(call: suspend () -> Response<ApiResponse<
 private val errorBodyJson = Json { ignoreUnknownKeys = true }
 
 private data class ErrorEnvelope(
-    val code: String?,
+    val code: Int?,
     val message: String?,
 )
 
@@ -76,7 +78,7 @@ private fun Response<*>.parseErrorEnvelope(): ErrorEnvelope? =
             val obj = errorBodyJson.parseToJsonElement(raw) as? JsonObject
             val header = obj?.get("header") as? JsonObject
             ErrorEnvelope(
-                code = header?.get("code")?.jsonPrimitive?.contentOrNull,
+                code = header?.get("code")?.jsonPrimitive?.intOrNull,
                 message =
                     header?.get("message")?.jsonPrimitive?.contentOrNull
                         ?: obj?.get("message")?.jsonPrimitive?.contentOrNull

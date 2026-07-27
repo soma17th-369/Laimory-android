@@ -17,9 +17,9 @@ class AuthDeepLinkTest {
 
     @Test
     fun `실패 callback의 error를 변환한다`() {
-        val callback = "$callbackOrigin/auth/app?error=ERROR_2004".toSocialLoginCallbackOrNull()
+        val callback = "$callbackOrigin/auth/app?error=-2004".toSocialLoginCallbackOrNull()
 
-        assertEquals("ERROR_2004", callback?.errorCode)
+        assertEquals("-2004", callback?.errorCode)
         assertNull(callback?.appCode)
     }
 

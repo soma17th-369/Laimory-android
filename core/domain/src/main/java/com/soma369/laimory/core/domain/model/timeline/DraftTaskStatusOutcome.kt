@@ -6,9 +6,9 @@ sealed interface DraftTaskStatusOutcome {
         val value: DraftTaskSnapshot,
     ) : DraftTaskStatusOutcome
 
-    /** `ERROR_1001`: 작업이 없거나 만료됐거나 다른 사용자의 작업이다. */
+    /** `-1001`: 작업이 없거나 만료됐거나 다른 사용자의 작업이다. */
     data object TaskUnavailable : DraftTaskStatusOutcome
 
-    /** `ERROR_0404`: SUCCESS 결과 기록이 삭제됐거나 결과 ID가 없는 legacy 작업이다. */
+    /** `-404`: SUCCESS 결과 기록이 삭제됐거나 결과 ID가 없는 legacy 작업이다. */
     data object ResultUnavailable : DraftTaskStatusOutcome
 }
