@@ -51,14 +51,14 @@ class AuthTokenAuthenticatorTest {
         }
 
     @Test
-    fun `refresh가 ERROR_2003으로 거절되면 세션을 제거하고 재시도하지 않는다`() {
+    fun `refresh가 -2003으로 거절되면 세션을 제거하고 재시도하지 않는다`() {
         val store = FakeTokenSessionStore(TokenSession("old-access", "old-refresh"))
         val remote =
             FakeAuthRemoteDataSource(
                 error =
                     ApiException.UnauthorizedException(
                         message = "rejected",
-                        errorCode = "ERROR_2003",
+                        errorCode = -2003,
                         rawCode = 401,
                     ),
             )

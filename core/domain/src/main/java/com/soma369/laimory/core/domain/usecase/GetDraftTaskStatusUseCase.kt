@@ -30,7 +30,7 @@ class GetDraftTaskStatusUseCase
             }
 
         private companion object {
-            const val TASK_UNAVAILABLE_ERROR_CODE = "ERROR_1001"
-            const val RESULT_UNAVAILABLE_ERROR_CODE = "ERROR_0404"
+            const val TASK_UNAVAILABLE_ERROR_CODE = -1001
+            const val RESULT_UNAVAILABLE_ERROR_CODE = -404
         }
     }

@@ -45,10 +45,10 @@ class UpdateTimelineEventUseCase
             }
 
         private companion object {
-            const val INVALID_REQUEST_ERROR_CODE = "ERROR_0400"
-            const val PHOTO_LIMIT_ERROR_CODE = "ERROR_1004"
-            const val EVENT_UNAVAILABLE_ERROR_CODE = "ERROR_0404"
-            const val RECORD_SAVED_ERROR_CODE = "ERROR_1003"
-            const val DATE_OPERATION_ERROR_CODE = "ERROR_1016"
+            const val INVALID_REQUEST_ERROR_CODE = -400
+            const val PHOTO_LIMIT_ERROR_CODE = -1004
+            const val EVENT_UNAVAILABLE_ERROR_CODE = -404
+            const val RECORD_SAVED_ERROR_CODE = -1003
+            const val DATE_OPERATION_ERROR_CODE = -1016
         }
     }

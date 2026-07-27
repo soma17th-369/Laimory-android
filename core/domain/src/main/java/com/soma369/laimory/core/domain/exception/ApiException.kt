@@ -4,12 +4,12 @@ import java.io.IOException
 
 sealed class ApiException(
     override val message: String,
-    val errorCode: String? = null,
+    val errorCode: Int? = null,
     val rawCode: Int? = null,
 ) : IOException(message) {
     class UnknownException(
         message: String? = null,
-        errorCode: String? = null,
+        errorCode: Int? = null,
         rawCode: Int? = null,
     ) : ApiException(message ?: UNKNOWN_ERROR, errorCode, rawCode)
 
@@ -17,25 +17,25 @@ sealed class ApiException(
 
     class UnauthorizedException(
         message: String? = null,
-        errorCode: String? = null,
+        errorCode: Int? = null,
         rawCode: Int? = null,
     ) : ApiException(message ?: UNAUTHORIZED_ERROR, errorCode = errorCode, rawCode = rawCode)
 
     class ServerException(
         message: String? = null,
-        errorCode: String? = null,
+        errorCode: Int? = null,
         rawCode: Int? = null,
     ) : ApiException(message ?: SERVER_ERROR, errorCode = errorCode, rawCode = rawCode)
 
     class ClientException(
         message: String? = null,
-        errorCode: String? = null,
+        errorCode: Int? = null,
         rawCode: Int? = null,
     ) : ApiException(message ?: CLIENT_ERROR, errorCode = errorCode, rawCode = rawCode)
 
     class ConflictException(
         message: String? = null,
-        errorCode: String? = null,
+        errorCode: Int? = null,
         rawCode: Int? = null,
     ) : ApiException(message ?: CONFLICT_ERROR, errorCode = errorCode, rawCode = rawCode)
 
@@ -54,7 +54,7 @@ sealed class ApiException(
         fun fromCode(
             code: Int,
             message: String? = null,
-            errorCode: String? = null,
+            errorCode: Int? = null,
         ): ApiException =
             when (code) {
                 401, 403 -> UnauthorizedException(message, errorCode = errorCode, rawCode = code)

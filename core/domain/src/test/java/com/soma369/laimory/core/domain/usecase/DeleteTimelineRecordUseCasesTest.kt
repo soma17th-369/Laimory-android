@@ -72,13 +72,13 @@ class DeleteTimelineRecordUseCasesTest {
         runBlocking {
             val cases =
                 listOf(
-                    ApiException.ClientException(errorCode = "ERROR_0404", rawCode = 404) to
+                    ApiException.ClientException(errorCode = -404, rawCode = 404) to
                         TimelineRecordDeleteException.Reason.TARGET_UNAVAILABLE,
-                    ApiException.ConflictException(errorCode = "ERROR_1003", rawCode = 409) to
+                    ApiException.ConflictException(errorCode = -1003, rawCode = 409) to
                         TimelineRecordDeleteException.Reason.RECORD_ALREADY_SAVED,
-                    ApiException.ConflictException(errorCode = "ERROR_1016", rawCode = 409) to
+                    ApiException.ConflictException(errorCode = -1016, rawCode = 409) to
                         TimelineRecordDeleteException.Reason.DATE_OPERATION_IN_PROGRESS,
-                    ApiException.ServerException(errorCode = "ERROR_1017", rawCode = 502) to
+                    ApiException.ServerException(errorCode = -1017, rawCode = 502) to
                         TimelineRecordDeleteException.Reason.PHOTO_DELETE_FAILED,
                 )
 
@@ -103,7 +103,7 @@ class DeleteTimelineRecordUseCasesTest {
             val helper = RecordingMessageHelper()
             val repository =
                 FakeRecordRepository(
-                    failure = ApiException.UnauthorizedException(errorCode = "ERROR_2001", rawCode = 401),
+                    failure = ApiException.UnauthorizedException(errorCode = -2001, rawCode = 401),
                 )
             val useCase = DeleteDailyRecordUseCase(repository, FakeSessionRepository(timeline()), helper)
 

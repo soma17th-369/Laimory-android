@@ -208,7 +208,7 @@ class TimelineEventEditorViewModelTest {
     @Test
     fun `작성 완료 오류는 읽기 전용으로 전환하고 이후 편집을 차단한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.failure = ApiException.ConflictException(errorCode = "ERROR_1003")
+            recordRepository.failure = ApiException.ConflictException(errorCode = -1003)
             val viewModel = initializedViewModel()
             viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("저장 시도"))
 
@@ -231,7 +231,7 @@ class TimelineEventEditorViewModelTest {
     @Test
     fun `수정 불가 Event 오류는 사용할 수 없는 화면으로 전환한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.failure = ApiException.ClientException(errorCode = "ERROR_0404")
+            recordRepository.failure = ApiException.ClientException(errorCode = -404)
             val viewModel = initializedViewModel()
             viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("저장 시도"))
 
@@ -308,7 +308,7 @@ class TimelineEventEditorViewModelTest {
     @Test
     fun `사진 삭제 실패는 Event를 유지하고 다이얼로그에서 재시도할 수 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.failure = ApiException.ServerException(errorCode = "ERROR_1017", rawCode = 502)
+            recordRepository.failure = ApiException.ServerException(errorCode = -1017, rawCode = 502)
             val viewModel = initializedViewModel()
 
             viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
@@ -346,7 +346,7 @@ class TimelineEventEditorViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
                 ApiException.ClientException(
-                    errorCode = "ERROR_0404",
+                    errorCode = -404,
                     rawCode = 404,
                 )
             val viewModel = initializedViewModel()
@@ -368,7 +368,7 @@ class TimelineEventEditorViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
                 ApiException.ConflictException(
-                    errorCode = "ERROR_1003",
+                    errorCode = -1003,
                     rawCode = 409,
                 )
             val viewModel = initializedViewModel()

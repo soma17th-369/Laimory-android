@@ -81,11 +81,22 @@ class DraftTaskStatusResponseTest {
 
     @Test
     fun `FAILED는 알려진 코드와 미지 코드를 타입으로 구분한다`() {
-        val known = decode("""{"status":"FAILED","error":"ERROR_1009"}""")
-        val unknown = decode("""{"status":"FAILED","error":"ERROR_1999"}""")
+        val known = decode("""{"status":"FAILED","error":-1009}""")
+        val unknown = decode("""{"status":"FAILED","error":-1999}""")
 
         assertEquals(DraftTaskFailureReason.AI_DISPATCH_FAILURE, known.failure)
         assertEquals(DraftTaskFailureReason.UNKNOWN, unknown.failure)
+    }
+
+    @Test
+    fun `FAILED의 error가 누락되거나 올바른 오류 코드가 아니면 UNKNOWN으로 처리한다`() {
+        listOf(
+            """{"status":"FAILED"}""",
+            """{"status":"FAILED","error":0}""",
+            """{"status":"FAILED","error":1}""",
+        ).forEach { raw ->
+            assertEquals(DraftTaskFailureReason.UNKNOWN, decode(raw).failure)
+        }
     }
 
     @Test
@@ -93,11 +104,10 @@ class DraftTaskStatusResponseTest {
         listOf(
             """{"status":"WAITING"}""",
             """{"status":"PROCESSING","elapsedSeconds":-1}""",
-            """{"status":"PROCESSING","error":"ERROR_1009"}""",
+            """{"status":"PROCESSING","error":-1009}""",
             """{"status":"SUCCESS"}""",
             """{"status":"SUCCESS","result":${SUCCESS_RESULT},"elapsedSeconds":1}""",
-            """{"status":"FAILED"}""",
-            """{"status":"FAILED","error":"ERROR_1009","result":${SUCCESS_RESULT}}""",
+            """{"status":"FAILED","error":-1009,"result":${SUCCESS_RESULT}}""",
         ).forEach { raw ->
             assertThrows("잘못된 terminal shape: $raw", ApiException.UnknownException::class.java) { decode(raw) }
         }

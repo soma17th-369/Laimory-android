@@ -43,12 +43,12 @@ class GetDraftTaskStatusUseCaseTest {
     }
 
     @Test
-    fun `ERROR_1001은 작업 소멸 outcome으로 변환한다`() =
+    fun `-1001은 작업 소멸 outcome으로 변환한다`() =
         runBlocking {
             val helper = RecordingMessageHelper()
             val useCase =
                 GetDraftTaskStatusUseCase(
-                    ThrowingRepository(ApiException.ClientException(errorCode = "ERROR_1001", rawCode = 404)),
+                    ThrowingRepository(ApiException.ClientException(errorCode = -1001, rawCode = 404)),
                     helper,
                 )
 
@@ -59,12 +59,12 @@ class GetDraftTaskStatusUseCaseTest {
         }
 
     @Test
-    fun `ERROR_0404는 결과 소멸 outcome으로 변환한다`() =
+    fun `-404는 결과 소멸 outcome으로 변환한다`() =
         runBlocking {
             val helper = RecordingMessageHelper()
             val useCase =
                 GetDraftTaskStatusUseCase(
-                    ThrowingRepository(ApiException.ClientException(errorCode = "ERROR_0404", rawCode = 404)),
+                    ThrowingRepository(ApiException.ClientException(errorCode = -404, rawCode = 404)),
                     helper,
                 )
 
@@ -80,7 +80,7 @@ class GetDraftTaskStatusUseCaseTest {
             val helper = RecordingMessageHelper()
             val useCase =
                 GetDraftTaskStatusUseCase(
-                    ThrowingRepository(ApiException.ClientException(errorCode = "ERROR_1999", rawCode = 404)),
+                    ThrowingRepository(ApiException.ClientException(errorCode = -1999, rawCode = 404)),
                     helper,
                 )
 

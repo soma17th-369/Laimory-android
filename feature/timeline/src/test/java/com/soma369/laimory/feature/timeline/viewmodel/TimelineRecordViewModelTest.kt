@@ -162,7 +162,7 @@ class TimelineRecordViewModelTest {
     @Test
     fun `사진 삭제 실패는 하루 기록과 홈 draft 상태를 유지하고 재시도할 수 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.failure = ApiException.ServerException(errorCode = "ERROR_1017", rawCode = 502)
+            recordRepository.failure = ApiException.ServerException(errorCode = -1017, rawCode = 502)
             repository.save(timeline(events = listOf(event())))
             val viewModel = createViewModel()
             runCurrent()
@@ -206,7 +206,7 @@ class TimelineRecordViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
                 ApiException.ClientException(
-                    errorCode = "ERROR_0404",
+                    errorCode = -404,
                     rawCode = 404,
                 )
             repository.save(timeline(events = listOf(event())))
@@ -230,7 +230,7 @@ class TimelineRecordViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
                 ApiException.ConflictException(
-                    errorCode = "ERROR_1003",
+                    errorCode = -1003,
                     rawCode = 409,
                 )
             repository.save(timeline(events = listOf(event())))

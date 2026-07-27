@@ -152,7 +152,7 @@ class LoginViewModel
 
         private companion object {
             const val CALLBACK_GRACE_PERIOD_MILLIS = 500L
-            const val EXPIRED_APP_CODE = "ERROR_2002"
+            const val EXPIRED_APP_CODE = -2002
             const val BROWSER_UNAVAILABLE_MESSAGE = "로그인을 진행할 브라우저를 찾을 수 없습니다."
         }
     }

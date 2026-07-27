@@ -71,7 +71,7 @@ class SafeApiCallTest {
             mockWebServer.enqueue(
                 MockResponse()
                     .setResponseCode(200)
-                    .setBody("""{"header":{"code":"COMMON_0000","message":"success"},"body":{"id":1,"name":"test"}}"""),
+                    .setBody("""{"header":{"code":0,"message":""},"body":{"id":1,"name":"test"}}"""),
             )
 
             val result = safeApiCall { api.getTest() }
@@ -85,14 +85,14 @@ class SafeApiCallTest {
             mockWebServer.enqueue(
                 MockResponse()
                     .setResponseCode(200)
-                    .setBody("""{"header":{"code":"AUTH_0001","message":"권한이 없습니다"},"body":null}"""),
+                    .setBody("""{"header":{"code":-2001,"message":"권한이 없습니다"},"body":null}"""),
             )
 
             val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull()
 
             assertTrue(error is ApiException.UnknownException)
             assertEquals("권한이 없습니다", error?.message)
-            assertEquals("AUTH_0001", (error as ApiException).errorCode)
+            assertEquals(-2001, (error as ApiException).errorCode)
         }
 
     @Test
@@ -109,14 +109,14 @@ class SafeApiCallTest {
                 MockResponse()
                     .setResponseCode(401)
                     .setBody(
-                        """{"header":{"code":"ERROR_2003","message":"다시 로그인해 주세요"},"body":null}""",
+                        """{"header":{"code":-2003,"message":"다시 로그인해 주세요"},"body":null}""",
                     ),
             )
 
             val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull()
 
             assertTrue(error is ApiException.UnauthorizedException)
-            assertEquals("ERROR_2003", (error as ApiException).errorCode)
+            assertEquals(-2003, (error as ApiException).errorCode)
             assertEquals("다시 로그인해 주세요", error.message)
         }
 
@@ -126,7 +126,7 @@ class SafeApiCallTest {
             mockWebServer.enqueue(
                 MockResponse()
                     .setResponseCode(200)
-                    .setBody("""{"header":{"code":"COMMON_0000","message":"success"},"body":null}"""),
+                    .setBody("""{"header":{"code":0,"message":""},"body":null}"""),
             )
 
             safeApiCallUnit { api.getUnit() }
@@ -161,10 +161,22 @@ class SafeApiCallTest {
         }
 
     @Test
-    fun `역직렬화 불가면 UnknownException`() =
+    fun `역직렬화 오류는 응답 원문을 노출하지 않는 UnknownException으로 변환한다`() =
         runTest {
-            mockWebServer.enqueue(MockResponse().setResponseCode(200).setBody("not json"))
-            assertTrue(runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() is ApiException.UnknownException)
+            val secret = "secret-access-token"
+            mockWebServer.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """{"header":{"code":"COMMON_0000","message":""},"body":{"accessToken":"$secret"}}""",
+                    ),
+            )
+
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull()
+
+            assertTrue(error is ApiException.UnknownException)
+            assertEquals(ApiException.UNKNOWN_ERROR, error?.message)
+            assertTrue(error?.message?.contains(secret) == false)
         }
 
     @Test

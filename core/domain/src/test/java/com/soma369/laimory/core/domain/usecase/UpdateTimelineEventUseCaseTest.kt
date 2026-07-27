@@ -71,11 +71,11 @@ class UpdateTimelineEventUseCaseTest {
         runBlocking {
             val cases =
                 listOf(
-                    "ERROR_0400" to TimelineEventUpdateException.Reason.INVALID_REQUEST,
-                    "ERROR_1004" to TimelineEventUpdateException.Reason.PHOTO_LIMIT_EXCEEDED,
-                    "ERROR_0404" to TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE,
-                    "ERROR_1003" to TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED,
-                    "ERROR_1016" to TimelineEventUpdateException.Reason.DATE_OPERATION_IN_PROGRESS,
+                    -400 to TimelineEventUpdateException.Reason.INVALID_REQUEST,
+                    -1004 to TimelineEventUpdateException.Reason.PHOTO_LIMIT_EXCEEDED,
+                    -404 to TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE,
+                    -1003 to TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED,
+                    -1016 to TimelineEventUpdateException.Reason.DATE_OPERATION_IN_PROGRESS,
                 )
 
             cases.forEach { (errorCode, expectedReason) ->
@@ -97,7 +97,7 @@ class UpdateTimelineEventUseCaseTest {
     fun `401은 BaseUseCase 세션 만료 정책을 유지한다`() =
         runBlocking {
             val helper = RecordingMessageHelper()
-            val exception = ApiException.UnauthorizedException(errorCode = "ERROR_2001", rawCode = 401)
+            val exception = ApiException.UnauthorizedException(errorCode = -2001, rawCode = 401)
             val useCase =
                 UpdateTimelineEventUseCase(
                     FakeRecordRepository(Result.failure(exception)),

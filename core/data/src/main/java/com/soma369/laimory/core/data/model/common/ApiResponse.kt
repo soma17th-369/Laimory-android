@@ -13,10 +13,9 @@ data class ApiResponse<T>(
 
 @Serializable
 data class ApiHeader(
-    val code: String,
+    val code: Int,
     val message: String? = null,
-    val transactionId: String? = null,
 )
 
 /** 서버 공통 성공 코드. `header.code`가 이 값이면 성공으로 간주한다. */
-const val SUCCESS_CODE: String = "COMMON_0000"
+const val SUCCESS_CODE: Int = 0

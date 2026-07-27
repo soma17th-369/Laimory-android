@@ -3,7 +3,7 @@ package com.soma369.laimory.core.domain.exception
 /**
  * 타임라인 Event 또는 DailyRecord 삭제 화면이 직접 안내하고 재시도할 수 있는 기능 오류.
  *
- * 서버 오류 문자열은 UseCase 경계에서 [Reason]으로 변환해 Presentation에 노출하지 않는다.
+ * 서버 오류 코드는 UseCase 경계에서 [Reason]으로 변환해 Presentation에 노출하지 않는다.
  */
 class TimelineRecordDeleteException(
     val reason: Reason,
@@ -29,7 +29,7 @@ internal fun ApiException.toTimelineRecordDeleteExceptionOrNull(): TimelineRecor
     return TimelineRecordDeleteException(reason, this)
 }
 
-private const val TARGET_UNAVAILABLE_ERROR_CODE = "ERROR_0404"
-private const val RECORD_SAVED_ERROR_CODE = "ERROR_1003"
-private const val DATE_OPERATION_ERROR_CODE = "ERROR_1016"
-private const val PHOTO_DELETE_ERROR_CODE = "ERROR_1017"
+private const val TARGET_UNAVAILABLE_ERROR_CODE = -404
+private const val RECORD_SAVED_ERROR_CODE = -1003
+private const val DATE_OPERATION_ERROR_CODE = -1016
+private const val PHOTO_DELETE_ERROR_CODE = -1017
