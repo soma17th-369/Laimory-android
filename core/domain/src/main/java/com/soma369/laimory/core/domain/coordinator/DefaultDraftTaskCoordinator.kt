@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatusOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
+import com.soma369.laimory.core.domain.usecase.GetDraftTaskStatusUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveDraftTaskUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import kotlinx.coroutines.CancellationException
@@ -16,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,6 +29,7 @@ class DefaultDraftTaskCoordinator
     @Inject
     constructor(
         private val observeDraftTaskUseCase: ObserveDraftTaskUseCase,
+        private val getDraftTaskStatusUseCase: GetDraftTaskStatusUseCase,
         private val activeTaskRepository: ActiveDraftTaskRepository,
         private val saveTimelineRecordUseCase: SaveTimelineRecordUseCase,
         @ApplicationCoroutineScope private val applicationScope: CoroutineScope,
@@ -36,6 +39,8 @@ class DefaultDraftTaskCoordinator
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
         private var activeTask: ActiveDraftTask? = null
         private var pollingJob: Job? = null
+        private var completionRefreshJob: Job? = null
+        private var pendingCompletionTaskId: String? = null
         private var isForeground = false
         private var hasRestored = false
         private var pauseAtLongRunning = true
@@ -50,6 +55,9 @@ class DefaultDraftTaskCoordinator
             mutex.withLock {
                 pollingJob?.cancel()
                 pollingJob = null
+                completionRefreshJob?.cancel()
+                completionRefreshJob = null
+                pendingCompletionTaskId = null
                 activeTaskRepository.save(task)
                 activeTask = task
                 hasRestored = true
@@ -60,29 +68,38 @@ class DefaultDraftTaskCoordinator
         }
 
         override suspend fun onForeground() {
-            mutex.withLock {
-                isForeground = true
-                if (!hasRestored) {
-                    activeTask = activeTaskRepository.get()
-                    hasRestored = true
-                }
-                val task = activeTask ?: return@withLock
-                when (mutableState.value) {
-                    DraftTaskTrackingState.Idle,
-                    is DraftTaskTrackingState.Processing,
-                    is DraftTaskTrackingState.RetryableError,
-                    -> {
-                        mutableState.value = DraftTaskTrackingState.Processing(task)
-                        startPollingLocked(task)
+            val completionTaskId =
+                mutex.withLock {
+                    isForeground = true
+                    if (!hasRestored) {
+                        activeTask = activeTaskRepository.get()
+                        hasRestored = true
                     }
+                    val task = activeTask ?: return@withLock null
+                    val pendingTaskId = pendingCompletionTaskId
+                    pendingCompletionTaskId = null
+                    if (pendingTaskId == task.taskId) {
+                        pendingTaskId
+                    } else {
+                        when (mutableState.value) {
+                            DraftTaskTrackingState.Idle,
+                            is DraftTaskTrackingState.Processing,
+                            is DraftTaskTrackingState.RetryableError,
+                            -> {
+                                mutableState.value = DraftTaskTrackingState.Processing(task)
+                                startPollingLocked(task)
+                            }
 
-                    is DraftTaskTrackingState.Failed,
-                    is DraftTaskTrackingState.LongRunning,
-                    is DraftTaskTrackingState.Success,
-                    is DraftTaskTrackingState.Unavailable,
-                    -> Unit
+                            is DraftTaskTrackingState.Failed,
+                            is DraftTaskTrackingState.LongRunning,
+                            is DraftTaskTrackingState.Success,
+                            is DraftTaskTrackingState.Unavailable,
+                            -> Unit
+                        }
+                        null
+                    }
                 }
-            }
+            completionTaskId?.let(::refreshFromCompletionSignal)
         }
 
         override suspend fun onBackground() {
@@ -90,6 +107,68 @@ class DefaultDraftTaskCoordinator
                 isForeground = false
                 pollingJob?.cancel()
                 pollingJob = null
+                completionRefreshJob?.cancel()
+                completionRefreshJob = null
+            }
+        }
+
+        override fun refreshFromCompletionSignal(taskId: String) {
+            if (taskId.isBlank()) return
+            applicationScope.launch {
+                val refreshJob = coroutineContext.job
+                val task =
+                    mutex.withLock {
+                        if (!hasRestored) {
+                            activeTask = activeTaskRepository.get()
+                            hasRestored = true
+                        }
+                        val currentTask = activeTask ?: return@launch
+                        if (currentTask.taskId != taskId) return@launch
+                        if (!isForeground) {
+                            pendingCompletionTaskId = taskId
+                            return@launch
+                        }
+                        if (completionRefreshJob?.isActive == true) return@launch
+                        when (mutableState.value) {
+                            DraftTaskTrackingState.Idle -> {
+                                mutableState.value = DraftTaskTrackingState.Processing(currentTask)
+                            }
+
+                            is DraftTaskTrackingState.Processing,
+                            is DraftTaskTrackingState.RetryableError,
+                            is DraftTaskTrackingState.LongRunning,
+                            -> Unit
+
+                            is DraftTaskTrackingState.Failed,
+                            is DraftTaskTrackingState.Success,
+                            is DraftTaskTrackingState.Unavailable,
+                            -> return@launch
+                        }
+                        pollingJob?.cancel()
+                        pollingJob = null
+                        completionRefreshJob = refreshJob
+                        currentTask
+                    }
+
+                try {
+                    val result = getDraftTaskStatusUseCase(taskId)
+                    mutex.withLock {
+                        if (!isForeground || activeTask?.taskId != task.taskId) return@withLock
+                        val outcome =
+                            result.getOrElse {
+                                markRetryableErrorLocked(task)
+                                return@withLock
+                            }
+                        handleOutcomeLocked(task, outcome)
+                        if (mutableState.value is DraftTaskTrackingState.Processing) {
+                            startPollingLocked(task)
+                        }
+                    }
+                } finally {
+                    mutex.withLock {
+                        if (completionRefreshJob == refreshJob) completionRefreshJob = null
+                    }
+                }
             }
         }
 
@@ -120,6 +199,9 @@ class DefaultDraftTaskCoordinator
             mutex.withLock {
                 pollingJob?.cancel()
                 pollingJob = null
+                completionRefreshJob?.cancel()
+                completionRefreshJob = null
+                pendingCompletionTaskId = null
                 activeTask = null
                 hasRestored = true
                 pauseAtLongRunning = true
