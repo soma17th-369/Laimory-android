@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetectionEntryPoint
 import com.soma369.laimory.draft.DraftTaskProcessLifecycleObserver
+import com.soma369.laimory.push.DraftCompletionNotificationChannel
+import com.soma369.laimory.push.PushRegistrationSessionObserver
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -17,9 +19,14 @@ class LaimoryApp : Application() {
     @Inject
     lateinit var draftTaskProcessLifecycleObserver: DraftTaskProcessLifecycleObserver
 
+    @Inject
+    lateinit var pushRegistrationSessionObserver: PushRegistrationSessionObserver
+
     override fun onCreate() {
         super.onCreate()
         ProcessLifecycleOwner.get().lifecycle.addObserver(draftTaskProcessLifecycleObserver)
+        pushRegistrationSessionObserver.start()
+        DraftCompletionNotificationChannel.create(this)
         // 수면 자동 감지 구독 복원. 사용자가 켜둔 상태였을 때만 다시 구독한다(시스템 구독이라 앱이 죽어도 유지).
         val subscriber =
             EntryPointAccessors

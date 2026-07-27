@@ -235,6 +235,101 @@ class DefaultDraftTaskCoordinatorTest {
             assertTrue(coordinator.state.value is DraftTaskTrackingState.RetryableError)
         }
 
+    @Test
+    fun `현재 작업의 완료 신호는 polling 대기 없이 서버를 즉시 재조회한다`() =
+        runTest {
+            val draftRepository = QueueDraftRepository(processing(), success())
+            val coordinator =
+                coordinator(
+                    draftRepository,
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+
+            coordinator.refreshFromCompletionSignal("task-1")
+            runCurrent()
+
+            assertEquals(2, draftRepository.statusCallCount)
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
+        }
+
+    @Test
+    fun `다른 작업의 완료 신호는 현재 상태를 변경하지 않는다`() =
+        runTest {
+            val draftRepository = QueueDraftRepository(processing(), success())
+            val coordinator =
+                coordinator(
+                    draftRepository,
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+
+            coordinator.refreshFromCompletionSignal("task-other")
+            runCurrent()
+
+            assertEquals(1, draftRepository.statusCallCount)
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Processing)
+        }
+
+    @Test
+    fun `백그라운드에서 받은 완료 신호는 전경 복귀 후 즉시 재조회한다`() =
+        runTest {
+            val draftRepository = QueueDraftRepository(processing(elapsedSeconds = 600L), success())
+            val coordinator =
+                coordinator(
+                    draftRepository,
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+            coordinator.onBackground()
+
+            coordinator.refreshFromCompletionSignal("task-1")
+            runCurrent()
+            assertEquals(1, draftRepository.statusCallCount)
+
+            coordinator.onForeground()
+            runCurrent()
+
+            assertEquals(2, draftRepository.statusCallCount)
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
+        }
+
+    @Test
+    fun `프로세스 재생성 중 알림을 먼저 열어도 저장된 task와 대조해 전경에서 조회한다`() =
+        runTest {
+            val activeTask = ActiveDraftTask("task-restored", date, now)
+            val draftRepository = QueueDraftRepository(success())
+            val coordinator =
+                coordinator(
+                    draftRepository,
+                    FakeActiveDraftTaskRepository(activeTask),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.refreshFromCompletionSignal("task-restored")
+            runCurrent()
+            assertEquals(0, draftRepository.statusCallCount)
+
+            coordinator.onForeground()
+            runCurrent()
+
+            assertEquals(1, draftRepository.statusCallCount)
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
+        }
+
     private fun coordinator(
         draftRepository: TimelineDraftRepository,
         activeRepository: ActiveDraftTaskRepository,
@@ -247,6 +342,7 @@ class DefaultDraftTaskCoordinatorTest {
                 policy = DraftPollingPolicy(),
                 clock = clock,
             ),
+        getDraftTaskStatusUseCase = GetDraftTaskStatusUseCase(draftRepository, NoOpMessageHelper),
         activeTaskRepository = activeRepository,
         saveTimelineRecordUseCase = SaveTimelineRecordUseCase(sessionRepository),
         applicationScope = scope,

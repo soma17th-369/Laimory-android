@@ -7,9 +7,12 @@ import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
 import com.soma369.laimory.core.domain.repository.AuthRepository
+import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -135,7 +138,15 @@ class SettingsViewModelTest {
 
     private fun createViewModel(): SettingsViewModel =
         SettingsViewModel(
-            logoutUseCase = LogoutUseCase(repository),
+            logoutUseCase =
+                LogoutUseCase(
+                    repository = repository,
+                    unregisterCurrentPushInstallation =
+                        UnregisterCurrentPushInstallationUseCase(
+                            installationIdProvider = FakePushInstallationIdProvider,
+                            repository = FakePushRegistrationRepository,
+                        ),
+                ),
             observeSignedInAccount = ObserveSignedInAccountUseCase(repository),
             navigationHelper = navigationHelper,
         )
@@ -173,5 +184,15 @@ class SettingsViewModelTest {
         }
 
         override fun navigateToBack() = Unit
+    }
+
+    private data object FakePushInstallationIdProvider : PushInstallationIdProvider {
+        override suspend fun getCurrentId(): String = "fid"
+    }
+
+    private data object FakePushRegistrationRepository : PushRegistrationRepository {
+        override suspend fun register(firebaseInstallationId: String) = Unit
+
+        override suspend fun unregister(firebaseInstallationId: String) = Unit
     }
 }

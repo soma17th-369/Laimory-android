@@ -353,6 +353,8 @@ class TimelineRecordViewModelTest {
 
         override suspend fun onBackground() = Unit
 
+        override fun refreshFromCompletionSignal(taskId: String) = Unit
+
         override fun retry() = Unit
 
         override fun continueWaiting() = Unit

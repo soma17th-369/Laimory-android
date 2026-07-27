@@ -4,6 +4,7 @@ import com.soma369.laimory.core.data.repository.ActiveDraftTaskRepositoryImpl
 import com.soma369.laimory.core.data.repository.AuthRepositoryImpl
 import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
+import com.soma369.laimory.core.data.repository.PushRegistrationRepositoryImpl
 import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineDraftRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordRepositoryImpl
@@ -12,6 +13,7 @@ import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.IntroRepository
+import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
@@ -44,6 +46,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindIntroRepository(impl: IntroRepositoryImpl): IntroRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindPushRegistrationRepository(impl: PushRegistrationRepositoryImpl): PushRegistrationRepository
 
     @Binds
     @Singleton

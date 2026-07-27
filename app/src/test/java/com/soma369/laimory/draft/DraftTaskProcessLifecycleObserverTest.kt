@@ -67,6 +67,8 @@ class DraftTaskProcessLifecycleObserverTest {
             backgroundCount++
         }
 
+        override fun refreshFromCompletionSignal(taskId: String) = Unit
+
         override fun retry() = Unit
 
         override fun continueWaiting() = Unit
