@@ -36,7 +36,7 @@ internal fun DraftTaskStatusResponse.toDomain(): DraftTaskSnapshot {
         }
 
         DraftTaskStatus.FAILED -> {
-            if (result != null || error == null || elapsedSeconds != null) invalidShape()
+            if (result != null || elapsedSeconds != null) invalidShape()
             DraftTaskSnapshot(
                 status = taskStatus,
                 failure = error.toFailureReason(),
@@ -48,7 +48,7 @@ internal fun DraftTaskStatusResponse.toDomain(): DraftTaskSnapshot {
 private fun DraftTaskStatusResponse.invalidShape(): Nothing =
     throw ApiException.UnknownException("초안 작업 응답 필드가 status=$status 계약과 일치하지 않습니다")
 
-private fun Int.toFailureReason(): DraftTaskFailureReason =
+private fun Int?.toFailureReason(): DraftTaskFailureReason =
     when (this) {
         -1008 -> DraftTaskFailureReason.AI_REPORTED_FAILURE
         -1009 -> DraftTaskFailureReason.AI_DISPATCH_FAILURE

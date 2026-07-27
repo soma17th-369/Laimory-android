@@ -89,6 +89,17 @@ class DraftTaskStatusResponseTest {
     }
 
     @Test
+    fun `FAILED의 error가 누락되거나 올바른 오류 코드가 아니면 UNKNOWN으로 처리한다`() {
+        listOf(
+            """{"status":"FAILED"}""",
+            """{"status":"FAILED","error":0}""",
+            """{"status":"FAILED","error":1}""",
+        ).forEach { raw ->
+            assertEquals(DraftTaskFailureReason.UNKNOWN, decode(raw).failure)
+        }
+    }
+
+    @Test
     fun `status 미지 값과 terminal shape 위반은 오류다`() {
         listOf(
             """{"status":"WAITING"}""",
@@ -96,7 +107,6 @@ class DraftTaskStatusResponseTest {
             """{"status":"PROCESSING","error":-1009}""",
             """{"status":"SUCCESS"}""",
             """{"status":"SUCCESS","result":${SUCCESS_RESULT},"elapsedSeconds":1}""",
-            """{"status":"FAILED"}""",
             """{"status":"FAILED","error":-1009,"result":${SUCCESS_RESULT}}""",
         ).forEach { raw ->
             assertThrows("잘못된 terminal shape: $raw", ApiException.UnknownException::class.java) { decode(raw) }
