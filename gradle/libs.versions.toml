@@ -92,6 +92,8 @@ exifinterface = { group = "androidx.exifinterface", name = "exifinterface", vers
 # Firebase — 초기 연동(#128). 제품 SDK 는 후속 이슈에서 추가; 지금은 초기화 확인용 common 만.
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-common = { group = "com.google.firebase", name = "firebase-common" }
+firebase-installations = { group = "com.google.firebase", name = "firebase-installations" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 
 # DataStore
 datastore = { group = "androidx.datastore", name = "datastore", version.ref = "datastore" }

@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.network.ApiPrefix
 import com.soma369.laimory.core.data.network.api.AuthApi
 import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
+import com.soma369.laimory.core.data.network.api.PushRegistrationApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenAuthenticator
@@ -89,6 +90,21 @@ object NetworkModule {
             .authenticator(tokenAuthenticator)
             .build()
 
+    /** FID처럼 민감한 request body를 전송하는 Bearer 인증 API 전용 클라이언트. */
+    @Provides
+    @Singleton
+    @SensitiveAuthenticatedClient
+    internal fun provideSensitiveAuthenticatedOkHttpClient(
+        tokenInterceptor: AuthTokenInterceptor,
+        tokenAuthenticator: AuthTokenAuthenticator,
+    ): OkHttpClient =
+        OkHttpClient.Builder()
+            .addInterceptor(tokenInterceptor)
+            .apply {
+                if (BuildConfig.DEBUG) addInterceptor(MockInterceptor())
+            }.authenticator(tokenAuthenticator)
+            .build()
+
     @Provides
     @Singleton
     @PublicRetrofit
@@ -110,6 +126,14 @@ object NetworkModule {
     @AuthRetrofit
     fun provideAuthRetrofit(
         @AuthenticatedClient okHttpClient: OkHttpClient,
+        json: Json,
+    ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+
+    @Provides
+    @Singleton
+    @SensitiveAuthRetrofit
+    fun provideSensitiveAuthRetrofit(
+        @SensitiveAuthenticatedClient okHttpClient: OkHttpClient,
         json: Json,
     ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
 
@@ -169,4 +193,10 @@ object NetworkModule {
     fun provideTimelineRecordApi(
         @AuthRetrofit retrofit: Retrofit,
     ): TimelineRecordApi = retrofit.create(TimelineRecordApi::class.java)
+
+    @Provides
+    @Singleton
+    fun providePushRegistrationApi(
+        @SensitiveAuthRetrofit retrofit: Retrofit,
+    ): PushRegistrationApi = retrofit.create(PushRegistrationApi::class.java)
 }
