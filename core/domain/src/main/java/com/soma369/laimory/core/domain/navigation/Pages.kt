@@ -25,10 +25,21 @@ data object Feature1Page : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
-data object TimelinePage : Page {
-    const val PATH = "/timeline"
+data class TimelinePage(
+    val dailyRecordId: Long,
+) : Page {
+    override fun toRoute(): NavRoute =
+        NavRoute(
+            path = PATH,
+            args = mapOf(DAILY_RECORD_ID_ARG to dailyRecordId.toString()),
+        )
 
-    override fun toRoute(): NavRoute = NavRoute(PATH)
+    companion object {
+        const val PATH = "/timeline"
+        const val DAILY_RECORD_ID_ARG = "dailyRecordId"
+
+        fun dailyRecordIdFrom(args: Map<String, String>): Long? = args[DAILY_RECORD_ID_ARG]?.toLongOrNull()
+    }
 }
 
 data class TimelineEventEditorPage(

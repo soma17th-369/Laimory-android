@@ -59,8 +59,12 @@ import com.soma369.laimory.core.ui.R as UiR
 @Composable
 fun TimelineRecordRoute(
     innerPadding: PaddingValues,
+    dailyRecordId: Long,
     viewModel: TimelineRecordViewModel = hiltViewModel(),
 ) {
+    LaunchedEffect(dailyRecordId) {
+        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(dailyRecordId))
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     TimelineRecordContent(
         innerPadding = innerPadding,
@@ -173,6 +177,10 @@ private fun TimelineRecordScreen(
                 TimelineRecordUnavailable(
                     onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
                 )
+            TimelineRecordUiContent.LoadFailed ->
+                TimelineRecordLoadFailed(
+                    onRetryClick = { onIntent(TimelineRecordUiIntent.RetryLoad) },
+                )
             is TimelineRecordUiContent.Record ->
                 TimelineRecordBody(
                     record = content.value,
@@ -218,13 +226,13 @@ private fun TimelineRecordUnavailable(onBackClick: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "초안 결과를 찾을 수 없어요",
+            text = "기록을 찾을 수 없어요",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
         )
         Text(
-            text = "앱이 종료되었거나 결과가 정리되었을 수 있어요.\n홈에서 새 초안을 만들어주세요.",
+            text = "이미 삭제됐거나 접근할 수 없는 기록이에요.\n홈에서 다른 기록을 선택해주세요.",
             modifier = Modifier.padding(top = Spacing.small),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -235,6 +243,38 @@ private fun TimelineRecordUnavailable(onBackClick: () -> Unit) {
             modifier = Modifier.padding(top = Spacing.extraLarge),
         ) {
             Text("홈으로 돌아가기")
+        }
+    }
+}
+
+@Composable
+private fun TimelineRecordLoadFailed(onRetryClick: () -> Unit) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = Spacing.extraLarge2),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = "기록을 불러오지 못했어요",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = "네트워크 상태를 확인한 뒤 다시 시도해주세요.",
+            modifier = Modifier.padding(top = Spacing.small),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        OutlinedButton(
+            onClick = onRetryClick,
+            modifier = Modifier.padding(top = Spacing.extraLarge),
+        ) {
+            Text("다시 시도")
         }
     }
 }
@@ -357,6 +397,18 @@ private fun TimelineRecordUnavailablePreview() {
         TimelineRecordScreen(
             innerPadding = PaddingValues(),
             state = TimelineRecordUiState(TimelineRecordUiContent.Unavailable),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun TimelineRecordLoadFailedPreview() {
+    LaimoryTheme {
+        TimelineRecordScreen(
+            innerPadding = PaddingValues(),
+            state = TimelineRecordUiState(TimelineRecordUiContent.LoadFailed),
             onIntent = {},
         )
     }

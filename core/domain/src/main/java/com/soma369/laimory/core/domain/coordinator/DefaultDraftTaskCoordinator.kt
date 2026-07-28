@@ -274,7 +274,7 @@ class DefaultDraftTaskCoordinator
                             if (mutableState.value !is DraftTaskTrackingState.Success) {
                                 saveTimelineRecordUseCase(timeline)
                             }
-                            mutableState.value = DraftTaskTrackingState.Success(task)
+                            mutableState.value = DraftTaskTrackingState.Success(task, timeline.dailyRecordId)
                         }
 
                         DraftTaskStatus.FAILED ->

@@ -20,6 +20,8 @@ sealed interface DraftTaskTrackingState {
 
     data class Success(
         override val task: ActiveDraftTask,
+        /** SUCCESS 결과 기록의 ID. 단건 조회 진입에 사용한다. */
+        val dailyRecordId: Long,
     ) : WithTask
 
     data class Failed(

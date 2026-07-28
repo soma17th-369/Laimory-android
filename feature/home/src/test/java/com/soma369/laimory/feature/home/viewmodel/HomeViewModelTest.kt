@@ -133,7 +133,7 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(0, draftTaskCoordinator.discardCount)
-            assertEquals(listOf(TimelinePage), navigationHelper.destinations)
+            assertEquals(listOf(TimelinePage(dailyRecordId = 31L)), navigationHelper.destinations)
         }
 
     @Test
@@ -324,7 +324,8 @@ class HomeViewModelTest {
         fun emitSuccess(recordDate: LocalDate) {
             mutableState.value =
                 DraftTaskTrackingState.Success(
-                    ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                    task = ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                    dailyRecordId = 31L,
                 )
         }
 

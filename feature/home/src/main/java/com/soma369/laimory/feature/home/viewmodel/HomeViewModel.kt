@@ -305,7 +305,9 @@ class HomeViewModel
         private fun viewDraft() =
             safeLaunch {
                 if (state.value.draftStatus != DraftCreationStatus.SUCCESS) return@safeLaunch
-                navigationHelper.navigateTo(TimelinePage)
+                val trackingState =
+                    draftTaskCoordinator.state.value as? DraftTaskTrackingState.Success ?: return@safeLaunch
+                navigationHelper.navigateTo(TimelinePage(trackingState.dailyRecordId))
             }
 
         private fun HomeUiState.withDraftTracking(trackingState: DraftTaskTrackingState): HomeUiState {

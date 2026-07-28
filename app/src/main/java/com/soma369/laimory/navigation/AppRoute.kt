@@ -119,7 +119,12 @@ val appRoutes: List<AppRoute> =
         ),
         AppRoute(
             path = TimelinePage.PATH,
-            render = { innerPadding, _ -> TimelineRecordRoute(innerPadding = innerPadding) },
+            render = { innerPadding, args ->
+                TimelineRecordRoute(
+                    innerPadding = innerPadding,
+                    dailyRecordId = TimelinePage.dailyRecordIdFrom(args) ?: INVALID_DAILY_RECORD_ID,
+                )
+            },
         ),
         AppRoute(
             path = TimelineEventEditorPage.PATH,
@@ -137,6 +142,7 @@ val appRoutes: List<AppRoute> =
     )
 
 private const val INVALID_TIMELINE_EVENT_ID = -1L
+private const val INVALID_DAILY_RECORD_ID = -1L
 
 /** 바텀바에 노출하는 탭 루트 목록. 노출 순서 = 선언 순서. */
 val bottomTabRoutes: List<AppRoute> = appRoutes.filter { it.isBottomTab }
