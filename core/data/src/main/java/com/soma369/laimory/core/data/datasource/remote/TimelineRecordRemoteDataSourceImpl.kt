@@ -1,5 +1,7 @@
 package com.soma369.laimory.core.data.datasource.remote
 
+import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
+import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.safeApiCall
@@ -12,6 +14,10 @@ class TimelineRecordRemoteDataSourceImpl
     constructor(
         private val api: TimelineRecordApi,
     ) : TimelineRecordRemoteDataSource {
+        override suspend fun getDailyRecords(): DailyTimelineListResponse = safeApiCall { api.getDailyRecords() }
+
+        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimelineResponse = safeApiCall { api.getDailyRecord(dailyRecordId) }
+
         override suspend fun updateTimelineEvent(
             timelineEventId: Long,
             request: JsonObject,

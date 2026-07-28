@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.data.repository
 
 import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSource
+import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
+import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineItemResponse
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -12,15 +14,25 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 class TimelineRecordRepositoryImplTest {
     private class FakeRemote : TimelineRecordRemoteDataSource {
+        var requestedDailyRecordId: Long? = null
         var requestedEventId: Long? = null
         var requestedBody: JsonObject? = null
         var deletedEventId: Long? = null
         var deletedDailyRecordId: Long? = null
+
+        override suspend fun getDailyRecords(): DailyTimelineListResponse = listResponse
+
+        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimelineResponse {
+            requestedDailyRecordId = dailyRecordId
+            return dailyResponse
+        }
 
         override suspend fun updateTimelineEvent(
             timelineEventId: Long,
@@ -39,6 +51,36 @@ class TimelineRecordRepositoryImplTest {
             deletedDailyRecordId = dailyRecordId
         }
     }
+
+    @Test
+    fun `getDailyRecords - 서버 순서를 보존해 Domain 목록으로 매핑한다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+
+            val timelines = repository.getDailyRecords()
+
+            assertEquals(listOf(32L, 31L), timelines.map { it.dailyRecordId })
+            assertEquals(LocalDate.of(2026, 7, 28), timelines.first().recordDate)
+            assertNull(timelines.first().emotion)
+            assertTrue(timelines.first().events.isEmpty())
+        }
+
+    @Test
+    fun `getDailyRecord - dailyRecordId를 전달하고 graph를 Domain으로 매핑한다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+
+            val timeline = repository.getDailyRecord(31L)
+
+            assertEquals(31L, remote.requestedDailyRecordId)
+            assertEquals(31L, timeline.dailyRecordId)
+            assertEquals(LocalDate.of(2026, 7, 27), timeline.recordDate)
+            val item = timeline.events.single().items.single()
+            assertEquals(TimelineItemType.PHOTO, item.itemType)
+            assertEquals("https://cdn/photo.jpg", item.photoUrl)
+        }
 
     @Test
     fun `updateEvent - 요청을 전달하고 PHOTO가 추가된 응답을 Domain으로 매핑한다`() =
@@ -99,6 +141,28 @@ class TimelineRecordRepositoryImplTest {
                             endAt = null,
                             payload = buildJsonObject { put("photoUrl", "https://cdn/photo.jpg") },
                         ),
+                    ),
+            )
+
+        val dailyResponse =
+            DailyTimelineResponse(
+                dailyRecordId = 31L,
+                recordDate = "2026-07-27",
+                emotionType = "HAPPY",
+                events = listOf(response),
+            )
+
+        val listResponse =
+            DailyTimelineListResponse(
+                timelines =
+                    listOf(
+                        DailyTimelineResponse(
+                            dailyRecordId = 32L,
+                            recordDate = "2026-07-28",
+                            emotionType = null,
+                            events = emptyList(),
+                        ),
+                        dailyResponse,
                     ),
             )
     }
