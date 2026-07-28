@@ -31,6 +31,7 @@ data class HomeUiState(
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
+    val pastRecords: HomePastRecordsUiState = HomePastRecordsUiState.Loading,
 ) : UiState {
     fun recordDateWindow(zone: ZoneId): RecordDateWindow? =
         runCatching {

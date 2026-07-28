@@ -3,16 +3,20 @@ package com.soma369.laimory.feature.home.viewmodel
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.home.model.toPastRecordUiModel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
+import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
@@ -23,6 +27,7 @@ import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.selectedSourceItems
 import com.soma369.laimory.feature.home.state.withEndDaySelection
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -34,6 +39,7 @@ class HomeViewModel
     constructor(
         private val observeSourceItemsUseCase: ObserveSourceItemsUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
+        private val getDailyRecordsUseCase: GetDailyRecordsUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
@@ -42,6 +48,7 @@ class HomeViewModel
         private val zone: ZoneId = ZoneId.systemDefault()
         private var sourceItems: List<SourceItem> = emptyList()
         private var hasUserSelectedDate = false
+        private var pastRecordsJob: Job? = null
 
         init {
             observeSummary()
@@ -72,6 +79,9 @@ class HomeViewModel
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
                 HomeUiIntent.ViewDraft -> viewDraft()
+                HomeUiIntent.SyncPastRecords -> syncPastRecords()
+                is HomeUiIntent.SelectPastRecord ->
+                    navigationHelper.navigateTo(TimelinePage(intent.dailyRecordId))
             }
         }
 
@@ -309,6 +319,51 @@ class HomeViewModel
                     draftTaskCoordinator.state.value as? DraftTaskTrackingState.Success ?: return@safeLaunch
                 navigationHelper.navigateTo(TimelinePage(trackingState.dailyRecordId))
             }
+
+        /** 지난 기록 목록을 서버와 동기화한다. 진행 중이면 중복 요청하지 않는다. */
+        private fun syncPastRecords() {
+            if (pastRecordsJob?.isActive == true) return
+            pastRecordsJob =
+                safeLaunch(
+                    onError = {
+                        markPastRecordsFailure()
+                        handleFailure(it)
+                    },
+                ) {
+                    // 이미 목록을 보여주는 중이면 유지한 채 재동기화한다. (깜빡임 방지)
+                    if (state.value.pastRecords !is HomePastRecordsUiState.Content) {
+                        updateState { copy(pastRecords = HomePastRecordsUiState.Loading) }
+                    }
+                    getDailyRecordsUseCase()
+                        .onSuccess { timelines ->
+                            updateState {
+                                copy(
+                                    pastRecords =
+                                        if (timelines.isEmpty()) {
+                                            HomePastRecordsUiState.Empty
+                                        } else {
+                                            HomePastRecordsUiState.Content(
+                                                timelines.map(DailyTimeline::toPastRecordUiModel),
+                                            )
+                                        },
+                                )
+                            }
+                        }.onFailure { error ->
+                            markPastRecordsFailure()
+                            handleFailure(error)
+                        }
+                }
+        }
+
+        private fun markPastRecordsFailure() {
+            updateState {
+                if (pastRecords is HomePastRecordsUiState.Content) {
+                    this
+                } else {
+                    copy(pastRecords = HomePastRecordsUiState.LoadFailed)
+                }
+            }
+        }
 
         private fun HomeUiState.withDraftTracking(trackingState: DraftTaskTrackingState): HomeUiState {
             if (draftStatus == DraftCreationStatus.SUBMITTING && trackingState == DraftTaskTrackingState.Idle) {

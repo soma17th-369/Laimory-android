@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
@@ -9,18 +10,29 @@ import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
+import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
+import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
+import com.soma369.laimory.core.domain.model.timeline.TimelineItem
+import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
+import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
+import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
+import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,6 +47,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -44,6 +57,7 @@ class HomeViewModelTest {
 
     private val sourceRepository = FakeSourceItemRepository()
     private val draftRepository = FakeTimelineDraftRepository()
+    private val recordRepository = FakeTimelineRecordRepository()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
 
@@ -221,6 +235,97 @@ class HomeViewModelTest {
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
         }
 
+    @Test
+    fun `지난 기록 동기화는 서버 정렬 그대로 카드 표시 데이터로 전달한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.dailyRecords =
+                listOf(
+                    pastTimeline(dailyRecordId = 32L, date = LocalDate.of(2026, 7, 27)),
+                    pastTimeline(
+                        dailyRecordId = 31L,
+                        date = LocalDate.of(2026, 7, 26),
+                        emotion = null,
+                        events = emptyList(),
+                    ),
+                )
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
+            runCurrent()
+
+            val content = viewModel.state.value.pastRecords as HomePastRecordsUiState.Content
+            assertEquals(listOf(32L, 31L), content.records.map { it.dailyRecordId })
+            val latest = content.records.first()
+            assertEquals(Emotion.CALM, latest.emotion)
+            assertEquals("점심 · 파스타", latest.summary)
+            assertEquals("https://cdn/photo.jpg", latest.photoUrl)
+            val emptyRecord = content.records.last()
+            assertEquals(null, emptyRecord.emotion)
+            assertEquals(null, emptyRecord.summary)
+            assertEquals(null, emptyRecord.photoUrl)
+        }
+
+    @Test
+    fun `지난 기록이 없으면 빈 상태를 표시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
+            runCurrent()
+
+            assertEquals(HomePastRecordsUiState.Empty, viewModel.state.value.pastRecords)
+        }
+
+    @Test
+    fun `지난 기록 조회 실패는 초안 생성을 차단하지 않고 재시도로 복구한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.dailyRecordsFailure = ApiException.NetworkException()
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
+            runCurrent()
+
+            assertEquals(HomePastRecordsUiState.LoadFailed, viewModel.state.value.pastRecords)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+
+            recordRepository.dailyRecordsFailure = null
+            recordRepository.dailyRecords = listOf(pastTimeline(dailyRecordId = 32L))
+            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.pastRecords is HomePastRecordsUiState.Content)
+        }
+
+    @Test
+    fun `지난 기록 동기화 중 중복 요청을 보내지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.dailyRecordsGate = CompletableDeferred()
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
+            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
+            runCurrent()
+
+            assertEquals(1, recordRepository.dailyRecordsCallCount)
+
+            recordRepository.dailyRecordsGate?.complete(listOf(pastTimeline(dailyRecordId = 32L)))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.pastRecords is HomePastRecordsUiState.Content)
+        }
+
+    @Test
+    fun `지난 기록 선택은 해당 기록의 타임라인 화면으로 이동한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectPastRecord(dailyRecordId = 32L))
+            runCurrent()
+
+            assertEquals(listOf(TimelinePage(dailyRecordId = 32L)), navigationHelper.destinations)
+        }
+
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             observeSourceItemsUseCase = ObserveSourceItemsUseCase(sourceRepository),
@@ -229,9 +334,48 @@ class HomeViewModelTest {
                     repository = draftRepository,
                     messageHelper = NoOpMessageHelper,
                 ),
+            getDailyRecordsUseCase =
+                GetDailyRecordsUseCase(
+                    repository = recordRepository,
+                    messageHelper = NoOpMessageHelper,
+                ),
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
         )
+
+    private fun pastTimeline(
+        dailyRecordId: Long,
+        date: LocalDate = LocalDate.of(2026, 7, 27),
+        emotion: TimelineEmotion? = TimelineEmotion.HAPPY,
+        events: List<TimelineEvent> =
+            listOf(
+                TimelineEvent(
+                    timelineEventId = 41L,
+                    eventType = TimelineEventType.MEAL,
+                    startAt = LocalDateTime.of(2026, 7, 27, 12, 0),
+                    endAt = null,
+                    title = "점심",
+                    subtitle = "파스타",
+                    memo = null,
+                    items =
+                        listOf(
+                            TimelineItem(
+                                timelineItemId = 51L,
+                                itemType = TimelineItemType.PHOTO,
+                                rawId = "photo-raw-1",
+                                startAt = null,
+                                endAt = null,
+                                photoUrl = "https://cdn/photo.jpg",
+                            ),
+                        ),
+                ),
+            ),
+    ) = DailyTimeline(
+        dailyRecordId = dailyRecordId,
+        recordDate = date,
+        emotion = emotion,
+        events = events,
+    )
 
     private fun todayItem(id: String): SourceItem {
         val zone = ZoneId.systemDefault()
@@ -282,6 +426,27 @@ class HomeViewModelTest {
         }
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
+    }
+
+    private class FakeTimelineRecordRepository : TimelineRecordRepository {
+        var dailyRecords: List<DailyTimeline> = emptyList()
+        var dailyRecordsGate: CompletableDeferred<List<DailyTimeline>>? = null
+        var dailyRecordsFailure: ApiException? = null
+        var dailyRecordsCallCount = 0
+
+        override suspend fun getDailyRecords(): List<DailyTimeline> {
+            dailyRecordsCallCount++
+            dailyRecordsFailure?.let { throw it }
+            return dailyRecordsGate?.await() ?: dailyRecords
+        }
+
+        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+
+        override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
+
+        override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
+
+        override suspend fun deleteDailyRecord(dailyRecordId: Long) = error("사용하지 않음")
     }
 
     private data object NoOpMessageHelper : MessageHelper {

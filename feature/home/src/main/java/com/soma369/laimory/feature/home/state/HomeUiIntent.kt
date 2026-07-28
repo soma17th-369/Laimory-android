@@ -59,4 +59,11 @@ sealed interface HomeUiIntent : UiIntent {
     data object StartNewDraft : HomeUiIntent
 
     data object ViewDraft : HomeUiIntent
+
+    /** 홈 진입·복귀·재시도 시 지난 기록 목록을 서버와 동기화한다. */
+    data object SyncPastRecords : HomeUiIntent
+
+    data class SelectPastRecord(
+        val dailyRecordId: Long,
+    ) : HomeUiIntent
 }
