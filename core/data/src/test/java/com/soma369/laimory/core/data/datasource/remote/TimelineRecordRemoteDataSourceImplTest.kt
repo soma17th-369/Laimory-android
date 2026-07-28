@@ -50,6 +50,100 @@ class TimelineRecordRemoteDataSourceImplTest {
     }
 
     @Test
+    fun `전체 조회는 daily-records 경로에 GET하고 서버 순서를 보존해 반환한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """
+                        {
+                          "header":{"code":0,"message":""},
+                          "body":{
+                            "timelines":[
+                              {"dailyRecordId":32,"recordDate":"2026-07-28","events":[]},
+                              {"dailyRecordId":31,"recordDate":"2026-07-27","events":[]}
+                            ]
+                          }
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+            val response = remote.getDailyRecords()
+
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/timeline/daily-records", request.path)
+            assertEquals(listOf(32L, 31L), response.timelines.map { it.dailyRecordId })
+        }
+
+    @Test
+    fun `단건 조회는 DailyRecord ID 경로에 GET하고 graph 응답을 반환한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """
+                        {
+                          "header":{"code":0,"message":""},
+                          "body":{
+                            "dailyRecordId":31,
+                            "recordDate":"2026-07-27",
+                            "emotionType":"HAPPY",
+                            "events":[
+                              {
+                                "timelineEventId":41,
+                                "eventType":"MEAL",
+                                "startAt":"2026-07-27T12:00:00",
+                                "endAt":null,
+                                "title":"점심",
+                                "subtitle":null,
+                                "memo":null,
+                                "items":[]
+                              }
+                            ]
+                          }
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+            val response = remote.getDailyRecord(31L)
+
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/timeline/daily-records/31", request.path)
+            assertEquals(31L, response.dailyRecordId)
+            assertEquals(41L, response.events.single().timelineEventId)
+        }
+
+    @Test
+    fun `단건 미존재 응답은 404와 -404 오류 코드를 보존한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(404)
+                    .setBody(
+                        """
+                        {
+                          "header":{"code":-404,"message":"기록을 찾을 수 없습니다"},
+                          "body":null
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+            val failure = runCatching { remote.getDailyRecord(31L) }.exceptionOrNull()
+
+            assertTrue(failure is ApiException.ClientException)
+            val apiException = failure as ApiException
+            assertEquals(404, apiException.rawCode)
+            assertEquals(-404, apiException.errorCode)
+        }
+
+    @Test
     fun `통합 수정은 Event 경로에 PATCH하고 갱신 응답을 반환한다`() =
         runTest {
             server.enqueue(

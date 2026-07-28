@@ -465,6 +465,10 @@ class TimelineEventEditorViewModelTest {
         val deletedEventIds = mutableListOf<Long>()
         var failure: ApiException? = null
 
+        override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
+
+        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             commands += command
             failure?.let { throw it }
