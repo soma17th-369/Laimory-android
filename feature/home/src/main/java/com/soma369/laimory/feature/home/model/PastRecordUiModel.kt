@@ -3,9 +3,12 @@ package com.soma369.laimory.feature.home.model
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
+import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
+import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.ui.theme.Emotion
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /** 홈 지난 기록 카드 한 장의 표시 데이터. */
 @Immutable
@@ -30,9 +33,14 @@ internal fun DailyTimeline.toPastRecordUiModel(): PastRecordUiModel =
                 event.subtitle?.let { subtitle -> "${event.title} · $subtitle" } ?: event.title
             },
         photoUrl =
-            events.firstNotNullOfOrNull { event ->
-                event.items.firstOrNull { it.itemType == TimelineItemType.PHOTO && it.photoUrl != null }?.photoUrl
-            },
+            events
+                .flatMap(TimelineEvent::items)
+                .filter { it.itemType == TimelineItemType.PHOTO && it.photoUrl != null }
+                // 서버 Item 계약과 동일하게 startAt null-first, 동률은 timelineItemId 오름차순.
+                .minWithOrNull(
+                    compareBy<TimelineItem, LocalDateTime?>(nullsFirst(), TimelineItem::startAt)
+                        .thenBy(TimelineItem::timelineItemId),
+                )?.photoUrl,
     )
 
 private fun TimelineEmotion.toUiEmotionOrNull(): Emotion? =

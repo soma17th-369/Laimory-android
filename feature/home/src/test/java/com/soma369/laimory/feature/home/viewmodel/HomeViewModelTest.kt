@@ -266,6 +266,62 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `대표 이미지는 전체 Event를 통틀어 가장 이른 PHOTO를 선택한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val earlierEventWithLatePhoto =
+                TimelineEvent(
+                    timelineEventId = 41L,
+                    eventType = TimelineEventType.WAKE_UP,
+                    startAt = LocalDateTime.of(2026, 7, 27, 9, 0),
+                    endAt = null,
+                    title = "기상",
+                    subtitle = null,
+                    memo = null,
+                    items =
+                        listOf(
+                            photoItem(
+                                timelineItemId = 51L,
+                                startAt = LocalDateTime.of(2026, 7, 27, 21, 0),
+                                photoUrl = "https://cdn/late.jpg",
+                            ),
+                        ),
+                )
+            val laterEventWithEarlyPhotos =
+                TimelineEvent(
+                    timelineEventId = 42L,
+                    eventType = TimelineEventType.MEAL,
+                    startAt = LocalDateTime.of(2026, 7, 27, 12, 0),
+                    endAt = null,
+                    title = "점심",
+                    subtitle = null,
+                    memo = null,
+                    items =
+                        listOf(
+                            photoItem(
+                                timelineItemId = 53L,
+                                startAt = LocalDateTime.of(2026, 7, 27, 10, 0),
+                                photoUrl = "https://cdn/early.jpg",
+                            ),
+                            photoItem(timelineItemId = 52L, startAt = null, photoUrl = "https://cdn/null-first.jpg"),
+                        ),
+                )
+            recordRepository.dailyRecords =
+                listOf(
+                    pastTimeline(
+                        dailyRecordId = 32L,
+                        events = listOf(earlierEventWithLatePhoto, laterEventWithEarlyPhotos),
+                    ),
+                )
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
+            runCurrent()
+
+            val content = viewModel.state.value.pastRecords as HomePastRecordsUiState.Content
+            assertEquals("https://cdn/null-first.jpg", content.records.single().photoUrl)
+        }
+
+    @Test
     fun `지난 기록이 없으면 빈 상태를 표시한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
@@ -375,6 +431,19 @@ class HomeViewModelTest {
         recordDate = date,
         emotion = emotion,
         events = events,
+    )
+
+    private fun photoItem(
+        timelineItemId: Long,
+        startAt: LocalDateTime?,
+        photoUrl: String,
+    ) = TimelineItem(
+        timelineItemId = timelineItemId,
+        itemType = TimelineItemType.PHOTO,
+        rawId = "photo-raw-$timelineItemId",
+        startAt = startAt,
+        endAt = null,
+        photoUrl = photoUrl,
     )
 
     private fun todayItem(id: String): SourceItem {

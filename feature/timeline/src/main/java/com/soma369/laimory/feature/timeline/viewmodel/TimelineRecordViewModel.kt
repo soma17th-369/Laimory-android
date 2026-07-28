@@ -18,6 +18,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import javax.inject.Inject
 
@@ -85,24 +86,35 @@ class TimelineRecordViewModel
         }
 
         private fun loadRecord(dailyRecordId: Long) {
-            if (loadJob?.isActive == true) return
+            // latest-wins: 새 기록 요청이 진행 중인 조회를 대체한다.
+            loadJob?.cancel()
             loadJob =
                 safeLaunch(
-                    onError = {
-                        updateState { copy(content = TimelineRecordUiContent.LoadFailed) }
-                        handleFailure(it)
+                    onError = { error ->
+                        if (error !is CancellationException && requestedDailyRecordId == dailyRecordId) {
+                            updateState { copy(content = TimelineRecordUiContent.LoadFailed) }
+                            handleFailure(error)
+                        }
                     },
                 ) {
                     updateState { copy(content = TimelineRecordUiContent.Loading) }
                     getDailyRecordUseCase(dailyRecordId)
                         .onSuccess { outcome ->
+                            if (requestedDailyRecordId != dailyRecordId) return@onSuccess
                             when (outcome) {
-                                // 세션에 저장하면 위 세션 구독이 Record 상태로 반영한다.
-                                is DailyRecordReadOutcome.Record -> saveTimelineRecordUseCase(outcome.value)
+                                is DailyRecordReadOutcome.Record -> {
+                                    // 세션에 같은 값이 선저장돼 있으면 StateFlow가 재방출하지
+                                    // 않으므로 화면 상태를 직접 전환한 뒤 세션에도 저장한다.
+                                    saveTimelineRecordUseCase(outcome.value)
+                                    updateState {
+                                        copy(content = TimelineRecordUiContent.Record(outcome.value.toUiModel()))
+                                    }
+                                }
                                 DailyRecordReadOutcome.Unavailable ->
                                     updateState { copy(content = TimelineRecordUiContent.Unavailable) }
                             }
                         }.onFailure { error ->
+                            if (requestedDailyRecordId != dailyRecordId) return@onFailure
                             updateState { copy(content = TimelineRecordUiContent.LoadFailed) }
                             handleFailure(error)
                         }

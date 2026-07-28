@@ -23,6 +23,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,6 +73,43 @@ class TimelineRecordViewModelTest {
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
             assertEquals(DAILY_RECORD_ID, content.value.dailyRecordId)
             assertEquals(DAILY_RECORD_ID, repository.timeline.value?.dailyRecordId)
+        }
+
+    @Test
+    fun `세션에 같은 기록이 선저장돼 있어도 조회 성공을 화면에 반영한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val record = timeline(events = listOf(event()))
+            repository.save(record)
+
+            val viewModel = createLoadedViewModel(record = record)
+
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(DAILY_RECORD_ID, content.value.dailyRecordId)
+        }
+
+    @Test
+    fun `조회 중 다른 기록을 요청하면 새 기록이 우선하고 이전 응답은 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<DailyTimeline>()
+            recordRepository.dailyRecordGate = gate
+            recordRepository.dailyRecordResult =
+                Result.success(timeline(events = emptyList()).copy(dailyRecordId = 32L))
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(32L))
+            advanceUntilIdle()
+
+            assertEquals(listOf(DAILY_RECORD_ID, 32L), recordRepository.requestedDailyRecordIds)
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(32L, content.value.dailyRecordId)
+
+            gate.complete(timeline(events = listOf(event())))
+            advanceUntilIdle()
+
+            val finalContent = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(32L, finalContent.value.dailyRecordId)
         }
 
     @Test
@@ -363,12 +401,17 @@ class TimelineRecordViewModelTest {
         val requestedDailyRecordIds = mutableListOf<Long>()
         val deletedDailyRecordIds = mutableListOf<Long>()
         var dailyRecordResult: Result<DailyTimeline>? = null
+        var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
         var failure: ApiException? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
         override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline {
             requestedDailyRecordIds += dailyRecordId
+            dailyRecordGate?.let { gate ->
+                dailyRecordGate = null
+                return gate.await()
+            }
             val result = dailyRecordResult ?: error("사용하지 않음")
             return result.getOrThrow()
         }
