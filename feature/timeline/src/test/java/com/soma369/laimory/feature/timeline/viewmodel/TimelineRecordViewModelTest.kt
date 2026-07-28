@@ -16,15 +16,19 @@ import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
+import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
+import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -47,23 +51,12 @@ class TimelineRecordViewModelTest {
     private val navigationHelper = RecordingNavigationHelper()
 
     @Test
-    fun `결과가 없으면 복구 불가 상태를 표시한다`() =
+    fun `단건 조회 성공은 기록을 세션에 저장하고 nullable 필드까지 화면에 전달한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
+            val viewModel = createLoadedViewModel()
 
-            runCurrent()
-
-            assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
-        }
-
-    @Test
-    fun `저장된 결과와 nullable 필드를 화면 상태로 전달한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-
-            runCurrent()
-
+            assertEquals(listOf(DAILY_RECORD_ID), recordRepository.requestedDailyRecordIds)
+            assertEquals(DAILY_RECORD_ID, repository.timeline.value?.dailyRecordId)
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
             assertEquals(LocalDate.of(2026, 5, 8), content.value.recordDate)
             assertEquals(null, content.value.events.single().endAt)
@@ -72,23 +65,109 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `Event가 없는 DailyTimeline은 결과 없음과 구분해 유지한다`() =
+    fun `이전 세션이 다른 기록을 가리켜도 선택한 기록을 조회해 표시한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.save(timeline(events = emptyList()))
+            repository.save(timeline(events = emptyList()).copy(dailyRecordId = 99L))
+            val viewModel = createLoadedViewModel()
+
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(DAILY_RECORD_ID, content.value.dailyRecordId)
+            assertEquals(DAILY_RECORD_ID, repository.timeline.value?.dailyRecordId)
+        }
+
+    @Test
+    fun `세션에 같은 기록이 선저장돼 있어도 조회 성공을 화면에 반영한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val record = timeline(events = listOf(event()))
+            repository.save(record)
+
+            val viewModel = createLoadedViewModel(record = record)
+
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(DAILY_RECORD_ID, content.value.dailyRecordId)
+        }
+
+    @Test
+    fun `조회 중 다른 기록을 요청하면 새 기록이 우선하고 이전 응답은 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<DailyTimeline>()
+            recordRepository.dailyRecordGate = gate
+            recordRepository.dailyRecordResult =
+                Result.success(timeline(events = emptyList()).copy(dailyRecordId = 32L))
             val viewModel = createViewModel()
 
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
             runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(32L))
+            advanceUntilIdle()
+
+            assertEquals(listOf(DAILY_RECORD_ID, 32L), recordRepository.requestedDailyRecordIds)
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(32L, content.value.dailyRecordId)
+
+            gate.complete(timeline(events = listOf(event())))
+            advanceUntilIdle()
+
+            val finalContent = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(32L, finalContent.value.dailyRecordId)
+        }
+
+    @Test
+    fun `Event가 없는 DailyTimeline은 접근 불가와 구분해 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = emptyList()))
 
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
             assertTrue(content.value.events.isEmpty())
         }
 
     @Test
-    fun `결과가 초기화되면 stale 기록 대신 복구 불가 상태로 돌아간다`() =
+    fun `-404 단건 조회는 접근 불가 상태로 안내한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.save(timeline(events = listOf(event())))
+            recordRepository.dailyRecordResult =
+                Result.failure(ApiException.ClientException(errorCode = -404, rawCode = 404))
             val viewModel = createViewModel()
-            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            advanceUntilIdle()
+
+            assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
+        }
+
+    @Test
+    fun `단건 조회 실패는 다시 시도 상태로 전환하고 재시도로 복구한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.dailyRecordResult = Result.failure(ApiException.NetworkException())
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            advanceUntilIdle()
+
+            assertEquals(TimelineRecordUiContent.LoadFailed, viewModel.state.value.content)
+
+            recordRepository.dailyRecordResult = Result.success(timeline(events = listOf(event())))
+            viewModel.sendIntent(TimelineRecordUiIntent.RetryLoad)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
+        }
+
+    @Test
+    fun `같은 기록 재진입은 재조회 없이 표시를 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            advanceUntilIdle()
+
+            assertEquals(listOf(DAILY_RECORD_ID), recordRepository.requestedDailyRecordIds)
+            assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
+        }
+
+    @Test
+    fun `표시 중이던 기록이 세션에서 사라지면 접근 불가 상태로 돌아간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
 
             repository.clear()
             runCurrent()
@@ -123,30 +202,26 @@ class TimelineRecordViewModelTest {
     @Test
     fun `삭제 요청 Intent는 하루 삭제 확인 상태를 연다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-            runCurrent()
+            val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             runCurrent()
 
             assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.deleteDialogState)
-            assertEquals(31L, viewModel.state.value.deleteTarget?.dailyRecordId)
+            assertEquals(DAILY_RECORD_ID, viewModel.state.value.deleteTarget?.dailyRecordId)
         }
 
     @Test
     fun `하루 삭제 성공은 기록과 홈 draft 상태를 초기화하고 완료 확인 뒤 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-            runCurrent()
+            val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
             advanceUntilIdle()
 
-            assertEquals(listOf(31L), recordRepository.deletedDailyRecordIds)
+            assertEquals(listOf(DAILY_RECORD_ID), recordRepository.deletedDailyRecordIds)
             assertEquals(null, repository.timeline.value)
             assertEquals(1, draftTaskCoordinator.discardCount)
             assertEquals(DraftTaskTrackingState.Idle, draftTaskCoordinator.state.value)
@@ -162,10 +237,8 @@ class TimelineRecordViewModelTest {
     @Test
     fun `사진 삭제 실패는 하루 기록과 홈 draft 상태를 유지하고 재시도할 수 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
             recordRepository.failure = ApiException.ServerException(errorCode = -1017, rawCode = 502)
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-            runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
@@ -187,9 +260,7 @@ class TimelineRecordViewModelTest {
     fun `삭제한 기록과 활성 draft 날짜가 다르면 draft 작업을 유지한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             draftTaskCoordinator.setActiveTask(LocalDate.of(2026, 5, 7))
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-            runCurrent()
+            val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
@@ -204,14 +275,12 @@ class TimelineRecordViewModelTest {
     @Test
     fun `이미 없는 하루 기록은 사용할 수 없는 상태로 전환하고 안내한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
             recordRepository.failure =
                 ApiException.ClientException(
                     errorCode = -404,
                     rawCode = 404,
                 )
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-            runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
@@ -228,14 +297,12 @@ class TimelineRecordViewModelTest {
     @Test
     fun `작성 완료된 하루 기록 삭제는 다이얼로그를 닫고 안내한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
             recordRepository.failure =
                 ApiException.ConflictException(
                     errorCode = -1003,
                     rawCode = 409,
                 )
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-            runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
@@ -253,10 +320,8 @@ class TimelineRecordViewModelTest {
     @Test
     fun `공통 정책으로 처리된 실패는 추가 오류 다이얼로그 없이 닫는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
             recordRepository.failure = ApiException.ServerException(rawCode = 500)
-            repository.save(timeline(events = listOf(event())))
-            val viewModel = createViewModel()
-            runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
@@ -271,6 +336,12 @@ class TimelineRecordViewModelTest {
     private fun createViewModel() =
         TimelineRecordViewModel(
             observeTimelineRecordUseCase = ObserveTimelineRecordUseCase(repository),
+            getDailyRecordUseCase =
+                GetDailyRecordUseCase(
+                    repository = recordRepository,
+                    messageHelper = NoOpMessageHelper,
+                ),
+            saveTimelineRecordUseCase = SaveTimelineRecordUseCase(repository),
             deleteDailyRecordUseCase =
                 DeleteDailyRecordUseCase(
                     repository = recordRepository,
@@ -281,9 +352,17 @@ class TimelineRecordViewModelTest {
             navigationHelper = navigationHelper,
         )
 
+    private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {
+        recordRepository.dailyRecordResult = Result.success(record)
+        val viewModel = createViewModel()
+        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+        advanceUntilIdle()
+        return viewModel
+    }
+
     private fun timeline(events: List<TimelineEvent>) =
         DailyTimeline(
-            dailyRecordId = 31L,
+            dailyRecordId = DAILY_RECORD_ID,
             recordDate = LocalDate.of(2026, 5, 8),
             emotion = null,
             events = events,
@@ -319,12 +398,23 @@ class TimelineRecordViewModelTest {
     }
 
     private class RecordingTimelineRecordRepository : TimelineRecordRepository {
+        val requestedDailyRecordIds = mutableListOf<Long>()
         val deletedDailyRecordIds = mutableListOf<Long>()
+        var dailyRecordResult: Result<DailyTimeline>? = null
+        var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
         var failure: ApiException? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline {
+            requestedDailyRecordIds += dailyRecordId
+            dailyRecordGate?.let { gate ->
+                dailyRecordGate = null
+                return gate.await()
+            }
+            val result = dailyRecordResult ?: error("사용하지 않음")
+            return result.getOrThrow()
+        }
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
@@ -371,11 +461,13 @@ class TimelineRecordViewModelTest {
         private companion object {
             fun successState(recordDate: LocalDate) =
                 DraftTaskTrackingState.Success(
-                    ActiveDraftTask(
-                        taskId = "task-1",
-                        recordDate = recordDate,
-                        requestedAt = Instant.EPOCH,
-                    ),
+                    task =
+                        ActiveDraftTask(
+                            taskId = "task-1",
+                            recordDate = recordDate,
+                            requestedAt = Instant.EPOCH,
+                        ),
+                    dailyRecordId = DAILY_RECORD_ID,
                 )
         }
     }
@@ -397,5 +489,9 @@ class TimelineRecordViewModelTest {
         override fun navigateToBack() {
             backCount++
         }
+    }
+
+    private companion object {
+        const val DAILY_RECORD_ID = 31L
     }
 }

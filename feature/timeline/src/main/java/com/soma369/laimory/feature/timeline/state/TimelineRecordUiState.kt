@@ -25,8 +25,11 @@ data class TimelineRecordDeleteTarget(
 sealed interface TimelineRecordUiContent {
     data object Loading : TimelineRecordUiContent
 
-    /** 프로세스 종료 등으로 폴링 SUCCESS 결과가 현재 상태 홀더에 없는 경우. */
+    /** 단건 조회 `-404` 등으로 기록이 이미 삭제됐거나 접근할 수 없는 경우. */
     data object Unavailable : TimelineRecordUiContent
+
+    /** 네트워크 오류 등으로 단건 조회에 실패한 경우. 다시 시도할 수 있다. */
+    data object LoadFailed : TimelineRecordUiContent
 
     data class Record(
         val value: TimelineRecordUiModel,
