@@ -4,8 +4,11 @@ import com.soma369.laimory.core.domain.coordinator.DefaultDraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
+import com.soma369.laimory.draft.LogcatDraftSourceItemSelectionReporter
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -24,6 +27,10 @@ abstract class DraftTaskBindingModule {
     @Binds
     @Singleton
     abstract fun bindDraftTaskCoordinator(impl: DefaultDraftTaskCoordinator): DraftTaskCoordinator
+
+    @Binds
+    @Singleton
+    abstract fun bindDraftSourceItemSelectionReporter(impl: LogcatDraftSourceItemSelectionReporter): DraftSourceItemSelectionReporter
 }
 
 @Module
@@ -47,4 +54,8 @@ object DraftTaskRuntimeModule {
     @Provides
     @Singleton
     fun provideDraftPollingPolicy(): DraftPollingPolicy = DraftPollingPolicy()
+
+    @Provides
+    @Singleton
+    fun provideDraftSourceItemSelectionPolicy(): DraftSourceItemSelectionPolicy = DraftSourceItemSelectionPolicy()
 }
