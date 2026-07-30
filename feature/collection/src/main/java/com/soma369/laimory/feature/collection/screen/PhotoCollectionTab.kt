@@ -52,6 +52,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.permission.PhotoPermission
 import com.soma369.laimory.feature.collection.state.CollectionUiIntent
 import com.soma369.laimory.feature.collection.state.CollectionUiSideEffect
 import com.soma369.laimory.feature.collection.state.CollectionUiState
@@ -103,14 +104,14 @@ private fun PhotoCollectionContent(
     var showDatePicker by remember { mutableStateOf(false) }
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            if (PhotoPermission.canCollect(result)) {
+            if (PhotoPermission.canRead(result)) {
                 showDatePicker = true
             } else {
                 scope.launch { snackbarHostState.showSnackbar("사진 접근 권한이 필요합니다.") }
             }
         }
     val onPickDate: () -> Unit = {
-        if (PhotoPermission.canCollect(context)) {
+        if (PhotoPermission.canRead(context)) {
             showDatePicker = true
         } else {
             permissionLauncher.launch(PhotoPermission.required())
