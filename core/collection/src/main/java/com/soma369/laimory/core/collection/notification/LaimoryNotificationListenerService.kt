@@ -25,7 +25,10 @@ import javax.inject.Inject
  * 과거 알림 백필은 불가하며(#95 제약), 서비스가 붙어있는 동안 게시/클릭된 알림만 잡는다.
  * 현재 필터([NotificationFilter])는 DataStore 관찰로 캐시해 두고, 알림 이벤트마다 그 스냅샷으로 판정한다.
  * - 게시([onNotificationPosted]): 키워드 또는 앱이 일치하면 수집.
- * - 제거([onNotificationRemoved]) reason=click: 필터 설정과 관계없이 사용자가 클릭한 알림을 수집.
+ * - 제거([onNotificationRemoved]) reason=click: 클릭 수집이 켜져 있으면 키워드·앱 설정과 무관하게 수집.
+ *
+ * 동일 알림이 게시 이벤트에서 먼저 저장된 뒤 클릭 이벤트로 다시 들어오면 동일한 sourceKey 를 사용한다.
+ * 저장소의 insert-or-ignore 정책에 따라 최초 수집 사유(KEYWORD/APP)가 유지된다(first-write-wins).
  */
 @AndroidEntryPoint
 internal class LaimoryNotificationListenerService : NotificationListenerService() {
