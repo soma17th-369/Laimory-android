@@ -13,10 +13,20 @@ sealed interface HomeUiIntent : UiIntent {
 
     data object OpenPhotoSheet : HomeUiIntent
 
+    data class ResolvePhotoAccess(
+        val granted: Boolean,
+        val limited: Boolean = false,
+    ) : HomeUiIntent
+
+    data class RefreshPhotos(
+        val hasAccess: Boolean,
+        val limited: Boolean = false,
+    ) : HomeUiIntent
+
     data object DismissPhotoSheet : HomeUiIntent
 
     data class TogglePhoto(
-        val rawId: String,
+        val mediaStoreId: Long,
     ) : HomeUiIntent
 
     data class TogglePhotoDate(

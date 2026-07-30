@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +45,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -64,7 +66,7 @@ internal fun PhotoSelectionSheet(
         }
     val isAllSelected =
         state.availablePhotos.isNotEmpty() &&
-            state.pendingPhotoIds.size == state.availablePhotos.size
+            state.pendingPhotoIds.size == minOf(state.availablePhotos.size, MAX_PHOTO_SELECTION)
     ModalBottomSheet(
         onDismissRequest = { onIntent(HomeUiIntent.DismissPhotoSheet) },
         sheetState = sheetState,
@@ -88,9 +90,18 @@ internal fun PhotoSelectionSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (state.isPhotoAccessLimited) {
+                    Text(
+                        text = "기기에서 허용한 사진만 표시하고 있어요.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
 
-            if (state.availablePhotos.isEmpty()) {
+            if (state.isPhotoLoading) {
+                PhotoSelectionLoading()
+            } else if (state.availablePhotos.isEmpty()) {
                 EmptyPhotoSelection()
             } else {
                 Row(
@@ -99,7 +110,7 @@ internal fun PhotoSelectionSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "${state.pendingPhotoIds.size}/${state.availablePhotos.size}장 선택",
+                        text = "${state.pendingPhotoIds.size}/${MAX_PHOTO_SELECTION}장 선택",
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
@@ -126,16 +137,16 @@ internal fun PhotoSelectionSheet(
                                 date = date,
                                 selectedDate = state.selectedDate,
                                 today = today,
-                                selectedCount = photos.count { it.rawId in state.pendingPhotoIds },
+                                selectedCount = photos.count { it.mediaStoreId in state.pendingPhotoIds },
                                 photoCount = photos.size,
                                 onToggleAll = { onIntent(HomeUiIntent.TogglePhotoDate(date)) },
                             )
                         }
-                        items(photos, key = HomePhotoItem::rawId) { photo ->
+                        items(photos, key = HomePhotoItem::mediaStoreId) { photo ->
                             SelectablePhoto(
                                 photo = photo,
-                                selected = photo.rawId in state.pendingPhotoIds,
-                                onClick = { onIntent(HomeUiIntent.TogglePhoto(photo.rawId)) },
+                                selected = photo.mediaStoreId in state.pendingPhotoIds,
+                                onClick = { onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) },
                             )
                         }
                     }
@@ -145,6 +156,7 @@ internal fun PhotoSelectionSheet(
             Button(
                 onClick = { onIntent(HomeUiIntent.ConfirmPhotoSelection) },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !state.isPhotoLoading,
             ) {
                 Text(
                     if (state.availablePhotos.isEmpty()) {
@@ -156,6 +168,19 @@ internal fun PhotoSelectionSheet(
             }
             Spacer(modifier = Modifier.height(Spacing.large))
         }
+    }
+}
+
+@Composable
+private fun PhotoSelectionLoading() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(160.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator()
     }
 }
 

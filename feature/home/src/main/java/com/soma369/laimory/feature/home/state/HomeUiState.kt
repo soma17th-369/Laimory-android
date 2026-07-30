@@ -3,8 +3,10 @@ package com.soma369.laimory.feature.home.state
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
+import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.ui.base.UiState
 import java.time.Instant
@@ -21,9 +23,10 @@ data class HomeUiState(
     val endTime: LocalTime = LocalTime.MIDNIGHT,
     val summary: HomeSourceSummary = HomeSourceSummary(),
     val availablePhotos: List<HomePhotoItem> = emptyList(),
-    val selectedPhotoIds: Set<String> = emptySet(),
-    val pendingPhotoIds: Set<String> = emptySet(),
-    val hasCustomizedPhotoSelection: Boolean = false,
+    val selectedPhotoIds: Set<Long> = emptySet(),
+    val pendingPhotoIds: Set<Long> = emptySet(),
+    val isPhotoLoading: Boolean = false,
+    val isPhotoAccessLimited: Boolean = false,
     val isDraftSheetVisible: Boolean = false,
     val isPhotoSheetVisible: Boolean = false,
     val isDatePickerVisible: Boolean = false,
@@ -45,7 +48,7 @@ data class HomeUiState(
 
 @Immutable
 data class HomePhotoItem(
-    val rawId: String,
+    val mediaStoreId: Long,
     val uri: String,
     val capturedAt: Instant,
 )
@@ -106,8 +109,8 @@ internal fun HomeUiState.withEndDaySelection(endDay: DraftEndDay): HomeUiState {
 
 internal fun HomeUiState.refreshSourceSummary(
     items: List<SourceItem>,
+    photoCandidates: List<PhotoCandidate>,
     zone: ZoneId,
-    resetPhotoSelection: Boolean = false,
 ): HomeUiState {
     val window =
         recordDateWindow(zone)
@@ -116,46 +119,41 @@ internal fun HomeUiState.refreshSourceSummary(
                 availablePhotos = emptyList(),
                 selectedPhotoIds = emptySet(),
                 pendingPhotoIds = emptySet(),
-                hasCustomizedPhotoSelection = false,
             )
-    val inWindow = items.filter(window::contains)
-    val photoItems =
-        inWindow
-            .filter { it.payload is PhotoPayload }
-            .sortedByDescending(SourceItem::startAt)
+    val inWindowNonPhotos =
+        items.filter { item ->
+            item.payload !is PhotoPayload && window.contains(item)
+        }
     val availablePhotos =
-        photoItems.map { item ->
-            HomePhotoItem(
-                rawId = item.rawId,
-                uri = (item.payload as PhotoPayload).clientPhotoUri,
-                capturedAt = item.startAt,
-            )
-        }
-    val availableIds = availablePhotos.mapTo(linkedSetOf(), HomePhotoItem::rawId)
-    val resetSelection = resetPhotoSelection || !hasCustomizedPhotoSelection
-    val selectedIds =
-        if (resetSelection) {
-            availableIds
-        } else {
-            selectedPhotoIds.intersect(availableIds)
-        }
-    val selectedPhotos = availablePhotos.filter { it.rawId in selectedIds }
+        photoCandidates
+            .asSequence()
+            .filter { candidate -> candidate.takenAt >= window.start && candidate.takenAt < window.end }
+            .sortedByDescending(PhotoCandidate::takenAt)
+            .map { candidate ->
+                HomePhotoItem(
+                    mediaStoreId = candidate.id,
+                    uri = candidate.contentUri,
+                    capturedAt = candidate.takenAt,
+                )
+            }.toList()
+    val availableIds = availablePhotos.mapTo(linkedSetOf(), HomePhotoItem::mediaStoreId)
+    val selectedIds = selectedPhotoIds.intersect(availableIds)
+    val selectedPhotos = availablePhotos.filter { it.mediaStoreId in selectedIds }
     val steps =
-        inWindow
+        inWindowNonPhotos
             .mapNotNull { it.payload as? HealthPayload }
             .filter { it.metric == HealthPayload.Metric.STEPS }
             .sumOf { it.value }
             .roundToLong()
-    val nonPhotoCount = inWindow.count { it.payload !is PhotoPayload }
 
     return copy(
         summary =
             HomeSourceSummary(
                 photoCount = selectedPhotos.size,
-                calendarCount = inWindow.count { it.payload is CalendarPayload },
+                calendarCount = inWindowNonPhotos.count { it.payload is CalendarPayload },
                 stepCount = steps,
                 photoPreviewUris = selectedPhotos.take(PHOTO_PREVIEW_LIMIT).map(HomePhotoItem::uri),
-                totalItemCount = nonPhotoCount + selectedPhotos.size,
+                totalItemCount = inWindowNonPhotos.size + selectedPhotos.size,
             ),
         availablePhotos = availablePhotos,
         selectedPhotoIds = selectedIds,
@@ -165,18 +163,16 @@ internal fun HomeUiState.refreshSourceSummary(
             } else {
                 emptySet()
             },
-        hasCustomizedPhotoSelection = if (resetSelection) false else hasCustomizedPhotoSelection,
     )
 }
 
-internal fun HomeUiState.selectedSourceItems(
+internal fun HomeUiState.nonPhotoSourceItems(
     items: List<SourceItem>,
     zone: ZoneId,
 ): List<SourceItem> {
     val window = recordDateWindow(zone) ?: return emptyList()
-    return items.filter { item ->
-        window.contains(item) && (item.payload !is PhotoPayload || item.rawId in selectedPhotoIds)
-    }
+    return items.filter { item -> item.payload !is PhotoPayload && window.contains(item) }
 }
 
+internal const val MAX_PHOTO_SELECTION = DraftSourceItemLimits.DEFAULT_PHOTO
 private const val PHOTO_PREVIEW_LIMIT = 3
