@@ -99,8 +99,8 @@ data class NotificationPayload(
 
     /**
      * 알림이 수집된 경로.
-     * - [ALL]: "모든 알림 수집" 모드로 무조건 수집.
-     * - [KEYWORD]/[APP]: "선택 수집"에서 키워드/앱 필터에 매칭돼 수집.
+     * - [ALL]: 과거 "모든 알림 수집" 데이터의 역직렬화·표시 호환을 위한 legacy 값. 신규 수집에서는 생성하지 않는다.
+     * - [KEYWORD]/[APP]: 키워드/앱 필터에 매칭돼 수집.
      * - [CLICK]: 사용자가 알림창에서 클릭해 수집(제거 reason=click).
      */
     enum class CollectReason { ALL, KEYWORD, APP, CLICK }

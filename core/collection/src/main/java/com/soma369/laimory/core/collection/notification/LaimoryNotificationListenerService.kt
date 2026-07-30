@@ -3,7 +3,6 @@ package com.soma369.laimory.core.collection.notification
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import com.soma369.laimory.core.domain.model.collection.NotificationCollectMode
 import com.soma369.laimory.core.domain.model.collection.NotificationFilter
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.repository.NotificationFilterRepository
@@ -25,8 +24,8 @@ import javax.inject.Inject
  *
  * 과거 알림 백필은 불가하며(#95 제약), 서비스가 붙어있는 동안 게시/클릭된 알림만 잡는다.
  * 현재 필터([NotificationFilter])는 DataStore 관찰로 캐시해 두고, 알림 이벤트마다 그 스냅샷으로 판정한다.
- * - 게시([onNotificationPosted]): 모든 모드는 무조건, 선택 모드는 키워드/앱 매칭 시 수집.
- * - 제거([onNotificationRemoved]) reason=click: 선택 모드에서 사용자가 클릭한 알림 수집.
+ * - 게시([onNotificationPosted]): 키워드 또는 앱이 일치하면 수집.
+ * - 제거([onNotificationRemoved]) reason=click: 필터 설정과 관계없이 사용자가 클릭한 알림을 수집.
  */
 @AndroidEntryPoint
 internal class LaimoryNotificationListenerService : NotificationListenerService() {
@@ -50,7 +49,7 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val notification = sbn ?: return
-        val reason = reasonForPosted(notification) ?: return
+        val reason = reasonFor(notification, clicked = false) ?: return
         capture(notification, reason)
     }
 
@@ -60,9 +59,9 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
         reason: Int,
     ) {
         val notification = sbn ?: return
-        // 모든 모드는 게시 시 이미 저장됐으므로, 클릭 수집은 선택 모드에서만 의미가 있다.
-        if (reason == REASON_CLICK && filter.mode == NotificationCollectMode.SELECTIVE) {
-            capture(notification, NotificationPayload.CollectReason.CLICK)
+        if (reason == REASON_CLICK) {
+            val collectReason = reasonFor(notification, clicked = true) ?: return
+            capture(notification, collectReason)
         }
     }
 
@@ -71,26 +70,19 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
         super.onDestroy()
     }
 
-    /** 게시된 알림의 수집 사유. 수집 대상이 아니면 null. */
-    private fun reasonForPosted(sbn: StatusBarNotification): NotificationPayload.CollectReason? =
-        when (filter.mode) {
-            NotificationCollectMode.ALL -> NotificationPayload.CollectReason.ALL
-            NotificationCollectMode.SELECTIVE -> {
-                val extras = sbn.notification.extras
-                val haystack =
-                    listOfNotNull(
-                        extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
-                        extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
-                    ).joinToString(" ")
-                when {
-                    filter.keywords.any { it.isNotBlank() && haystack.contains(it, ignoreCase = true) } ->
-                        NotificationPayload.CollectReason.KEYWORD
-
-                    sbn.packageName in filter.allowedPackages -> NotificationPayload.CollectReason.APP
-                    else -> null
-                }
-            }
-        }
+    /** 게시·클릭 이벤트의 수집 사유. 해당 이벤트 경로가 비활성화됐거나 필터와 일치하지 않으면 null. */
+    private fun reasonFor(
+        sbn: StatusBarNotification,
+        clicked: Boolean,
+    ): NotificationPayload.CollectReason? {
+        val extras = sbn.notification.extras
+        return filter.collectReasonFor(
+            packageName = sbn.packageName,
+            title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+            text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+            clicked = clicked,
+        )
+    }
 
     private fun capture(
         sbn: StatusBarNotification,
