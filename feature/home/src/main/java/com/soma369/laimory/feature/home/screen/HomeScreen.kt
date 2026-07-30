@@ -85,11 +85,11 @@ private fun HomeContent(
     val snackbarHostState = LocalSnackbarHostState.current
     val context = LocalContext.current
     val photoPermissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             onIntent(
                 HomeUiIntent.ResolvePhotoAccess(
-                    granted = PhotoPermission.canRead(result),
-                    limited = PhotoPermission.isLimited(result),
+                    granted = PhotoPermission.canRead(context),
+                    limited = PhotoPermission.isLimited(context),
                 ),
             )
         }
@@ -100,8 +100,8 @@ private fun HomeContent(
     LaunchedEffect(Unit) {
         sideEffectFlow.collect { effect ->
             when (effect) {
-                HomeUiSideEffect.RequestPhotoAccess ->
-                    if (PhotoPermission.canRead(context)) {
+                is HomeUiSideEffect.RequestPhotoAccess ->
+                    if (!effect.force && PhotoPermission.canRead(context)) {
                         onIntent(
                             HomeUiIntent.ResolvePhotoAccess(
                                 granted = true,

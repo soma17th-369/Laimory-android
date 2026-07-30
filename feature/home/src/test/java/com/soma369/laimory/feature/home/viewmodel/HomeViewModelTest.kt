@@ -40,11 +40,14 @@ import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
+import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -160,6 +163,19 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `제한 접근 사진 추가 요청은 권한 런처를 강제로 다시 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RequestAdditionalPhotoAccess)
+            runCurrent()
+
+            assertEquals(HomeUiSideEffect.RequestPhotoAccess(force = true), effect.await())
+        }
+
+    @Test
     fun `사진 선택 취소는 기존 확정 선택을 변경하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             photoSource.candidates = listOf(todayPhotoCandidate(1L), todayPhotoCandidate(2L))
@@ -259,12 +275,12 @@ class HomeViewModelTest {
     fun `선택 사진이 삭제되면 생성하지 않고 선택 화면에서 제외한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("calendar"))
-            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L), todayPhotoCandidate(2L))
             val viewModel = createViewModel()
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
             viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
             photoSource.unavailableIds = setOf(1L)
@@ -275,7 +291,8 @@ class HomeViewModelTest {
             assertEquals(0, draftRepository.createCount)
             assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
             assertTrue(viewModel.state.value.isPhotoSheetVisible)
-            assertEquals(emptySet<Long>(), viewModel.state.value.selectedPhotoIds)
+            assertEquals(setOf(2L), viewModel.state.value.selectedPhotoIds)
+            assertEquals(setOf(2L), viewModel.state.value.pendingPhotoIds)
             assertTrue(viewModel.state.value.draftMessage.orEmpty().contains("접근할 수 없어요"))
         }
 

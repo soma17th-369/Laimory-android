@@ -13,6 +13,8 @@ sealed interface HomeUiIntent : UiIntent {
 
     data object OpenPhotoSheet : HomeUiIntent
 
+    data object RequestAdditionalPhotoAccess : HomeUiIntent
+
     data class ResolvePhotoAccess(
         val granted: Boolean,
         val limited: Boolean = false,

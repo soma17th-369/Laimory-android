@@ -77,6 +77,8 @@ class HomeViewModel
                 HomeUiIntent.OpenDraftSheet -> openDraftSheet()
                 HomeUiIntent.DismissDraftSheet -> updateState { copy(isDraftSheetVisible = false) }
                 HomeUiIntent.OpenPhotoSheet -> requestPhotoSheet()
+                HomeUiIntent.RequestAdditionalPhotoAccess ->
+                    sendEffect(HomeUiSideEffect.RequestPhotoAccess(force = true))
                 is HomeUiIntent.ResolvePhotoAccess -> resolvePhotoAccess(intent.granted, intent.limited)
                 is HomeUiIntent.RefreshPhotos -> refreshPhotos(intent.hasAccess, intent.limited)
                 HomeUiIntent.DismissPhotoSheet ->
@@ -134,7 +136,7 @@ class HomeViewModel
 
         private fun requestPhotoSheet() {
             if (state.value.draftStatus.isInputLocked) return
-            sendEffect(HomeUiSideEffect.RequestPhotoAccess)
+            sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
 
         private fun resolvePhotoAccess(
@@ -374,9 +376,10 @@ class HomeViewModel
             preparedPhotoCache = null
             val message = "선택한 사진 ${unavailableIds.size}장에 접근할 수 없어요. 사진을 다시 선택해주세요."
             updateState {
+                val remainingSelectedIds = selectedPhotoIds - unavailableIds
                 copy(
-                    selectedPhotoIds = selectedPhotoIds - unavailableIds,
-                    pendingPhotoIds = pendingPhotoIds - unavailableIds,
+                    selectedPhotoIds = remainingSelectedIds,
+                    pendingPhotoIds = remainingSelectedIds,
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
                     draftMessage = message,

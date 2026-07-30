@@ -91,11 +91,18 @@ internal fun PhotoSelectionSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (state.isPhotoAccessLimited) {
-                    Text(
-                        text = "기기에서 허용한 사진만 표시하고 있어요.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Column {
+                        Text(
+                            text = "기기에서 허용한 사진만 표시하고 있어요.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        TextButton(
+                            onClick = { onIntent(HomeUiIntent.RequestAdditionalPhotoAccess) },
+                        ) {
+                            Text("허용 사진 추가")
+                        }
+                    }
                 }
             }
 
