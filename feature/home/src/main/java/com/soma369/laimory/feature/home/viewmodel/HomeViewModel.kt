@@ -2,32 +2,39 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
+import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.model.toPastRecordUiModel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
+import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.nonPhotoSourceItems
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
-import com.soma369.laimory.feature.home.state.selectedSourceItems
 import com.soma369.laimory.feature.home.state.withEndDaySelection
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import java.time.LocalDate
 import java.time.LocalTime
@@ -41,6 +48,8 @@ class HomeViewModel
         private val observeSourceItemsUseCase: ObserveSourceItemsUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val getDailyRecordsUseCase: GetDailyRecordsUseCase,
+        private val getPhotosInWindowUseCase: GetPhotosInWindowUseCase,
+        private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
@@ -48,6 +57,12 @@ class HomeViewModel
         ) {
         private val zone: ZoneId = ZoneId.systemDefault()
         private var sourceItems: List<SourceItem> = emptyList()
+        private var photoCandidates: List<PhotoCandidate> = emptyList()
+        private var photoAccessGranted = false
+        private var photoCandidatesJob: Job? = null
+        private var lastLoadedPhotoWindow: RecordDateWindow? = null
+        private var requestedPhotoWindow: RecordDateWindow? = null
+        private var preparedPhotoCache: PreparedPhotoCache? = null
         private var hasUserSelectedDate = false
         private var pastRecordsJob: Job? = null
 
@@ -61,10 +76,14 @@ class HomeViewModel
                 HomeUiIntent.NavigateToCollection -> navigationHelper.navigateTo(CollectionPage)
                 HomeUiIntent.OpenDraftSheet -> openDraftSheet()
                 HomeUiIntent.DismissDraftSheet -> updateState { copy(isDraftSheetVisible = false) }
-                HomeUiIntent.OpenPhotoSheet -> openPhotoSheet()
+                HomeUiIntent.OpenPhotoSheet -> requestPhotoSheet()
+                HomeUiIntent.RequestAdditionalPhotoAccess ->
+                    sendEffect(HomeUiSideEffect.RequestPhotoAccess(force = true))
+                is HomeUiIntent.ResolvePhotoAccess -> resolvePhotoAccess(intent.granted, intent.limited)
+                is HomeUiIntent.RefreshPhotos -> refreshPhotos(intent.hasAccess, intent.limited)
                 HomeUiIntent.DismissPhotoSheet ->
                     updateState { copy(isPhotoSheetVisible = false, pendingPhotoIds = emptySet()) }
-                is HomeUiIntent.TogglePhoto -> togglePhoto(intent.rawId)
+                is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
                 is HomeUiIntent.TogglePhotoDate -> togglePhotoDate(intent.date)
                 HomeUiIntent.ToggleAllPhotos -> toggleAllPhotos()
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
@@ -90,19 +109,23 @@ class HomeViewModel
             safeLaunch {
                 observeSourceItemsUseCase().collect { items ->
                     sourceItems = items
-                    updateState { refreshSourceSummary(items, zone) }
+                    updateState { refreshSourceSummary(items, photoCandidates, zone) }
                 }
             }
 
         private fun observeDraftTask() =
             safeLaunch {
                 draftTaskCoordinator.state.collect { trackingState ->
+                    val previousWindow = state.value.recordDateWindow(zone)
                     updateState {
                         if (hasUserSelectedDate) {
                             withDraftTrackingForSelectedDate(trackingState)
                         } else {
                             withDraftTracking(trackingState)
                         }
+                    }
+                    if (state.value.recordDateWindow(zone) != previousWindow) {
+                        onRecordWindowChanged()
                     }
                 }
             }
@@ -111,75 +134,109 @@ class HomeViewModel
             updateState { copy(isDraftSheetVisible = true) }
         }
 
-        private fun openPhotoSheet() {
+        private fun requestPhotoSheet() {
             if (state.value.draftStatus.isInputLocked) return
+            sendEffect(HomeUiSideEffect.RequestPhotoAccess())
+        }
+
+        private fun resolvePhotoAccess(
+            granted: Boolean,
+            limited: Boolean,
+        ) {
+            photoAccessGranted = granted
+            if (!granted) {
+                sendEffect(HomeUiSideEffect.ShowSnackbar("사진을 선택하려면 사진 접근 권한이 필요해요."))
+                return
+            }
             updateState {
                 copy(
                     isPhotoSheetVisible = true,
                     pendingPhotoIds = selectedPhotoIds,
+                    isPhotoLoading = true,
+                    isPhotoAccessLimited = limited,
                 )
             }
+            loadPhotoCandidates(force = true)
         }
 
-        private fun togglePhoto(rawId: String) {
+        private fun refreshPhotos(
+            hasAccess: Boolean,
+            limited: Boolean,
+        ) {
+            photoAccessGranted = hasAccess
+            if (!hasAccess) {
+                clearPhotoCandidates()
+                return
+            }
+            updateState { copy(isPhotoAccessLimited = limited) }
+            loadPhotoCandidates(force = true)
+        }
+
+        private fun togglePhoto(mediaStoreId: Long) {
+            val current = state.value
+            if (current.availablePhotos.none { it.mediaStoreId == mediaStoreId }) return
+            if (mediaStoreId !in current.pendingPhotoIds && current.pendingPhotoIds.size >= MAX_PHOTO_SELECTION) {
+                showPhotoLimitMessage()
+                return
+            }
             updateState {
-                if (availablePhotos.none { it.rawId == rawId }) return@updateState this
                 copy(
                     pendingPhotoIds =
-                        if (rawId in pendingPhotoIds) {
-                            pendingPhotoIds - rawId
+                        if (mediaStoreId in pendingPhotoIds) {
+                            pendingPhotoIds - mediaStoreId
                         } else {
-                            pendingPhotoIds + rawId
+                            pendingPhotoIds + mediaStoreId
                         },
                 )
             }
         }
 
         private fun toggleAllPhotos() {
+            val current = state.value
+            val selectableIds =
+                current.availablePhotos
+                    .take(MAX_PHOTO_SELECTION)
+                    .mapTo(linkedSetOf(), HomePhotoItem::mediaStoreId)
+            val shouldClear =
+                current.pendingPhotoIds.size == selectableIds.size &&
+                    current.pendingPhotoIds.containsAll(selectableIds)
             updateState {
-                val allPhotoIds = availablePhotos.mapTo(linkedSetOf()) { it.rawId }
-                copy(
-                    pendingPhotoIds =
-                        if (pendingPhotoIds.size == allPhotoIds.size && pendingPhotoIds.containsAll(allPhotoIds)) {
-                            emptySet()
-                        } else {
-                            allPhotoIds
-                        },
-                )
+                copy(pendingPhotoIds = if (shouldClear) emptySet() else selectableIds)
             }
+            if (!shouldClear && current.availablePhotos.size > MAX_PHOTO_SELECTION) showPhotoLimitMessage()
         }
 
         private fun togglePhotoDate(date: LocalDate) {
-            updateState {
-                val datePhotoIds =
-                    availablePhotos
-                        .filter { it.capturedAt.atZone(zone).toLocalDate() == date }
-                        .mapTo(linkedSetOf()) { it.rawId }
-                if (datePhotoIds.isEmpty()) return@updateState this
-                val isDateSelected = pendingPhotoIds.containsAll(datePhotoIds)
-                copy(
-                    pendingPhotoIds =
-                        if (isDateSelected) {
-                            pendingPhotoIds - datePhotoIds
-                        } else {
-                            pendingPhotoIds + datePhotoIds
-                        },
-                )
+            val current = state.value
+            val datePhotoIds =
+                current.availablePhotos
+                    .filter { it.capturedAt.atZone(zone).toLocalDate() == date }
+                    .map(HomePhotoItem::mediaStoreId)
+            if (datePhotoIds.isEmpty()) return
+            val isDateSelected = current.pendingPhotoIds.containsAll(datePhotoIds)
+            if (isDateSelected) {
+                updateState { copy(pendingPhotoIds = pendingPhotoIds - datePhotoIds.toSet()) }
+                return
             }
+
+            val availableSlots = MAX_PHOTO_SELECTION - current.pendingPhotoIds.size
+            val idsToAdd = datePhotoIds.filterNot(current.pendingPhotoIds::contains).take(availableSlots)
+            updateState { copy(pendingPhotoIds = pendingPhotoIds + idsToAdd) }
+            if (idsToAdd.size < datePhotoIds.count { it !in current.pendingPhotoIds }) showPhotoLimitMessage()
         }
 
         private fun confirmPhotoSelection() {
             if (state.value.draftStatus.isInputLocked) return
+            preparedPhotoCache = null
             updateState {
                 copy(
                     selectedPhotoIds = pendingPhotoIds,
                     pendingPhotoIds = emptySet(),
-                    hasCustomizedPhotoSelection = true,
                     isPhotoSheetVisible = false,
                     draftStatus = DraftCreationStatus.IDLE,
                     draftRetryMode = null,
                     draftMessage = null,
-                ).refreshSourceSummary(sourceItems, zone)
+                ).refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
         }
 
@@ -200,9 +257,10 @@ class HomeViewModel
                         draftMessage = null,
                     )
                 next
-                    .refreshSourceSummary(sourceItems, zone, resetPhotoSelection = true)
+                    .refreshSourceSummary(sourceItems, photoCandidates, zone)
                     .withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value)
             }
+            onRecordWindowChanged()
         }
 
         private fun selectTime(
@@ -221,8 +279,9 @@ class HomeViewModel
                         draftRetryMode = null,
                         draftMessage = null,
                     )
-                next.refreshSourceSummary(sourceItems, zone, resetPhotoSelection = true)
+                next.refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
+            onRecordWindowChanged()
         }
 
         private fun selectEndDay(endDay: DraftEndDay) {
@@ -235,8 +294,9 @@ class HomeViewModel
                             draftRetryMode = null,
                             draftMessage = null,
                         )
-                next.refreshSourceSummary(sourceItems, zone, resetPhotoSelection = true)
+                next.refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
+            onRecordWindowChanged()
         }
 
         private fun createDraft() {
@@ -265,13 +325,14 @@ class HomeViewModel
             safeLaunch(
                 onError = ::handleDraftCreationFailure,
             ) {
+                val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                 if (shouldDiscardPreviousTask) draftTaskCoordinator.discard()
                 val result =
                     createTimelineDraftUseCase(
                         current.selectedDate,
                         zone,
                         window,
-                        current.selectedSourceItems(sourceItems, zone),
+                        current.nonPhotoSourceItems(sourceItems, zone) + selectedPhotoItems,
                     )
                 val handle =
                     result.getOrElse {
@@ -282,6 +343,51 @@ class HomeViewModel
                 updateState { copy(isDraftSheetVisible = false) }
                 sendEffect(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."))
             }
+        }
+
+        private suspend fun prepareSelectedPhotos(current: HomeUiState): List<SourceItem>? {
+            val selectedIds =
+                current.availablePhotos
+                    .asSequence()
+                    .filter { it.mediaStoreId in current.selectedPhotoIds }
+                    .map(HomePhotoItem::mediaStoreId)
+                    .toList()
+            if (selectedIds.isEmpty()) return emptyList()
+
+            preparedPhotoCache
+                ?.takeIf { it.ids == selectedIds.toSet() }
+                ?.let { return it.items }
+
+            val prepared = prepareSelectedPhotosUseCase(selectedIds)
+            if (prepared.unavailableIds.isNotEmpty()) {
+                handleUnavailablePhotos(prepared.unavailableIds)
+                return null
+            }
+            preparedPhotoCache =
+                PreparedPhotoCache(
+                    ids = selectedIds.toSet(),
+                    items = prepared.items,
+                )
+            return prepared.items
+        }
+
+        private fun handleUnavailablePhotos(unavailableIds: Set<Long>) {
+            photoCandidates = photoCandidates.filterNot { it.id in unavailableIds }
+            preparedPhotoCache = null
+            val message = "선택한 사진 ${unavailableIds.size}장에 접근할 수 없어요. 사진을 다시 선택해주세요."
+            updateState {
+                val remainingSelectedIds = selectedPhotoIds - unavailableIds
+                copy(
+                    selectedPhotoIds = remainingSelectedIds,
+                    pendingPhotoIds = remainingSelectedIds,
+                    draftStatus = DraftCreationStatus.FAILED,
+                    draftRetryMode = DraftRetryMode.NEW_DRAFT,
+                    draftMessage = message,
+                    isDraftSheetVisible = false,
+                    isPhotoSheetVisible = true,
+                ).refreshSourceSummary(sourceItems, photoCandidates, zone)
+            }
+            sendEffect(HomeUiSideEffect.ShowSnackbar(message))
         }
 
         private fun handleDraftCreationFailure(error: Throwable) {
@@ -309,6 +415,76 @@ class HomeViewModel
                 )
             }
             handleFailure(error)
+        }
+
+        private fun loadPhotoCandidates(force: Boolean) {
+            if (!photoAccessGranted) return
+            val window = state.value.recordDateWindow(zone) ?: return
+            if (!force && window == requestedPhotoWindow) return
+            if (!force && window == lastLoadedPhotoWindow) {
+                photoCandidatesJob?.cancel()
+                photoCandidatesJob = null
+                requestedPhotoWindow = null
+                updateState {
+                    refreshSourceSummary(sourceItems, photoCandidates, zone)
+                        .copy(isPhotoLoading = false)
+                }
+                return
+            }
+
+            photoCandidatesJob?.cancel()
+            requestedPhotoWindow = window
+            photoCandidatesJob =
+                safeLaunch(
+                    onError = { error ->
+                        if (error !is CancellationException && requestedPhotoWindow == window) {
+                            requestedPhotoWindow = null
+                            updateState { copy(isPhotoLoading = false) }
+                            handleFailure(error)
+                        }
+                    },
+                ) {
+                    updateState { copy(isPhotoLoading = true) }
+                    val candidates = getPhotosInWindowUseCase(window)
+                    photoCandidates = candidates
+                    lastLoadedPhotoWindow = window
+                    requestedPhotoWindow = null
+                    preparedPhotoCache =
+                        preparedPhotoCache?.takeIf { cache ->
+                            val availableIds = candidates.mapTo(mutableSetOf(), PhotoCandidate::id)
+                            cache.ids.all(availableIds::contains)
+                        }
+                    updateState {
+                        refreshSourceSummary(sourceItems, candidates, zone)
+                            .copy(isPhotoLoading = false)
+                    }
+                }
+        }
+
+        private fun onRecordWindowChanged() {
+            preparedPhotoCache = null
+            updateState { refreshSourceSummary(sourceItems, photoCandidates, zone) }
+            loadPhotoCandidates(force = false)
+        }
+
+        private fun clearPhotoCandidates() {
+            photoCandidatesJob?.cancel()
+            photoCandidatesJob = null
+            photoCandidates = emptyList()
+            lastLoadedPhotoWindow = null
+            requestedPhotoWindow = null
+            preparedPhotoCache = null
+            updateState {
+                copy(
+                    isPhotoLoading = false,
+                    isPhotoSheetVisible = false,
+                    isPhotoAccessLimited = false,
+                ).refreshSourceSummary(sourceItems, emptyList(), zone)
+            }
+        }
+
+        private fun showPhotoLimitMessage() {
+            sendEffect(HomeUiSideEffect.ShowSnackbar("사진은 최대 ${MAX_PHOTO_SELECTION}장까지 선택할 수 있어요."))
         }
 
         private fun retryDraft() {
@@ -385,7 +561,7 @@ class HomeViewModel
             val alignedState =
                 if (trackingTask != null && trackingTask.recordDate != selectedDate) {
                     copy(selectedDate = trackingTask.recordDate)
-                        .refreshSourceSummary(sourceItems, zone, resetPhotoSelection = true)
+                        .refreshSourceSummary(sourceItems, photoCandidates, zone)
                 } else {
                     this
                 }
@@ -464,4 +640,9 @@ class HomeViewModel
                 elapsedSeconds < 60L -> "초안을 만들고 있어요. ${elapsedSeconds}초 지났어요."
                 else -> "초안을 만들고 있어요. ${elapsedSeconds / 60}분 지났어요."
             }
+
+        private data class PreparedPhotoCache(
+            val ids: Set<Long>,
+            val items: List<SourceItem>,
+        )
     }

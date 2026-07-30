@@ -2,7 +2,9 @@ package com.soma369.laimory.core.domain.source
 
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * 날짜 기반 사진 조회·선택 수집 포트.
@@ -12,8 +14,13 @@ import java.time.LocalDate
  * 저장은 포트의 책임이 아니다 — 호출자가 SourceItemRepository 로 저장한다.
  */
 interface PhotoSource {
+    /** [window]에 촬영된 사진 후보를 최신순으로 반환한다. */
+    suspend fun photosIn(window: RecordDateWindow): List<PhotoCandidate>
+
     /** [date](기기 시간대, `DATE_TAKEN` 기준)에 촬영된 사진 후보를 최신순으로 반환한다. */
-    suspend fun photosOn(date: LocalDate): List<PhotoCandidate>
+    suspend fun photosOn(date: LocalDate): List<PhotoCandidate> {
+        return photosIn(RecordDateWindow.ofDate(date, ZoneId.systemDefault()))
+    }
 
     /** [ids](MediaStore `_ID`)에 해당하는 사진을 EXIF 위치까지 읽어 [SourceItem] 으로 변환한다. */
     suspend fun collect(ids: List<Long>): List<SourceItem>

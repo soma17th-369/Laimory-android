@@ -1,5 +1,7 @@
 package com.soma369.laimory.feature.home.screen
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,10 +22,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.permission.PhotoPermission
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.DraftSettingsSheet
@@ -49,6 +55,15 @@ fun HomeRoute(
     LaunchedEffect(Unit) {
         viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
     }
+    val context = LocalContext.current
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.sendIntent(
+            HomeUiIntent.RefreshPhotos(
+                hasAccess = PhotoPermission.canRead(context),
+                limited = PhotoPermission.isLimited(context),
+            ),
+        )
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeContent(
         innerPadding = innerPadding,
@@ -68,6 +83,16 @@ private fun HomeContent(
     sideEffectFlow: Flow<HomeUiSideEffect>,
 ) {
     val snackbarHostState = LocalSnackbarHostState.current
+    val context = LocalContext.current
+    val photoPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            onIntent(
+                HomeUiIntent.ResolvePhotoAccess(
+                    granted = PhotoPermission.canRead(context),
+                    limited = PhotoPermission.isLimited(context),
+                ),
+            )
+        }
 
     LaunchedEffect(Unit) {
         snackbarFlow.collect(snackbarHostState::showSnackbar)
@@ -75,6 +100,18 @@ private fun HomeContent(
     LaunchedEffect(Unit) {
         sideEffectFlow.collect { effect ->
             when (effect) {
+                is HomeUiSideEffect.RequestPhotoAccess ->
+                    if (!effect.force && PhotoPermission.canRead(context)) {
+                        onIntent(
+                            HomeUiIntent.ResolvePhotoAccess(
+                                granted = true,
+                                limited = PhotoPermission.isLimited(context),
+                            ),
+                        )
+                    } else {
+                        photoPermissionLauncher.launch(PhotoPermission.required())
+                    }
+
                 is HomeUiSideEffect.ShowSnackbar -> snackbarHostState.showSnackbar(effect.message)
             }
         }
