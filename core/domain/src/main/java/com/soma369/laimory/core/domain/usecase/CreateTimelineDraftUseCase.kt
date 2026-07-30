@@ -39,8 +39,12 @@ class CreateTimelineDraftUseCase
             window: RecordDateWindow,
             items: List<SourceItem>,
         ): Result<DraftTaskHandle> {
-            val selection = selectionPolicy.select(window, items).getOrElse { return Result.failure(it) }
-            if (selectionReporter.isEnabled) selectionReporter.reportSelection(selection.report)
+            val selection =
+                runCatching {
+                    selectionPolicy.select(window, items).getOrThrow().also { selected ->
+                        if (selectionReporter.isEnabled) selectionReporter.reportSelection(selected.report)
+                    }
+                }.getOrElse { return Result.failure(it) }
 
             return execute {
                 val selectedItems = selection.items

@@ -12,6 +12,10 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
  *
  * v1 권장 Maximum: STAY 30, MOVEMENT 30, CALENDAR 20, HEALTH 30, NOTIFICATION 100,
  * PHOTO 20. 전체 전송 상한은 100.
+ *
+ * 타입별 값은 보장 건수가 아니라 각각의 최대치다. PHOTO는 사용자 선택을 보존하기 위해 전체 상한에서
+ * 먼저 예약하므로, PHOTO 20장이 선택되면 NOTIFICATION은 타입 상한이 100이어도 최대 80건까지만
+ * 전송될 수 있다.
  */
 data class DraftSourceItemLimits(
     val stay: Int = DEFAULT_STAY,

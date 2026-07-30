@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.navigation.CollectionPage
@@ -262,16 +263,7 @@ class HomeViewModel
                 )
             }
             safeLaunch(
-                onError = {
-                    updateState {
-                        copy(
-                            draftStatus = DraftCreationStatus.FAILED,
-                            draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                            draftMessage = "초안 생성 요청을 보내지 못했어요.",
-                        )
-                    }
-                    handleFailure(it)
-                },
+                onError = ::handleDraftCreationFailure,
             ) {
                 if (shouldDiscardPreviousTask) draftTaskCoordinator.discard()
                 val result =
@@ -283,20 +275,40 @@ class HomeViewModel
                     )
                 val handle =
                     result.getOrElse {
-                        updateState {
-                            copy(
-                                draftStatus = DraftCreationStatus.FAILED,
-                                draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                                draftMessage = "초안 생성 요청을 보내지 못했어요.",
-                            )
-                        }
-                        handleFailure(it)
+                        handleDraftCreationFailure(it)
                         return@safeLaunch
                     }
                 draftTaskCoordinator.start(handle.taskId, current.selectedDate)
                 updateState { copy(isDraftSheetVisible = false) }
                 sendEffect(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."))
             }
+        }
+
+        private fun handleDraftCreationFailure(error: Throwable) {
+            if (error is DraftPhotoLimitExceededException) {
+                val message = "${error.message}\n사진 선택에서 개수를 줄여주세요."
+                updateState {
+                    copy(
+                        draftStatus = DraftCreationStatus.FAILED,
+                        draftRetryMode = DraftRetryMode.NEW_DRAFT,
+                        draftMessage = message,
+                        isDraftSheetVisible = false,
+                        isPhotoSheetVisible = true,
+                        pendingPhotoIds = selectedPhotoIds,
+                    )
+                }
+                sendEffect(HomeUiSideEffect.ShowSnackbar(message))
+                return
+            }
+
+            updateState {
+                copy(
+                    draftStatus = DraftCreationStatus.FAILED,
+                    draftRetryMode = DraftRetryMode.NEW_DRAFT,
+                    draftMessage = "초안 생성 요청을 보내지 못했어요.",
+                )
+            }
+            handleFailure(error)
         }
 
         private fun retryDraft() {
