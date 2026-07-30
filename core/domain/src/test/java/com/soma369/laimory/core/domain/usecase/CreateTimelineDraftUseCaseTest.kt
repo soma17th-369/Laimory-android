@@ -10,6 +10,8 @@ import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReport
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
@@ -210,6 +212,45 @@ class CreateTimelineDraftUseCaseTest {
 
             assertTrue(result.isFailure)
             assertTrue(result.exceptionOrNull() is DraftPhotoLimitExceededException)
+            assertNull(repo.uploadedUris)
+            assertNull(repo.createdItems)
+        }
+
+    @Test
+    fun `선택 리포터 실패도 Result failure로 반환하고 생성 요청을 시작하지 않는다`() =
+        runBlocking {
+            val repo = CapturingRepository()
+            val reporterFailure = IllegalStateException("report failed")
+            val reporter =
+                object : DraftSourceItemSelectionReporter {
+                    override val isEnabled: Boolean = true
+
+                    override fun reportSelection(report: DraftSourceItemSelectionReport) {
+                        throw reporterFailure
+                    }
+
+                    override fun reportRequestSize(
+                        sourceItemCount: Int,
+                        utf8ByteCount: Int,
+                    ) = Unit
+                }
+            val useCase =
+                CreateTimelineDraftUseCase(
+                    repository = repo,
+                    messageHelper = noopMessageHelper,
+                    selectionReporter = reporter,
+                )
+
+            val result =
+                useCase(
+                    recordDate = date,
+                    zone = zone,
+                    window = RecordDateWindow.ofDate(date, zone),
+                    items = listOf(item(at(9))),
+                )
+
+            assertTrue(result.isFailure)
+            assertEquals(reporterFailure, result.exceptionOrNull())
             assertNull(repo.uploadedUris)
             assertNull(repo.createdItems)
         }

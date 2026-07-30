@@ -160,6 +160,26 @@ class DraftSourceItemSelectionPolicyTest {
     }
 
     @Test
+    fun `기록 창 밖 PHOTO가 상한을 넘어도 창 안 PHOTO만으로 판정한다`() {
+        val outsidePhotos =
+            (1..21).map { index ->
+                item("outside-photo-$index", ItemType.PHOTO, minute = -index)
+            }
+        val insidePhotos =
+            (1..5).map { index ->
+                item("inside-photo-$index", ItemType.PHOTO, minute = index)
+            }
+
+        val selection =
+            DraftSourceItemSelectionPolicy()
+                .select(window, outsidePhotos + insidePhotos)
+                .getOrThrow()
+
+        assertEquals(insidePhotos, selection.items)
+        assertEquals(5, selection.report.originalCounts.getValue(ItemType.PHOTO))
+    }
+
+    @Test
     fun `최종 목록은 startAt 오름차순 이후 rawId 오름차순으로 정렬한다`() {
         val policy = DraftSourceItemSelectionPolicy(limits = limits(total = 10))
         val late = item("late", ItemType.CALENDAR, minute = 3)
