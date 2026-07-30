@@ -7,31 +7,31 @@ import java.util.regex.Pattern
 
 internal class CalendarDescriptionPolicyTest {
     @Test
-    fun null은_null로_유지한다() {
+    fun `null은 null로 유지한다`() {
         assertNull(CalendarDescriptionPolicy.limit(null))
     }
 
     @Test
-    fun 빈_문자열은_빈_문자열로_유지한다() {
+    fun `빈 문자열은 빈 문자열로 유지한다`() {
         assertEquals("", CalendarDescriptionPolicy.limit(""))
     }
 
     @Test
-    fun 제한_이하의_앞뒤_공백과_줄바꿈은_그대로_유지한다() {
+    fun `제한 이하의 앞뒤 공백과 줄바꿈은 그대로 유지한다`() {
         val description = "  회의 안내\n참석 부탁드립니다.  "
 
         assertEquals(description, CalendarDescriptionPolicy.limit(description))
     }
 
     @Test
-    fun 정확히_500_grapheme이면_원문을_유지한다() {
+    fun `정확히 500 grapheme이면 원문을 유지한다`() {
         val description = "가".repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT)
 
         assertEquals(description, CalendarDescriptionPolicy.limit(description))
     }
 
     @Test
-    fun 제한을_초과하면_499_grapheme과_말줄임표로_축약한다() {
+    fun `제한을 초과하면 499 grapheme과 말줄임표로 축약한다`() {
         val description = "가".repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT + 1)
 
         val result = CalendarDescriptionPolicy.limit(description)
@@ -41,7 +41,7 @@ internal class CalendarDescriptionPolicyTest {
     }
 
     @Test
-    fun 결합_자모를_분리하지_않는다() {
+    fun `결합 자모를 분리하지 않는다`() {
         val combinedJamo = "\u1100\u1161"
         val description = combinedJamo.repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT + 1)
 
@@ -52,7 +52,7 @@ internal class CalendarDescriptionPolicyTest {
     }
 
     @Test
-    fun 결합_문자를_분리하지_않는다() {
+    fun `결합 문자를 분리하지 않는다`() {
         val combiningCharacter = "e\u0301"
         val description = combiningCharacter.repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT + 1)
 
@@ -63,7 +63,7 @@ internal class CalendarDescriptionPolicyTest {
     }
 
     @Test
-    fun 단일_이모지를_분리하지_않는다() {
+    fun `단일 이모지를 분리하지 않는다`() {
         val emoji = "👍🏽"
         val description = emoji.repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT + 1)
 
@@ -74,13 +74,35 @@ internal class CalendarDescriptionPolicyTest {
     }
 
     @Test
-    fun ZWJ_결합_이모지를_분리하지_않는다() {
+    fun `ZWJ 결합 이모지를 분리하지 않는다`() {
         val familyEmoji = "👨‍👩‍👧‍👦"
         val description = familyEmoji.repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT + 1)
 
         val result = CalendarDescriptionPolicy.limit(description)
 
         assertEquals(familyEmoji.repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT - 1) + "…", result)
+        assertEquals(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT, result.graphemeCount())
+    }
+
+    @Test
+    fun `서로 다른 grapheme이 절단 경계에 있어도 ZWJ 이모지를 온전히 유지한다`() {
+        val familyEmoji = "👨‍👩‍👧‍👦"
+        val description = "a".repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT - 2) + familyEmoji + "나" + "뒤"
+
+        val result = CalendarDescriptionPolicy.limit(description)
+
+        assertEquals("a".repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT - 2) + familyEmoji + "…", result)
+        assertEquals(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT, result.graphemeCount())
+    }
+
+    @Test
+    fun `500번째 ZWJ 이모지는 일부 코드 유닛을 남기지 않고 제외한다`() {
+        val familyEmoji = "👨‍👩‍👧‍👦"
+        val description = "a".repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT - 1) + familyEmoji + "뒤"
+
+        val result = CalendarDescriptionPolicy.limit(description)
+
+        assertEquals("a".repeat(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT - 1) + "…", result)
         assertEquals(CalendarDescriptionPolicy.MAX_GRAPHEME_COUNT, result.graphemeCount())
     }
 
