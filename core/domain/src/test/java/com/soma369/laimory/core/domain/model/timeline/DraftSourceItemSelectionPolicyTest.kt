@@ -24,7 +24,7 @@ class DraftSourceItemSelectionPolicyTest {
         )
 
     @Test
-    fun `기본 상한은 권장 Maximum과 전체 전송 상한을 따른다`() {
+    fun `기본 상한은 권장 Maximum을 따른다`() {
         val limits = DraftSourceItemLimits()
 
         assertEquals(30, limits.stay)
@@ -33,19 +33,11 @@ class DraftSourceItemSelectionPolicyTest {
         assertEquals(30, limits.health)
         assertEquals(100, limits.notification)
         assertEquals(20, limits.photo)
-        assertEquals(100, limits.total)
     }
 
     @Test
     fun `기록 창 필터 후 타입별 최신 항목만 선택한다`() {
-        val policy =
-            DraftSourceItemSelectionPolicy(
-                limits =
-                    limits(
-                        notification = 2,
-                        total = 10,
-                    ),
-            )
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 2))
         val outside = item("outside", ItemType.NOTIFICATION, minute = -1)
         val oldest = item("oldest", ItemType.NOTIFICATION, minute = 1)
         val middle = item("middle", ItemType.NOTIFICATION, minute = 2)
@@ -60,45 +52,39 @@ class DraftSourceItemSelectionPolicyTest {
     }
 
     @Test
-    fun `전체 상한에서는 PHOTO를 예약하고 남은 자리를 최신 비사진으로 채운다`() {
+    fun `타입별 상한은 독립적으로 적용되고 전체 상한으로 잘라내지 않는다`() {
         val policy =
             DraftSourceItemSelectionPolicy(
                 limits =
                     limits(
-                        stay = 3,
-                        notification = 3,
+                        stay = 1,
+                        notification = 2,
                         photo = 2,
-                        total = 4,
                     ),
             )
         val photo1 = item("photo-1", ItemType.PHOTO, minute = 1)
         val photo2 = item("photo-2", ItemType.PHOTO, minute = 2)
-        val stay = item("stay", ItemType.STAY, minute = 3)
-        val notification1 = item("notification-1", ItemType.NOTIFICATION, minute = 4)
-        val notification2 = item("notification-2", ItemType.NOTIFICATION, minute = 5)
+        val oldStay = item("stay-old", ItemType.STAY, minute = 3)
+        val newStay = item("stay-new", ItemType.STAY, minute = 4)
+        val notification1 = item("notification-1", ItemType.NOTIFICATION, minute = 5)
+        val notification2 = item("notification-2", ItemType.NOTIFICATION, minute = 6)
 
         val selection =
             policy
-                .select(window, listOf(notification1, photo2, stay, notification2, photo1))
+                .select(window, listOf(notification1, photo2, oldStay, newStay, notification2, photo1))
                 .getOrThrow()
 
-        assertEquals(listOf(photo1, photo2, notification1, notification2), selection.items)
-        assertEquals(5, selection.report.originalTotal)
-        assertEquals(4, selection.report.selectedTotal)
+        // STAY만 타입 상한(1)으로 잘리고, 나머지는 타입 상한 합이 몇이든 전부 전송된다.
+        assertEquals(listOf(photo1, photo2, newStay, notification1, notification2), selection.items)
+        assertEquals(6, selection.report.originalTotal)
+        assertEquals(5, selection.report.selectedTotal)
         assertEquals(1, selection.report.excludedCounts.getValue(ItemType.STAY))
+        assertEquals(0, selection.report.excludedCounts.getValue(ItemType.NOTIFICATION))
     }
 
     @Test
     fun `동일 시각이면 rawId 오름차순으로 안정 선택하고 전송한다`() {
-        val policy =
-            DraftSourceItemSelectionPolicy(
-                limits =
-                    limits(
-                        notification = 2,
-                        photo = 2,
-                        total = 2,
-                    ),
-            )
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 2))
         val rawC = item("c", ItemType.NOTIFICATION, minute = 1)
         val rawA = item("a", ItemType.NOTIFICATION, minute = 1)
         val rawB = item("b", ItemType.NOTIFICATION, minute = 1)
@@ -110,15 +96,7 @@ class DraftSourceItemSelectionPolicyTest {
 
     @Test
     fun `구간 데이터의 최신 기준은 endAt이 아니라 startAt이다`() {
-        val policy =
-            DraftSourceItemSelectionPolicy(
-                limits =
-                    limits(
-                        movement = 1,
-                        photo = 1,
-                        total = 1,
-                    ),
-            )
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(movement = 1))
         val earlyStartLateEnd =
             item(
                 rawId = "early",
@@ -141,14 +119,7 @@ class DraftSourceItemSelectionPolicyTest {
 
     @Test
     fun `PHOTO 상한 초과는 자동 절삭하지 않고 실패한다`() {
-        val policy =
-            DraftSourceItemSelectionPolicy(
-                limits =
-                    limits(
-                        photo = 2,
-                        total = 4,
-                    ),
-            )
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(photo = 2))
         val photos = (1..3).map { index -> item("photo-$index", ItemType.PHOTO, minute = index) }
 
         val result = policy.select(window, photos)
@@ -181,7 +152,7 @@ class DraftSourceItemSelectionPolicyTest {
 
     @Test
     fun `최종 목록은 startAt 오름차순 이후 rawId 오름차순으로 정렬한다`() {
-        val policy = DraftSourceItemSelectionPolicy(limits = limits(total = 10))
+        val policy = DraftSourceItemSelectionPolicy(limits = limits())
         val late = item("late", ItemType.CALENDAR, minute = 3)
         val sameTimeB = item("b", ItemType.HEALTH, minute = 2)
         val early = item("early", ItemType.STAY, minute = 1)
@@ -199,7 +170,6 @@ class DraftSourceItemSelectionPolicyTest {
         health: Int = 10,
         notification: Int = 10,
         photo: Int = 10,
-        total: Int,
     ): DraftSourceItemLimits =
         DraftSourceItemLimits(
             stay = stay,
@@ -208,7 +178,6 @@ class DraftSourceItemSelectionPolicyTest {
             health = health,
             notification = notification,
             photo = photo,
-            total = total,
         )
 
     private fun item(

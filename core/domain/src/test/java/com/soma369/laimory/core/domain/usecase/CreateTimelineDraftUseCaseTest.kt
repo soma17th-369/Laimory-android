@@ -156,7 +156,6 @@ class CreateTimelineDraftUseCaseTest {
                         DraftSourceItemLimits(
                             notification = 2,
                             photo = 10,
-                            total = 10,
                         ),
                 )
             val useCase =
@@ -188,10 +187,7 @@ class CreateTimelineDraftUseCaseTest {
             val policy =
                 DraftSourceItemSelectionPolicy(
                     limits =
-                        DraftSourceItemLimits(
-                            photo = 2,
-                            total = 10,
-                        ),
+                        DraftSourceItemLimits(photo = 2),
                 )
             val useCase =
                 CreateTimelineDraftUseCase(
