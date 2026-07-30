@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
@@ -27,13 +28,17 @@ import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
+import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
+import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
+import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,7 +55,9 @@ import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
+import java.util.ArrayDeque
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
@@ -60,6 +67,7 @@ class HomeViewModelTest {
     private val sourceRepository = FakeSourceItemRepository()
     private val draftRepository = FakeTimelineDraftRepository()
     private val recordRepository = FakeTimelineRecordRepository()
+    private val photoSource = FakePhotoSource()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
 
@@ -120,25 +128,155 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `PHOTO 상한 초과 시 이유를 표시하고 사진 선택 화면으로 안내한다`() =
+    fun `전체 사진 선택은 최대 20장까지만 반영한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            sourceRepository.items.value = (1..21).map(::todayPhotoItem)
+            photoSource.candidates = (1L..21L).map(::todayPhotoCandidate)
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertTrue(state.isPhotoSheetVisible)
+            assertEquals(21, state.availablePhotos.size)
+            assertEquals(20, state.pendingPhotoIds.size)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `사진 권한을 거절하면 선택 화면을 열거나 MediaStore를 조회하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            assertTrue(photoSource.requestedWindows.isEmpty())
+        }
+
+    @Test
+    fun `사진 선택 취소는 기존 확정 선택을 변경하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            photoSource.candidates = listOf(todayPhotoCandidate(1L), todayPhotoCandidate(2L))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 2L))
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+
+            assertEquals(setOf(1L), viewModel.state.value.selectedPhotoIds)
+            assertEquals(emptySet<Long>(), viewModel.state.value.pendingPhotoIds)
+        }
+
+    @Test
+    fun `기록 창 변경과 foreground 복귀는 현재 범위로 사진을 다시 조회한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val zone = ZoneId.systemDefault()
+            val today = LocalDate.now(zone)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true, limited = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.SelectTime(HomeTimeField.START, LocalTime.of(9, 0)))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true, limited = true))
+            runCurrent()
+
+            assertEquals(3, photoSource.requestedWindows.size)
+            assertEquals(today.atTime(9, 0).atZone(zone).toInstant(), photoSource.requestedWindows[1].start)
+            assertEquals(today.plusDays(1).atStartOfDay(zone).toInstant(), photoSource.requestedWindows[1].end)
+            assertTrue(viewModel.state.value.isPhotoAccessLimited)
+        }
+
+    @Test
+    fun `연속된 기록 창 변경은 이전 사진 조회를 취소하고 마지막 결과만 반영한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val firstResult = CompletableDeferred<List<PhotoCandidate>>()
+            val latestResult = CompletableDeferred<List<PhotoCandidate>>()
+            photoSource.candidateGates += firstResult
+            photoSource.candidateGates += latestResult
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.SelectTime(HomeTimeField.START, LocalTime.of(9, 0)))
+            runCurrent()
+
+            latestResult.complete(listOf(todayPhotoCandidate(2L)))
+            runCurrent()
+            firstResult.complete(listOf(todayPhotoCandidate(1L)))
+            runCurrent()
+
+            assertEquals(2, photoSource.requestedWindows.size)
+            assertEquals(listOf(2L), viewModel.state.value.availablePhotos.map { it.mediaStoreId })
+        }
+
+    @Test
+    fun `선택한 MediaStore 사진만 Room 저장 없이 초안 요청에 합친다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value =
+                listOf(
+                    todayItem("calendar"),
+                    todayPhotoItem(99L),
+                )
+            photoSource.candidates = listOf(todayPhotoCandidate(1L), todayPhotoCandidate(2L))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 2L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
-            val state = viewModel.state.value
-            assertEquals(DraftCreationStatus.FAILED, state.draftStatus)
-            assertTrue(state.draftMessage.orEmpty().contains("사진은 최대 20장"))
-            assertTrue(state.draftMessage.orEmpty().contains("사진 선택에서 개수를 줄여주세요"))
-            assertFalse(state.isDraftSheetVisible)
-            assertTrue(state.isPhotoSheetVisible)
-            assertEquals(21, state.pendingPhotoIds.size)
+            assertEquals(1, draftRepository.createCount)
+            assertEquals(
+                setOf("calendar", "prepared-photo-2"),
+                draftRepository.createdItems.mapTo(mutableSetOf(), SourceItem::rawId),
+            )
+            assertFalse(draftRepository.createdItems.any { it.sourceKey == "99" })
+            assertEquals(listOf(2L), photoSource.collectedRequests.single())
+        }
+
+    @Test
+    fun `선택 사진이 삭제되면 생성하지 않고 선택 화면에서 제외한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            photoSource.unavailableIds = setOf(1L)
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
             assertEquals(0, draftRepository.createCount)
+            assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+            assertEquals(emptySet<Long>(), viewModel.state.value.selectedPhotoIds)
+            assertTrue(viewModel.state.value.draftMessage.orEmpty().contains("접근할 수 없어요"))
         }
 
     @Test
@@ -419,6 +557,8 @@ class HomeViewModelTest {
                     repository = recordRepository,
                     messageHelper = NoOpMessageHelper,
                 ),
+            getPhotosInWindowUseCase = GetPhotosInWindowUseCase(photoSource),
+            prepareSelectedPhotosUseCase = PrepareSelectedPhotosUseCase(photoSource),
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
         )
@@ -485,25 +625,34 @@ class HomeViewModelTest {
         )
     }
 
-    private fun todayPhotoItem(index: Int): SourceItem {
+    private fun todayPhotoItem(id: Long): SourceItem {
         val zone = ZoneId.systemDefault()
-        val instant = LocalDate.now(zone).atTime(12, index).atZone(zone).toInstant()
+        val instant = LocalDate.now(zone).atTime(12, 0).atZone(zone).toInstant()
         return SourceItem(
-            rawId = "photo-$index",
+            rawId = "staged-photo-$id",
             startAt = instant,
             endAt = null,
             timeZoneId = zone,
             payload =
                 PhotoPayload(
-                    fileName = "photo-$index.jpg",
-                    clientPhotoUri = "content://photo/$index",
+                    fileName = "photo-$id.jpg",
+                    clientPhotoUri = "content://photo/$id",
                     latitude = null,
                     longitude = null,
                     description = null,
                 ),
             sourceName = SourceName.MEDIA_STORE,
-            sourceKey = "photo-$index",
+            sourceKey = id.toString(),
             collectedAt = instant,
+        )
+    }
+
+    private fun todayPhotoCandidate(id: Long): PhotoCandidate {
+        val zone = ZoneId.systemDefault()
+        return PhotoCandidate(
+            id = id,
+            contentUri = "content://photo/$id",
+            takenAt = LocalDate.now(zone).atTime(12, 0).atZone(zone).toInstant().plusSeconds(id),
         )
     }
 
@@ -525,8 +674,10 @@ class HomeViewModelTest {
         var createCount = 0
         var createGate: CompletableDeferred<DraftTaskHandle>? = null
         var createFailure: Throwable? = null
+        var createdItems: List<SourceItem> = emptyList()
 
-        override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> = emptyList()
+        override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> =
+            clientPhotoUris.mapIndexed { index, _ -> "uploaded-$index.jpg" }
 
         override suspend fun createDraft(
             recordDate: LocalDate,
@@ -536,11 +687,46 @@ class HomeViewModelTest {
             uploadedPhotoFilenames: Map<String, String>,
         ): DraftTaskHandle {
             createCount++
+            createdItems = items
             createFailure?.let { throw it }
             return createGate?.await() ?: DraftTaskHandle("task-$createCount")
         }
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
+    }
+
+    private class FakePhotoSource : PhotoSource {
+        var candidates: List<PhotoCandidate> = emptyList()
+        var unavailableIds: Set<Long> = emptySet()
+        val candidateGates = ArrayDeque<CompletableDeferred<List<PhotoCandidate>>>()
+        val requestedWindows = mutableListOf<RecordDateWindow>()
+        val collectedRequests = mutableListOf<List<Long>>()
+
+        override suspend fun photosIn(window: RecordDateWindow): List<PhotoCandidate> {
+            requestedWindows += window
+            val response = candidateGates.pollFirst()?.await() ?: candidates
+            return response.filter { it.takenAt >= window.start && it.takenAt < window.end }
+        }
+
+        override suspend fun collect(ids: List<Long>): List<SourceItem> {
+            collectedRequests += ids
+            val zone = ZoneId.systemDefault()
+            return ids
+                .filterNot(unavailableIds::contains)
+                .map { id ->
+                    val candidate = candidates.first { it.id == id }
+                    SourceItem(
+                        rawId = "prepared-photo-$id",
+                        startAt = candidate.takenAt,
+                        endAt = null,
+                        timeZoneId = zone,
+                        payload = PhotoPayload("$id.jpg", candidate.contentUri, null, null, null),
+                        sourceName = SourceName.MEDIA_STORE,
+                        sourceKey = id.toString(),
+                        collectedAt = candidate.takenAt,
+                    )
+                }
+        }
     }
 
     private class FakeTimelineRecordRepository : TimelineRecordRepository {

@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.state
 
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
+import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
@@ -94,48 +95,88 @@ class HomeUiStateTest {
     }
 
     @Test
-    fun `선택 범위 안의 사진을 기본으로 모두 선택하고 최신 사진부터 보여준다`() {
+    fun `MediaStore 후보는 최신순으로 표시하되 사용자가 확정하기 전에는 선택하지 않는다`() {
         val items =
             listOf(
-                item("early", date.atTime(8, 0), photo("early")),
-                item("late", date.atTime(20, 0), photo("late")),
                 item("calendar", date.atTime(12, 0), CalendarPayload("일정", null, null, false)),
-                item("outside", date.plusDays(1).atTime(1, 0), photo("outside")),
+                item("staged-photo", date.atTime(10, 0), photo("staged")),
+            )
+        val candidates =
+            listOf(
+                candidate(id = 1L, dateTime = date.atTime(8, 0)),
+                candidate(id = 2L, dateTime = date.atTime(20, 0)),
+                candidate(id = 3L, dateTime = date.plusDays(1).atTime(1, 0)),
             )
 
-        val state = HomeUiState(selectedDate = date).refreshSourceSummary(items, zone)
+        val state = HomeUiState(selectedDate = date).refreshSourceSummary(items, candidates, zone)
 
-        assertEquals(setOf("early", "late"), state.selectedPhotoIds)
-        assertEquals(2, state.summary.photoCount)
-        assertEquals(listOf("content://late", "content://early"), state.summary.photoPreviewUris)
-        assertEquals(3, state.summary.totalItemCount)
+        assertEquals(listOf(2L, 1L), state.availablePhotos.map(HomePhotoItem::mediaStoreId))
+        assertEquals(emptySet<Long>(), state.selectedPhotoIds)
+        assertEquals(0, state.summary.photoCount)
+        assertEquals(emptyList<String>(), state.summary.photoPreviewUris)
+        assertEquals(1, state.summary.totalItemCount)
     }
 
     @Test
-    fun `사진 선택을 확정하면 선택한 사진과 비사진 데이터만 초안에 포함한다`() {
-        val items =
-            listOf(
-                item("photo-1", date.atTime(8, 0), photo("photo-1")),
-                item("photo-2", date.atTime(9, 0), photo("photo-2")),
-                item("calendar", date.atTime(10, 0), CalendarPayload("일정", null, null, false)),
+    fun `사용자 지정 범위는 기준일과 익일 사진만 반열린 구간으로 필터링한다`() {
+        val state =
+            HomeUiState(
+                selectedDate = date,
+                startTime = LocalTime.of(22, 0),
+                endDay = DraftEndDay.NEXT_DAY,
+                endTime = LocalTime.of(2, 0),
             )
-        val initial = HomeUiState(selectedDate = date).refreshSourceSummary(items, zone)
-        val selected =
-            initial
-                .copy(
-                    selectedPhotoIds = setOf("photo-2"),
-                    hasCustomizedPhotoSelection = true,
-                ).refreshSourceSummary(items, zone)
+        val candidates =
+            listOf(
+                candidate(id = 1L, dateTime = date.atTime(21, 59)),
+                candidate(id = 2L, dateTime = date.atTime(23, 0)),
+                candidate(id = 3L, dateTime = date.plusDays(1).atTime(1, 0)),
+                candidate(id = 4L, dateTime = date.plusDays(1).atTime(2, 0)),
+            )
 
-        assertEquals(1, selected.summary.photoCount)
-        assertEquals(2, selected.summary.totalItemCount)
+        val refreshed = state.refreshSourceSummary(emptyList(), candidates, zone)
+
+        assertEquals(listOf(3L, 2L), refreshed.availablePhotos.map(HomePhotoItem::mediaStoreId))
         assertEquals(
-            setOf("photo-2", "calendar"),
-            selected.selectedSourceItems(items, zone).mapTo(mutableSetOf(), SourceItem::rawId),
+            setOf(date, date.plusDays(1)),
+            refreshed.availablePhotos.mapTo(linkedSetOf()) { it.capturedAt.atZone(zone).toLocalDate() },
         )
     }
 
+    @Test
+    fun `확정한 MediaStore 사진만 요약하고 Room PHOTO는 초안 입력에서 제외한다`() {
+        val items =
+            listOf(
+                item("staged-photo", date.atTime(8, 0), photo("staged-photo")),
+                item("calendar", date.atTime(10, 0), CalendarPayload("일정", null, null, false)),
+            )
+        val candidates =
+            listOf(
+                candidate(id = 1L, dateTime = date.atTime(8, 0)),
+                candidate(id = 2L, dateTime = date.atTime(9, 0)),
+            )
+        val selected =
+            HomeUiState(
+                selectedDate = date,
+                selectedPhotoIds = setOf(2L),
+            ).refreshSourceSummary(items, candidates, zone)
+
+        assertEquals(1, selected.summary.photoCount)
+        assertEquals(2, selected.summary.totalItemCount)
+        assertEquals(listOf("content://photo/2"), selected.summary.photoPreviewUris)
+        assertEquals(listOf("calendar"), selected.nonPhotoSourceItems(items, zone).map(SourceItem::rawId))
+    }
+
     private fun photo(id: String) = PhotoPayload("$id.jpg", "content://$id", null, null, null)
+
+    private fun candidate(
+        id: Long,
+        dateTime: LocalDateTime,
+    ) = PhotoCandidate(
+        id = id,
+        contentUri = "content://photo/$id",
+        takenAt = dateTime.atZone(zone).toInstant(),
+    )
 
     private fun item(
         id: String,
