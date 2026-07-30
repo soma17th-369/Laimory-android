@@ -7,12 +7,16 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
@@ -54,15 +58,19 @@ class CreateTimelineDraftUseCaseTest {
             override fun send(message: UserMessage) = Unit
         }
 
-    private fun at(hour: Int): Instant = date.atTime(hour, 0).atZone(zone).toInstant()
+    private fun at(
+        hour: Int,
+        minute: Int = 0,
+    ): Instant = date.atTime(hour, minute).atZone(zone).toInstant()
 
     private fun item(
         start: Instant,
         payload: SourceItemPayload =
             NotificationPayload("app", "com.app", "t", "x", NotificationPayload.CollectReason.ALL),
+        rawId: String = "raw-$start",
     ): SourceItem =
         SourceItem(
-            rawId = "raw-$start",
+            rawId = rawId,
             startAt = start,
             endAt = null,
             timeZoneId = zone,
@@ -134,5 +142,75 @@ class CreateTimelineDraftUseCaseTest {
             assertTrue(result.isSuccess)
             assertEquals(listOf(inside, nextDayInside), repo.createdItems)
             assertEquals(listOf("content://inside", "content://next"), repo.uploadedUris)
+        }
+
+    @Test
+    fun `타입 상한을 적용한 최신 항목만 생성 요청에 전달한다`() =
+        runBlocking {
+            val repo = CapturingRepository()
+            val policy =
+                DraftSourceItemSelectionPolicy(
+                    limits =
+                        DraftSourceItemLimits(
+                            notification = 2,
+                            photo = 10,
+                            total = 10,
+                        ),
+                )
+            val useCase =
+                CreateTimelineDraftUseCase(
+                    repository = repo,
+                    messageHelper = noopMessageHelper,
+                    selectionPolicy = policy,
+                )
+            val oldest = item(at(9), rawId = "oldest")
+            val middle = item(at(12), rawId = "middle")
+            val newest = item(at(18), rawId = "newest")
+
+            val result =
+                useCase(
+                    recordDate = date,
+                    zone = zone,
+                    window = RecordDateWindow.ofDate(date, zone),
+                    items = listOf(oldest, newest, middle),
+                )
+
+            assertTrue(result.isSuccess)
+            assertEquals(listOf(middle, newest), repo.createdItems)
+        }
+
+    @Test
+    fun `PHOTO 상한 초과 시 업로드와 생성 요청을 시작하지 않는다`() =
+        runBlocking {
+            val repo = CapturingRepository()
+            val policy =
+                DraftSourceItemSelectionPolicy(
+                    limits =
+                        DraftSourceItemLimits(
+                            photo = 2,
+                            total = 10,
+                        ),
+                )
+            val useCase =
+                CreateTimelineDraftUseCase(
+                    repository = repo,
+                    messageHelper = noopMessageHelper,
+                    selectionPolicy = policy,
+                )
+            val photos =
+                (1..3).map { index ->
+                    item(
+                        start = at(10, index),
+                        rawId = "photo-$index",
+                        payload = PhotoPayload("$index.jpg", "content://$index", null, null, null),
+                    )
+                }
+
+            val result = useCase(date, zone, RecordDateWindow.ofDate(date, zone), photos)
+
+            assertTrue(result.isFailure)
+            assertTrue(result.exceptionOrNull() is DraftPhotoLimitExceededException)
+            assertNull(repo.uploadedUris)
+            assertNull(repo.createdItems)
         }
 }
