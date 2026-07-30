@@ -10,6 +10,7 @@ import com.soma369.laimory.core.collection.collector.effectiveStartMillis
 import com.soma369.laimory.core.collection.collector.toSourceItem
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
@@ -17,15 +18,14 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 import javax.inject.Inject
 
 /**
- * MediaStore 기반 날짜 선택 사진 수집기([PhotoSource] 구현).
+ * MediaStore 기반 범위 선택 사진 수집기([PhotoSource] 구현).
  *
- * 전량 배치 수집(`PhotoCollector`)과 달리, 날짜([photosOn])로 후보를 조회하고 사용자가 고른 id([collect])만
+ * 전량 배치 수집(`PhotoCollector`)과 달리, 범위([photosIn])로 후보를 조회하고 사용자가 고른 id([collect])만
  * [SourceItem] 으로 변환한다. 권한 확인/요청은 하지 않으며([PhotoSource] 계약), 실패 시 빈 목록을 반환한다.
  *
  * 조회·EXIF 파싱은 blocking I/O 이므로 [Dispatchers.IO] 에서 수행하고, EXIF 위치는 [PhotoExifLocationReader]
@@ -38,17 +38,17 @@ internal class PhotoMediaSource
         private val exifLocationReader: PhotoExifLocationReader,
     ) : PhotoSource {
         /**
-         * [date](기기 시간대) 하루 `[00:00, 다음날 00:00)` 범위의 사진 후보를 최신순(유효 시각 기준) 반환.
+         * [window]의 반열린 구간에 포함되는 사진 후보를 최신순(유효 시각 기준)으로 반환한다.
          *
-         * 날짜 기준은 `DATE_TAKEN`(촬영 시각) 우선, 없거나 0 이면 `DATE_ADDED`(추가 시각) fallback 이다(설계).
-         * 저장(toSourceItem)의 유효 시각 규칙과 같은 기준이라, 촬영 시각이 없는 스크린샷·다운로드도 추가일로 잡힌다.
+         * 날짜 기준은 `DATE_TAKEN`(촬영 시각) 우선, 없거나 0 이면 `DATE_ADDED`(추가 시각) fallback 이다.
+         * 저장(toSourceItem)의 유효 시각 규칙과 같아 촬영 시각이 없는 스크린샷·다운로드도 추가 시각으로 조회된다.
          */
-        override suspend fun photosOn(date: LocalDate): List<PhotoCandidate> =
+        override suspend fun photosIn(window: RecordDateWindow): List<PhotoCandidate> =
             withContext(Dispatchers.IO) {
-                val zone = ZoneId.systemDefault()
-                val startMillis = date.atStartOfDay(zone).toInstant().toEpochMilli()
-                val endMillis = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-                queryCandidates(startMillis, endMillis)
+                queryCandidates(
+                    startMillis = window.start.toEpochMilli(),
+                    endMillis = window.end.toEpochMilli(),
+                )
             }
 
         override suspend fun collect(ids: List<Long>): List<SourceItem> =
@@ -69,7 +69,7 @@ internal class PhotoMediaSource
             startMillis: Long,
             endMillis: Long,
         ): List<PhotoCandidate> {
-            // DATE_ADDED 는 seconds 단위라 하루 경계(정각, millis 는 1000 배수)를 seconds 로 그대로 환산한다.
+            // DATE_ADDED 는 seconds 단위이므로 범위 경계의 epoch millis 를 seconds 로 환산한다.
             val startSeconds = startMillis / MILLIS_PER_SECOND
             val endSeconds = endMillis / MILLIS_PER_SECOND
             val cursor =
@@ -93,7 +93,7 @@ internal class PhotoMediaSource
                 } ?: return emptyList()
 
             // 유효 시각(DATE_TAKEN·DATE_ADDED fallback) 기준 최신순 정렬은 커서 SQL 대신 메모리에서 한다
-            // (하루치라 작고, MediaStore 가 정렬 표현식을 제한하는 경우를 피한다).
+            // (초안 범위로 제한되어 작고, MediaStore 가 정렬 표현식을 제한하는 경우를 피한다).
             return cursor.use { readCandidates(it) }.sortedByDescending { it.takenAt }
         }
 
@@ -181,7 +181,7 @@ internal class PhotoMediaSource
             const val MILLIS_PER_SECOND = 1_000L
 
             /**
-             * DATE_TAKEN(우선)·DATE_ADDED(fallback) 중 유효 시각이 하루 `[start, end)` 에 드는 후보 선택.
+             * DATE_TAKEN(우선)·DATE_ADDED(fallback) 중 유효 시각이 범위 `[start, end)` 에 드는 후보 선택.
              * 저장(toSourceItem)의 유효 시각 규칙과 일치시켜 촬영 시각이 없는 사진도 추가일로 잡는다.
              * API 30+ 가 정렬/선택 표현식을 제한하므로 산술·CASE 없이 컬럼 비교만 쓴다(DATE_ADDED 는 seconds 로 비교).
              * args: [startMillis, endMillis, startSeconds, endSeconds].
