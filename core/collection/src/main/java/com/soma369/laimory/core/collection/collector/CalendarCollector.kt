@@ -130,7 +130,7 @@ internal class CalendarCollector
                         payload =
                             CalendarPayload(
                                 title = cursor.getString(titleColumn).orEmpty(),
-                                description = cursor.getString(descriptionColumn),
+                                description = CalendarDescriptionPolicy.limit(cursor.getString(descriptionColumn)),
                                 locationText = cursor.getString(locationColumn),
                                 allDay = allDay,
                             ),
