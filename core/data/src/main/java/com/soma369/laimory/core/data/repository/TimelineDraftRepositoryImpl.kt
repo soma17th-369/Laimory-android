@@ -11,10 +11,12 @@ import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -28,6 +30,7 @@ class TimelineDraftRepositoryImpl
         private val remote: TimelineDraftRemoteDataSource,
         private val s3Uploader: S3PhotoUploader,
         private val json: Json,
+        private val selectionReporter: DraftSourceItemSelectionReporter = DraftSourceItemSelectionReporter.NONE,
     ) : TimelineDraftRepository {
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> {
             if (clientPhotoUris.isEmpty()) return emptyList()
@@ -76,6 +79,17 @@ class TimelineDraftRepositoryImpl
                         ),
                     sourceItems = items.map { it.toSourceItemDto(json, uploadedPhotoFilenames[it.rawId]) },
                 )
+            if (selectionReporter.isEnabled) {
+                val utf8ByteCount =
+                    json
+                        .encodeToString(CreateDraftTaskRequest.serializer(), request)
+                        .encodeToByteArray()
+                        .size
+                selectionReporter.reportRequestSize(
+                    sourceItemCount = request.sourceItems.size,
+                    utf8ByteCount = utf8ByteCount,
+                )
+            }
             return remote.createDraft(request).toDomain()
         }
 

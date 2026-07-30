@@ -11,6 +11,8 @@ import com.soma369.laimory.core.data.model.timeline.response.PhotoUploadEntry
 import com.soma369.laimory.core.data.network.s3.PhotoMeta
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReport
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import kotlinx.coroutines.test.runTest
@@ -67,6 +69,22 @@ class TimelineDraftRepositoryImplTest {
         }
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskStatusResponse = statusResponse
+    }
+
+    private class RecordingSelectionReporter : DraftSourceItemSelectionReporter {
+        override val isEnabled: Boolean = true
+        var reportedSourceItemCount: Int? = null
+        var reportedUtf8ByteCount: Int? = null
+
+        override fun reportSelection(report: DraftSourceItemSelectionReport) = Unit
+
+        override fun reportRequestSize(
+            sourceItemCount: Int,
+            utf8ByteCount: Int,
+        ) {
+            reportedSourceItemCount = sourceItemCount
+            reportedUtf8ByteCount = utf8ByteCount
+        }
     }
 
     @Test
@@ -198,5 +216,33 @@ class TimelineDraftRepositoryImplTest {
 
             assertEquals("2026-03-08T03:30", remote.lastDraftRequest!!.timelineWindow.startTime)
             assertEquals("2026-03-08T04:00", remote.lastDraftRequest!!.timelineWindow.endTime)
+        }
+
+    @Test
+    fun `createDraft - debug 측정 포트에 sourceItems 수와 직렬화 byte를 전달한다`() =
+        runTest {
+            val remote = FakeRemote(PhotoUploadCreateResponse(uploads = emptyList()))
+            val reporter = RecordingSelectionReporter()
+            val repo =
+                TimelineDraftRepositoryImpl(
+                    photoMetaResolver = resolver,
+                    remote = remote,
+                    s3Uploader = RecordingS3Uploader(),
+                    json = Json,
+                    selectionReporter = reporter,
+                )
+            val zone = ZoneId.of("Asia/Seoul")
+            val date = LocalDate.of(2026, 7, 8)
+            val window = RecordDateWindow.ofDate(date, zone)
+
+            repo.createDraft(date, zone, window, emptyList(), emptyMap())
+
+            val encoded =
+                Json.encodeToString(
+                    CreateDraftTaskRequest.serializer(),
+                    remote.lastDraftRequest!!,
+                )
+            assertEquals(0, reporter.reportedSourceItemCount)
+            assertEquals(encoded.encodeToByteArray().size, reporter.reportedUtf8ByteCount)
         }
 }

@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -115,6 +117,28 @@ class HomeViewModelTest {
 
             assertEquals(2, draftRepository.createCount)
             assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
+        }
+
+    @Test
+    fun `PHOTO 상한 초과 시 이유를 표시하고 사진 선택 화면으로 안내한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = (1..21).map(::todayPhotoItem)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(DraftCreationStatus.FAILED, state.draftStatus)
+            assertTrue(state.draftMessage.orEmpty().contains("사진은 최대 20장"))
+            assertTrue(state.draftMessage.orEmpty().contains("사진 선택에서 개수를 줄여주세요"))
+            assertFalse(state.isDraftSheetVisible)
+            assertTrue(state.isPhotoSheetVisible)
+            assertEquals(21, state.pendingPhotoIds.size)
+            assertEquals(0, draftRepository.createCount)
         }
 
     @Test
@@ -457,6 +481,28 @@ class HomeViewModelTest {
             payload = CalendarPayload("일정", null, null, false),
             sourceName = SourceName.CALENDAR_PROVIDER,
             sourceKey = id,
+            collectedAt = instant,
+        )
+    }
+
+    private fun todayPhotoItem(index: Int): SourceItem {
+        val zone = ZoneId.systemDefault()
+        val instant = LocalDate.now(zone).atTime(12, index).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = "photo-$index",
+            startAt = instant,
+            endAt = null,
+            timeZoneId = zone,
+            payload =
+                PhotoPayload(
+                    fileName = "photo-$index.jpg",
+                    clientPhotoUri = "content://photo/$index",
+                    latitude = null,
+                    longitude = null,
+                    description = null,
+                ),
+            sourceName = SourceName.MEDIA_STORE,
+            sourceKey = "photo-$index",
             collectedAt = instant,
         )
     }
