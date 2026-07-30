@@ -21,7 +21,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -44,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.soma369.laimory.core.domain.model.collection.NotificationCollectMode
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.source.InstalledApp
@@ -60,7 +58,7 @@ import java.time.format.DateTimeFormatter
 /**
  * 수집 실험실의 "알림" 탭. NotificationListenerService 로 실시간 캡처된 알림을 확인·설정한다.
  *
- * 과거 백필은 불가하며(서비스가 붙어있는 동안 발생한 알림만), 화면은 ① 알림 접근 권한 → ② 모드/필터 설정 →
+ * 과거 백필은 불가하며(서비스가 붙어있는 동안 발생한 알림만), 화면은 ① 알림 접근 권한 → ② 앱/키워드 필터 →
  * ③ 캡처된 목록(수집 이유 컬러 닷) 순으로 구성한다. 화면 인셋은 컨테이너([CollectionLabRoute])가 소유한다.
  */
 @Composable
@@ -123,23 +121,25 @@ private fun NotificationCollectionContent(
             )
         }
 
-        item { ModeSelector(mode = state.mode, onSelect = { onIntent(NotificationUiIntent.SetMode(it)) }) }
-
-        if (state.mode == NotificationCollectMode.SELECTIVE) {
-            item {
-                KeywordFilter(
-                    keywords = state.keywords,
-                    onAdd = { onIntent(NotificationUiIntent.AddKeyword(it)) },
-                    onRemove = { onIntent(NotificationUiIntent.RemoveKeyword(it)) },
-                )
-            }
-            item {
-                AppFilter(
-                    apps = state.installedApps,
-                    allowedPackages = state.allowedPackages,
-                    onToggle = { onIntent(NotificationUiIntent.ToggleApp(it)) },
-                )
-            }
+        item {
+            CollectionPolicyNotice(
+                collectOnClick = state.collectOnClick,
+                hasPostFilter = state.keywords.isNotEmpty() || state.allowedPackages.isNotEmpty(),
+            )
+        }
+        item {
+            KeywordFilter(
+                keywords = state.keywords,
+                onAdd = { onIntent(NotificationUiIntent.AddKeyword(it)) },
+                onRemove = { onIntent(NotificationUiIntent.RemoveKeyword(it)) },
+            )
+        }
+        item {
+            AppFilter(
+                apps = state.installedApps,
+                allowedPackages = state.allowedPackages,
+                onToggle = { onIntent(NotificationUiIntent.ToggleApp(it)) },
+            )
         }
 
         item {
@@ -162,7 +162,7 @@ private fun NotificationCollectionContent(
         if (state.stagedNotifications.isEmpty()) {
             item {
                 Text(
-                    text = "캡처된 알림이 없습니다.\n권한을 켜고 모드를 설정하면 이후 발생하는 알림이 쌓입니다.",
+                    text = "캡처된 알림이 없습니다.\n권한을 켜고 앱이나 키워드를 설정하거나 알림을 클릭해보세요.",
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
@@ -198,22 +198,34 @@ private fun PermissionSection(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ModeSelector(
-    mode: NotificationCollectMode,
-    onSelect: (NotificationCollectMode) -> Unit,
+private fun CollectionPolicyNotice(
+    collectOnClick: Boolean,
+    hasPostFilter: Boolean,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(
-            selected = mode == NotificationCollectMode.ALL,
-            onClick = { onSelect(NotificationCollectMode.ALL) },
-            label = { Text("모든 알림") },
-        )
-        FilterChip(
-            selected = mode == NotificationCollectMode.SELECTIVE,
-            onClick = { onSelect(NotificationCollectMode.SELECTIVE) },
-            label = { Text("선택 수집") },
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+    ) {
+        Text(
+            text =
+                when {
+                    collectOnClick && !hasPostFilter ->
+                        "앱이나 키워드를 선택하지 않아 직접 클릭한 알림만 수집하고 있어요."
+
+                    collectOnClick ->
+                        "직접 클릭했거나 선택한 앱·키워드와 일치하는 알림을 수집해요."
+
+                    hasPostFilter ->
+                        "선택한 앱·키워드와 일치하는 알림을 수집해요."
+
+                    else ->
+                        "현재 활성화된 알림 수집 조건이 없어요."
+                },
+            modifier = Modifier.padding(12.dp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
         )
     }
 }

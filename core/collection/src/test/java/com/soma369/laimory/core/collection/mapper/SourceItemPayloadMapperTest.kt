@@ -104,6 +104,49 @@ class SourceItemPayloadMapperTest {
     }
 
     @Test
+    fun `기존 ALL 알림 수집 사유를 계속 읽을 수 있다`() {
+        val payload =
+            NotificationPayload(
+                appName = "과거 앱",
+                packageName = "com.example.legacy",
+                title = "과거 알림",
+                text = null,
+                collectReason = NotificationPayload.CollectReason.ALL,
+            )
+
+        assertEquals(payload, roundTrip(payload))
+    }
+
+    @Test
+    fun `알 수 없는 알림 수집 사유는 legacy ALL로 읽는다`() {
+        val payload =
+            SourceItemPayloadMapper.fromJson(
+                itemType = ItemType.NOTIFICATION,
+                payloadJson =
+                    """
+                    {
+                      "appName": "미래 앱",
+                      "packageName": "com.example.future",
+                      "title": "미래 알림",
+                      "text": null,
+                      "collectReason": "FUTURE_REASON"
+                    }
+                    """.trimIndent(),
+            )
+
+        assertEquals(
+            NotificationPayload(
+                appName = "미래 앱",
+                packageName = "com.example.future",
+                title = "미래 알림",
+                text = null,
+                collectReason = NotificationPayload.CollectReason.ALL,
+            ),
+            payload,
+        )
+    }
+
+    @Test
     fun `PHOTO payload 라운드트립`() {
         val payload =
             PhotoPayload(

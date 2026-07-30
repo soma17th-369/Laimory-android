@@ -1,12 +1,8 @@
 package com.soma369.laimory.feature.collection.state
 
-import com.soma369.laimory.core.domain.model.collection.NotificationCollectMode
 import com.soma369.laimory.core.ui.base.UiIntent
 
 sealed interface NotificationUiIntent : UiIntent {
-    /** 수집 모드를 바꾼다(모든/선택). */
-    data class SetMode(val mode: NotificationCollectMode) : NotificationUiIntent
-
     /** 키워드 필터를 추가한다. */
     data class AddKeyword(val keyword: String) : NotificationUiIntent
 

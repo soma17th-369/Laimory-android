@@ -39,7 +39,11 @@ class NotificationCollectionViewModel
             safeLaunch {
                 observeNotificationFilterUseCase().collect { filter ->
                     updateState {
-                        copy(mode = filter.mode, keywords = filter.keywords, allowedPackages = filter.allowedPackages)
+                        copy(
+                            collectOnClick = filter.collectOnClick,
+                            keywords = filter.keywords,
+                            allowedPackages = filter.allowedPackages,
+                        )
                     }
                 }
             }
@@ -51,7 +55,6 @@ class NotificationCollectionViewModel
 
         override suspend fun handleIntent(intent: NotificationUiIntent) {
             when (intent) {
-                is NotificationUiIntent.SetMode -> updateFilter { copy(mode = intent.mode) }
                 is NotificationUiIntent.AddKeyword -> {
                     val keyword = intent.keyword.trim()
                     if (keyword.isNotEmpty()) updateFilter { copy(keywords = keywords + keyword) }
