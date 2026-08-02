@@ -61,6 +61,17 @@ internal interface SourceItemDao {
     @Query("SELECT MAX(collectedAtUtc) FROM source_item WHERE itemType = :itemType")
     suspend fun latestCollectedAtUtc(itemType: String): Long?
 
+    /**
+     * 단일 시점 이벤트는 startAt, 구간 이벤트는 반열린 구간의 endAt을 기준으로 만료 행을 삭제한다.
+     * cutoff와 같은 시점에 시작한 단일 이벤트와 cutoff를 걸치는 구간 이벤트는 유지한다.
+     */
+    @Query(
+        "DELETE FROM source_item " +
+            "WHERE (endAtUtc IS NULL AND startAtUtc < :cutoffUtc) " +
+            "OR (endAtUtc IS NOT NULL AND endAtUtc <= :cutoffUtc)",
+    )
+    suspend fun deleteExpired(cutoffUtc: Long): Int
+
     @Query("DELETE FROM source_item WHERE itemType = :itemType")
     suspend fun deleteByItemType(itemType: String)
 }
