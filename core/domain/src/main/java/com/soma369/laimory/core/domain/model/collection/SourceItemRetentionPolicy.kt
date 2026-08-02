@@ -1,7 +1,9 @@
 package com.soma369.laimory.core.domain.model.collection
 
+import com.soma369.laimory.core.domain.di.RetentionZoneId
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,11 +29,12 @@ class SourceItemRetentionPolicy
     constructor(
         private val config: SourceItemRetentionConfig,
         private val clock: Clock,
+        @RetentionZoneId
         private val zoneIdProvider: @JvmSuppressWildcards (() -> ZoneId),
     ) {
         fun cutoff(): Instant {
             val zoneId = zoneIdProvider()
-            return java.time.LocalDate
+            return LocalDate
                 .now(clock.withZone(zoneId))
                 .minusDays(config.retentionDays - 1L)
                 .atStartOfDay(zoneId)
