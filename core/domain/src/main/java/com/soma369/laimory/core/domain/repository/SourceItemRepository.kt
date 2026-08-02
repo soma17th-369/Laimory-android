@@ -34,6 +34,16 @@ interface SourceItemRepository {
     /** 해당 카테고리에서 마지막으로 수집된 시각. 증분 수집 커서로 사용한다. 없으면 null. */
     suspend fun getLatestCollectedAt(itemType: ItemType): Instant?
 
+    /**
+     * 이벤트 시각이 [cutoff] 이전 보존 범위에 속하는 아이템을 삭제한다.
+     *
+     * 단일 시점 이벤트는 `startAt < cutoff`, 구간 이벤트는 반열린 구간 `[startAt, endAt)`을 기준으로
+     * `endAt <= cutoff`일 때 삭제한다. 따라서 cutoff를 걸치는 구간 이벤트는 유지한다.
+     *
+     * @return 삭제된 아이템 수
+     */
+    suspend fun deleteExpired(cutoff: Instant): Int
+
     /** 해당 카테고리에 저장된 아이템을 모두 삭제한다(스테이징 일괄 비우기). */
     suspend fun clear(itemType: ItemType)
 }

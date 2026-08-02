@@ -684,6 +684,8 @@ class HomeViewModelTest {
 
         override suspend fun getLatestCollectedAt(itemType: ItemType): Instant? = null
 
+        override suspend fun deleteExpired(cutoff: Instant): Int = 0
+
         override suspend fun clear(itemType: ItemType) = Unit
     }
 

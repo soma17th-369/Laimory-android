@@ -23,6 +23,16 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="timeline_draft_completion" />
 
+        <!-- HiltWorkerFactory를 쓰는 사용자 정의 WorkManager Configuration이 기본 초기화를 대신한다. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                tools:node="remove" />
+        </provider>
+
         <service
             android:name=".push.LaimoryFirebaseMessagingService"
             android:exported="false">

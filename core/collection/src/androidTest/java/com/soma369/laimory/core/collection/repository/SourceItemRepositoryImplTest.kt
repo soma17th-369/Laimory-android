@@ -56,6 +56,29 @@ internal class SourceItemRepositoryImplTest {
             )
         }
 
+    @Test
+    fun 만료_삭제는_단일_시점과_반열린_구간의_경계를_구분한다() =
+        runTest {
+            val cutoff = Instant.parse("2026-07-01T00:00:00Z")
+            val items =
+                listOf(
+                    notificationItem("point-before", cutoff.minusMillis(1), null, cutoff.plusSeconds(1)),
+                    notificationItem("point-equal", cutoff, null, cutoff.minusSeconds(100)),
+                    notificationItem("point-after", cutoff.plusMillis(1), null, cutoff.minusSeconds(100)),
+                    notificationItem("interval-before", cutoff.minusSeconds(20), cutoff.minusMillis(1), cutoff.plusSeconds(1)),
+                    notificationItem("interval-equal", cutoff.minusSeconds(20), cutoff, cutoff.plusSeconds(1)),
+                    notificationItem("interval-spanning", cutoff.minusSeconds(20), cutoff.plusMillis(1), cutoff.minusSeconds(100)),
+                )
+            assertEquals(6, repository.addAll(items))
+
+            assertEquals(3, repository.deleteExpired(cutoff))
+
+            assertEquals(
+                setOf("point-equal", "point-after", "interval-spanning"),
+                repository.observeAll().first().map(SourceItem::rawId).toSet(),
+            )
+        }
+
     private fun notificationItem(
         rawId: String,
         reason: NotificationPayload.CollectReason,
@@ -76,6 +99,30 @@ internal class SourceItemRepositoryImplTest {
             sourceName = SourceName.NOTIFICATION_LISTENER,
             sourceKey = NOTIFICATION_SOURCE_KEY,
             collectedAt = EVENT_TIME,
+        )
+
+    private fun notificationItem(
+        rawId: String,
+        startAt: Instant,
+        endAt: Instant?,
+        collectedAt: Instant,
+    ): SourceItem =
+        SourceItem(
+            rawId = rawId,
+            startAt = startAt,
+            endAt = endAt,
+            timeZoneId = ZoneId.of("UTC"),
+            payload =
+                NotificationPayload(
+                    appName = "테스트 앱",
+                    packageName = "com.example.$rawId",
+                    title = "테스트 제목",
+                    text = "테스트 본문",
+                    collectReason = NotificationPayload.CollectReason.CLICK,
+                ),
+            sourceName = SourceName.NOTIFICATION_LISTENER,
+            sourceKey = "source-$rawId",
+            collectedAt = collectedAt,
         )
 
     private companion object {
