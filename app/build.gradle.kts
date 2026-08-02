@@ -36,12 +36,14 @@ android {
             isDebuggable = true
             applicationIdSuffix = ".debug"
             buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${debugBaseUrl.toAppLinkHost()}\"")
+            buildConfigField("int", "SOURCE_ITEM_RETENTION_DAYS", "365")
             manifestPlaceholders["authCallbackHost"] = debugBaseUrl.toAppLinkHost()
         }
 
         release {
             isMinifyEnabled = true
             buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${releaseBaseUrl.toAppLinkHost()}\"")
+            buildConfigField("int", "SOURCE_ITEM_RETENTION_DAYS", "30")
             manifestPlaceholders["authCallbackHost"] = releaseBaseUrl.toAppLinkHost()
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -93,6 +95,9 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
+    implementation(libs.work.runtime.ktx)
     implementation(libs.navigation3.runtime)
     implementation(libs.navigation3.ui)
     implementation(libs.androidx.browser)
