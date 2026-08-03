@@ -18,6 +18,7 @@ class TimelineRecordRepositoryImpl
 
         override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = remote.getDailyRecord(dailyRecordId).toDomain()
 
+        /** PATCH 성공 응답의 body가 null이므로 서버에 저장된 최신 Event를 GET으로 재조회한다. */
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             remote.updateTimelineEvent(
                 timelineEventId = command.timelineEventId,
