@@ -17,7 +17,7 @@ interface TimelineRecordApi {
     @GET("timeline/daily-records")
     suspend fun getDailyRecords(): Response<ApiResponse<DailyTimelineListResponse>>
 
-    @GET("timeline/daily-records/by-date/{recordDate}")
+    @GET("timeline/daily-records/{recordDate}")
     suspend fun getDailyRecord(
         @Path("recordDate") recordDate: String,
     ): Response<ApiResponse<DailyTimelineResponse>>
@@ -38,7 +38,7 @@ interface TimelineRecordApi {
         @Path("timelineEventId") timelineEventId: Long,
     ): Response<ApiResponse<Unit>>
 
-    @DELETE("timeline/daily-records/by-date/{recordDate}")
+    @DELETE("timeline/daily-records/{recordDate}")
     suspend fun deleteDailyRecord(
         @Path("recordDate") recordDate: String,
     ): Response<ApiResponse<Unit>>

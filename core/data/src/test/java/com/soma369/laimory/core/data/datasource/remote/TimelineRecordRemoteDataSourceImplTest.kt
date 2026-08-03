@@ -115,7 +115,7 @@ class TimelineRecordRemoteDataSourceImplTest {
 
             val request = server.takeRequest()
             assertEquals("GET", request.method)
-            assertEquals("/timeline/daily-records/by-date/2026-07-27", request.path)
+            assertEquals("/timeline/daily-records/2026-07-27", request.path)
             assertEquals(31L, response.dailyRecordId)
             assertEquals(41L, response.events.single().timelineEventId)
         }
@@ -214,7 +214,7 @@ class TimelineRecordRemoteDataSourceImplTest {
 
             val request = server.takeRequest()
             assertEquals("DELETE", request.method)
-            assertEquals("/timeline/daily-records/by-date/2026-07-27", request.path)
+            assertEquals("/timeline/daily-records/2026-07-27", request.path)
         }
 
     @Test
