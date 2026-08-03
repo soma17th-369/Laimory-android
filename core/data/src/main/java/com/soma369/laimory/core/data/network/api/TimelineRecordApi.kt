@@ -22,11 +22,16 @@ interface TimelineRecordApi {
         @Path("dailyRecordId") dailyRecordId: Long,
     ): Response<ApiResponse<DailyTimelineResponse>>
 
+    @GET("timeline/events/{timelineEventId}")
+    suspend fun getTimelineEvent(
+        @Path("timelineEventId") timelineEventId: Long,
+    ): Response<ApiResponse<TimelineEventResponse>>
+
     @PATCH("timeline/events/{timelineEventId}")
     suspend fun updateTimelineEvent(
         @Path("timelineEventId") timelineEventId: Long,
         @Body request: JsonObject,
-    ): Response<ApiResponse<TimelineEventResponse>>
+    ): Response<ApiResponse<Unit>>
 
     @DELETE("timeline/events/{timelineEventId}")
     suspend fun deleteTimelineEvent(

@@ -18,10 +18,15 @@ class TimelineRecordRemoteDataSourceImpl
 
         override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimelineResponse = safeApiCall { api.getDailyRecord(dailyRecordId) }
 
+        override suspend fun getTimelineEvent(timelineEventId: Long): TimelineEventResponse =
+            safeApiCall { api.getTimelineEvent(timelineEventId) }
+
         override suspend fun updateTimelineEvent(
             timelineEventId: Long,
             request: JsonObject,
-        ): TimelineEventResponse = safeApiCall { api.updateTimelineEvent(timelineEventId, request) }
+        ) {
+            safeApiCallUnit { api.updateTimelineEvent(timelineEventId, request) }
+        }
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {
             safeApiCallUnit { api.deleteTimelineEvent(timelineEventId) }

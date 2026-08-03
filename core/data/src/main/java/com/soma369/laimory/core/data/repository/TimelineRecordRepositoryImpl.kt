@@ -18,11 +18,13 @@ class TimelineRecordRepositoryImpl
 
         override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = remote.getDailyRecord(dailyRecordId).toDomain()
 
-        override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent =
+        override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             remote.updateTimelineEvent(
                 timelineEventId = command.timelineEventId,
                 request = command.toRequestJson(),
-            ).toDomain()
+            )
+            return remote.getTimelineEvent(command.timelineEventId).toDomain()
+        }
 
         override suspend fun deleteEvent(timelineEventId: Long) {
             remote.deleteTimelineEvent(timelineEventId)
