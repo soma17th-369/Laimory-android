@@ -7,6 +7,7 @@ import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.safeApiCall
 import com.soma369.laimory.core.data.network.safeApiCallUnit
 import kotlinx.serialization.json.JsonObject
+import java.time.LocalDate
 import javax.inject.Inject
 
 class TimelineRecordRemoteDataSourceImpl
@@ -16,7 +17,8 @@ class TimelineRecordRemoteDataSourceImpl
     ) : TimelineRecordRemoteDataSource {
         override suspend fun getDailyRecords(): DailyTimelineListResponse = safeApiCall { api.getDailyRecords() }
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimelineResponse = safeApiCall { api.getDailyRecord(dailyRecordId) }
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimelineResponse =
+            safeApiCall { api.getDailyRecord(recordDate.toString()) }
 
         override suspend fun getTimelineEvent(timelineEventId: Long): TimelineEventResponse =
             safeApiCall { api.getTimelineEvent(timelineEventId) }
@@ -32,7 +34,7 @@ class TimelineRecordRemoteDataSourceImpl
             safeApiCallUnit { api.deleteTimelineEvent(timelineEventId) }
         }
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) {
-            safeApiCallUnit { api.deleteDailyRecord(dailyRecordId) }
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) {
+            safeApiCallUnit { api.deleteDailyRecord(recordDate.toString()) }
         }
     }

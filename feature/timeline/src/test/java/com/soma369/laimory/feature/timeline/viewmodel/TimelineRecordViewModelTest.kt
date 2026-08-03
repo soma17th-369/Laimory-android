@@ -55,7 +55,7 @@ class TimelineRecordViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
 
-            assertEquals(listOf(DAILY_RECORD_ID), recordRepository.requestedDailyRecordIds)
+            assertEquals(listOf(RECORD_DATE), recordRepository.requestedRecordDates)
             assertEquals(DAILY_RECORD_ID, repository.timeline.value?.dailyRecordId)
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
             assertEquals(LocalDate.of(2026, 5, 8), content.value.recordDate)
@@ -67,7 +67,12 @@ class TimelineRecordViewModelTest {
     @Test
     fun `이전 세션이 다른 기록을 가리켜도 선택한 기록을 조회해 표시한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.save(timeline(events = emptyList()).copy(dailyRecordId = 99L))
+            repository.save(
+                timeline(events = emptyList()).copy(
+                    dailyRecordId = 99L,
+                    recordDate = OTHER_RECORD_DATE,
+                ),
+            )
             val viewModel = createLoadedViewModel()
 
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
@@ -93,15 +98,20 @@ class TimelineRecordViewModelTest {
             val gate = CompletableDeferred<DailyTimeline>()
             recordRepository.dailyRecordGate = gate
             recordRepository.dailyRecordResult =
-                Result.success(timeline(events = emptyList()).copy(dailyRecordId = 32L))
+                Result.success(
+                    timeline(events = emptyList()).copy(
+                        dailyRecordId = 32L,
+                        recordDate = OTHER_RECORD_DATE,
+                    ),
+                )
             val viewModel = createViewModel()
 
-            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
             runCurrent()
-            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(32L))
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(OTHER_RECORD_DATE))
             advanceUntilIdle()
 
-            assertEquals(listOf(DAILY_RECORD_ID, 32L), recordRepository.requestedDailyRecordIds)
+            assertEquals(listOf(RECORD_DATE, OTHER_RECORD_DATE), recordRepository.requestedRecordDates)
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
             assertEquals(32L, content.value.dailyRecordId)
 
@@ -128,7 +138,7 @@ class TimelineRecordViewModelTest {
                 Result.failure(ApiException.ClientException(errorCode = -404, rawCode = 404))
             val viewModel = createViewModel()
 
-            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
             advanceUntilIdle()
 
             assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
@@ -140,7 +150,7 @@ class TimelineRecordViewModelTest {
             recordRepository.dailyRecordResult = Result.failure(ApiException.NetworkException())
             val viewModel = createViewModel()
 
-            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
             advanceUntilIdle()
 
             assertEquals(TimelineRecordUiContent.LoadFailed, viewModel.state.value.content)
@@ -157,11 +167,23 @@ class TimelineRecordViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
 
-            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
             advanceUntilIdle()
 
-            assertEquals(listOf(DAILY_RECORD_ID), recordRepository.requestedDailyRecordIds)
+            assertEquals(listOf(RECORD_DATE), recordRepository.requestedRecordDates)
             assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
+        }
+
+    @Test
+    fun `날짜 인자가 없거나 잘못되면 서버를 호출하지 않고 접근 불가 상태로 전환한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(null))
+            advanceUntilIdle()
+
+            assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
+            assertTrue(recordRepository.requestedRecordDates.isEmpty())
         }
 
     @Test
@@ -208,7 +230,7 @@ class TimelineRecordViewModelTest {
             runCurrent()
 
             assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.deleteDialogState)
-            assertEquals(DAILY_RECORD_ID, viewModel.state.value.deleteTarget?.dailyRecordId)
+            assertEquals(RECORD_DATE, viewModel.state.value.deleteTarget?.recordDate)
         }
 
     @Test
@@ -221,7 +243,7 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
             advanceUntilIdle()
 
-            assertEquals(listOf(DAILY_RECORD_ID), recordRepository.deletedDailyRecordIds)
+            assertEquals(listOf(RECORD_DATE), recordRepository.deletedRecordDates)
             assertEquals(null, repository.timeline.value)
             assertEquals(1, draftTaskCoordinator.discardCount)
             assertEquals(DraftTaskTrackingState.Idle, draftTaskCoordinator.state.value)
@@ -355,7 +377,7 @@ class TimelineRecordViewModelTest {
     private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {
         recordRepository.dailyRecordResult = Result.success(record)
         val viewModel = createViewModel()
-        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(DAILY_RECORD_ID))
+        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(record.recordDate))
         advanceUntilIdle()
         return viewModel
     }
@@ -363,7 +385,7 @@ class TimelineRecordViewModelTest {
     private fun timeline(events: List<TimelineEvent>) =
         DailyTimeline(
             dailyRecordId = DAILY_RECORD_ID,
-            recordDate = LocalDate.of(2026, 5, 8),
+            recordDate = RECORD_DATE,
             emotion = null,
             events = events,
         )
@@ -398,16 +420,16 @@ class TimelineRecordViewModelTest {
     }
 
     private class RecordingTimelineRecordRepository : TimelineRecordRepository {
-        val requestedDailyRecordIds = mutableListOf<Long>()
-        val deletedDailyRecordIds = mutableListOf<Long>()
+        val requestedRecordDates = mutableListOf<LocalDate>()
+        val deletedRecordDates = mutableListOf<LocalDate>()
         var dailyRecordResult: Result<DailyTimeline>? = null
         var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
         var failure: ApiException? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline {
-            requestedDailyRecordIds += dailyRecordId
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline {
+            requestedRecordDates += recordDate
             dailyRecordGate?.let { gate ->
                 dailyRecordGate = null
                 return gate.await()
@@ -420,9 +442,9 @@ class TimelineRecordViewModelTest {
 
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) {
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             failure?.let { throw it }
-            deletedDailyRecordIds += dailyRecordId
+            deletedRecordDates += recordDate
         }
     }
 
@@ -467,7 +489,6 @@ class TimelineRecordViewModelTest {
                             recordDate = recordDate,
                             requestedAt = Instant.EPOCH,
                         ),
-                    dailyRecordId = DAILY_RECORD_ID,
                 )
         }
     }
@@ -493,5 +514,7 @@ class TimelineRecordViewModelTest {
 
     private companion object {
         const val DAILY_RECORD_ID = 31L
+        val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
+        val OTHER_RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 9)
     }
 }

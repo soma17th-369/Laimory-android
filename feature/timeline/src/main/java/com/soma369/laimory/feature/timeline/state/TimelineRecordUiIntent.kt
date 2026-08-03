@@ -1,10 +1,11 @@
 package com.soma369.laimory.feature.timeline.state
 
 import com.soma369.laimory.core.ui.base.UiIntent
+import java.time.LocalDate
 
 sealed interface TimelineRecordUiIntent : UiIntent {
     data class Initialize(
-        val dailyRecordId: Long,
+        val recordDate: LocalDate?,
     ) : TimelineRecordUiIntent
 
     data object RetryLoad : TimelineRecordUiIntent

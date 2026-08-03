@@ -1,5 +1,7 @@
 package com.soma369.laimory.core.domain.navigation
 
+import java.time.LocalDate
+
 /**
  * 앱의 화면 목적지 카탈로그.
  *
@@ -26,19 +28,20 @@ data object Feature1Page : Page {
 }
 
 data class TimelinePage(
-    val dailyRecordId: Long,
+    val recordDate: LocalDate,
 ) : Page {
     override fun toRoute(): NavRoute =
         NavRoute(
             path = PATH,
-            args = mapOf(DAILY_RECORD_ID_ARG to dailyRecordId.toString()),
+            args = mapOf(RECORD_DATE_ARG to recordDate.toString()),
         )
 
     companion object {
         const val PATH = "/timeline"
-        const val DAILY_RECORD_ID_ARG = "dailyRecordId"
+        const val RECORD_DATE_ARG = "recordDate"
 
-        fun dailyRecordIdFrom(args: Map<String, String>): Long? = args[DAILY_RECORD_ID_ARG]?.toLongOrNull()
+        fun recordDateFrom(args: Map<String, String>): LocalDate? =
+            args[RECORD_DATE_ARG]?.let { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
     }
 }
 

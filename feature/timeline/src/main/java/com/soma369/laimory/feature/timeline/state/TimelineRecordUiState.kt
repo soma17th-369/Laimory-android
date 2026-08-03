@@ -17,7 +17,6 @@ data class TimelineRecordUiState(
 
 @Immutable
 data class TimelineRecordDeleteTarget(
-    val dailyRecordId: Long,
     val recordDate: LocalDate,
 )
 

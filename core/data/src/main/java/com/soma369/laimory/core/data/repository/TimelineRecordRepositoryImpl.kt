@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
+import java.time.LocalDate
 import javax.inject.Inject
 
 class TimelineRecordRepositoryImpl
@@ -16,7 +17,7 @@ class TimelineRecordRepositoryImpl
     ) : TimelineRecordRepository {
         override suspend fun getDailyRecords(): List<DailyTimeline> = remote.getDailyRecords().toDomain()
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = remote.getDailyRecord(dailyRecordId).toDomain()
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = remote.getDailyRecord(recordDate).toDomain()
 
         /** PATCH 성공 응답의 body가 null이므로 서버에 저장된 최신 Event를 GET으로 재조회한다. */
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
@@ -31,7 +32,7 @@ class TimelineRecordRepositoryImpl
             remote.deleteTimelineEvent(timelineEventId)
         }
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) {
-            remote.deleteDailyRecord(dailyRecordId)
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) {
+            remote.deleteDailyRecord(recordDate)
         }
     }

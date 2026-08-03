@@ -61,7 +61,7 @@ class DefaultDraftTaskCoordinatorTest {
             runCurrent()
 
             val successState = coordinator.state.value as DraftTaskTrackingState.Success
-            assertEquals(1L, successState.dailyRecordId)
+            assertEquals(date, successState.task.recordDate)
             assertEquals(1, sessionRepository.saveCount)
 
             coordinator.onBackground()

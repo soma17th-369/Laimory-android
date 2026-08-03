@@ -467,7 +467,7 @@ class TimelineEventEditorViewModelTest {
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             commands += command
@@ -483,7 +483,7 @@ class TimelineEventEditorViewModelTest {
             deletedEventIds += timelineEventId
         }
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) = Unit
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) = Unit
     }
 
     private class FakeTimelineRecordSessionRepository : TimelineRecordSessionRepository {

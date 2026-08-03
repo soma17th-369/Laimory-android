@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.exception.toTimelineRecordDeleteException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -19,12 +20,12 @@ class DeleteDailyRecordUseCase
         private val sessionRepository: TimelineRecordSessionRepository,
         messageHelper: MessageHelper,
     ) : BaseUseCase(messageHelper) {
-        suspend operator fun invoke(dailyRecordId: Long): Result<Unit> =
+        suspend operator fun invoke(recordDate: LocalDate): Result<Unit> =
             try {
                 execute {
                     try {
-                        repository.deleteDailyRecord(dailyRecordId)
-                        if (sessionRepository.timeline.value?.dailyRecordId == dailyRecordId) {
+                        repository.deleteDailyRecord(recordDate)
+                        if (sessionRepository.timeline.value?.recordDate == recordDate) {
                             sessionRepository.clear()
                         }
                     } catch (exception: ApiException) {

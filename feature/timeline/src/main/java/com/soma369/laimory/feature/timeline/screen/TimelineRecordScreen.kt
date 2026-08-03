@@ -59,11 +59,11 @@ import com.soma369.laimory.core.ui.R as UiR
 @Composable
 fun TimelineRecordRoute(
     innerPadding: PaddingValues,
-    dailyRecordId: Long,
+    recordDate: LocalDate?,
     viewModel: TimelineRecordViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(dailyRecordId) {
-        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(dailyRecordId))
+    LaunchedEffect(recordDate) {
+        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(recordDate))
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     TimelineRecordContent(

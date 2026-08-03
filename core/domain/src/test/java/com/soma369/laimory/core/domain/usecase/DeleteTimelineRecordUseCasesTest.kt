@@ -45,10 +45,10 @@ class DeleteTimelineRecordUseCasesTest {
             val session = FakeSessionRepository(timeline())
             val useCase = DeleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
-            val result = useCase(DAILY_RECORD_ID)
+            val result = useCase(RECORD_DATE)
 
             assertTrue(result.isSuccess)
-            assertEquals(DAILY_RECORD_ID, repository.deletedDailyRecordId)
+            assertEquals(RECORD_DATE, repository.deletedRecordDate)
             assertNull(session.timeline.value)
         }
 
@@ -60,10 +60,10 @@ class DeleteTimelineRecordUseCasesTest {
             val session = FakeSessionRepository(currentTimeline)
             val useCase = DeleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
-            val result = useCase(OTHER_DAILY_RECORD_ID)
+            val result = useCase(OTHER_RECORD_DATE)
 
             assertTrue(result.isSuccess)
-            assertEquals(OTHER_DAILY_RECORD_ID, repository.deletedDailyRecordId)
+            assertEquals(OTHER_RECORD_DATE, repository.deletedRecordDate)
             assertEquals(currentTimeline, session.timeline.value)
         }
 
@@ -107,7 +107,7 @@ class DeleteTimelineRecordUseCasesTest {
                 )
             val useCase = DeleteDailyRecordUseCase(repository, FakeSessionRepository(timeline()), helper)
 
-            val failure = useCase(DAILY_RECORD_ID).exceptionOrNull()
+            val failure = useCase(RECORD_DATE).exceptionOrNull()
 
             assertTrue(failure is HandledException)
             assertEquals(listOf(UserMessage.SessionExpired), helper.messages)
@@ -117,11 +117,11 @@ class DeleteTimelineRecordUseCasesTest {
         private val failure: ApiException? = null,
     ) : TimelineRecordRepository {
         var deletedEventId: Long? = null
-        var deletedDailyRecordId: Long? = null
+        var deletedRecordDate: LocalDate? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
@@ -130,9 +130,9 @@ class DeleteTimelineRecordUseCasesTest {
             deletedEventId = timelineEventId
         }
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) {
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             failure?.let { throw it }
-            deletedDailyRecordId = dailyRecordId
+            deletedRecordDate = recordDate
         }
     }
 
@@ -171,7 +171,7 @@ class DeleteTimelineRecordUseCasesTest {
     private fun timeline() =
         DailyTimeline(
             dailyRecordId = DAILY_RECORD_ID,
-            recordDate = LocalDate.of(2026, 7, 23),
+            recordDate = RECORD_DATE,
             emotion = null,
             events = listOf(event(FIRST_EVENT_ID), event(SECOND_EVENT_ID)),
         )
@@ -190,7 +190,8 @@ class DeleteTimelineRecordUseCasesTest {
 
     private companion object {
         const val DAILY_RECORD_ID = 31L
-        const val OTHER_DAILY_RECORD_ID = 32L
+        val RECORD_DATE: LocalDate = LocalDate.of(2026, 7, 23)
+        val OTHER_RECORD_DATE: LocalDate = LocalDate.of(2026, 7, 24)
         const val FIRST_EVENT_ID = 17L
         const val SECOND_EVENT_ID = 18L
     }

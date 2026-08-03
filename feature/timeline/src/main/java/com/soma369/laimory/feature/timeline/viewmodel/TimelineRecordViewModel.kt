@@ -20,6 +20,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import java.time.LocalDate
 import javax.inject.Inject
 
 @HiltViewModel
@@ -35,16 +36,16 @@ class TimelineRecordViewModel
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
         ) {
-        private var requestedDailyRecordId: Long? = null
+        private var requestedRecordDate: LocalDate? = null
         private var loadJob: Job? = null
 
         init {
             safeLaunch {
                 observeTimelineRecordUseCase().collect { timeline ->
-                    val requestedId = requestedDailyRecordId ?: return@collect
+                    val requestedDate = requestedRecordDate ?: return@collect
                     updateState {
                         when {
-                            timeline?.dailyRecordId == requestedId ->
+                            timeline?.recordDate == requestedDate ->
                                 copy(content = TimelineRecordUiContent.Record(timeline.toUiModel()))
 
                             // 표시 중이던 기록이 세션에서 사라진 경우(삭제 등).
@@ -61,8 +62,8 @@ class TimelineRecordViewModel
 
         override suspend fun handleIntent(intent: TimelineRecordUiIntent) {
             when (intent) {
-                is TimelineRecordUiIntent.Initialize -> initialize(intent.dailyRecordId)
-                TimelineRecordUiIntent.RetryLoad -> requestedDailyRecordId?.let(::loadRecord)
+                is TimelineRecordUiIntent.Initialize -> initialize(intent.recordDate)
+                TimelineRecordUiIntent.RetryLoad -> requestedRecordDate?.let(::loadRecord)
                 TimelineRecordUiIntent.NavigateBack ->
                     if (!state.value.isDeleting) navigationHelper.navigateToBack()
                 TimelineRecordUiIntent.RequestDelete -> requestDelete()
@@ -76,31 +77,37 @@ class TimelineRecordViewModel
             }
         }
 
-        private fun initialize(dailyRecordId: Long) {
+        private fun initialize(recordDate: LocalDate?) {
+            if (recordDate == null) {
+                loadJob?.cancel()
+                requestedRecordDate = null
+                updateState { copy(content = TimelineRecordUiContent.Unavailable) }
+                return
+            }
             val isAlreadyPresented =
-                requestedDailyRecordId == dailyRecordId &&
+                requestedRecordDate == recordDate &&
                     state.value.content !is TimelineRecordUiContent.LoadFailed
             if (isAlreadyPresented) return
-            requestedDailyRecordId = dailyRecordId
-            loadRecord(dailyRecordId)
+            requestedRecordDate = recordDate
+            loadRecord(recordDate)
         }
 
-        private fun loadRecord(dailyRecordId: Long) {
+        private fun loadRecord(recordDate: LocalDate) {
             // latest-wins: 새 기록 요청이 진행 중인 조회를 대체한다.
             loadJob?.cancel()
             loadJob =
                 safeLaunch(
                     onError = { error ->
-                        if (error !is CancellationException && requestedDailyRecordId == dailyRecordId) {
+                        if (error !is CancellationException && requestedRecordDate == recordDate) {
                             updateState { copy(content = TimelineRecordUiContent.LoadFailed) }
                             handleFailure(error)
                         }
                     },
                 ) {
                     updateState { copy(content = TimelineRecordUiContent.Loading) }
-                    getDailyRecordUseCase(dailyRecordId)
+                    getDailyRecordUseCase(recordDate)
                         .onSuccess { outcome ->
-                            if (requestedDailyRecordId != dailyRecordId) return@onSuccess
+                            if (requestedRecordDate != recordDate) return@onSuccess
                             when (outcome) {
                                 is DailyRecordReadOutcome.Record -> {
                                     // 세션에 같은 값이 선저장돼 있으면 StateFlow가 재방출하지
@@ -114,7 +121,7 @@ class TimelineRecordViewModel
                                     updateState { copy(content = TimelineRecordUiContent.Unavailable) }
                             }
                         }.onFailure { error ->
-                            if (requestedDailyRecordId != dailyRecordId) return@onFailure
+                            if (requestedRecordDate != recordDate) return@onFailure
                             updateState { copy(content = TimelineRecordUiContent.LoadFailed) }
                             handleFailure(error)
                         }
@@ -128,7 +135,6 @@ class TimelineRecordViewModel
                 copy(
                     deleteTarget =
                         TimelineRecordDeleteTarget(
-                            dailyRecordId = record.dailyRecordId,
                             recordDate = record.recordDate,
                         ),
                     deleteDialogState = TimelineDeleteDialogState.Confirmation,
@@ -146,7 +152,7 @@ class TimelineRecordViewModel
             }
 
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
-            deleteDailyRecordUseCase(target.dailyRecordId)
+            deleteDailyRecordUseCase(target.recordDate)
                 .onSuccess {
                     val activeTask =
                         (draftTaskCoordinator.state.value as? DraftTaskTrackingState.WithTask)?.task
