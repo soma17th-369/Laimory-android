@@ -101,7 +101,7 @@ class HomeViewModel
                 HomeUiIntent.ViewDraft -> viewDraft()
                 HomeUiIntent.SyncPastRecords -> syncPastRecords()
                 is HomeUiIntent.SelectPastRecord ->
-                    navigationHelper.navigateTo(TimelinePage(intent.dailyRecordId))
+                    navigationHelper.navigateTo(TimelinePage(intent.recordDate))
             }
         }
 
@@ -505,7 +505,7 @@ class HomeViewModel
                 if (state.value.draftStatus != DraftCreationStatus.SUCCESS) return@safeLaunch
                 val trackingState =
                     draftTaskCoordinator.state.value as? DraftTaskTrackingState.Success ?: return@safeLaunch
-                navigationHelper.navigateTo(TimelinePage(trackingState.dailyRecordId))
+                navigationHelper.navigateTo(TimelinePage(trackingState.task.recordDate))
             }
 
         /** 지난 기록 목록을 서버와 동기화한다. 진행 중이면 중복 요청하지 않는다. */

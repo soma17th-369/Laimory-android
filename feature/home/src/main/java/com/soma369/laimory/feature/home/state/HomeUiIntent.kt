@@ -76,6 +76,6 @@ sealed interface HomeUiIntent : UiIntent {
     data object SyncPastRecords : HomeUiIntent
 
     data class SelectPastRecord(
-        val dailyRecordId: Long,
+        val recordDate: LocalDate,
     ) : HomeUiIntent
 }

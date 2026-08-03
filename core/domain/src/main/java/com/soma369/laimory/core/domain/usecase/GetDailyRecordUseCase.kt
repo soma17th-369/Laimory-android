@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,10 +17,10 @@ class GetDailyRecordUseCase
         private val repository: TimelineRecordRepository,
         messageHelper: MessageHelper,
     ) : BaseUseCase(messageHelper) {
-        suspend operator fun invoke(dailyRecordId: Long): Result<DailyRecordReadOutcome> =
+        suspend operator fun invoke(recordDate: LocalDate): Result<DailyRecordReadOutcome> =
             execute {
                 try {
-                    DailyRecordReadOutcome.Record(repository.getDailyRecord(dailyRecordId))
+                    DailyRecordReadOutcome.Record(repository.getDailyRecord(recordDate))
                 } catch (exception: ApiException) {
                     when (exception.errorCode) {
                         RECORD_UNAVAILABLE_ERROR_CODE -> DailyRecordReadOutcome.Unavailable

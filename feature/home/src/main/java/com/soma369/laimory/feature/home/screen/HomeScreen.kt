@@ -229,7 +229,7 @@ private fun HomeScreen(
                 ) { record ->
                     PastRecordCard(
                         record = record,
-                        onClick = { onIntent(HomeUiIntent.SelectPastRecord(record.dailyRecordId)) },
+                        onClick = { onIntent(HomeUiIntent.SelectPastRecord(record.recordDate)) },
                     )
                 }
         }
