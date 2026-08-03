@@ -144,7 +144,23 @@ class TimelineRecordRemoteDataSourceImplTest {
         }
 
     @Test
-    fun `통합 수정은 Event 경로에 PATCH하고 갱신 응답을 반환한다`() =
+    fun `Event 수정은 Event 경로에 PATCH하고 null body 성공을 처리한다`() =
+        runTest {
+            server.enqueue(successUnitResponse())
+
+            remote.updateTimelineEvent(
+                timelineEventId = 17L,
+                request = buildJsonObject { put("title", "수정 제목") },
+            )
+
+            val request = server.takeRequest()
+            assertEquals("PATCH", request.method)
+            assertEquals("/timeline/events/17", request.path)
+            assertEquals("""{"title":"수정 제목"}""", request.body.readUtf8())
+        }
+
+    @Test
+    fun `Event 단건 조회는 Event ID 경로에 GET하고 갱신 응답을 반환한다`() =
         runTest {
             server.enqueue(
                 MockResponse()
@@ -168,16 +184,11 @@ class TimelineRecordRemoteDataSourceImplTest {
                     ),
             )
 
-            val response =
-                remote.updateTimelineEvent(
-                    timelineEventId = 17L,
-                    request = buildJsonObject { put("title", "수정 제목") },
-                )
+            val response = remote.getTimelineEvent(17L)
 
             val request = server.takeRequest()
-            assertEquals("PATCH", request.method)
+            assertEquals("GET", request.method)
             assertEquals("/timeline/events/17", request.path)
-            assertEquals("""{"title":"수정 제목"}""", request.body.readUtf8())
             assertEquals(17L, response.timelineEventId)
         }
 

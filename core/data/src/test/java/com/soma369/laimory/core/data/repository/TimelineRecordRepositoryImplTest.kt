@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -23,9 +24,13 @@ class TimelineRecordRepositoryImplTest {
     private class FakeRemote : TimelineRecordRemoteDataSource {
         var requestedDailyRecordId: Long? = null
         var requestedEventId: Long? = null
+        var requestedEventFetchId: Long? = null
         var requestedBody: JsonObject? = null
         var deletedEventId: Long? = null
         var deletedDailyRecordId: Long? = null
+        var updateFailure: Throwable? = null
+        var getEventFailure: Throwable? = null
+        val calls = mutableListOf<String>()
 
         override suspend fun getDailyRecords(): DailyTimelineListResponse = listResponse
 
@@ -34,13 +39,21 @@ class TimelineRecordRepositoryImplTest {
             return dailyResponse
         }
 
+        override suspend fun getTimelineEvent(timelineEventId: Long): TimelineEventResponse {
+            calls += "GET"
+            requestedEventFetchId = timelineEventId
+            getEventFailure?.let { throw it }
+            return response
+        }
+
         override suspend fun updateTimelineEvent(
             timelineEventId: Long,
             request: JsonObject,
-        ): TimelineEventResponse {
+        ) {
+            calls += "PATCH"
             requestedEventId = timelineEventId
             requestedBody = request
-            return response
+            updateFailure?.let { throw it }
         }
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {
@@ -83,7 +96,7 @@ class TimelineRecordRepositoryImplTest {
         }
 
     @Test
-    fun `updateEvent - 요청을 전달하고 PHOTO가 추가된 응답을 Domain으로 매핑한다`() =
+    fun `updateEvent - PATCH 후 GET한 최신 Event를 Domain으로 매핑한다`() =
         runTest {
             val remote = FakeRemote()
             val repository = TimelineRecordRepositoryImpl(remote)
@@ -100,12 +113,60 @@ class TimelineRecordRepositoryImplTest {
             val event = repository.updateEvent(command)
 
             assertEquals(17L, remote.requestedEventId)
+            assertEquals(17L, remote.requestedEventFetchId)
+            assertEquals(listOf("PATCH", "GET"), remote.calls)
             assertEquals("수정 제목", remote.requestedBody?.get("title").toString().trim('"'))
             assertEquals("null", remote.requestedBody?.get("subtitle").toString())
             assertEquals(TimelineEventType.PHOTO_MOMENT, event.eventType)
             assertEquals(TimelineItemType.PHOTO, event.items.single().itemType)
             assertNull(event.items.single().startAt)
             assertEquals("https://cdn/photo.jpg", event.items.single().photoUrl)
+        }
+
+    @Test
+    fun `updateEvent - PATCH가 실패하면 GET을 호출하지 않고 오류를 전파한다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+            remote.updateFailure = IllegalStateException("PATCH 실패")
+            val command =
+                UpdateTimelineEventCommand(
+                    timelineEventId = 17L,
+                    title = "수정 제목",
+                    subtitle = null,
+                    startAt = LocalDateTime.of(2026, 7, 8, 14, 0),
+                    endAt = null,
+                    eventType = TimelineEventType.PHOTO_MOMENT,
+                )
+
+            val failure = runCatching { repository.updateEvent(command) }.exceptionOrNull()
+
+            assertTrue(failure is IllegalStateException)
+            assertFalse(remote.calls.contains("GET"))
+            assertNull(remote.requestedEventFetchId)
+        }
+
+    @Test
+    fun `updateEvent - PATCH 성공 후 GET이 실패하면 오류를 전파한다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+            remote.getEventFailure = IllegalStateException("GET 실패")
+            val command =
+                UpdateTimelineEventCommand(
+                    timelineEventId = 17L,
+                    title = "수정 제목",
+                    subtitle = null,
+                    startAt = LocalDateTime.of(2026, 7, 8, 14, 0),
+                    endAt = null,
+                    eventType = TimelineEventType.PHOTO_MOMENT,
+                )
+
+            val failure = runCatching { repository.updateEvent(command) }.exceptionOrNull()
+
+            assertTrue(failure is IllegalStateException)
+            assertEquals(listOf("PATCH", "GET"), remote.calls)
+            assertEquals(17L, remote.requestedEventFetchId)
         }
 
     @Test
