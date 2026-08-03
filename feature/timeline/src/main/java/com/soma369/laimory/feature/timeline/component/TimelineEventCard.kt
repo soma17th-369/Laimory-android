@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -198,10 +197,7 @@ private fun PhotoMainEvent(
                     TimelinePhoto(
                         photoUrl = photoUrl,
                         onClick = { onPhotoClick(photoSlots, index) },
-                        modifier =
-                            Modifier
-                                .width(photoWidth)
-                                .height(92.dp),
+                        modifier = Modifier.size(photoWidth),
                         cornerRadius = 12.dp,
                     )
                 }
@@ -227,20 +223,14 @@ private fun PhotoThumbnailRow(
     photoSlots: List<String?>,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
 ) {
-    Row(
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        val visiblePhotos = photoSlots.take(THUMBNAIL_PHOTO_LIMIT)
-        visiblePhotos.forEachIndexed { index, photoUrl ->
+        itemsIndexed(photoSlots) { index, photoUrl ->
             TimelinePhoto(
                 photoUrl = photoUrl,
                 onClick = { onPhotoClick(photoSlots, index) },
-                remainingCount =
-                    if (index == visiblePhotos.lastIndex) {
-                        photoSlots.size - visiblePhotos.size
-                    } else {
-                        0
-                    },
                 modifier = Modifier.size(64.dp),
                 cornerRadius = 4.dp,
             )
@@ -251,7 +241,6 @@ private fun PhotoThumbnailRow(
 @Composable
 private fun TimelinePhoto(
     photoUrl: String?,
-    remainingCount: Int = 0,
     onClick: (() -> Unit)? = null,
     modifier: Modifier,
     cornerRadius: Dp,
@@ -273,21 +262,6 @@ private fun TimelinePhoto(
     ) {
         if (!isInPreview && photoUrl != null) {
             TimelineAsyncImage(photoUrl = photoUrl)
-        }
-        if (remainingCount > 0) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.56f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "+$remainingCount",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                )
-            }
         }
     }
 }
@@ -431,8 +405,6 @@ private fun TimelineItemType.label(): String =
 
 internal fun TimelineEventType.label(): String = displayLabel()
 
-private const val THUMBNAIL_PHOTO_LIMIT = 3
-
 @Preview(name = "이벤트 타입별", showBackground = true, widthDp = 360)
 @Composable
 private fun TimelineEventTypeCardPreview(
@@ -451,13 +423,34 @@ private fun TimelineEventTypeCardPreview(
     }
 }
 
-@Preview(name = "사진 여러 장 첨부", showBackground = true, widthDp = 360)
+@Preview(name = "일반 이벤트 사진 개수별", showBackground = true, widthDp = 360)
 @Composable
-private fun PhotoThumbnailEventCardPreview() {
+private fun PhotoThumbnailEventCardPreview(
+    @PreviewParameter(PhotoThumbnailCountPreviewParameterProvider::class)
+    photoCount: Int,
+) {
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             TimelineEventCard(
-                event = photoThumbnailPreviewEvent(),
+                event = photoThumbnailPreviewEvent(photoCount),
+                onEditClick = {},
+                onPhotoClick = { _, _ -> },
+                modifier = Modifier.padding(Spacing.large),
+            )
+        }
+    }
+}
+
+@Preview(name = "사진 메인 개수별", showBackground = true, widthDp = 360)
+@Composable
+private fun PhotoMainEventCardPreview(
+    @PreviewParameter(PhotoMainCountPreviewParameterProvider::class)
+    photoCount: Int,
+) {
+    LaimoryTheme {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            TimelineEventCard(
+                event = photoMainPreviewEvent(photoCount),
                 onEditClick = {},
                 onPhotoClick = { _, _ -> },
                 modifier = Modifier.padding(Spacing.large),
@@ -475,6 +468,14 @@ internal class TimelineEventPreviewParameterProvider : PreviewParameterProvider<
                 defaultPreviewEvent(eventType)
             }
         }
+}
+
+internal class PhotoThumbnailCountPreviewParameterProvider : PreviewParameterProvider<Int> {
+    override val values: Sequence<Int> = sequenceOf(0, 1, 2, 3, 5)
+}
+
+internal class PhotoMainCountPreviewParameterProvider : PreviewParameterProvider<Int> {
+    override val values: Sequence<Int> = sequenceOf(1, 2, 5)
 }
 
 private fun defaultPreviewEvent(eventType: TimelineEventType) =
