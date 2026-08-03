@@ -18,6 +18,7 @@ import org.junit.Before
 import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.time.LocalDate
 
 class TimelineRecordRemoteDataSourceImplTest {
     private lateinit var server: MockWebServer
@@ -79,7 +80,7 @@ class TimelineRecordRemoteDataSourceImplTest {
         }
 
     @Test
-    fun `단건 조회는 DailyRecord ID 경로에 GET하고 graph 응답을 반환한다`() =
+    fun `단건 조회는 recordDate 경로에 GET하고 graph 응답을 반환한다`() =
         runTest {
             server.enqueue(
                 MockResponse()
@@ -110,11 +111,11 @@ class TimelineRecordRemoteDataSourceImplTest {
                     ),
             )
 
-            val response = remote.getDailyRecord(31L)
+            val response = remote.getDailyRecord(RECORD_DATE)
 
             val request = server.takeRequest()
             assertEquals("GET", request.method)
-            assertEquals("/timeline/daily-records/31", request.path)
+            assertEquals("/timeline/daily-records/by-date/2026-07-27", request.path)
             assertEquals(31L, response.dailyRecordId)
             assertEquals(41L, response.events.single().timelineEventId)
         }
@@ -135,7 +136,7 @@ class TimelineRecordRemoteDataSourceImplTest {
                     ),
             )
 
-            val failure = runCatching { remote.getDailyRecord(31L) }.exceptionOrNull()
+            val failure = runCatching { remote.getDailyRecord(RECORD_DATE) }.exceptionOrNull()
 
             assertTrue(failure is ApiException.ClientException)
             val apiException = failure as ApiException
@@ -205,15 +206,15 @@ class TimelineRecordRemoteDataSourceImplTest {
         }
 
     @Test
-    fun `DailyRecord 삭제는 DailyRecord ID 경로에 DELETE하고 null body 성공을 처리한다`() =
+    fun `DailyRecord 삭제는 recordDate 경로에 DELETE하고 null body 성공을 처리한다`() =
         runTest {
             server.enqueue(successUnitResponse())
 
-            remote.deleteDailyRecord(31L)
+            remote.deleteDailyRecord(RECORD_DATE)
 
             val request = server.takeRequest()
             assertEquals("DELETE", request.method)
-            assertEquals("/timeline/daily-records/31", request.path)
+            assertEquals("/timeline/daily-records/by-date/2026-07-27", request.path)
         }
 
     @Test
@@ -251,4 +252,8 @@ class TimelineRecordRemoteDataSourceImplTest {
                 }
                 """.trimIndent(),
             )
+
+    private companion object {
+        val RECORD_DATE: LocalDate = LocalDate.of(2026, 7, 27)
+    }
 }

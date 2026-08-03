@@ -19,12 +19,12 @@ class GetDailyRecordUseCaseTest {
     private class FakeRecordRepository(
         private val result: Result<DailyTimeline>,
     ) : TimelineRecordRepository {
-        var requestedDailyRecordId: Long? = null
+        var requestedRecordDate: LocalDate? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline {
-            requestedDailyRecordId = dailyRecordId
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline {
+            requestedRecordDate = recordDate
             return result.getOrThrow()
         }
 
@@ -32,7 +32,7 @@ class GetDailyRecordUseCaseTest {
 
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) = error("사용하지 않음")
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }
 
     private class RecordingMessageHelper : MessageHelper {
@@ -50,10 +50,10 @@ class GetDailyRecordUseCaseTest {
             val repository = FakeRecordRepository(Result.success(timeline()))
             val useCase = GetDailyRecordUseCase(repository, helper)
 
-            val result = useCase(DAILY_RECORD_ID)
+            val result = useCase(RECORD_DATE)
 
             assertEquals(DailyRecordReadOutcome.Record(timeline()), result.getOrNull())
-            assertEquals(DAILY_RECORD_ID, repository.requestedDailyRecordId)
+            assertEquals(RECORD_DATE, repository.requestedRecordDate)
             assertTrue(helper.messages.isEmpty())
         }
 
@@ -69,7 +69,7 @@ class GetDailyRecordUseCaseTest {
                     helper,
                 )
 
-            val result = useCase(DAILY_RECORD_ID)
+            val result = useCase(RECORD_DATE)
 
             assertEquals(DailyRecordReadOutcome.Unavailable, result.getOrNull())
             assertTrue(helper.messages.isEmpty())
@@ -87,7 +87,7 @@ class GetDailyRecordUseCaseTest {
                     helper,
                 )
 
-            val result = useCase(DAILY_RECORD_ID)
+            val result = useCase(RECORD_DATE)
 
             assertTrue(result.exceptionOrNull() is HandledException)
             assertEquals(listOf(UserMessage.UnsupportedFeature), helper.messages)
@@ -105,7 +105,7 @@ class GetDailyRecordUseCaseTest {
                     helper,
                 )
 
-            val result = useCase(DAILY_RECORD_ID)
+            val result = useCase(RECORD_DATE)
 
             assertTrue(result.exceptionOrNull() is HandledException)
             assertEquals(listOf(UserMessage.SessionExpired), helper.messages)
@@ -114,12 +114,13 @@ class GetDailyRecordUseCaseTest {
     private fun timeline() =
         DailyTimeline(
             dailyRecordId = DAILY_RECORD_ID,
-            recordDate = LocalDate.of(2026, 7, 27),
+            recordDate = RECORD_DATE,
             emotion = null,
             events = emptyList(),
         )
 
     private companion object {
         const val DAILY_RECORD_ID = 31L
+        val RECORD_DATE: LocalDate = LocalDate.of(2026, 7, 27)
     }
 }

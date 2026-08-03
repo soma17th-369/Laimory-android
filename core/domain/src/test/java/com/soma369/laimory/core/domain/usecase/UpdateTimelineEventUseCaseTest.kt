@@ -17,6 +17,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 class UpdateTimelineEventUseCaseTest {
@@ -25,13 +26,13 @@ class UpdateTimelineEventUseCaseTest {
     ) : TimelineRecordRepository {
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = result.getOrThrow()
 
         override suspend fun deleteEvent(timelineEventId: Long) = Unit
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) = Unit
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) = Unit
     }
 
     private class FakeSessionRepository : TimelineRecordSessionRepository {

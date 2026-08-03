@@ -314,19 +314,20 @@ class HomeViewModelTest {
     @Test
     fun `SUCCESS 초안 보기는 작업을 유지하고 타임라인 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val recordDate = LocalDate.now(ZoneId.systemDefault())
             sourceRepository.items.value = listOf(todayItem("first"))
             val viewModel = createViewModel()
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
-            draftTaskCoordinator.emitSuccess(LocalDate.now(ZoneId.systemDefault()))
+            draftTaskCoordinator.emitSuccess(recordDate)
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ViewDraft)
             runCurrent()
 
             assertEquals(0, draftTaskCoordinator.discardCount)
-            assertEquals(listOf(TimelinePage(dailyRecordId = 31L)), navigationHelper.destinations)
+            assertEquals(listOf(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
         }
 
     @Test
@@ -552,13 +553,14 @@ class HomeViewModelTest {
     @Test
     fun `지난 기록 선택은 해당 기록의 타임라인 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val recordDate = LocalDate.of(2026, 7, 27)
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SelectPastRecord(dailyRecordId = 32L))
+            viewModel.sendIntent(HomeUiIntent.SelectPastRecord(recordDate = recordDate))
             runCurrent()
 
-            assertEquals(listOf(TimelinePage(dailyRecordId = 32L)), navigationHelper.destinations)
+            assertEquals(listOf(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
         }
 
     private fun createViewModel(): HomeViewModel =
@@ -760,13 +762,13 @@ class HomeViewModelTest {
             return dailyRecordsGate?.await() ?: dailyRecords
         }
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) = error("사용하지 않음")
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }
 
     private data object NoOpMessageHelper : MessageHelper {
@@ -810,7 +812,6 @@ class HomeViewModelTest {
             mutableState.value =
                 DraftTaskTrackingState.Success(
                     task = ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
-                    dailyRecordId = 31L,
                 )
         }
 

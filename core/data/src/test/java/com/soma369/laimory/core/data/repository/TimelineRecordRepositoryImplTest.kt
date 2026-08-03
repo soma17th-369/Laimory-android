@@ -22,20 +22,20 @@ import java.time.LocalDateTime
 
 class TimelineRecordRepositoryImplTest {
     private class FakeRemote : TimelineRecordRemoteDataSource {
-        var requestedDailyRecordId: Long? = null
+        var requestedRecordDate: LocalDate? = null
         var requestedEventId: Long? = null
         var requestedEventFetchId: Long? = null
         var requestedBody: JsonObject? = null
         var deletedEventId: Long? = null
-        var deletedDailyRecordId: Long? = null
+        var deletedRecordDate: LocalDate? = null
         var updateFailure: Throwable? = null
         var getEventFailure: Throwable? = null
         val calls = mutableListOf<String>()
 
         override suspend fun getDailyRecords(): DailyTimelineListResponse = listResponse
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimelineResponse {
-            requestedDailyRecordId = dailyRecordId
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimelineResponse {
+            requestedRecordDate = recordDate
             return dailyResponse
         }
 
@@ -60,8 +60,8 @@ class TimelineRecordRepositoryImplTest {
             deletedEventId = timelineEventId
         }
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) {
-            deletedDailyRecordId = dailyRecordId
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) {
+            deletedRecordDate = recordDate
         }
     }
 
@@ -80,14 +80,14 @@ class TimelineRecordRepositoryImplTest {
         }
 
     @Test
-    fun `getDailyRecord - dailyRecordId를 전달하고 graph를 Domain으로 매핑한다`() =
+    fun `getDailyRecord - recordDate를 전달하고 graph를 Domain으로 매핑한다`() =
         runTest {
             val remote = FakeRemote()
             val repository = TimelineRecordRepositoryImpl(remote)
 
-            val timeline = repository.getDailyRecord(31L)
+            val timeline = repository.getDailyRecord(RECORD_DATE)
 
-            assertEquals(31L, remote.requestedDailyRecordId)
+            assertEquals(RECORD_DATE, remote.requestedRecordDate)
             assertEquals(31L, timeline.dailyRecordId)
             assertEquals(LocalDate.of(2026, 7, 27), timeline.recordDate)
             val item = timeline.events.single().items.single()
@@ -176,13 +176,15 @@ class TimelineRecordRepositoryImplTest {
             val repository = TimelineRecordRepositoryImpl(remote)
 
             repository.deleteEvent(17L)
-            repository.deleteDailyRecord(31L)
+            repository.deleteDailyRecord(RECORD_DATE)
 
             assertEquals(17L, remote.deletedEventId)
-            assertEquals(31L, remote.deletedDailyRecordId)
+            assertEquals(RECORD_DATE, remote.deletedRecordDate)
         }
 
     private companion object {
+        val RECORD_DATE: LocalDate = LocalDate.of(2026, 7, 27)
+
         val response =
             TimelineEventResponse(
                 timelineEventId = 17L,

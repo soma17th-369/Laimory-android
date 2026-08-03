@@ -20,13 +20,13 @@ class GetDailyRecordsUseCaseTest {
     ) : TimelineRecordRepository {
         override suspend fun getDailyRecords(): List<DailyTimeline> = result.getOrThrow()
 
-        override suspend fun getDailyRecord(dailyRecordId: Long): DailyTimeline = error("사용하지 않음")
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 
-        override suspend fun deleteDailyRecord(dailyRecordId: Long) = error("사용하지 않음")
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }
 
     private class RecordingMessageHelper : MessageHelper {
