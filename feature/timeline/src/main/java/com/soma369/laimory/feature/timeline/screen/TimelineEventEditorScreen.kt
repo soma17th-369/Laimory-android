@@ -335,7 +335,6 @@ private fun TimelineEventEditorBody(
                     placeholder = "메모를 입력하세요",
                     supportingText = "선택 입력",
                     singleLine = false,
-                    counter = "${form.memo.length}/10,000",
                 )
             }
         }

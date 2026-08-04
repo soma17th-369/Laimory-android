@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.data.datasource.remote
 
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
@@ -25,6 +26,12 @@ interface TimelineRecordRemoteDataSource {
     suspend fun updateTimelineEvent(
         timelineEventId: Long,
         request: JsonObject,
+    )
+
+    /** Event 메모를 작성·수정·제거한다. 성공 응답의 body는 null이다. */
+    suspend fun updateTimelineEventMemo(
+        timelineEventId: Long,
+        request: UpdateTimelineEventMemoRequest,
     )
 
     /** Event와 연결된 데이터를 삭제한다. */

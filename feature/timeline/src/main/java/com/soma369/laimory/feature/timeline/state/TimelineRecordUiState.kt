@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.state
 
 import androidx.compose.runtime.Immutable
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.ui.base.UiState
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import java.time.LocalDate
@@ -8,11 +9,29 @@ import java.time.LocalDate
 @Immutable
 data class TimelineRecordUiState(
     val content: TimelineRecordUiContent = TimelineRecordUiContent.Loading,
+    val memoEditor: TimelineMemoEditorState? = null,
     val deleteTarget: TimelineRecordDeleteTarget? = null,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
 ) : UiState {
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
+}
+
+@Immutable
+data class TimelineMemoEditorState(
+    val timelineEventId: Long,
+    val originalMemo: String,
+    val draftMemo: String,
+    val isSaving: Boolean = false,
+) {
+    val hasChanges: Boolean
+        get() = draftMemo != originalMemo
+
+    val isValid: Boolean
+        get() = draftMemo.length <= TimelineEventMemoPolicy.MAX_LENGTH
+
+    val isConfirmEnabled: Boolean
+        get() = hasChanges && isValid && !isSaving
 }
 
 @Immutable

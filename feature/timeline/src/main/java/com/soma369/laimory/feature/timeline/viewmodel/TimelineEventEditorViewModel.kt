@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.timeline.viewmodel
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventPhotoAddition
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
@@ -459,8 +460,8 @@ private fun TimelineEventEditorForm.validate() =
                 null
             },
         memoError =
-            if (memo.length > MAX_MEMO_LENGTH) {
-                "메모는 ${MAX_MEMO_LENGTH}자까지 입력할 수 있어요."
+            if (memo.length > TimelineEventMemoPolicy.MAX_LENGTH) {
+                "메모는 10,000자까지 입력할 수 있어요."
             } else {
                 null
             },
@@ -478,4 +479,3 @@ private fun TimelineEventEditorValidation.afterTitleChanged(value: String): Time
     )
 
 private const val MAX_SHORT_TEXT_LENGTH = 255
-private const val MAX_MEMO_LENGTH = 10_000

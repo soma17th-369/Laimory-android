@@ -19,6 +19,7 @@ import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
+import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
@@ -222,6 +223,152 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `메모 영역을 선택하면 기존 값으로 인라인 편집하고 취소하면 원래 표시로 돌아간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "기존 메모"))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("수정 중인 메모"))
+            runCurrent()
+
+            assertEquals("기존 메모", viewModel.state.value.memoEditor?.originalMemo)
+            assertEquals("수정 중인 메모", viewModel.state.value.memoEditor?.draftMemo)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.CancelMemoEdit)
+            runCurrent()
+
+            assertEquals(null, viewModel.state.value.memoEditor)
+            assertTrue(recordRepository.updatedMemos.isEmpty())
+        }
+
+    @Test
+    fun `메모 완료는 전용 PUT 결과를 세션과 카드에 반영한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("오늘의 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "오늘의 메모"), recordRepository.updatedMemos)
+            assertEquals("오늘의 메모", repository.timeline.value?.events?.single()?.memo)
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals("오늘의 메모", content.value.events.single().memo)
+            assertEquals(null, viewModel.state.value.memoEditor)
+        }
+
+    @Test
+    fun `공백뿐인 메모 완료는 null 제거 요청을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "지울 메모"))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("   "))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to null), recordRepository.updatedMemos)
+            assertEquals(null, repository.timeline.value?.events?.single()?.memo)
+        }
+
+    @Test
+    fun `메모 최대 길이를 초과하면 완료 요청을 보내지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("가".repeat(10_001)))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            assertEquals(false, viewModel.state.value.memoEditor?.isValid)
+            assertTrue(recordRepository.updatedMemos.isEmpty())
+        }
+
+    @Test
+    fun `메모 최대 길이까지는 완료 요청을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val maxLengthMemo = "가".repeat(10_000)
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(maxLengthMemo))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to maxLengthMemo), recordRepository.updatedMemos)
+            assertEquals(null, viewModel.state.value.memoEditor)
+        }
+
+    @Test
+    fun `메모 수정 네트워크 실패는 입력값을 유지해 다시 시도할 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("연결되면 다시 저장할 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            assertEquals("연결되면 다시 저장할 메모", viewModel.state.value.memoEditor?.draftMemo)
+            assertEquals(false, viewModel.state.value.memoEditor?.isSaving)
+        }
+
+    @Test
+    fun `메모 저장 중 중복 완료 요청을 막는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.memoUpdateGate = gate
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("한 번만 저장"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            runCurrent()
+
+            assertEquals(listOf(1L to "한 번만 저장"), recordRepository.updatedMemos)
+            assertEquals(true, viewModel.state.value.memoEditor?.isSaving)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "한 번만 저장"), recordRepository.updatedMemos)
+            assertEquals(null, viewModel.state.value.memoEditor)
+        }
+
+    @Test
+    fun `작성 완료된 기록의 메모 수정은 편집을 닫고 안내한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure =
+                ApiException.ConflictException(
+                    errorCode = -1003,
+                    rawCode = 409,
+                )
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("수정할 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            assertEquals(null, viewModel.state.value.memoEditor)
+            assertEquals(
+                TimelineRecordUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
     fun `삭제 요청 Intent는 하루 삭제 확인 상태를 연다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
@@ -364,6 +511,12 @@ class TimelineRecordViewModelTest {
                     messageHelper = NoOpMessageHelper,
                 ),
             saveTimelineRecordUseCase = SaveTimelineRecordUseCase(repository),
+            updateTimelineEventMemoUseCase =
+                UpdateTimelineEventMemoUseCase(
+                    repository = recordRepository,
+                    sessionRepository = repository,
+                    messageHelper = NoOpMessageHelper,
+                ),
             deleteDailyRecordUseCase =
                 DeleteDailyRecordUseCase(
                     repository = recordRepository,
@@ -390,7 +543,7 @@ class TimelineRecordViewModelTest {
             events = events,
         )
 
-    private fun event() =
+    private fun event(memo: String? = null) =
         TimelineEvent(
             timelineEventId = 1L,
             eventType = TimelineEventType.WORK,
@@ -398,7 +551,7 @@ class TimelineRecordViewModelTest {
             endAt = null,
             title = "업무",
             subtitle = null,
-            memo = null,
+            memo = memo,
             items = emptyList(),
         )
 
@@ -410,7 +563,18 @@ class TimelineRecordViewModelTest {
             mutableTimeline.value = timeline
         }
 
-        override fun replaceEvent(event: TimelineEvent) = Unit
+        override fun replaceEvent(event: TimelineEvent) {
+            mutableTimeline.value =
+                mutableTimeline.value?.copy(
+                    events =
+                        mutableTimeline.value
+                            ?.events
+                            .orEmpty()
+                            .map { current ->
+                                if (current.timelineEventId == event.timelineEventId) event else current
+                            },
+                )
+        }
 
         override fun removeEvent(timelineEventId: Long) = Unit
 
@@ -422,8 +586,10 @@ class TimelineRecordViewModelTest {
     private class RecordingTimelineRecordRepository : TimelineRecordRepository {
         val requestedRecordDates = mutableListOf<LocalDate>()
         val deletedRecordDates = mutableListOf<LocalDate>()
+        val updatedMemos = mutableListOf<Pair<Long, String?>>()
         var dailyRecordResult: Result<DailyTimeline>? = null
         var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
+        var memoUpdateGate: CompletableDeferred<Unit>? = null
         var failure: ApiException? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
@@ -439,6 +605,28 @@ class TimelineRecordViewModelTest {
         }
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
+
+        override suspend fun updateEventMemo(
+            timelineEventId: Long,
+            memo: String?,
+        ): TimelineEvent {
+            updatedMemos += timelineEventId to memo
+            memoUpdateGate?.let { gate ->
+                memoUpdateGate = null
+                gate.await()
+            }
+            failure?.let { throw it }
+            return TimelineEvent(
+                timelineEventId = timelineEventId,
+                eventType = TimelineEventType.WORK,
+                startAt = LocalDateTime.of(2026, 5, 8, 9, 0),
+                endAt = null,
+                title = "업무",
+                subtitle = null,
+                memo = memo,
+                items = emptyList(),
+            )
+        }
 
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 

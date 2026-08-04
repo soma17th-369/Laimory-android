@@ -28,12 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
@@ -44,9 +42,9 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
-import com.soma369.laimory.core.ui.theme.laimorySignature
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
+import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import com.soma369.laimory.core.ui.R as UiR
@@ -56,6 +54,11 @@ internal fun TimelineEventCard(
     event: TimelineEventUiModel,
     onEditClick: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
+    memoEditor: TimelineMemoEditorState? = null,
+    onMemoClick: () -> Unit = {},
+    onMemoChange: (String) -> Unit = {},
+    onMemoCancel: () -> Unit = {},
+    onMemoConfirm: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val photoSlots = event.photoSlots()
@@ -104,6 +107,11 @@ internal fun TimelineEventCard(
                         photoSlots = photoSlots,
                         onEditClick = onEditClick,
                         onPhotoClick = onPhotoClick,
+                        memoEditor = memoEditor,
+                        onMemoClick = onMemoClick,
+                        onMemoChange = onMemoChange,
+                        onMemoCancel = onMemoCancel,
+                        onMemoConfirm = onMemoConfirm,
                     )
                 } else {
                     EventMainCard(event = event, onEditClick = onEditClick)
@@ -126,7 +134,14 @@ internal fun TimelineEventCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TimelineMemo(memo = event.memo)
+                    TimelineMemo(
+                        memo = event.memo,
+                        editor = memoEditor,
+                        onClick = onMemoClick,
+                        onValueChange = onMemoChange,
+                        onCancel = onMemoCancel,
+                        onConfirm = onMemoConfirm,
+                    )
                 }
             }
         }
@@ -182,6 +197,11 @@ private fun PhotoMainEvent(
     photoSlots: List<String?>,
     onEditClick: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
+    memoEditor: TimelineMemoEditorState?,
+    onMemoClick: () -> Unit,
+    onMemoChange: (String) -> Unit,
+    onMemoCancel: () -> Unit,
+    onMemoConfirm: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -214,7 +234,14 @@ private fun PhotoMainEvent(
             )
             TimelineEditButton(onClick = onEditClick)
         }
-        TimelineMemo(memo = event.memo)
+        TimelineMemo(
+            memo = event.memo,
+            editor = memoEditor,
+            onClick = onMemoClick,
+            onValueChange = onMemoChange,
+            onCancel = onMemoCancel,
+            onConfirm = onMemoConfirm,
+        )
     }
 }
 
@@ -327,45 +354,6 @@ private fun TimelineEditButton(onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun TimelineMemo(memo: String?) {
-    val borderColor = MaterialTheme.colorScheme.outline
-    Text(
-        text = memo?.takeIf(String::isNotBlank) ?: "이 순간에 대한 메모…",
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .dashedRoundRectBorder(
-                    color = borderColor,
-                    cornerRadius = 12.dp,
-                ).padding(horizontal = Spacing.medium, vertical = 10.dp),
-        style = MaterialTheme.laimorySignature.note,
-        color =
-            if (memo.isNullOrBlank()) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-    )
-}
-
-private fun Modifier.dashedRoundRectBorder(
-    color: Color,
-    cornerRadius: Dp,
-) = drawWithCache {
-    val strokeWidth = 1.dp.toPx()
-    val radius = cornerRadius.toPx()
-    val dash = 4.dp.toPx()
-    val pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash))
-    onDrawBehind {
-        drawRoundRect(
-            color = color,
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
-            style = Stroke(width = strokeWidth, pathEffect = pathEffect),
-        )
-    }
-}
-
 private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun TimelineEventUiModel.timeLabel(): String {
@@ -459,6 +447,25 @@ private fun PhotoMainEventCardPreview(
     }
 }
 
+@Preview(name = "메모 편집 상태", showBackground = true, widthDp = 360)
+@Composable
+private fun TimelineMemoEditorPreview(
+    @PreviewParameter(TimelineMemoEditorPreviewParameterProvider::class)
+    editor: TimelineMemoEditorState,
+) {
+    LaimoryTheme {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            TimelineEventCard(
+                event = photoThumbnailPreviewEvent(photoCount = 0),
+                onEditClick = {},
+                onPhotoClick = { _, _ -> },
+                memoEditor = editor,
+                modifier = Modifier.padding(Spacing.large),
+            )
+        }
+    }
+}
+
 internal class TimelineEventPreviewParameterProvider : PreviewParameterProvider<TimelineEventUiModel> {
     override val values: Sequence<TimelineEventUiModel> =
         TimelineEventType.entries.asSequence().map { eventType ->
@@ -476,6 +483,28 @@ internal class PhotoThumbnailCountPreviewParameterProvider : PreviewParameterPro
 
 internal class PhotoMainCountPreviewParameterProvider : PreviewParameterProvider<Int> {
     override val values: Sequence<Int> = sequenceOf(1, 2, 5)
+}
+
+internal class TimelineMemoEditorPreviewParameterProvider : PreviewParameterProvider<TimelineMemoEditorState> {
+    override val values: Sequence<TimelineMemoEditorState> =
+        sequenceOf(
+            TimelineMemoEditorState(
+                timelineEventId = 2L,
+                originalMemo = "7호선이 평소보다 많이 붐볐다.",
+                draftMemo = "오늘은 비가 와서 조금 우울했지만, 카페에서 따뜻한 라떼를 마시니 기분이 좋아졌다.",
+            ),
+            TimelineMemoEditorState(
+                timelineEventId = 2L,
+                originalMemo = "7호선이 평소보다 많이 붐볐다.",
+                draftMemo = "저장 중인 메모",
+                isSaving = true,
+            ),
+            TimelineMemoEditorState(
+                timelineEventId = 2L,
+                originalMemo = "",
+                draftMemo = "가".repeat(10_001),
+            ),
+        )
 }
 
 private fun defaultPreviewEvent(eventType: TimelineEventType) =

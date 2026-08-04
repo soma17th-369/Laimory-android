@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.data.datasource.remote
 
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
@@ -28,6 +29,13 @@ class TimelineRecordRemoteDataSourceImpl
             request: JsonObject,
         ) {
             safeApiCallUnit { api.updateTimelineEvent(timelineEventId, request) }
+        }
+
+        override suspend fun updateTimelineEventMemo(
+            timelineEventId: Long,
+            request: UpdateTimelineEventMemoRequest,
+        ) {
+            safeApiCallUnit { api.updateTimelineEventMemo(timelineEventId, request) }
         }
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {
