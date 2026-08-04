@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.repository
 
 import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSource
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
@@ -26,6 +27,7 @@ class TimelineRecordRepositoryImplTest {
         var requestedEventId: Long? = null
         var requestedEventFetchId: Long? = null
         var requestedBody: JsonObject? = null
+        var requestedMemo: String? = null
         var deletedEventId: Long? = null
         var deletedRecordDate: LocalDate? = null
         var updateFailure: Throwable? = null
@@ -53,6 +55,16 @@ class TimelineRecordRepositoryImplTest {
             calls += "PATCH"
             requestedEventId = timelineEventId
             requestedBody = request
+            updateFailure?.let { throw it }
+        }
+
+        override suspend fun updateTimelineEventMemo(
+            timelineEventId: Long,
+            request: UpdateTimelineEventMemoRequest,
+        ) {
+            calls += "PUT"
+            requestedEventId = timelineEventId
+            requestedMemo = request.memo
             updateFailure?.let { throw it }
         }
 
@@ -167,6 +179,36 @@ class TimelineRecordRepositoryImplTest {
             assertTrue(failure is IllegalStateException)
             assertEquals(listOf("PATCH", "GET"), remote.calls)
             assertEquals(17L, remote.requestedEventFetchId)
+        }
+
+    @Test
+    fun `updateEventMemo - PUT 후 GET한 최신 Event를 Domain으로 매핑한다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+
+            val event = repository.updateEventMemo(17L, "수정한 메모")
+
+            assertEquals(17L, remote.requestedEventId)
+            assertEquals("수정한 메모", remote.requestedMemo)
+            assertEquals(17L, remote.requestedEventFetchId)
+            assertEquals(listOf("PUT", "GET"), remote.calls)
+            assertEquals(TimelineEventType.PHOTO_MOMENT, event.eventType)
+        }
+
+    @Test
+    fun `updateEventMemo - 제거 요청은 null을 전달하고 PUT 실패 시 GET하지 않는다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+            remote.updateFailure = IllegalStateException("PUT 실패")
+
+            val failure = runCatching { repository.updateEventMemo(17L, null) }.exceptionOrNull()
+
+            assertTrue(failure is IllegalStateException)
+            assertNull(remote.requestedMemo)
+            assertEquals(listOf("PUT"), remote.calls)
+            assertNull(remote.requestedEventFetchId)
         }
 
     @Test

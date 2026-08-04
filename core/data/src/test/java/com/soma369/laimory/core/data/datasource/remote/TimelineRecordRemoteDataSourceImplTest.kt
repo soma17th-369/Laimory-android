@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.data.datasource.remote
 
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.domain.exception.ApiException
 import kotlinx.coroutines.test.runTest
@@ -158,6 +159,38 @@ class TimelineRecordRemoteDataSourceImplTest {
             assertEquals("PATCH", request.method)
             assertEquals("/timeline/events/17", request.path)
             assertEquals("""{"title":"수정 제목"}""", request.body.readUtf8())
+        }
+
+    @Test
+    fun `Event 메모 수정은 전용 경로에 PUT하고 memo를 전송한다`() =
+        runTest {
+            server.enqueue(successUnitResponse())
+
+            remote.updateTimelineEventMemo(
+                timelineEventId = 17L,
+                request = UpdateTimelineEventMemoRequest("오늘의 메모"),
+            )
+
+            val request = server.takeRequest()
+            assertEquals("PUT", request.method)
+            assertEquals("/timeline/events/17/memo", request.path)
+            assertEquals("""{"memo":"오늘의 메모"}""", request.body.readUtf8())
+        }
+
+    @Test
+    fun `Event 메모 제거는 memo 필드를 생략한 PUT body로 전송한다`() =
+        runTest {
+            server.enqueue(successUnitResponse())
+
+            remote.updateTimelineEventMemo(
+                timelineEventId = 17L,
+                request = UpdateTimelineEventMemoRequest(null),
+            )
+
+            val request = server.takeRequest()
+            assertEquals("PUT", request.method)
+            assertEquals("/timeline/events/17/memo", request.path)
+            assertEquals("{}", request.body.readUtf8())
         }
 
     @Test

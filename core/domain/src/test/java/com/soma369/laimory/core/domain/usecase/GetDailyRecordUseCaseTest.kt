@@ -30,6 +30,11 @@ class GetDailyRecordUseCaseTest {
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
+        override suspend fun updateEventMemo(
+            timelineEventId: Long,
+            memo: String?,
+        ): TimelineEvent = error("사용하지 않음")
+
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")

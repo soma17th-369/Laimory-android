@@ -16,6 +16,12 @@ interface TimelineRecordRepository {
     /** 통합 PATCH로 Event 상세·타입·메모를 수정하고 업로드 완료 PHOTO를 append한다. */
     suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent
 
+    /** 전용 PUT으로 Event 메모를 작성·수정·제거한다. */
+    suspend fun updateEventMemo(
+        timelineEventId: Long,
+        memo: String?,
+    ): TimelineEvent
+
     /** Event와 하위 Item을 삭제한다. 마지막 Event여도 DailyRecord는 유지한다. */
     suspend fun deleteEvent(timelineEventId: Long)
 

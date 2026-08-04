@@ -23,4 +23,16 @@ sealed interface TimelineRecordUiIntent : UiIntent {
     data class SelectEvent(
         val timelineEventId: Long,
     ) : TimelineRecordUiIntent
+
+    data class EditMemo(
+        val timelineEventId: Long,
+    ) : TimelineRecordUiIntent
+
+    data class ChangeMemo(
+        val value: String,
+    ) : TimelineRecordUiIntent
+
+    data object CancelMemoEdit : TimelineRecordUiIntent
+
+    data object ConfirmMemoEdit : TimelineRecordUiIntent
 }

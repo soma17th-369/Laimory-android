@@ -1,11 +1,13 @@
 package com.soma369.laimory.feature.timeline.screen
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -44,6 +46,7 @@ import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
@@ -89,6 +92,10 @@ private fun TimelineRecordContent(
                     snackbarHostState.showSnackbar(effect.message)
             }
         }
+    }
+
+    BackHandler(enabled = state.memoEditor != null) {
+        onIntent(TimelineRecordUiIntent.NavigateBack)
     }
 
     TimelineRecordScreen(
@@ -144,7 +151,9 @@ private fun TimelineRecordScreen(
                     Box {
                         IconButton(
                             onClick = { isRecordMenuExpanded = true },
-                            enabled = state.deleteDialogState == TimelineDeleteDialogState.Hidden,
+                            enabled =
+                                state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                                    state.memoEditor == null,
                         ) {
                             Icon(
                                 painter = painterResource(UiR.drawable.ico_default_more),
@@ -184,7 +193,12 @@ private fun TimelineRecordScreen(
             is TimelineRecordUiContent.Record ->
                 TimelineRecordBody(
                     record = content.value,
+                    memoEditor = state.memoEditor,
                     onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
+                    onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
+                    onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
+                    onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
+                    onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
                     onPhotoClick = { photoUrls, initialIndex ->
                         photoViewerState =
                             TimelinePhotoViewerState(
@@ -282,7 +296,12 @@ private fun TimelineRecordLoadFailed(onRetryClick: () -> Unit) {
 @Composable
 private fun TimelineRecordBody(
     record: TimelineRecordUiModel,
+    memoEditor: TimelineMemoEditorState?,
     onEventClick: (Long) -> Unit,
+    onMemoClick: (Long) -> Unit,
+    onMemoChange: (String) -> Unit,
+    onMemoCancel: () -> Unit,
+    onMemoConfirm: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
 ) {
     if (record.events.isEmpty()) {
@@ -291,7 +310,10 @@ private fun TimelineRecordBody(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .imePadding(),
         contentPadding = PaddingValues(horizontal = Spacing.large, vertical = Spacing.small),
         verticalArrangement = Arrangement.spacedBy(Spacing.large),
     ) {
@@ -303,6 +325,11 @@ private fun TimelineRecordBody(
                 event = event,
                 onEditClick = { onEventClick(event.timelineEventId) },
                 onPhotoClick = onPhotoClick,
+                memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
+                onMemoClick = { onMemoClick(event.timelineEventId) },
+                onMemoChange = onMemoChange,
+                onMemoCancel = onMemoCancel,
+                onMemoConfirm = onMemoConfirm,
             )
         }
     }

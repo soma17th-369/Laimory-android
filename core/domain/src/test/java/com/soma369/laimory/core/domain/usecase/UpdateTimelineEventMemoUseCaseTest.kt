@@ -20,20 +20,27 @@ import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
 
-class UpdateTimelineEventUseCaseTest {
+class UpdateTimelineEventMemoUseCaseTest {
     private class FakeRecordRepository(
         private val result: Result<TimelineEvent>,
     ) : TimelineRecordRepository {
+        var requestedEventId: Long? = null
+        var requestedMemo: String? = null
+
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
         override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
 
-        override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = result.getOrThrow()
+        override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
         override suspend fun updateEventMemo(
             timelineEventId: Long,
             memo: String?,
-        ): TimelineEvent = error("사용하지 않음")
+        ): TimelineEvent {
+            requestedEventId = timelineEventId
+            requestedMemo = memo
+            return result.getOrThrow()
+        }
 
         override suspend fun deleteEvent(timelineEventId: Long) = Unit
 
@@ -64,37 +71,43 @@ class UpdateTimelineEventUseCaseTest {
     }
 
     @Test
-    fun `수정 성공 응답을 반환하고 현재 타임라인 세션에 교체한다`() =
+    fun `메모 수정 성공 응답을 세션에 교체한다`() =
         runBlocking {
-            val event = event(title = "수정됨")
+            val event = event(memo = "수정한 메모")
+            val repository = FakeRecordRepository(Result.success(event))
             val session = FakeSessionRepository()
-            val useCase = UpdateTimelineEventUseCase(FakeRecordRepository(Result.success(event)), session, RecordingMessageHelper())
+            val useCase = UpdateTimelineEventMemoUseCase(repository, session, RecordingMessageHelper())
 
-            val result = useCase(command())
+            val result = useCase(EVENT_ID, "수정한 메모")
 
+            assertEquals(EVENT_ID, repository.requestedEventId)
+            assertEquals("수정한 메모", repository.requestedMemo)
             assertEquals(event, result.getOrNull())
             assertEquals(event, session.replacedEvent)
         }
 
     @Test
-    fun `기능 오류 코드는 화면이 처리할 의미 오류로 변환한다`() =
+    fun `메모 기능 오류는 화면 의미 오류로 변환한다`() =
         runBlocking {
             val cases =
                 listOf(
                     -400 to TimelineEventUpdateException.Reason.INVALID_REQUEST,
-                    -1004 to TimelineEventUpdateException.Reason.PHOTO_LIMIT_EXCEEDED,
                     -404 to TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE,
                     -1003 to TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED,
-                    -1016 to TimelineEventUpdateException.Reason.DATE_OPERATION_IN_PROGRESS,
                 )
 
             cases.forEach { (errorCode, expectedReason) ->
                 val helper = RecordingMessageHelper()
                 val session = FakeSessionRepository()
-                val exception = ApiException.ClientException(errorCode = errorCode, rawCode = 404)
-                val useCase = UpdateTimelineEventUseCase(FakeRecordRepository(Result.failure(exception)), session, helper)
+                val exception = ApiException.ClientException(errorCode = errorCode, rawCode = 409)
+                val useCase =
+                    UpdateTimelineEventMemoUseCase(
+                        FakeRecordRepository(Result.failure(exception)),
+                        session,
+                        helper,
+                    )
 
-                val failure = useCase(command()).exceptionOrNull()
+                val failure = useCase(EVENT_ID, "메모").exceptionOrNull()
 
                 assertTrue(failure is TimelineEventUpdateException)
                 assertEquals(expectedReason, (failure as TimelineEventUpdateException).reason)
@@ -109,36 +122,31 @@ class UpdateTimelineEventUseCaseTest {
             val helper = RecordingMessageHelper()
             val exception = ApiException.UnauthorizedException(errorCode = -2001, rawCode = 401)
             val useCase =
-                UpdateTimelineEventUseCase(
+                UpdateTimelineEventMemoUseCase(
                     FakeRecordRepository(Result.failure(exception)),
                     FakeSessionRepository(),
                     helper,
                 )
 
-            val failure = useCase(command()).exceptionOrNull()
+            val failure = useCase(EVENT_ID, null).exceptionOrNull()
 
             assertTrue(failure is HandledException)
             assertEquals(listOf(UserMessage.SessionExpired), helper.messages)
         }
 
-    private fun command() =
-        UpdateTimelineEventCommand(
-            timelineEventId = 17L,
-            title = "수정 제목",
-            subtitle = null,
-            startAt = LocalDateTime.of(2026, 7, 8, 14, 0),
-            endAt = null,
-        )
-
-    private fun event(title: String) =
+    private fun event(memo: String?) =
         TimelineEvent(
-            timelineEventId = 17L,
+            timelineEventId = EVENT_ID,
             eventType = TimelineEventType.WORK,
             startAt = LocalDateTime.of(2026, 7, 8, 14, 0),
             endAt = null,
-            title = title,
+            title = "업무",
             subtitle = null,
-            memo = null,
+            memo = memo,
             items = emptyList(),
         )
+
+    private companion object {
+        const val EVENT_ID = 17L
+    }
 }
