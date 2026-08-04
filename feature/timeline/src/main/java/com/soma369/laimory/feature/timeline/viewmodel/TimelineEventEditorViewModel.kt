@@ -25,6 +25,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalTime
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 
@@ -461,7 +462,8 @@ private fun TimelineEventEditorForm.validate() =
             },
         memoError =
             if (memo.length > TimelineEventMemoPolicy.MAX_LENGTH) {
-                "메모는 10,000자까지 입력할 수 있어요."
+                "메모는 ${String.format(Locale.getDefault(), "%,d", TimelineEventMemoPolicy.MAX_LENGTH)}자까지 " +
+                    "입력할 수 있어요."
             } else {
                 null
             },

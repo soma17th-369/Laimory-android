@@ -23,7 +23,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,13 +38,17 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
@@ -96,14 +103,32 @@ private fun TimelineMemoEditor(
 ) {
     val focusRequester = remember(editor.timelineEventId) { FocusRequester() }
     val editorBottomBringIntoViewRequester = remember(editor.timelineEventId) { BringIntoViewRequester() }
+    var textFieldValue by remember(editor.timelineEventId) {
+        mutableStateOf(
+            TextFieldValue(
+                text = editor.draftMemo,
+                selection = TextRange(editor.draftMemo.length),
+            ),
+        )
+    }
     val imeInsets = WindowInsets.ime
     val density = LocalDensity.current
+    val locale = LocalLocale.current.platformLocale
     val textColor = MaterialTheme.colorScheme.onBackground
     LaunchedEffect(editor.timelineEventId) {
         focusRequester.requestFocus()
         imeInsets.awaitSettled(density)
         withFrameNanos { }
         editorBottomBringIntoViewRequester.bringIntoView()
+    }
+    LaunchedEffect(editor.draftMemo) {
+        if (editor.draftMemo != textFieldValue.text) {
+            textFieldValue =
+                TextFieldValue(
+                    text = editor.draftMemo,
+                    selection = TextRange(editor.draftMemo.length),
+                )
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -119,8 +144,11 @@ private fun TimelineMemoEditor(
             verticalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
             BasicTextField(
-                value = editor.draftMemo,
-                onValueChange = onValueChange,
+                value = textFieldValue,
+                onValueChange = {
+                    textFieldValue = it
+                    onValueChange(it.text)
+                },
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -133,7 +161,7 @@ private fun TimelineMemoEditor(
                 maxLines = 8,
                 decorationBox = { innerTextField ->
                     Box {
-                        if (editor.draftMemo.isEmpty()) {
+                        if (textFieldValue.text.isEmpty()) {
                             Text(
                                 text = "이 순간에 대한 메모…",
                                 style = MaterialTheme.laimorySignature.note,
@@ -146,7 +174,9 @@ private fun TimelineMemoEditor(
             )
             if (!editor.isValid) {
                 Text(
-                    text = "메모는 10,000자까지 입력할 수 있어요.",
+                    text =
+                        "메모는 ${String.format(locale, "%,d", TimelineEventMemoPolicy.MAX_LENGTH)}자까지 " +
+                            "입력할 수 있어요.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -201,7 +231,7 @@ private fun TimelineMemoEditor(
 private suspend fun WindowInsets.awaitSettled(density: Density) {
     var previousBottom = -1
     var stableFrameCount = 0
-    while (stableFrameCount < STABLE_IME_FRAME_COUNT) {
+    repeat(MAX_IME_WAIT_FRAME_COUNT) {
         withFrameNanos { }
         val currentBottom = getBottom(density)
         stableFrameCount =
@@ -211,6 +241,7 @@ private suspend fun WindowInsets.awaitSettled(density: Density) {
                 0
             }
         previousBottom = currentBottom
+        if (stableFrameCount >= STABLE_IME_FRAME_COUNT) return
     }
 }
 
@@ -257,3 +288,4 @@ private fun Modifier.dashedRoundRectBorder(
 }
 
 private const val STABLE_IME_FRAME_COUNT = 2
+private const val MAX_IME_WAIT_FRAME_COUNT = 60
