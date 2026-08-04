@@ -199,7 +199,7 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `뒤로가기 Intent는 공통 내비게이션 뒤로가기를 호출한다`() =
+    fun `편집하지 않을 때 뒤로가기는 공통 내비게이션 뒤로가기를 호출한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
             runCurrent()
@@ -208,6 +208,41 @@ class TimelineRecordViewModelTest {
             runCurrent()
 
             assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `메모 편집 중 뒤로가기는 화면을 유지하고 편집기만 닫는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.NavigateBack)
+            runCurrent()
+
+            assertEquals(null, viewModel.state.value.memoEditor)
+            assertEquals(0, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `메모 저장 중 뒤로가기는 저장과 화면을 그대로 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.memoUpdateGate = gate
+            val viewModel = createLoadedViewModel()
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 중인 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.NavigateBack)
+            runCurrent()
+
+            assertEquals(true, viewModel.state.value.memoEditor?.isSaving)
+            assertEquals(0, navigationHelper.backCount)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
         }
 
     @Test

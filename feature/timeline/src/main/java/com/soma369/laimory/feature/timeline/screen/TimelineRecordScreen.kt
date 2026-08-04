@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.timeline.screen
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -91,6 +92,10 @@ private fun TimelineRecordContent(
                     snackbarHostState.showSnackbar(effect.message)
             }
         }
+    }
+
+    BackHandler(enabled = state.memoEditor != null) {
+        onIntent(TimelineRecordUiIntent.NavigateBack)
     }
 
     TimelineRecordScreen(
