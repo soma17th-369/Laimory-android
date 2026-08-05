@@ -20,5 +20,10 @@ interface TimelineRecordSessionRepository {
 
     fun removeEvent(timelineEventId: Long)
 
+    fun removeEventItem(
+        timelineEventId: Long,
+        timelineItemId: Long,
+    )
+
     fun clear()
 }

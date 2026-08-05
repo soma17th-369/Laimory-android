@@ -39,6 +39,24 @@ class TimelineRecordSessionRepositoryImpl
             }
         }
 
+        override fun removeEventItem(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) {
+            mutableTimeline.update { current ->
+                current?.copy(
+                    events =
+                        current.events.map { event ->
+                            if (event.timelineEventId == timelineEventId) {
+                                event.copy(items = event.items.filterNot { it.timelineItemId == timelineItemId })
+                            } else {
+                                event
+                            }
+                        },
+                )
+            }
+        }
+
         override fun clear() {
             mutableTimeline.value = null
         }

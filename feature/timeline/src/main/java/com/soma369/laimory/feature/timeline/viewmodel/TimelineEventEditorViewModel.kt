@@ -1,5 +1,8 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
+import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.HandledException
+import com.soma369.laimory.core.domain.exception.TimelineEventPhotoDeleteException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
@@ -8,6 +11,8 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventPhotoAddition
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoOutcome
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
@@ -20,7 +25,9 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorValidation
+import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
+import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,6 +44,7 @@ class TimelineEventEditorViewModel
         private val uploadTimelineEventPhotoUseCase: UploadTimelineEventPhotoUseCase,
         private val updateTimelineEventUseCase: UpdateTimelineEventUseCase,
         private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
+        private val deleteTimelineEventPhotoUseCase: DeleteTimelineEventPhotoUseCase,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<TimelineEventEditorUiState, TimelineEventEditorUiIntent, TimelineEventEditorUiSideEffect>(
             TimelineEventEditorUiState(),
@@ -68,6 +76,10 @@ class TimelineEventEditorViewModel
                 TimelineEventEditorUiIntent.ClearEndTime -> clearEndTime()
                 is TimelineEventEditorUiIntent.AddPhotos -> addPhotos(intent.clientPhotoUris)
                 is TimelineEventEditorUiIntent.RemovePendingPhoto -> removePendingPhoto(intent.rawId)
+                is TimelineEventEditorUiIntent.RequestExistingPhotoRemoval ->
+                    requestExistingPhotoRemoval(intent.timelineItemId)
+                TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval -> deleteExistingPhoto()
+                TimelineEventEditorUiIntent.DismissExistingPhotoRemoval -> dismissExistingPhotoRemoval()
                 TimelineEventEditorUiIntent.OpenPhotoPicker ->
                     if (canEdit()) sendEffect(TimelineEventEditorUiSideEffect.LaunchPhotoPicker)
                 TimelineEventEditorUiIntent.Save -> save()
@@ -106,7 +118,7 @@ class TimelineEventEditorViewModel
                     content = TimelineEventEditorUiContent.Editor,
                     originalForm = form,
                     form = form,
-                    existingPhotoUrls = event.existingPhotoUrls(),
+                    existingPhotos = event.existingPhotos(),
                 )
             }
         }
@@ -201,7 +213,8 @@ class TimelineEventEditorViewModel
             val current = state.value
             if (current.isSaving ||
                 current.isReadOnly ||
-                current.deleteDialogState != TimelineDeleteDialogState.Hidden
+                current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.photoDeleteDialogState != TimelineEventPhotoDeleteDialogState.Hidden
             ) {
                 return
             }
@@ -296,7 +309,7 @@ class TimelineEventEditorViewModel
         }
 
         private fun navigateBack() {
-            if (state.value.isSaving || state.value.isDeleting) return
+            if (state.value.isSaving || state.value.isDeleting || state.value.isDeletingPhoto) return
             if (state.value.hasUnsavedChanges) {
                 updateState { copy(isDiscardDialogVisible = true) }
             } else {
@@ -316,6 +329,122 @@ class TimelineEventEditorViewModel
         private fun requestDelete() {
             if (!canEdit() || state.value.timelineEventId == null) return
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Confirmation) }
+        }
+
+        private fun requestExistingPhotoRemoval(timelineItemId: Long) {
+            if (!canEdit()) return
+            val photo = state.value.existingPhotos.firstOrNull { it.timelineItemId == timelineItemId } ?: return
+            updateState {
+                copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Confirmation(photo))
+            }
+        }
+
+        private suspend fun deleteExistingPhoto() {
+            val current = state.value
+            val timelineEventId = current.timelineEventId ?: return
+            val photo =
+                when (val dialogState = current.photoDeleteDialogState) {
+                    is TimelineEventPhotoDeleteDialogState.Confirmation -> dialogState.photo
+                    is TimelineEventPhotoDeleteDialogState.RetryableError -> dialogState.photo
+                    else -> return
+                }
+            updateState {
+                copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Deleting(photo))
+            }
+            deleteTimelineEventPhotoUseCase(timelineEventId, photo.timelineItemId)
+                .onSuccess(::handlePhotoDeleteSuccess)
+                .onFailure { handlePhotoDeleteFailure(photo, it) }
+        }
+
+        private fun handlePhotoDeleteSuccess(outcome: DeleteTimelineEventPhotoOutcome) {
+            when (outcome) {
+                DeleteTimelineEventPhotoOutcome.Deleted -> {
+                    if (syncExistingPhotosFromSession()) {
+                        updateState { copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden) }
+                        sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("사진을 이벤트에서 제거했어요."))
+                    }
+                }
+                DeleteTimelineEventPhotoOutcome.Reconciled -> {
+                    if (syncExistingPhotosFromSession()) {
+                        updateState { copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden) }
+                        sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("사진 목록을 최신 상태로 갱신했어요."))
+                    }
+                }
+                DeleteTimelineEventPhotoOutcome.EventUnavailable -> showUnavailableAfterPhotoDelete()
+            }
+        }
+
+        private fun syncExistingPhotosFromSession(): Boolean {
+            val timelineEventId = state.value.timelineEventId ?: return false
+            val event =
+                observeTimelineRecordUseCase()
+                    .value
+                    ?.events
+                    ?.firstOrNull { it.timelineEventId == timelineEventId }
+            if (event == null) {
+                showUnavailableAfterPhotoDelete()
+                return false
+            }
+            updateState { copy(existingPhotos = event.existingPhotos()) }
+            return true
+        }
+
+        private fun showUnavailableAfterPhotoDelete() {
+            updateState {
+                copy(
+                    content = TimelineEventEditorUiContent.Unavailable,
+                    photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden,
+                )
+            }
+            sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
+        }
+
+        private fun handlePhotoDeleteFailure(
+            photo: TimelineEventExistingPhoto,
+            error: Throwable,
+        ) {
+            when (error) {
+                is TimelineEventPhotoDeleteException ->
+                    when (error.reason) {
+                        TimelineEventPhotoDeleteException.Reason.RECORD_ALREADY_SAVED -> {
+                            updateState {
+                                copy(
+                                    isReadOnly = true,
+                                    photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden,
+                                )
+                            }
+                            sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."))
+                        }
+                        TimelineEventPhotoDeleteException.Reason.ITEM_NOT_PHOTO ->
+                            showRetryablePhotoDeleteError(photo, "사진을 제거하지 못했어요. 잠시 후 다시 시도해주세요.")
+                    }
+                is HandledException ->
+                    updateState { copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden) }
+                is ApiException.NetworkException ->
+                    showRetryablePhotoDeleteError(photo, "네트워크 상태를 확인한 뒤 다시 시도해주세요.")
+                else ->
+                    showRetryablePhotoDeleteError(photo, "일시적인 오류예요. 잠시 후 다시 시도해주세요.")
+            }
+        }
+
+        private fun showRetryablePhotoDeleteError(
+            photo: TimelineEventExistingPhoto,
+            message: String,
+        ) {
+            updateState {
+                copy(
+                    photoDeleteDialogState =
+                        TimelineEventPhotoDeleteDialogState.RetryableError(
+                            photo = photo,
+                            message = message,
+                        ),
+                )
+            }
+        }
+
+        private fun dismissExistingPhotoRemoval() {
+            if (state.value.isDeletingPhoto) return
+            updateState { copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden) }
         }
 
         private suspend fun deleteEvent() {
@@ -383,7 +512,8 @@ class TimelineEventEditorViewModel
                 content == TimelineEventEditorUiContent.Editor &&
                     !isSaving &&
                     !isReadOnly &&
-                    deleteDialogState == TimelineDeleteDialogState.Hidden
+                    deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                    photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
             }
 
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {
@@ -433,11 +563,16 @@ private fun TimelineEvent.toEditorForm() =
         memo = memo.orEmpty(),
     )
 
-private fun TimelineEvent.existingPhotoUrls(): List<String> =
+private fun TimelineEvent.existingPhotos(): List<TimelineEventExistingPhoto> =
     items
         .asSequence()
         .filter { it.itemType == TimelineItemType.PHOTO }
-        .mapNotNull { it.photoUrl }
+        .map {
+            TimelineEventExistingPhoto(
+                timelineItemId = it.timelineItemId,
+                photoUrl = it.photoUrl,
+            )
+        }
         .toList()
 
 private fun TimelineEventEditorForm.validate() =

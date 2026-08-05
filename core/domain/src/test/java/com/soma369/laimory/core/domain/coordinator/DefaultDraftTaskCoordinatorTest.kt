@@ -394,6 +394,11 @@ class DefaultDraftTaskCoordinatorTest {
 
         override fun removeEvent(timelineEventId: Long) = Unit
 
+        override fun removeEventItem(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) = Unit
+
         override fun clear() {
             mutableTimeline.value = null
         }

@@ -46,6 +46,12 @@ interface TimelineRecordApi {
         @Path("timelineEventId") timelineEventId: Long,
     ): Response<ApiResponse<Unit>>
 
+    @DELETE("timeline/events/{timelineEventId}/items/{timelineItemId}")
+    suspend fun deleteTimelineEventPhoto(
+        @Path("timelineEventId") timelineEventId: Long,
+        @Path("timelineItemId") timelineItemId: Long,
+    ): Response<ApiResponse<Unit>>
+
     @DELETE("timeline/daily-records/{recordDate}")
     suspend fun deleteDailyRecord(
         @Path("recordDate") recordDate: String,

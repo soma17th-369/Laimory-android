@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -42,6 +41,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.ui.component.LaimorySelectField
 import com.soma369.laimory.core.ui.component.LaimoryTextField
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
@@ -201,10 +201,11 @@ internal fun TimelineEventTimeSection(
 
 @Composable
 internal fun TimelineEventPhotoSection(
-    existingPhotoUrls: List<String>,
+    existingPhotos: List<TimelineEventExistingPhoto>,
     pendingPhotos: List<TimelineEventPendingPhoto>,
     enabled: Boolean,
     onAddClick: () -> Unit,
+    onRemoveExisting: (Long) -> Unit,
     onRemovePending: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -213,13 +214,20 @@ internal fun TimelineEventPhotoSection(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
         ) {
-            itemsIndexed(
-                items = existingPhotoUrls,
-                key = { index, photoUrl -> "existing-$index-$photoUrl" },
-            ) { _, photoUrl ->
+            items(
+                items = existingPhotos,
+                key = TimelineEventExistingPhoto::timelineItemId,
+            ) { photo ->
                 TimelineEditorPhoto(
-                    model = photoUrl,
+                    model = photo.photoUrl,
                     contentDescription = "기존 이벤트 사진",
+                    removeContentDescription = "이벤트에서 사진 제거",
+                    onRemove =
+                        if (enabled) {
+                            { onRemoveExisting(photo.timelineItemId) }
+                        } else {
+                            null
+                        },
                 )
             }
             items(pendingPhotos, key = TimelineEventPendingPhoto::rawId) { photo ->
@@ -227,6 +235,7 @@ internal fun TimelineEventPhotoSection(
                     model = photo.clientPhotoUri,
                     contentDescription = "추가할 이벤트 사진",
                     uploadState = photo.uploadState,
+                    removeContentDescription = "추가 대상에서 제외",
                     onRemove =
                         if (enabled) {
                             { onRemovePending(photo.rawId) }
@@ -314,9 +323,10 @@ private fun TimelineTimeField(
 
 @Composable
 private fun TimelineEditorPhoto(
-    model: String,
+    model: String?,
     contentDescription: String,
     uploadState: TimelineEventPhotoUploadState? = null,
+    removeContentDescription: String? = null,
     onRemove: (() -> Unit)? = null,
 ) {
     val isPreview = LocalInspectionMode.current
@@ -328,7 +338,7 @@ private fun TimelineEditorPhoto(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .dashedBorder(MaterialTheme.colorScheme.outlineVariant),
     ) {
-        if (!isPreview) {
+        if (!isPreview && model != null) {
             AsyncImage(
                 model = model,
                 contentDescription = contentDescription,
@@ -386,12 +396,12 @@ private fun TimelineEditorPhoto(
                         .size(22.dp),
                 onClick = it,
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.62f),
+                color = MaterialTheme.colorScheme.inverseSurface,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         painter = painterResource(UiR.drawable.ico_setting_trash),
-                        contentDescription = "추가 대상에서 제외",
+                        contentDescription = removeContentDescription,
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.inverseOnSurface,
                     )

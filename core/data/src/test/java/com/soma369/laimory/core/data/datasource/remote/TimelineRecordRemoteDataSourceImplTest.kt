@@ -239,6 +239,45 @@ class TimelineRecordRemoteDataSourceImplTest {
         }
 
     @Test
+    fun `Event 사진 삭제는 Event와 Item ID 경로에 DELETE하고 null body 성공을 처리한다`() =
+        runTest {
+            server.enqueue(successUnitResponse())
+
+            remote.deleteTimelineEventPhoto(timelineEventId = 17L, timelineItemId = 31L)
+
+            val request = server.takeRequest()
+            assertEquals("DELETE", request.method)
+            assertEquals("/timeline/events/17/items/31", request.path)
+        }
+
+    @Test
+    fun `Event 사진 타입 불일치 응답은 400과 -1018 오류 코드를 보존한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(400)
+                    .setBody(
+                        """
+                        {
+                          "header":{"code":-1018,"message":"PHOTO Item만 삭제할 수 있습니다"},
+                          "body":null
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+            val failure =
+                runCatching {
+                    remote.deleteTimelineEventPhoto(timelineEventId = 17L, timelineItemId = 31L)
+                }.exceptionOrNull()
+
+            assertTrue(failure is ApiException.ClientException)
+            val apiException = failure as ApiException
+            assertEquals(400, apiException.rawCode)
+            assertEquals(-1018, apiException.errorCode)
+        }
+
+    @Test
     fun `DailyRecord 삭제는 recordDate 경로에 DELETE하고 null body 성공을 처리한다`() =
         runTest {
             server.enqueue(successUnitResponse())

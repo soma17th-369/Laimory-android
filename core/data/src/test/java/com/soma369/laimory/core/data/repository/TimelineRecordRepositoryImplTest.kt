@@ -29,6 +29,7 @@ class TimelineRecordRepositoryImplTest {
         var requestedBody: JsonObject? = null
         var requestedMemo: String? = null
         var deletedEventId: Long? = null
+        var deletedEventPhotoIds: Pair<Long, Long>? = null
         var deletedRecordDate: LocalDate? = null
         var updateFailure: Throwable? = null
         var getEventFailure: Throwable? = null
@@ -70,6 +71,13 @@ class TimelineRecordRepositoryImplTest {
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {
             deletedEventId = timelineEventId
+        }
+
+        override suspend fun deleteTimelineEventPhoto(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) {
+            deletedEventPhotoIds = timelineEventId to timelineItemId
         }
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
@@ -212,15 +220,17 @@ class TimelineRecordRepositoryImplTest {
         }
 
     @Test
-    fun `삭제 요청은 Event와 DailyRecord 경로를 구분해 전달한다`() =
+    fun `삭제 요청은 Event와 PHOTO Item과 DailyRecord 경로를 구분해 전달한다`() =
         runTest {
             val remote = FakeRemote()
             val repository = TimelineRecordRepositoryImpl(remote)
 
             repository.deleteEvent(17L)
+            repository.deleteEventPhoto(timelineEventId = 17L, timelineItemId = 31L)
             repository.deleteDailyRecord(RECORD_DATE)
 
             assertEquals(17L, remote.deletedEventId)
+            assertEquals(17L to 31L, remote.deletedEventPhotoIds)
             assertEquals(RECORD_DATE, remote.deletedRecordDate)
         }
 

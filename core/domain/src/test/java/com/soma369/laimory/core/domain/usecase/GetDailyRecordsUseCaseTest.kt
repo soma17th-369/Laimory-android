@@ -31,6 +31,11 @@ class GetDailyRecordsUseCaseTest {
 
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 
+        override suspend fun deleteEventPhoto(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) = error("사용하지 않음")
+
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }
 

@@ -50,6 +50,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEditorTextSection
+import com.soma369.laimory.feature.timeline.component.TimelineEventPhotoDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEventPhotoSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTimeSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTypeSection
@@ -60,7 +61,9 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorValidation
+import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
+import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import com.soma369.laimory.feature.timeline.viewmodel.TimelineEventEditorViewModel
@@ -188,6 +191,12 @@ private fun TimelineEventEditorContent(
         onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissDelete) },
         onFinish = { onIntent(TimelineEventEditorUiIntent.FinishDelete) },
     )
+
+    TimelineEventPhotoDeleteDialog(
+        state = state.photoDeleteDialogState,
+        onConfirm = { onIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval) },
+        onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissExistingPhotoRemoval) },
+    )
 }
 
 @Composable
@@ -254,7 +263,8 @@ private fun TimelineEventEditorBody(
     val enabled =
         !state.isSaving &&
             !state.isReadOnly &&
-            state.deleteDialogState == TimelineDeleteDialogState.Hidden
+            state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+            state.photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -318,10 +328,13 @@ private fun TimelineEventEditorBody(
             }
             item {
                 TimelineEventPhotoSection(
-                    existingPhotoUrls = state.existingPhotoUrls,
+                    existingPhotos = state.existingPhotos,
                     pendingPhotos = state.pendingPhotos,
                     enabled = enabled,
                     onAddClick = { onIntent(TimelineEventEditorUiIntent.OpenPhotoPicker) },
+                    onRemoveExisting = {
+                        onIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(it))
+                    },
                     onRemovePending = { onIntent(TimelineEventEditorUiIntent.RemovePendingPhoto(it)) },
                 )
             }
@@ -551,7 +564,11 @@ private fun previewEditorState(): TimelineEventEditorUiState {
         content = TimelineEventEditorUiContent.Editor,
         originalForm = form,
         form = form,
-        existingPhotoUrls = listOf("preview://photo-1", "preview://photo-2"),
+        existingPhotos =
+            listOf(
+                TimelineEventExistingPhoto(1L, "preview://photo-1"),
+                TimelineEventExistingPhoto(2L, null),
+            ),
         pendingPhotos =
             listOf(
                 TimelineEventPendingPhoto(
