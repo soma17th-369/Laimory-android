@@ -37,6 +37,12 @@ interface TimelineRecordRemoteDataSource {
     /** Event와 연결된 데이터를 삭제한다. */
     suspend fun deleteTimelineEvent(timelineEventId: Long)
 
+    /** Event와 PHOTO Item의 연결을 해제한다. */
+    suspend fun deleteTimelineEventPhoto(
+        timelineEventId: Long,
+        timelineItemId: Long,
+    )
+
     /** 하루 기록과 하위 Event를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
 }

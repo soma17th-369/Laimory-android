@@ -46,6 +46,14 @@ sealed interface TimelineEventEditorUiIntent : UiIntent {
         val rawId: String,
     ) : TimelineEventEditorUiIntent
 
+    data class RequestExistingPhotoRemoval(
+        val timelineItemId: Long,
+    ) : TimelineEventEditorUiIntent
+
+    data object ConfirmExistingPhotoRemoval : TimelineEventEditorUiIntent
+
+    data object DismissExistingPhotoRemoval : TimelineEventEditorUiIntent
+
     data object OpenPhotoPicker : TimelineEventEditorUiIntent
 
     data object Save : TimelineEventEditorUiIntent

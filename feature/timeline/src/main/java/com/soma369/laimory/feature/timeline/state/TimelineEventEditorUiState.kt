@@ -11,7 +11,7 @@ data class TimelineEventEditorUiState(
     val content: TimelineEventEditorUiContent = TimelineEventEditorUiContent.Loading,
     val originalForm: TimelineEventEditorForm? = null,
     val form: TimelineEventEditorForm? = null,
-    val existingPhotoUrls: List<String> = emptyList(),
+    val existingPhotos: List<TimelineEventExistingPhoto> = emptyList(),
     val pendingPhotos: List<TimelineEventPendingPhoto> = emptyList(),
     val validation: TimelineEventEditorValidation = TimelineEventEditorValidation(),
     val editingTimeField: TimelineEventTimeField? = null,
@@ -19,6 +19,7 @@ data class TimelineEventEditorUiState(
     val isReadOnly: Boolean = false,
     val isDiscardDialogVisible: Boolean = false,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
+    val photoDeleteDialogState: TimelineEventPhotoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden,
 ) : UiState {
     val hasUnsavedChanges: Boolean
         get() = originalForm != null && (form != originalForm || pendingPhotos.isNotEmpty())
@@ -30,10 +31,14 @@ data class TimelineEventEditorUiState(
                 hasUnsavedChanges &&
                 !isSaving &&
                 !isReadOnly &&
-                deleteDialogState == TimelineDeleteDialogState.Hidden
+                deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
 
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
+
+    val isDeletingPhoto: Boolean
+        get() = photoDeleteDialogState is TimelineEventPhotoDeleteDialogState.Deleting
 }
 
 @Immutable
@@ -62,6 +67,30 @@ data class TimelineEventPendingPhoto(
     val uploadState: TimelineEventPhotoUploadState = TimelineEventPhotoUploadState.PENDING,
     val uploadedFilename: String? = null,
 )
+
+@Immutable
+data class TimelineEventExistingPhoto(
+    val timelineItemId: Long,
+    val photoUrl: String?,
+)
+
+@Immutable
+sealed interface TimelineEventPhotoDeleteDialogState {
+    data object Hidden : TimelineEventPhotoDeleteDialogState
+
+    data class Confirmation(
+        val photo: TimelineEventExistingPhoto,
+    ) : TimelineEventPhotoDeleteDialogState
+
+    data class Deleting(
+        val photo: TimelineEventExistingPhoto,
+    ) : TimelineEventPhotoDeleteDialogState
+
+    data class RetryableError(
+        val photo: TimelineEventExistingPhoto,
+        val message: String,
+    ) : TimelineEventPhotoDeleteDialogState
+}
 
 enum class TimelineEventPhotoUploadState {
     PENDING,

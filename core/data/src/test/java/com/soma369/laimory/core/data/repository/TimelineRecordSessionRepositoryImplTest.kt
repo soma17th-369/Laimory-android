@@ -3,6 +3,8 @@ package com.soma369.laimory.core.data.repository
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
+import com.soma369.laimory.core.domain.model.timeline.TimelineItem
+import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -52,6 +54,19 @@ class TimelineRecordSessionRepositoryImplTest {
     }
 
     @Test
+    fun `removeEventItem - 대상 Event의 Item만 제거하고 다른 Event는 유지한다`() {
+        val first = event(id = 1L).copy(items = listOf(item(11L), item(12L)))
+        val second = event(id = 2L).copy(items = listOf(item(21L)))
+        repository.save(timeline(events = listOf(first, second)))
+
+        repository.removeEventItem(timelineEventId = 1L, timelineItemId = 11L)
+
+        val events = repository.timeline.value?.events.orEmpty()
+        assertEquals(listOf(12L), events.first().items.map { it.timelineItemId })
+        assertEquals(listOf(21L), events.last().items.map { it.timelineItemId })
+    }
+
+    @Test
     fun `clear - 현재 타임라인을 제거한다`() {
         repository.save(timeline(events = listOf(event(id = 1L))))
 
@@ -81,4 +96,13 @@ class TimelineRecordSessionRepositoryImplTest {
         memo = null,
         items = emptyList(),
     )
+
+    private fun item(id: Long) =
+        TimelineItem(
+            timelineItemId = id,
+            itemType = TimelineItemType.PHOTO,
+            rawId = "photo-$id",
+            startAt = null,
+            endAt = null,
+        )
 }

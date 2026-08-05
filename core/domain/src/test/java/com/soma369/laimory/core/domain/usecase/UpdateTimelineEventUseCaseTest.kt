@@ -37,6 +37,11 @@ class UpdateTimelineEventUseCaseTest {
 
         override suspend fun deleteEvent(timelineEventId: Long) = Unit
 
+        override suspend fun deleteEventPhoto(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) = Unit
+
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = Unit
     }
 
@@ -51,6 +56,11 @@ class UpdateTimelineEventUseCaseTest {
         }
 
         override fun removeEvent(timelineEventId: Long) = Unit
+
+        override fun removeEventItem(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) = Unit
 
         override fun clear() = Unit
     }

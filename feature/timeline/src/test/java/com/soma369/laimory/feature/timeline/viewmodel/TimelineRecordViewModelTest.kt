@@ -613,6 +613,11 @@ class TimelineRecordViewModelTest {
 
         override fun removeEvent(timelineEventId: Long) = Unit
 
+        override fun removeEventItem(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) = Unit
+
         override fun clear() {
             mutableTimeline.value = null
         }
@@ -664,6 +669,11 @@ class TimelineRecordViewModelTest {
         }
 
         override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
+
+        override suspend fun deleteEventPhoto(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             failure?.let { throw it }

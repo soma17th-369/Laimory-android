@@ -18,6 +18,7 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
@@ -26,6 +27,8 @@ import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiSideEffect
+import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
+import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -80,8 +83,122 @@ class TimelineEventEditorViewModelTest {
             assertEquals(TimelineEventEditorUiContent.Editor, state.content)
             assertEquals("출근길", state.form?.title)
             assertEquals("강남역 → 성수역", state.form?.subtitle)
-            assertEquals(listOf("https://photo/1.jpg"), state.existingPhotoUrls)
+            assertEquals(
+                listOf(
+                    TimelineEventExistingPhoto(1L, "https://photo/1.jpg"),
+                    TimelineEventExistingPhoto(2L, null),
+                ),
+                state.existingPhotos,
+            )
             assertFalse(state.hasUnsavedChanges)
+        }
+
+    @Test
+    fun `기존 사진은 확인 직후 삭제하고 미저장 폼 변경을 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정 중인 제목"))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            runCurrent()
+            assertTrue(viewModel.state.value.photoDeleteDialogState is TimelineEventPhotoDeleteDialogState.Confirmation)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
+            assertEquals(listOf(2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
+            assertEquals(listOf(2L), sessionRepository.eventItems().map(TimelineItem::timelineItemId))
+            assertEquals("수정 중인 제목", viewModel.state.value.form?.title)
+            assertTrue(viewModel.state.value.hasUnsavedChanges)
+            assertEquals(TimelineEventPhotoDeleteDialogState.Hidden, viewModel.state.value.photoDeleteDialogState)
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("사진을 이벤트에서 제거했어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `사진 삭제 404는 DailyRecord를 재조회해 기존 사진 상태를 동기화한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.photoDeleteFailure = ApiException.ClientException(errorCode = -404, rawCode = 404)
+            recordRepository.dailyRecord = timeline().copy(events = listOf(event().copy(items = event().items.drop(1))))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            assertEquals(LocalDate.of(2026, 5, 8), recordRepository.requestedRecordDate)
+            assertEquals(listOf(2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("사진 목록을 최신 상태로 갱신했어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `작성 완료된 기록의 사진 삭제는 읽기 전용으로 전환한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.photoDeleteFailure = ApiException.ConflictException(errorCode = -1003, rawCode = 409)
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.isReadOnly)
+            assertEquals(TimelineEventPhotoDeleteDialogState.Hidden, viewModel.state.value.photoDeleteDialogState)
+            assertEquals(listOf(1L, 2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `사진 삭제 네트워크 실패는 사진과 폼을 유지하고 재시도할 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.photoDeleteFailure = ApiException.NetworkException()
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정 중인 제목"))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            val failureState = viewModel.state.value.photoDeleteDialogState
+            assertTrue(failureState is TimelineEventPhotoDeleteDialogState.RetryableError)
+            assertEquals(listOf(1L, 2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
+            assertEquals("수정 중인 제목", viewModel.state.value.form?.title)
+
+            recordRepository.photoDeleteFailure = null
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
+            assertEquals(listOf(2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
+            assertEquals("수정 중인 제목", viewModel.state.value.form?.title)
+        }
+
+    @Test
+    fun `사진 삭제 404 재조회에서 Event가 없으면 수정 불가 상태로 전환한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.photoDeleteFailure = ApiException.ClientException(errorCode = -404, rawCode = 404)
+            recordRepository.dailyRecord = timeline().copy(events = emptyList())
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            assertEquals(TimelineEventEditorUiContent.Unavailable, viewModel.state.value.content)
+            assertEquals(TimelineEventPhotoDeleteDialogState.Hidden, viewModel.state.value.photoDeleteDialogState)
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."),
+                viewModel.sideEffect.first(),
+            )
         }
 
     @Test
@@ -425,6 +542,12 @@ class TimelineEventEditorViewModelTest {
                     sessionRepository = sessionRepository,
                     messageHelper = messageHelper,
                 ),
+            deleteTimelineEventPhotoUseCase =
+                DeleteTimelineEventPhotoUseCase(
+                    repository = recordRepository,
+                    sessionRepository = sessionRepository,
+                    messageHelper = messageHelper,
+                ),
             navigationHelper = navigationHelper,
         )
 
@@ -457,17 +580,34 @@ class TimelineEventEditorViewModelTest {
                     endAt = null,
                     photoUrl = "https://photo/1.jpg",
                 ),
+                TimelineItem(
+                    timelineItemId = 2L,
+                    itemType = TimelineItemType.PHOTO,
+                    rawId = "existing-photo-without-url",
+                    startAt = LocalDateTime.of(2026, 5, 8, 8, 45),
+                    endAt = null,
+                    photoUrl = null,
+                ),
             ),
     )
 
     private inner class RecordingTimelineRecordRepository : TimelineRecordRepository {
         val commands = mutableListOf<UpdateTimelineEventCommand>()
         val deletedEventIds = mutableListOf<Long>()
+        val deletedPhotoIds = mutableListOf<Pair<Long, Long>>()
         var failure: ApiException? = null
+        var photoDeleteFailure: ApiException? = null
+        var dailyRecordFailure: ApiException? = null
+        var dailyRecord: DailyTimeline = timeline()
+        var requestedRecordDate: LocalDate? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
-        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline {
+            requestedRecordDate = recordDate
+            dailyRecordFailure?.let { throw it }
+            return dailyRecord
+        }
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             commands += command
@@ -486,6 +626,14 @@ class TimelineEventEditorViewModelTest {
         override suspend fun deleteEvent(timelineEventId: Long) {
             failure?.let { throw it }
             deletedEventIds += timelineEventId
+        }
+
+        override suspend fun deleteEventPhoto(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) {
+            photoDeleteFailure?.let { throw it }
+            deletedPhotoIds += timelineEventId to timelineItemId
         }
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = Unit
@@ -513,11 +661,30 @@ class TimelineEventEditorViewModelTest {
                 )
         }
 
+        override fun removeEventItem(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) {
+            mutableTimeline.value =
+                mutableTimeline.value?.copy(
+                    events =
+                        mutableTimeline.value.orEmptyEvents().map { event ->
+                            if (event.timelineEventId == timelineEventId) {
+                                event.copy(items = event.items.filterNot { it.timelineItemId == timelineItemId })
+                            } else {
+                                event
+                            }
+                        },
+                )
+        }
+
         override fun clear() {
             mutableTimeline.value = null
         }
 
         private fun DailyTimeline?.orEmptyEvents(): List<TimelineEvent> = this?.events.orEmpty()
+
+        fun eventItems(): List<TimelineItem> = timeline.value?.events?.single()?.items.orEmpty()
     }
 
     private class RecordingTimelineDraftRepository : TimelineDraftRepository {

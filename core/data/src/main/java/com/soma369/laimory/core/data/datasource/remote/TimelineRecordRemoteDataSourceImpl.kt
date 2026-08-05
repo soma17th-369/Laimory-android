@@ -42,6 +42,13 @@ class TimelineRecordRemoteDataSourceImpl
             safeApiCallUnit { api.deleteTimelineEvent(timelineEventId) }
         }
 
+        override suspend fun deleteTimelineEventPhoto(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) {
+            safeApiCallUnit { api.deleteTimelineEventPhoto(timelineEventId, timelineItemId) }
+        }
+
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             safeApiCallUnit { api.deleteDailyRecord(recordDate.toString()) }
         }

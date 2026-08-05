@@ -25,6 +25,12 @@ interface TimelineRecordRepository {
     /** Event와 하위 Item을 삭제한다. 마지막 Event여도 DailyRecord는 유지한다. */
     suspend fun deleteEvent(timelineEventId: Long)
 
+    /** Event와 PHOTO Item의 연결을 해제한다. 사진 원본의 즉시 삭제를 의미하지 않는다. */
+    suspend fun deleteEventPhoto(
+        timelineEventId: Long,
+        timelineItemId: Long,
+    )
+
     /** DailyRecord와 하위 Event·Item 전체를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
 }
