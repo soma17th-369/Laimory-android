@@ -224,9 +224,28 @@ internal class LocationCollectionService : Service() {
         scope.launch {
             runCatching { preferences.setEnabled(false) }
             if (segmenter == null) {
-                runCatching { segmentStore.persist(snapshot = null, items = emptyList()) }
+                finalizePersistedSegment()
             }
             stopSelf()
+        }
+    }
+
+    /**
+     * FGS 승격 실패나 복원 완료 전 중지처럼 메모리 세그먼터가 없는 종료 경로에서도 저장된 이동을 마감한다.
+     * AR 누적 상태는 복원 대상이 아니므로 MOVEMENT 이동수단은 평균 속도 추론으로 폴백한다.
+     */
+    private suspend fun finalizePersistedSegment() {
+        runCatching {
+            val restored = segmentStore.restore() ?: return
+            val events = LocationSegmenter(initialSnapshot = restored).flush()
+            val collectedAt = Instant.now()
+            val zone = ZoneId.systemDefault()
+            segmentStore.persist(
+                snapshot = null,
+                items = events.map { it.toSourceItem(collectedAt, zone) },
+            )
+        }.onFailure { e ->
+            Logger.w(LogDomain.COLLECTION, "저장된 위치 상태 마감 실패: ${e.message}")
         }
     }
 

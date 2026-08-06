@@ -404,7 +404,10 @@ internal class LocationSegmenter(
         /** 마지막 저장 샘플과 복원 후 첫 샘플을 이어 붙일 수 있는 최대 공백. */
         const val DEFAULT_MAX_SAMPLE_GAP_MILLIS = 5 * 60_000L
 
-        /** 판정과 대표 좌표 계산에 사용할 수 있는 최대 수평 정확도. */
+        /**
+         * 판정과 대표 좌표 계산에 사용할 수 있는 최대 수평 정확도.
+         * 실내·지하에서는 모든 샘플이 제외되어 체류가 기록되지 않을 수 있으므로, 수집 공백이 관찰되면 우선 조정한다.
+         */
         const val DEFAULT_MAXIMUM_ACCURACY_METERS = 100.0
 
         /** 정확도 정보가 없는 샘플에 적용하는 보수적인 정확도. */
