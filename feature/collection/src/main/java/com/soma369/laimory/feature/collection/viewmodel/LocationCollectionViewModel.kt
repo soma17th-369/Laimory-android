@@ -5,6 +5,8 @@ import com.soma369.laimory.core.domain.usecase.ClearCollectedLocationsUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingStatusUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveMovementAddressesUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.collection.state.LocationUiIntent
@@ -22,7 +24,12 @@ class LocationCollectionViewModel
         observeLocationTrackingStatusUseCase: ObserveLocationTrackingStatusUseCase,
         private val setLocationTrackingUseCase: SetLocationTrackingUseCase,
         private val clearCollectedLocationsUseCase: ClearCollectedLocationsUseCase,
+        private val resolveMovementAddressesUseCase: ResolveMovementAddressesUseCase,
+        private val resolveStayAddressUseCase: ResolveStayAddressUseCase,
     ) : BaseMviViewModel<LocationUiState, LocationUiIntent, LocationUiSideEffect>(LocationUiState()) {
+        /** 같은 화면 생명주기에서 재구성·스크롤로 동일 rawId를 중복 조회하지 않는다. */
+        private val attemptedLocationAddressRawIds = mutableSetOf<String>()
+
         init {
             safeLaunch {
                 observeSourceItemsUseCase().collect { items ->
@@ -49,6 +56,8 @@ class LocationCollectionViewModel
             when (intent) {
                 is LocationUiIntent.SetTracking -> setTracking(intent.enabled)
                 LocationUiIntent.ClearStaged -> clearStaged()
+                is LocationUiIntent.ResolveMovementAddresses -> resolveMovementAddresses(intent)
+                is LocationUiIntent.ResolveStayAddress -> resolveStayAddress(intent)
             }
         }
 
@@ -67,4 +76,27 @@ class LocationCollectionViewModel
                 clearCollectedLocationsUseCase()
                 sendEffect(LocationUiSideEffect.ShowMessage("스테이징 위치를 모두 비웠습니다."))
             }
+
+        private fun resolveStayAddress(intent: LocationUiIntent.ResolveStayAddress) {
+            if (!attemptedLocationAddressRawIds.add(intent.rawId)) return
+            // 주소는 보조 표시 정보이므로 실패 시 좌표 fallback을 유지하고 반복 요청하지 않는다.
+            safeLaunch(onError = {}) {
+                resolveStayAddressUseCase(
+                    rawId = intent.rawId,
+                    latitude = intent.latitude,
+                    longitude = intent.longitude,
+                )
+            }
+        }
+
+        private fun resolveMovementAddresses(intent: LocationUiIntent.ResolveMovementAddresses) {
+            if (!attemptedLocationAddressRawIds.add(intent.rawId)) return
+            safeLaunch(onError = {}) {
+                resolveMovementAddressesUseCase(
+                    rawId = intent.rawId,
+                    start = intent.start,
+                    end = intent.end,
+                )
+            }
+        }
     }

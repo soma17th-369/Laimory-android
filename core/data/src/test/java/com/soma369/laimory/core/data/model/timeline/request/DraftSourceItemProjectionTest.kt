@@ -99,13 +99,14 @@ class DraftSourceItemProjectionTest {
     fun `체류는 서버 계약 itemType STAY 와 좌표 payload 로 투영된다`() {
         val dto =
             item(
-                StayPayload(latitude = 37.5431787, longitude = 126.9498206),
+                StayPayload(latitude = 37.5431787, longitude = 126.9498206, address = "서울특별시 마포구"),
                 end = start.plusSeconds(3_600),
             ).toSourceItemDto(json, null)
 
         assertEquals("STAY", dto.itemType)
         assertEquals("37.5431787", dto.payload.str("latitude"))
         assertEquals("126.9498206", dto.payload.str("longitude"))
+        assertFalse("로컬 주소는 서버 projection에서 제외", dto.payload.containsKey("address"))
     }
 
     @Test
@@ -122,8 +123,8 @@ class DraftSourceItemProjectionTest {
         val dto =
             item(
                 MovementPayload(
-                    start = GeoPoint(37.1538856, 127.0781832),
-                    end = GeoPoint(37.532292, 126.9625982),
+                    start = GeoPoint(37.1538856, 127.0781832, address = "출발 주소"),
+                    end = GeoPoint(37.532292, 126.9625982, address = "도착 주소"),
                     distanceMeters = 58137.2,
                     transports = MovementPayload.Transport.IN_VEHICLE,
                 ),
@@ -134,9 +135,11 @@ class DraftSourceItemProjectionTest {
         val startPoint = p["start"]!!.jsonObject
         assertEquals("37.1538856", startPoint.str("latitude"))
         assertEquals("127.0781832", startPoint.str("longitude"))
+        assertFalse("출발 주소는 로컬 전용", startPoint.containsKey("address"))
         val endPoint = p["end"]!!.jsonObject
         assertEquals("37.532292", endPoint.str("latitude"))
         assertEquals("126.9625982", endPoint.str("longitude"))
+        assertFalse("도착 주소는 로컬 전용", endPoint.containsKey("address"))
         assertEquals("58137.2", p.str("distanceMeters"))
         assertEquals("IN_VEHICLE", p.str("transports"))
     }

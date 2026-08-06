@@ -23,17 +23,28 @@ class SourceItemPayloadMapperTest {
 
     @Test
     fun `STAY payload 라운드트립`() {
-        val payload = StayPayload(latitude = 37.1538856, longitude = 127.0781832)
+        val payload = StayPayload(latitude = 37.1538856, longitude = 127.0781832, address = "경기도 오산시")
 
         assertEquals(payload, roundTrip(payload))
+    }
+
+    @Test
+    fun `주소 필드가 없는 기존 STAY payload는 null 주소로 읽는다`() {
+        val payload =
+            SourceItemPayloadMapper.fromJson(
+                itemType = ItemType.STAY,
+                payloadJson = """{"latitude":37.1538856,"longitude":127.0781832}""",
+            )
+
+        assertEquals(StayPayload(latitude = 37.1538856, longitude = 127.0781832, address = null), payload)
     }
 
     @Test
     fun `MOVEMENT payload 라운드트립`() {
         val payload =
             MovementPayload(
-                start = GeoPoint(latitude = 37.1538856, longitude = 127.0781832),
-                end = GeoPoint(latitude = 37.16312, longitude = 127.08514),
+                start = GeoPoint(latitude = 37.1538856, longitude = 127.0781832, address = "출발 주소"),
+                end = GeoPoint(latitude = 37.16312, longitude = 127.08514, address = "도착 주소"),
                 distanceMeters = 1352.4,
                 transports = MovementPayload.Transport.WALKING,
             )

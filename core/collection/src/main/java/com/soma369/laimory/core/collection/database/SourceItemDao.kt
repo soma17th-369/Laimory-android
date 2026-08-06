@@ -30,6 +30,20 @@ internal interface SourceItemDao {
         sourceKey: String,
     ): String?
 
+    /** rawId로 현재 행 전체를 읽는다. 읽기-수정-쓰기 트랜잭션에서 사용한다. */
+    @Query("SELECT * FROM source_item WHERE rawId = :rawId LIMIT 1")
+    suspend fun findByRawId(rawId: String): SourceItemEntity?
+
+    /** 자연키로 현재 행 전체를 읽는다. 위치 저장 경로가 로컬 전용 STAY 필드를 보존할 때 사용한다. */
+    @Query(
+        "SELECT * FROM source_item WHERE itemType = :itemType AND sourceName = :sourceName AND sourceKey = :sourceKey LIMIT 1",
+    )
+    suspend fun findByNaturalKey(
+        itemType: String,
+        sourceName: String,
+        sourceKey: String,
+    ): SourceItemEntity?
+
     /**
      * upsert. 기존 (itemType, sourceName, sourceKey) 행이 있으면 최초 [SourceItemEntity.rawId] 를 유지한 채
      * 값(payload·시각)을 갱신하고, 없으면 새로 삽입한다. 걸음수 일별 집계처럼 값이 변하는 aggregate 에 쓴다.

@@ -4,6 +4,7 @@ package com.soma369.laimory.core.domain.model.collection
  * 카테고리별 수집 원천 데이터.
  *
  * 각 payload 는 서버 업로드 포맷의 `sourceItems[].payload` 후보 필드를 표현한다.
+ * 화면 표시나 수집 정책을 위한 로컬 전용 필드는 서버 projection에서 명시적으로 제외한다.
  * 필드 구성은 각 수집기 구현 단계에서 실제 수집 가능 범위에 맞게 조정될 수 있다.
  * 로컬 저장 시에는 JSON 단일 컬럼으로 직렬화되므로, 필드 추가는 스키마 변경 없이 가능하다.
  */
@@ -11,10 +12,11 @@ sealed interface SourceItemPayload {
     val itemType: ItemType
 }
 
-/** 위경도 좌표 쌍. */
+/** 위경도 좌표 쌍. [address]는 화면 표시를 위해 기기에서 해석한 로컬 전용 값이다. */
 data class GeoPoint(
     val latitude: Double,
     val longitude: Double,
+    val address: String? = null,
 )
 
 /**
@@ -22,10 +24,12 @@ data class GeoPoint(
  *
  * 체류 시간은 payload 에 중복 저장하지 않고 [SourceItem.startAt]/[SourceItem.endAt] 에서
  * 파생한다. 업로드 payload 에 체류 시간 필드가 필요하면 projection 시 계산해서 채운다.
+ * [address]는 화면 표시를 위해 기기에서 해석한 로컬 전용 값이며 서버 업로드 projection 에서 제외한다.
  */
 data class StayPayload(
     val latitude: Double,
     val longitude: Double,
+    val address: String? = null,
 ) : SourceItemPayload {
     override val itemType: ItemType get() = ItemType.STAY
 }

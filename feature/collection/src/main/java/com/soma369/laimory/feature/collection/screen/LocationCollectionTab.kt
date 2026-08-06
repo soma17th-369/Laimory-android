@@ -220,14 +220,28 @@ private fun LocationCollectionContent(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.stagedItems, key = { it.rawId }) { item -> LocationItem(item) }
+                items(state.stagedItems, key = { it.rawId }) { item ->
+                    LocationItem(
+                        item = item,
+                        onResolveStayAddress = { rawId, latitude, longitude ->
+                            onIntent(LocationUiIntent.ResolveStayAddress(rawId, latitude, longitude))
+                        },
+                        onResolveMovementAddresses = { rawId, start, end ->
+                            onIntent(LocationUiIntent.ResolveMovementAddresses(rawId, start, end))
+                        },
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun LocationItem(item: SourceItem) {
+private fun LocationItem(
+    item: SourceItem,
+    onResolveStayAddress: (rawId: String, latitude: Double, longitude: Double) -> Unit,
+    onResolveMovementAddresses: (rawId: String, start: GeoPoint, end: GeoPoint) -> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -239,14 +253,17 @@ private fun LocationItem(item: SourceItem) {
         ) {
             when (val payload = item.payload) {
                 is MovementPayload -> {
+                    if (payload.start.address.isNullOrBlank() || payload.end.address.isNullOrBlank()) {
+                        LaunchedEffect(item.rawId) {
+                            onResolveMovementAddresses(item.rawId, payload.start, payload.end)
+                        }
+                    }
                     Text(
                         text = "이동 · ${payload.transports.label()}",
                         style = MaterialTheme.typography.titleSmall,
                     )
-                    Text(
-                        text = "${payload.start.coord()} → ${payload.end.coord()}",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    LocationPoint(label = "출발", point = payload.start)
+                    LocationPoint(label = "도착", point = payload.end)
                     Text(
                         text = "거리 ${payload.distanceMeters.toInt()}m · ${item.timeRangeText()}",
                         style = MaterialTheme.typography.labelSmall,
@@ -254,8 +271,21 @@ private fun LocationItem(item: SourceItem) {
                     )
                 }
                 is StayPayload -> {
+                    if (payload.address.isNullOrBlank()) {
+                        // LazyColumn에서 실제 구성된 STAY만 요청한다. ViewModel이 rawId 중복 요청을 차단한다.
+                        LaunchedEffect(item.rawId) {
+                            onResolveStayAddress(item.rawId, payload.latitude, payload.longitude)
+                        }
+                    }
                     Text(text = "체류 · ${item.durationMinutes()}분", style = MaterialTheme.typography.titleSmall)
-                    Text(text = payload.coord(), style = MaterialTheme.typography.bodySmall)
+                    payload.displayAddress()?.let { address ->
+                        Text(text = address, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        text = payload.coord(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
                     Text(
                         text = item.timeRangeText(),
                         style = MaterialTheme.typography.labelSmall,
@@ -268,6 +298,22 @@ private fun LocationItem(item: SourceItem) {
     }
 }
 
+@Composable
+private fun LocationPoint(
+    label: String,
+    point: GeoPoint,
+) {
+    Text(
+        text = point.displayAddress()?.let { address -> "$label · $address" } ?: label,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text(
+        text = point.coord(),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.outline,
+    )
+}
+
 private fun MovementPayload.Transport.label(): String =
     when (this) {
         MovementPayload.Transport.WALKING -> "도보"
@@ -277,9 +323,13 @@ private fun MovementPayload.Transport.label(): String =
         MovementPayload.Transport.UNKNOWN -> "알 수 없음"
     }
 
-private fun GeoPoint.coord(): String = "%.5f, %.5f".format(latitude, longitude)
+internal fun GeoPoint.coord(): String = "%.5f, %.5f".format(latitude, longitude)
 
-private fun StayPayload.coord(): String = "%.5f, %.5f".format(latitude, longitude)
+internal fun StayPayload.coord(): String = "%.5f, %.5f".format(latitude, longitude)
+
+internal fun GeoPoint.displayAddress(): String? = address?.takeIf(String::isNotBlank)
+
+internal fun StayPayload.displayAddress(): String? = address?.takeIf(String::isNotBlank)
 
 /** 체류 시간(분) — startAt/endAt 에서 파생(payload 미저장). */
 private fun SourceItem.durationMinutes(): Long {
