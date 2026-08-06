@@ -41,4 +41,5 @@ dependencies {
     implementation(libs.health.connect)
 
     testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
 }
