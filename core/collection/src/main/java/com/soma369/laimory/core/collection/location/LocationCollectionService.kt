@@ -26,18 +26,18 @@ import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
-import com.soma369.laimory.core.domain.usecase.AddSourceItemsUseCase
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
-import java.util.UUID
 import javax.inject.Inject
 
 /**
@@ -49,7 +49,7 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 internal class LocationCollectionService : Service() {
-    @Inject lateinit var addSourceItemsUseCase: AddSourceItemsUseCase
+    @Inject lateinit var segmentStore: LocationSegmentStore
 
     @Inject lateinit var trackingState: LocationTrackingState
 
@@ -60,6 +60,9 @@ internal class LocationCollectionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val locationManager by lazy { getSystemService(LocationManager::class.java) }
     private var segmenter: LocationSegmenter? = null
+    private var samplingStartRequested = false
+    private var destroyed = false
+    private var finalizeOnDestroy = false
 
     private val listener =
         object : LocationListener {
@@ -98,8 +101,8 @@ internal class LocationCollectionService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         stopSampling()
-        scope.cancel()
         super.onDestroy()
     }
 
@@ -118,31 +121,65 @@ internal class LocationCollectionService : Service() {
 
     @SuppressLint("MissingPermission")
     private fun startSampling() {
-        if (segmenter != null) return
-        val manager = locationManager ?: return stopSelf()
-        segmenter = LocationSegmenter()
-        val provider =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) LocationManager.FUSED_PROVIDER else LocationManager.GPS_PROVIDER
-        runCatching {
-            manager.requestLocationUpdates(provider, MIN_TIME_MS, MIN_DISTANCE_M, listener, Looper.getMainLooper())
-        }.onSuccess {
-            registerActivityUpdates()
-        }.onFailure { e ->
-            // 권한 미허용은 SecurityException — 의도를 off 로 내려 토글과 일치시키고 종료.
-            Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e.message}")
-            segmenter = null
-            disableAndStop()
+        if (segmenter != null || samplingStartRequested || destroyed) return
+        samplingStartRequested = true
+        scope.launch {
+            val restored =
+                runCatching { segmentStore.restore() }
+                    .onFailure { e -> Logger.w(LogDomain.COLLECTION, "진행 중 위치 상태 복원 실패: ${e.message}") }
+                    .getOrNull()
+            withContext(Dispatchers.Main.immediate) {
+                if (destroyed) return@withContext
+                val manager = locationManager
+                if (manager == null) {
+                    samplingStartRequested = false
+                    stopSelf()
+                    return@withContext
+                }
+                segmenter = LocationSegmenter(initialSnapshot = restored)
+                val provider =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        LocationManager.FUSED_PROVIDER
+                    } else {
+                        LocationManager.GPS_PROVIDER
+                    }
+                runCatching {
+                    manager.requestLocationUpdates(provider, MIN_TIME_MS, MIN_DISTANCE_M, listener, Looper.getMainLooper())
+                }.onSuccess {
+                    samplingStartRequested = false
+                    registerActivityUpdates()
+                }.onFailure { e ->
+                    // 권한 미허용은 SecurityException — 의도를 off 로 내려 토글과 일치시키고 종료.
+                    Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e.message}")
+                    samplingStartRequested = false
+                    disableAndStop()
+                }
+            }
         }
     }
 
     private fun stopSampling() {
-        val active = segmenter ?: return
+        samplingStartRequested = false
+        val active = segmenter
+        segmenter = null
         locationManager?.removeUpdates(listener)
         unregisterActivityUpdates()
-        segmenter = null
         trackingState.update(null)
-        val remaining = active.flush()
-        if (remaining.isNotEmpty()) saveEvents(remaining)
+        if (active == null) {
+            finishPersistenceScope()
+        } else if (finalizeOnDestroy) {
+            enqueuePersistence(
+                snapshot = null,
+                events = active.flush(),
+                cancelScopeWhenDone = true,
+            )
+        } else {
+            enqueuePersistence(
+                snapshot = active.snapshot(),
+                events = emptyList(),
+                cancelScopeWhenDone = true,
+            )
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -183,31 +220,80 @@ internal class LocationCollectionService : Service() {
      * 영속 저장이 [onDestroy] 의 scope 취소로 유실되지 않도록 [stopSelf] 는 저장 완료 후 코루틴 안에서 호출한다.
      */
     private fun disableAndStop() {
+        finalizeOnDestroy = true
         scope.launch {
             runCatching { preferences.setEnabled(false) }
+            if (segmenter == null) {
+                finalizePersistedSegment()
+            }
             stopSelf()
+        }
+    }
+
+    /**
+     * FGS 승격 실패나 복원 완료 전 중지처럼 메모리 세그먼터가 없는 종료 경로에서도 저장된 이동을 마감한다.
+     * AR 누적 상태는 복원 대상이 아니므로 MOVEMENT 이동수단은 평균 속도 추론으로 폴백한다.
+     */
+    private suspend fun finalizePersistedSegment() {
+        runCatching {
+            val restored = segmentStore.restore() ?: return
+            val events = LocationSegmenter(initialSnapshot = restored).flush()
+            val collectedAt = Instant.now()
+            val zone = ZoneId.systemDefault()
+            segmentStore.persist(
+                snapshot = null,
+                items = events.map { it.toSourceItem(collectedAt, zone) },
+            )
+        }.onFailure { e ->
+            Logger.w(LogDomain.COLLECTION, "저장된 위치 상태 마감 실패: ${e.message}")
+        }
+    }
+
+    private fun finishPersistenceScope() {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            segmentStore.awaitIdle()
+            scope.cancel()
         }
     }
 
     private fun onLocation(location: Location) {
         val active = segmenter ?: return
+        val previousSnapshot = active.snapshot()
         val previousStatus = active.currentStatus(location.time)
-        val events = active.onSample(location.latitude, location.longitude, location.time)
+        val events =
+            active.onSample(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                timeMillis = location.time,
+                accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }?.toDouble(),
+            )
+        val currentSnapshot = active.snapshot()
         val currentStatus = active.currentStatus(location.time)
         transportHolder.onTrackingStatusChanged(previousStatus, currentStatus)
         trackingState.update(currentStatus)
-        if (events.isNotEmpty()) saveEvents(events)
+        if (currentSnapshot != previousSnapshot || events.isNotEmpty()) {
+            enqueuePersistence(snapshot = currentSnapshot, events = events)
+        }
     }
 
-    private fun saveEvents(events: List<DetectedEvent>) {
+    private fun enqueuePersistence(
+        snapshot: LocationSegmentSnapshot?,
+        events: List<DetectedEvent>,
+        cancelScopeWhenDone: Boolean = false,
+    ) {
         val collectedAt = Instant.now()
         val zone = ZoneId.systemDefault()
         val items = events.map { it.toSourceItem(collectedAt, zone) }
         // 이동을 확정 저장했으면 AR 누적을 비워 다음 구간을 새로 집계한다(dominant 계산 후 호출).
         if (events.any { it is DetectedEvent.Move }) transportHolder.reset()
-        scope.launch {
-            runCatching { addSourceItemsUseCase(items) }
+        // UNDISPATCHED로 mutex 대기열에 호출 순서대로 진입해 이전 스냅샷이 최신 상태를 덮지 않게 한다.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            runCatching { segmentStore.persist(snapshot, items) }
                 .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 이벤트 저장 실패: ${e.message}") }
+            if (cancelScopeWhenDone) {
+                segmentStore.awaitIdle()
+                scope.cancel()
+            }
         }
     }
 
@@ -218,7 +304,7 @@ internal class LocationCollectionService : Service() {
         when (this) {
             is DetectedEvent.Dwell ->
                 SourceItem(
-                    rawId = UUID.randomUUID().toString(),
+                    rawId = rawId,
                     startAt = Instant.ofEpochMilli(startMillis),
                     endAt = Instant.ofEpochMilli(endMillis),
                     timeZoneId = zone,
@@ -230,7 +316,7 @@ internal class LocationCollectionService : Service() {
 
             is DetectedEvent.Move ->
                 SourceItem(
-                    rawId = UUID.randomUUID().toString(),
+                    rawId = rawId,
                     startAt = Instant.ofEpochMilli(startMillis),
                     endAt = Instant.ofEpochMilli(endMillis),
                     timeZoneId = zone,

@@ -16,7 +16,12 @@ class DetectedTransportHolderTest {
 
     @Test
     fun `체류에서 이동으로 전환되면 체류 중 감지값을 초기화한다`() {
-        val segmenter = LocationSegmenter(dwellRadiusMeters = 80.0, stayMillis = 60_000L)
+        val segmenter =
+            LocationSegmenter(
+                dwellRadiusMeters = 80.0,
+                stayMillis = 60_000L,
+                requiredConsecutiveOutsideSamples = 1,
+            )
         val holder = DetectedTransportHolder()
         segmenter.onSample(latitude = 37.5, longitude = 127.0, timeMillis = 0L)
         val previousStatus = segmenter.currentStatus(nowMillis = 0L)

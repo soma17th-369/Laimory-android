@@ -87,7 +87,7 @@ internal class CollectionDatabaseMigrationsTest {
             val database =
                 Room
                     .databaseBuilder(context, CollectionDatabase::class.java, TEST_DB)
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
             try {
                 // 미변환 행이 남아 있으면 ItemType.valueOf("LOCATION") 에서 실패한다.
@@ -100,6 +100,29 @@ internal class CollectionDatabaseMigrationsTest {
                 database.close()
             }
         }
+
+    @Test
+    fun v2에서_v3로_이동하면_진행_중_위치_테이블이_추가되고_기존_수집값은_유지된다() {
+        helper.createDatabase(TEST_DB, 2).apply {
+            insertV1Row(rawId = "raw-stay", itemType = "STAY", payloadJson = STAY_PAYLOAD, sourceKey = "STAY:1000")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 3, true, MIGRATION_2_3)
+
+        db.query("SELECT rawId FROM source_item WHERE rawId = 'raw-stay'").use { cursor ->
+            assertEquals(true, cursor.moveToFirst())
+        }
+        db.execSQL(
+            "INSERT INTO ongoing_location_segment " +
+                "(id, snapshotVersion, snapshotJson, updatedAtUtc) VALUES (1, 1, '{}', 3000)",
+        )
+        db.query("SELECT snapshotVersion, updatedAtUtc FROM ongoing_location_segment WHERE id = 1").use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(1, cursor.getInt(0))
+            assertEquals(3000L, cursor.getLong(1))
+        }
+    }
 
     private fun SupportSQLiteDatabase.insertV1Row(
         rawId: String,

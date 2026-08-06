@@ -20,3 +20,18 @@ internal val MIGRATION_1_2 =
             )
         }
     }
+
+/** v2 → v3: 프로세스 재시작 뒤 위치 분절을 이어갈 단일 진행 상태 테이블을 추가한다. */
+internal val MIGRATION_2_3 =
+    object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS ongoing_location_segment (" +
+                    "id INTEGER NOT NULL, " +
+                    "snapshotVersion INTEGER NOT NULL, " +
+                    "snapshotJson TEXT NOT NULL, " +
+                    "updatedAtUtc INTEGER NOT NULL, " +
+                    "PRIMARY KEY(id))",
+            )
+        }
+    }
