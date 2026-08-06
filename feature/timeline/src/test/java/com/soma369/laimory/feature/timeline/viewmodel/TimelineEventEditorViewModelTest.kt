@@ -288,7 +288,7 @@ class TimelineEventEditorViewModelTest {
             assertEquals(TimelineEventUpdateField.Value("  원문 메모  "), command.memo)
             val photos = (command.photosToAdd as TimelineEventUpdateField.Value).value
             assertEquals(2, photos.size)
-            assertEquals("uploaded-a.jpg", photos[0].filename)
+            assertEquals("uploaded-a-1.jpg", photos[0].filename)
             assertEquals("content://photo/b", photos[1].clientPhotoUri)
             assertEquals(1, navigationHelper.backCount)
             assertEquals(TimelineEventEditorUiContent.Loading, viewModel.state.value.content)
@@ -297,6 +297,59 @@ class TimelineEventEditorViewModelTest {
             runCurrent()
 
             assertEquals("수정된 출근길", viewModel.state.value.form?.title)
+        }
+
+    @Test
+    fun `삭제한 기존 사진을 같은 URI로 재추가하면 새 upload filename으로 PATCH한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            val readdedUri = "content://photo/1"
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.AddPhotos(listOf(readdedUri)))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
+            assertEquals(1, draftRepository.uploadCounts.getValue(readdedUri))
+            val photos =
+                (recordRepository.commands.single().photosToAdd as TimelineEventUpdateField.Value).value
+            val filename = photos.single().filename
+            assertEquals(draftRepository.issuedFilenames.single(), filename)
+            assertEquals("uploaded-1-1.jpg", filename)
+            assertFalse("https://photo/1.jpg".endsWith(filename))
+        }
+
+    @Test
+    fun `업로드를 마친 같은 pending 사진의 PATCH 재시도는 filename을 보존한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel = initializedViewModel()
+            val uri = "content://photo/retry"
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.AddPhotos(listOf(uri)))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            val firstFilename = viewModel.state.value.pendingPhotos.single().uploadedFilename
+            assertEquals("uploaded-retry-1.jpg", firstFilename)
+            assertEquals(1, draftRepository.uploadCounts.getValue(uri))
+
+            recordRepository.failure = null
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(1, draftRepository.uploadCounts.getValue(uri))
+            assertEquals(
+                listOf(firstFilename, firstFilename),
+                recordRepository.commands.map { command ->
+                    val photos = (command.photosToAdd as TimelineEventUpdateField.Value).value
+                    photos.single().filename
+                },
+            )
         }
 
     @Test
@@ -690,6 +743,7 @@ class TimelineEventEditorViewModelTest {
     private class RecordingTimelineDraftRepository : TimelineDraftRepository {
         val uploadedUris = mutableListOf<String>()
         val uploadCounts = mutableMapOf<String, Int>()
+        val issuedFilenames = mutableListOf<String>()
         var failOnceUri: String? = null
 
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> =
@@ -698,7 +752,7 @@ class TimelineEventEditorViewModelTest {
                 val count = uploadCounts.getOrDefault(uri, 0) + 1
                 uploadCounts[uri] = count
                 if (uri == failOnceUri && count == 1) throw ApiException.NetworkException()
-                "uploaded-${uri.substringAfterLast('/')}.jpg"
+                "uploaded-${uri.substringAfterLast('/')}-${count}.jpg".also(issuedFilenames::add)
             }
 
         override suspend fun createDraft(
