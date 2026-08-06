@@ -55,12 +55,16 @@ internal object SourceItemPayloadMapper {
 internal data class GeoPointDto(
     val latitude: Double,
     val longitude: Double,
+    // MOVEMENT 출발·도착 위치의 로컬 화면 표시 전용 주소.
+    val address: String? = null,
 )
 
 @Serializable
 internal data class StayPayloadDto(
     val latitude: Double,
     val longitude: Double,
+    // 로컬 화면 표시 전용. 기존 저장분에는 없으므로 null 기본값으로 호환한다.
+    val address: String? = null,
 )
 
 @Serializable
@@ -106,13 +110,13 @@ internal data class PhotoPayloadDto(
     val description: String?,
 )
 
-private fun GeoPoint.toDto() = GeoPointDto(latitude = latitude, longitude = longitude)
+private fun GeoPoint.toDto() = GeoPointDto(latitude = latitude, longitude = longitude, address = address)
 
-private fun GeoPointDto.toDomain() = GeoPoint(latitude = latitude, longitude = longitude)
+private fun GeoPointDto.toDomain() = GeoPoint(latitude = latitude, longitude = longitude, address = address)
 
-private fun StayPayload.toDto() = StayPayloadDto(latitude = latitude, longitude = longitude)
+private fun StayPayload.toDto() = StayPayloadDto(latitude = latitude, longitude = longitude, address = address)
 
-private fun StayPayloadDto.toDomain() = StayPayload(latitude = latitude, longitude = longitude)
+private fun StayPayloadDto.toDomain() = StayPayload(latitude = latitude, longitude = longitude, address = address)
 
 private fun MovementPayload.toDto() =
     MovementPayloadDto(
