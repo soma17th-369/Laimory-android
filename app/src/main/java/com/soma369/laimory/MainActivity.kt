@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
+import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.navigation.HomePage
@@ -36,6 +37,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var messageHelper: MessageHelperImpl
+
+    @Inject
+    lateinit var globalLoadingHelper: GlobalLoadingHelper
 
     @Inject
     lateinit var navigationHelper: NavigationHelperImpl
@@ -66,6 +70,10 @@ class MainActivity : ComponentActivity() {
                 ) {
                     LaimoryNavGraph(
                         messages = messageHelper.messages,
+                        activeDialogs = messageHelper.activeDialog,
+                        onDialogResult = messageHelper::resolveDialog,
+                        loadingKeys = globalLoadingHelper.activeKeys,
+                        onAuthRootReplaced = messageHelper::clearDialogs,
                         navigationFlow = navigationHelper.navigationFlow,
                         authSessionStates = authSessionStates,
                     )
