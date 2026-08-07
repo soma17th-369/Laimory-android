@@ -7,6 +7,5 @@ import com.soma369.laimory.core.ui.base.UiState
 @Immutable
 data class SettingsUiState(
     val accountProvider: SocialLoginProvider? = null,
-    val isLogoutDialogVisible: Boolean = false,
     val isLoggingOut: Boolean = false,
 ) : UiState
