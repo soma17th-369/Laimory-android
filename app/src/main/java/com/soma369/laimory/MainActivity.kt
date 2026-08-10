@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,6 +24,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.navigation.LaimoryNavGraph
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
+import com.soma369.laimory.ui.GlobalUiHost
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -68,15 +70,18 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    LaimoryNavGraph(
-                        messages = messageHelper.messages,
-                        activeDialogs = messageHelper.activeDialog,
-                        onDialogResult = messageHelper::resolveDialog,
-                        loadingKeys = globalLoadingHelper.activeKeys,
-                        onAuthRootReplaced = messageHelper::clearDialogs,
-                        navigationFlow = navigationHelper.navigationFlow,
-                        authSessionStates = authSessionStates,
-                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LaimoryNavGraph(
+                            messages = messageHelper.messages,
+                            navigationFlow = navigationHelper.navigationFlow,
+                            authSessionStates = authSessionStates,
+                            onAuthRootReplaced = messageHelper::clearDialogs,
+                        )
+                        GlobalUiHost(
+                            messageHelper = messageHelper,
+                            loadingHelper = globalLoadingHelper,
+                        )
+                    }
                 }
             }
         }

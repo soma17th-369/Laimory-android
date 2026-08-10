@@ -17,8 +17,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
-import com.soma369.laimory.core.domain.message.ActiveDialog
-import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.navigation.HomePage
@@ -26,11 +24,7 @@ import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NavSignal
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
-import com.soma369.laimory.ui.GlobalDialogHost
-import com.soma369.laimory.ui.GlobalLoadingOverlay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 
@@ -43,12 +37,9 @@ import kotlinx.coroutines.flow.flowOf
 @Composable
 fun LaimoryNavGraph(
     messages: Flow<UserMessage> = emptyFlow(),
-    activeDialogs: StateFlow<ActiveDialog?> = MutableStateFlow(null),
-    onDialogResult: (requestId: Long, result: DialogResult) -> Unit = { _, _ -> },
-    loadingKeys: StateFlow<Set<String>> = MutableStateFlow(emptySet()),
-    onAuthRootReplaced: () -> Unit = {},
     navigationFlow: Flow<NavSignal> = emptyFlow(),
     authSessionStates: Flow<AuthSessionState> = flowOf(AuthSessionState.Authenticated),
+    onAuthRootReplaced: () -> Unit = {},
 ) {
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
     val rootPage = sessionState.rootPage()
@@ -75,32 +66,25 @@ fun LaimoryNavGraph(
         backStack.syncAuthRoot(rootPage, onRootReplaced = onAuthRootReplaced)
     }
 
-    val activeDialog by activeDialogs.collectAsStateWithLifecycle()
-    val activeLoadingKeys by loadingKeys.collectAsStateWithLifecycle()
-
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Scaffold(
-                snackbarHost = { SnackbarHost(snackbarHostState) },
-                bottomBar = {
-                    // 탭 루트에서만 노출한다. push 된 일반 화면(수집 등)에서는 숨긴다.
-                    if (currentPath != null && appRouteByPath[currentPath]?.isBottomTab == true) {
-                        AppBottomBar(
-                            currentPath = currentPath,
-                            onTabSelect = { route -> backStack.switchTab(route.path) },
-                        )
-                    }
-                },
-            ) { innerPadding ->
-                AppNavHost(
-                    backStack = backStack,
-                    innerPadding = innerPadding,
-                    navigationFlow = navigationFlow,
-                )
-            }
-            GlobalLoadingOverlay(isVisible = activeLoadingKeys.isNotEmpty())
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                // 탭 루트에서만 노출한다. push 된 일반 화면(수집 등)에서는 숨긴다.
+                if (currentPath != null && appRouteByPath[currentPath]?.isBottomTab == true) {
+                    AppBottomBar(
+                        currentPath = currentPath,
+                        onTabSelect = { route -> backStack.switchTab(route.path) },
+                    )
+                }
+            },
+        ) { innerPadding ->
+            AppNavHost(
+                backStack = backStack,
+                innerPadding = innerPadding,
+                navigationFlow = navigationFlow,
+            )
         }
-        GlobalDialogHost(activeDialog = activeDialog, onResult = onDialogResult)
     }
 }
 
