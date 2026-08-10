@@ -24,6 +24,8 @@ import javax.inject.Singleton
  * (@Singleton impl은 Compose 상태를 직접 못 가지므로 브릿지)
  *
  * 공통 Dialog는 다음 정책으로 관리한다.
+ * - Dialog API(show·resolve·clear)는 메인 스레드 호출을 전제한다 — 요청은 ViewModel(viewModelScope),
+ *   응답·정리는 Compose 호스트에서 오므로 호출면이 메인으로 고정되고, 별도 락을 두지 않는다.
  * - 한 번에 하나만 활성화하고, 표시 중 들어온 새 요청은 등록하지 않고 즉시
  *   [DialogResult.Dismissed]로 응답한다(대기열 없음).
  * - 결과는 현재 활성 requestId와 일치할 때만 정확히 한 번 처리한다.
@@ -37,7 +39,6 @@ class MessageHelperImpl
         private val channel = Channel<UserMessage>(Channel.BUFFERED)
         val messages: Flow<UserMessage> = channel.receiveAsFlow()
 
-        private val lock = Any()
         private var lastRequestId = 0L
         private var activeRequest: PendingDialogRequest? = null
 
@@ -59,47 +60,33 @@ class MessageHelperImpl
             requestId: Long,
             result: DialogResult,
         ) {
-            val resolved =
-                synchronized(lock) {
-                    val active = activeRequest?.takeIf { it.requestId == requestId } ?: return
-                    clearActiveLocked()
-                    active
-                }
-            resolved.response.complete(result)
+            val active = activeRequest?.takeIf { it.requestId == requestId } ?: return
+            clearActive()
+            active.response.complete(result)
         }
 
         /** 인증 Root 교체 등 전체 정리 시 활성 요청을 결과 전달 없이 종료한다. */
         fun clearDialogs() {
-            val cleared =
-                synchronized(lock) {
-                    val active = activeRequest ?: return
-                    clearActiveLocked()
-                    active
-                }
-            cleared.response.cancel()
+            val active = activeRequest ?: return
+            clearActive()
+            active.response.cancel()
         }
 
         private suspend fun awaitDialogResult(request: DialogRequest): DialogResult {
-            val pending =
-                synchronized(lock) {
-                    if (activeRequest != null) return DialogResult.Dismissed
-                    PendingDialogRequest(++lastRequestId, CompletableDeferred()).also { created ->
-                        activeRequest = created
-                        _activeDialog.value = ActiveDialog(requestId = created.requestId, request = request)
-                    }
-                }
+            if (activeRequest != null) return DialogResult.Dismissed
+            val pending = PendingDialogRequest(++lastRequestId, CompletableDeferred())
+            activeRequest = pending
+            _activeDialog.value = ActiveDialog(requestId = pending.requestId, request = request)
             return try {
                 pending.response.await()
             } catch (cancellation: CancellationException) {
-                // 호출 scope 취소(또는 clearDialogs) — 오래된 요청이 화면에 남지 않게 한다.
-                synchronized(lock) {
-                    if (activeRequest?.requestId == pending.requestId) clearActiveLocked()
-                }
+                // 호출 scope 취소 — 요청자가 죽으면 화면의 Dialog도 함께 정리한다.
+                if (activeRequest?.requestId == pending.requestId) clearActive()
                 throw cancellation
             }
         }
 
-        private fun clearActiveLocked() {
+        private fun clearActive() {
             activeRequest = null
             _activeDialog.value = null
         }
