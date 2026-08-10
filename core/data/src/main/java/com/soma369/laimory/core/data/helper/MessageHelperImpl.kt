@@ -24,11 +24,11 @@ import javax.inject.Singleton
  * (@Singleton impl은 Compose 상태를 직접 못 가지므로 브릿지)
  *
  * 공통 Dialog는 다음 정책으로 관리한다.
- * - 한 번에 하나만 활성화하고 나머지는 FIFO로 대기한다.
- * - 같은 key의 활성·대기 요청은 등록하지 않고 즉시 [DialogResult.Dismissed]로 응답한다.
+ * - 한 번에 하나만 활성화하고, 표시 중 들어온 새 요청은 등록하지 않고 즉시
+ *   [DialogResult.Dismissed]로 응답한다(대기열 없음).
  * - 결과는 현재 활성 requestId와 일치할 때만 정확히 한 번 처리한다.
- * - 호출 coroutine이 취소되면 해당 활성·대기 요청을 제거한다.
- * - [clearDialogs]는 활성·대기 요청을 결과 전달 없이 취소한다(오래된 결과 실행 방지).
+ * - 호출 coroutine이 취소되면 활성 Dialog를 정리한다.
+ * - [clearDialogs]는 활성 요청을 결과 전달 없이 취소한다(오래된 결과 실행 방지).
  */
 @Singleton
 class MessageHelperImpl
@@ -40,7 +40,6 @@ class MessageHelperImpl
         private val lock = Any()
         private var lastRequestId = 0L
         private var activeRequest: PendingDialogRequest? = null
-        private val pendingQueue = ArrayDeque<PendingDialogRequest>()
 
         private val _activeDialog = MutableStateFlow<ActiveDialog?>(null)
 
@@ -63,78 +62,50 @@ class MessageHelperImpl
             val resolved =
                 synchronized(lock) {
                     val active = activeRequest?.takeIf { it.requestId == requestId } ?: return
-                    activeRequest = null
-                    promoteNextLocked()
+                    clearActiveLocked()
                     active
                 }
             resolved.response.complete(result)
         }
 
-        /** 인증 Root 교체 등 전체 정리 시 활성 요청과 대기열을 결과 전달 없이 종료한다. */
+        /** 인증 Root 교체 등 전체 정리 시 활성 요청을 결과 전달 없이 종료한다. */
         fun clearDialogs() {
             val cleared =
                 synchronized(lock) {
-                    val all =
-                        buildList {
-                            activeRequest?.let(::add)
-                            addAll(pendingQueue)
-                        }
-                    activeRequest = null
-                    pendingQueue.clear()
-                    _activeDialog.value = null
-                    all
+                    val active = activeRequest ?: return
+                    clearActiveLocked()
+                    active
                 }
-            cleared.forEach { it.response.cancel() }
+            cleared.response.cancel()
         }
 
         private suspend fun awaitDialogResult(request: DialogRequest): DialogResult {
             val pending =
                 synchronized(lock) {
-                    val isDuplicateKey =
-                        activeRequest?.request?.key == request.key ||
-                            pendingQueue.any { it.request.key == request.key }
-                    if (isDuplicateKey) return DialogResult.Dismissed
-                    PendingDialogRequest(++lastRequestId, request, CompletableDeferred()).also { created ->
-                        if (activeRequest == null) activateLocked(created) else pendingQueue.addLast(created)
+                    if (activeRequest != null) return DialogResult.Dismissed
+                    PendingDialogRequest(++lastRequestId, CompletableDeferred()).also { created ->
+                        activeRequest = created
+                        _activeDialog.value = ActiveDialog(requestId = created.requestId, request = request)
                     }
                 }
             return try {
                 pending.response.await()
             } catch (cancellation: CancellationException) {
-                // 호출 scope 취소(또는 clearDialogs) — 오래된 요청이 화면·대기열에 남지 않게 한다.
-                removeRequest(pending.requestId)
+                // 호출 scope 취소(또는 clearDialogs) — 오래된 요청이 화면에 남지 않게 한다.
+                synchronized(lock) {
+                    if (activeRequest?.requestId == pending.requestId) clearActiveLocked()
+                }
                 throw cancellation
             }
         }
 
-        private fun removeRequest(requestId: Long) {
-            synchronized(lock) {
-                if (activeRequest?.requestId == requestId) {
-                    activeRequest = null
-                    promoteNextLocked()
-                } else {
-                    pendingQueue.removeAll { it.requestId == requestId }
-                }
-            }
-        }
-
-        private fun activateLocked(request: PendingDialogRequest) {
-            activeRequest = request
-            _activeDialog.value = ActiveDialog(requestId = request.requestId, request = request.request)
-        }
-
-        private fun promoteNextLocked() {
-            val next = pendingQueue.removeFirstOrNull()
-            if (next == null) {
-                _activeDialog.value = null
-            } else {
-                activateLocked(next)
-            }
+        private fun clearActiveLocked() {
+            activeRequest = null
+            _activeDialog.value = null
         }
 
         private class PendingDialogRequest(
             val requestId: Long,
-            val request: DialogRequest,
             val response: CompletableDeferred<DialogResult>,
         )
     }

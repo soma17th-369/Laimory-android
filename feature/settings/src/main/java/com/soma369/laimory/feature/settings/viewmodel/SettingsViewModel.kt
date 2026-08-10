@@ -58,8 +58,8 @@ class SettingsViewModel
         /**
          * 공통 Dialog로 로그아웃 확인을 요청하고 결과를 화면 Intent로 변환한다.
          *
-         * intent consumer를 막지 않도록 별도 Job에서 결과를 기다리며, Job과 요청 key가
-         * 연속 탭의 중복 Dialog를 함께 막는다.
+         * intent consumer를 막지 않도록 별도 Job에서 결과를 기다리며, Job 가드와
+         * 헬퍼의 활성 단일 정책이 연속 탭의 중복 Dialog를 함께 막는다.
          */
         private fun requestLogoutConfirm() {
             if (state.value.isLoggingOut) return
@@ -69,7 +69,6 @@ class SettingsViewModel
                     val result =
                         messageHelper.showTwoButtonDialog(
                             DialogRequest.TwoButton(
-                                key = LOGOUT_DIALOG_KEY,
                                 title = "로그아웃할까요?",
                                 body = "이 기기에서 로그아웃하고 로그인 화면으로 이동합니다.",
                                 primaryLabel = "로그아웃",
@@ -103,7 +102,6 @@ class SettingsViewModel
         }
 
         private companion object {
-            const val LOGOUT_DIALOG_KEY = "settings-logout-confirm"
             const val LOGOUT_LOADING_KEY = "settings-logout"
         }
     }

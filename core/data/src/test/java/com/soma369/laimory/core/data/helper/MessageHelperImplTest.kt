@@ -28,11 +28,11 @@ class MessageHelperImplTest {
         runTest {
             val helper = MessageHelperImpl()
 
-            val result = async { helper.showTwoButtonDialog(twoButton(key = "logout")) }
+            val result = async { helper.showTwoButtonDialog(twoButton(title = "로그아웃할까요?")) }
             runCurrent()
 
             val active = checkNotNull(helper.activeDialog.value)
-            assertEquals("logout", active.request.key)
+            assertEquals("로그아웃할까요?", active.request.title)
 
             helper.resolveDialog(active.requestId, DialogResult.Primary)
             runCurrent()
@@ -46,7 +46,7 @@ class MessageHelperImplTest {
         runTest {
             val helper = MessageHelperImpl()
 
-            val result = async { helper.showOneButtonDialog(oneButton(key = "notice")) }
+            val result = async { helper.showOneButtonDialog(oneButton()) }
             runCurrent()
             val active = checkNotNull(helper.activeDialog.value)
 
@@ -62,40 +62,18 @@ class MessageHelperImplTest {
         }
 
     @Test
-    fun `동시 요청은 FIFO로 대기하고 앞선 응답 뒤에 활성화된다`() =
+    fun `표시 중 들어온 새 요청은 등록하지 않고 즉시 Dismissed로 응답한다`() =
         runTest {
             val helper = MessageHelperImpl()
 
-            val first = async { helper.showTwoButtonDialog(twoButton(key = "first")) }
-            runCurrent()
-            val second = async { helper.showTwoButtonDialog(twoButton(key = "second")) }
+            val original = async { helper.showTwoButtonDialog(twoButton(title = "첫 요청")) }
             runCurrent()
 
-            assertEquals("first", helper.activeDialog.value?.request?.key)
-
-            helper.resolveDialog(checkNotNull(helper.activeDialog.value).requestId, DialogResult.Secondary)
+            val rejected = async { helper.showTwoButtonDialog(twoButton(title = "두 번째 요청")) }
             runCurrent()
 
-            assertEquals(DialogResult.Secondary, first.await())
-            assertEquals("second", helper.activeDialog.value?.request?.key)
-
-            helper.resolveDialog(checkNotNull(helper.activeDialog.value).requestId, DialogResult.Primary)
-            runCurrent()
-            assertEquals(DialogResult.Primary, second.await())
-        }
-
-    @Test
-    fun `같은 key의 활성·대기 요청은 등록하지 않고 즉시 Dismissed로 응답한다`() =
-        runTest {
-            val helper = MessageHelperImpl()
-
-            val original = async { helper.showTwoButtonDialog(twoButton(key = "logout")) }
-            runCurrent()
-
-            val duplicate = async { helper.showTwoButtonDialog(twoButton(key = "logout")) }
-            runCurrent()
-
-            assertEquals(DialogResult.Dismissed, duplicate.await())
+            assertEquals(DialogResult.Dismissed, rejected.await())
+            assertEquals("첫 요청", helper.activeDialog.value?.request?.title)
 
             helper.resolveDialog(checkNotNull(helper.activeDialog.value).requestId, DialogResult.Primary)
             runCurrent()
@@ -103,63 +81,39 @@ class MessageHelperImplTest {
         }
 
     @Test
-    fun `호출 coroutine이 취소되면 활성 요청을 제거하고 다음 대기를 승격한다`() =
+    fun `호출 coroutine이 취소되면 활성 Dialog를 정리하고 새 요청을 받을 수 있다`() =
         runTest {
             val helper = MessageHelperImpl()
 
-            val first = async { helper.showTwoButtonDialog(twoButton(key = "first")) }
-            runCurrent()
-            val second = async { helper.showTwoButtonDialog(twoButton(key = "second")) }
+            val cancelled = async { helper.showTwoButtonDialog(twoButton(title = "취소될 요청")) }
             runCurrent()
 
-            first.cancel()
+            cancelled.cancel()
             runCurrent()
 
-            assertEquals("second", helper.activeDialog.value?.request?.key)
-
-            helper.resolveDialog(checkNotNull(helper.activeDialog.value).requestId, DialogResult.Primary)
-            runCurrent()
-            assertEquals(DialogResult.Primary, second.await())
-        }
-
-    @Test
-    fun `대기 중인 요청이 취소되면 대기열에서만 제거한다`() =
-        runTest {
-            val helper = MessageHelperImpl()
-
-            val first = async { helper.showTwoButtonDialog(twoButton(key = "first")) }
-            runCurrent()
-            val second = async { helper.showTwoButtonDialog(twoButton(key = "second")) }
-            runCurrent()
-
-            second.cancel()
-            runCurrent()
-
-            assertEquals("first", helper.activeDialog.value?.request?.key)
-
-            helper.resolveDialog(checkNotNull(helper.activeDialog.value).requestId, DialogResult.Primary)
-            runCurrent()
-
-            assertEquals(DialogResult.Primary, first.await())
             assertNull(helper.activeDialog.value)
+
+            val next = async { helper.showTwoButtonDialog(twoButton(title = "다음 요청")) }
+            runCurrent()
+
+            helper.resolveDialog(checkNotNull(helper.activeDialog.value).requestId, DialogResult.Primary)
+            runCurrent()
+            assertEquals(DialogResult.Primary, next.await())
         }
 
     @Test
-    fun `clearDialogs는 활성과 대기 요청을 결과 전달 없이 취소한다`() =
+    fun `clearDialogs는 활성 요청을 결과 전달 없이 취소한다`() =
         runTest {
             val helper = MessageHelperImpl()
 
-            val first = async { helper.showTwoButtonDialog(twoButton(key = "first")) }
-            runCurrent()
-            val second = async { helper.showTwoButtonDialog(twoButton(key = "second")) }
+            val active = async { helper.showTwoButtonDialog(twoButton(title = "정리될 요청")) }
             runCurrent()
 
             helper.clearDialogs()
             runCurrent()
 
             assertNull(helper.activeDialog.value)
-            assertTrue(first.isCancelled)
-            assertTrue(second.isCancelled)
+            assertTrue(active.isCancelled)
         }
 
     @Test
@@ -167,13 +121,13 @@ class MessageHelperImplTest {
         runTest {
             val helper = MessageHelperImpl()
 
-            val stale = async { helper.showTwoButtonDialog(twoButton(key = "logout")) }
+            val stale = async { helper.showTwoButtonDialog(twoButton(title = "이전 요청")) }
             runCurrent()
             helper.clearDialogs()
             runCurrent()
             assertTrue(stale.isCancelled)
 
-            val fresh = async { helper.showTwoButtonDialog(twoButton(key = "logout")) }
+            val fresh = async { helper.showTwoButtonDialog(twoButton(title = "새 요청")) }
             runCurrent()
 
             helper.resolveDialog(checkNotNull(helper.activeDialog.value).requestId, DialogResult.Primary)
@@ -181,18 +135,16 @@ class MessageHelperImplTest {
             assertEquals(DialogResult.Primary, fresh.await())
         }
 
-    private fun twoButton(key: String) =
+    private fun twoButton(title: String = "제목") =
         DialogRequest.TwoButton(
-            key = key,
-            title = "제목",
+            title = title,
             body = "본문",
             primaryLabel = "확인",
             secondaryLabel = "취소",
         )
 
-    private fun oneButton(key: String) =
+    private fun oneButton() =
         DialogRequest.OneButton(
-            key = key,
             title = "제목",
             body = "본문",
             buttonLabel = "확인",
