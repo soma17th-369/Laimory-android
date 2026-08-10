@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
+import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.navigation.HomePage
@@ -22,6 +24,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.navigation.LaimoryNavGraph
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
+import com.soma369.laimory.ui.GlobalUiHost
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -36,6 +39,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var messageHelper: MessageHelperImpl
+
+    @Inject
+    lateinit var globalLoadingHelper: GlobalLoadingHelper
 
     @Inject
     lateinit var navigationHelper: NavigationHelperImpl
@@ -64,11 +70,18 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    LaimoryNavGraph(
-                        messages = messageHelper.messages,
-                        navigationFlow = navigationHelper.navigationFlow,
-                        authSessionStates = authSessionStates,
-                    )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LaimoryNavGraph(
+                            messages = messageHelper.messages,
+                            navigationFlow = navigationHelper.navigationFlow,
+                            authSessionStates = authSessionStates,
+                            onAuthRootReplaced = messageHelper::clearDialogs,
+                        )
+                        GlobalUiHost(
+                            messageHelper = messageHelper,
+                            loadingHelper = globalLoadingHelper,
+                        )
+                    }
                 }
             }
         }

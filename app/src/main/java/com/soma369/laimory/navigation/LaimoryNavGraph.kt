@@ -39,6 +39,7 @@ fun LaimoryNavGraph(
     messages: Flow<UserMessage> = emptyFlow(),
     navigationFlow: Flow<NavSignal> = emptyFlow(),
     authSessionStates: Flow<AuthSessionState> = flowOf(AuthSessionState.Authenticated),
+    onAuthRootReplaced: () -> Unit = {},
 ) {
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
     val rootPage = sessionState.rootPage()
@@ -62,7 +63,7 @@ fun LaimoryNavGraph(
     }
 
     LaunchedEffect(rootPage) {
-        backStack.syncAuthRoot(rootPage)
+        backStack.syncAuthRoot(rootPage, onRootReplaced = onAuthRootReplaced)
     }
 
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
@@ -94,12 +95,23 @@ internal fun AuthSessionState.rootPage(): Page? =
         AuthSessionState.Unauthenticated -> LoginPage
     }
 
-/** 인증 여부가 바뀐 경우에만 Login/Home 경계를 교체하고, 같은 경계의 복원된 백스택은 보존한다. */
-internal fun NavBackStack<NavKey>.syncAuthRoot(targetRoot: Page) {
+/**
+ * 인증 여부가 바뀐 경우에만 Login/Home 경계를 교체하고, 같은 경계의 복원된 백스택은 보존한다.
+ *
+ * [onRootReplaced]는 실제 경계 교체 순간에만 호출된다 — 구성 변경으로 같은 Root가 다시
+ * 구성될 때는 호출되지 않아 활성 Dialog가 유지되고, 교체 뒤에는 오래된 요청이 정리된다.
+ */
+internal fun NavBackStack<NavKey>.syncAuthRoot(
+    targetRoot: Page,
+    onRootReplaced: () -> Unit = {},
+) {
     val currentRootPath = (firstOrNull() as? GenericNavKey)?.path
     val isLoginRoot = currentRootPath == LoginPage.PATH
     val shouldBeLoginRoot = targetRoot == LoginPage
-    if (isLoginRoot != shouldBeLoginRoot) replaceRoot(targetRoot.toRoute())
+    if (isLoginRoot != shouldBeLoginRoot) {
+        onRootReplaced()
+        replaceRoot(targetRoot.toRoute())
+    }
 }
 
 /** 의미 수준 메시지를 실제 스낵바 문구로 매핑한다. (presentation 책임) */

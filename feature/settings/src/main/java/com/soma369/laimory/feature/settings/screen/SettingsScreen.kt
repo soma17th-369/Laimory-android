@@ -45,8 +45,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
-import com.soma369.laimory.core.ui.component.LaimoryDialog
-import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
@@ -92,14 +90,6 @@ private fun SettingsContent(
         state = state,
         onIntent = onIntent,
     )
-
-    if (state.isLogoutDialogVisible) {
-        LogoutConfirmDialog(
-            isLoggingOut = state.isLoggingOut,
-            onConfirm = { onIntent(SettingsUiIntent.LogoutConfirmed) },
-            onDismiss = { onIntent(SettingsUiIntent.LogoutDismissed) },
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -337,29 +327,6 @@ private fun SettingsRow(item: SettingsItem) {
     }
 }
 
-@Composable
-private fun LogoutConfirmDialog(
-    isLoggingOut: Boolean,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    LaimoryDialog(
-        title = "로그아웃할까요?",
-        body = "이 기기에서 로그아웃하고 로그인 화면으로 이동합니다.",
-        buttons =
-            LaimoryDialogButtons.Two(
-                secondaryLabel = "취소",
-                onSecondaryClick = onDismiss,
-                primaryLabel = "로그아웃",
-                onPrimaryClick = onConfirm,
-                enabled = !isLoggingOut,
-                isPrimaryLoading = isLoggingOut,
-            ),
-        onDismissRequest = onDismiss,
-        dismissible = !isLoggingOut,
-    )
-}
-
 private data class SettingsItem(
     @DrawableRes val iconRes: Int,
     val title: String,
@@ -405,31 +372,6 @@ private fun SettingsDefaultPreview() {
             onIntent = {},
         )
     }
-}
-
-@Preview(name = "Settings Logout Dialog", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 800)
-@Composable
-private fun SettingsDialogPreview() {
-    SettingsContentPreview(
-        state =
-            SettingsUiState(
-                accountProvider = SocialLoginProvider.KAKAO,
-                isLogoutDialogVisible = true,
-            ),
-    )
-}
-
-@Preview(name = "Settings Logout Progress", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 800)
-@Composable
-private fun SettingsProgressPreview() {
-    SettingsContentPreview(
-        state =
-            SettingsUiState(
-                accountProvider = SocialLoginProvider.KAKAO,
-                isLogoutDialogVisible = true,
-                isLoggingOut = true,
-            ),
-    )
 }
 
 @Composable
