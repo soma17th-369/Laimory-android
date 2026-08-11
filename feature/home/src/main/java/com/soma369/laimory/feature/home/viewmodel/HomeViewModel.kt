@@ -10,13 +10,15 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
+import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
-import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
+import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.model.toPastRecordUiModel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
@@ -46,10 +48,11 @@ class HomeViewModel
     @Inject
     constructor(
         private val observeSourceItemsUseCase: ObserveSourceItemsUseCase,
-        private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
+        private val prepareTimelineDraftSelectionUseCase: PrepareTimelineDraftSelectionUseCase,
         private val getDailyRecordsUseCase: GetDailyRecordsUseCase,
         private val getPhotosInWindowUseCase: GetPhotosInWindowUseCase,
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
+        private val draftConsentSessionStore: DraftConsentSessionStore,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
@@ -65,6 +68,7 @@ class HomeViewModel
         private var preparedPhotoCache: PreparedPhotoCache? = null
         private var hasUserSelectedDate = false
         private var pastRecordsJob: Job? = null
+        private var consentPreparationJob: Job? = null
 
         init {
             observeSummary()
@@ -94,7 +98,8 @@ class HomeViewModel
                 HomeUiIntent.DismissTimePicker -> updateState { copy(editingTimeField = null) }
                 is HomeUiIntent.SelectTime -> selectTime(intent.field, intent.time)
                 is HomeUiIntent.SelectEndDay -> selectEndDay(intent.endDay)
-                HomeUiIntent.CreateDraft -> createDraft()
+                HomeUiIntent.CreateDraft -> prepareDraftConsent()
+                HomeUiIntent.ConsumeDraftConsentResult -> consumeDraftConsentResult()
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
@@ -299,10 +304,18 @@ class HomeViewModel
             onRecordWindowChanged()
         }
 
-        private fun createDraft() {
-            if (state.value.draftStatus.isInputLocked) {
-                return
-            }
+        /**
+         * 전송 스냅샷을 확정하고 동의 화면으로 이동한다.
+         *
+         * 사진 업로드·초안 생성 API 는 여기서 호출하지 않는다 — 동의 화면에서 필수 동의를 모두
+         * 완료하고 CTA 를 선택한 경우에만 시작된다. 사진 상한 초과·접근 불가 사진 같은 입력
+         * 오류는 동의 화면으로 이동하지 않고 홈에서 바로 수정하도록 안내한다.
+         */
+        private fun prepareDraftConsent() {
+            if (state.value.draftStatus.isInputLocked) return
+            if (consentPreparationJob?.isActive == true) return
+            // 동의 화면이 소비하지 않은 시도가 남아 있으면 중복 진입하지 않는다.
+            if (draftConsentSessionStore.preparation.value != null) return
             val current = state.value
             val window = current.recordDateWindow(zone)
             if (window == null) {
@@ -315,34 +328,35 @@ class HomeViewModel
             }
 
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
-            updateState {
-                copy(
-                    draftStatus = DraftCreationStatus.SUBMITTING,
-                    draftRetryMode = null,
-                    draftMessage = null,
-                )
-            }
-            safeLaunch(
-                onError = ::handleDraftCreationFailure,
-            ) {
-                val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
-                if (shouldDiscardPreviousTask) draftTaskCoordinator.discard()
-                val result =
-                    createTimelineDraftUseCase(
-                        current.selectedDate,
-                        zone,
-                        window,
-                        current.nonPhotoSourceItems(sourceItems, zone) + selectedPhotoItems,
+            consentPreparationJob =
+                safeLaunch(
+                    onError = ::handleDraftCreationFailure,
+                ) {
+                    val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
+                    val selection =
+                        prepareTimelineDraftSelectionUseCase(
+                            window,
+                            current.nonPhotoSourceItems(sourceItems, zone) + selectedPhotoItems,
+                        ).getOrElse {
+                            handleDraftCreationFailure(it)
+                            return@safeLaunch
+                        }
+                    draftConsentSessionStore.prepare(
+                        recordDate = current.selectedDate,
+                        zone = zone,
+                        window = window,
+                        selection = selection,
+                        discardActiveTask = shouldDiscardPreviousTask,
                     )
-                val handle =
-                    result.getOrElse {
-                        handleDraftCreationFailure(it)
-                        return@safeLaunch
-                    }
-                draftTaskCoordinator.start(handle.taskId, current.selectedDate)
-                updateState { copy(isDraftSheetVisible = false) }
-                sendEffect(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."))
-            }
+                    navigationHelper.navigateTo(DraftConsentPage)
+                }
+        }
+
+        /** 동의 화면에서 제출이 완료된 채 복귀했는지 1회 확인하고, 완료면 시트를 닫고 시작을 알린다. */
+        private fun consumeDraftConsentResult() {
+            if (!draftConsentSessionStore.consumeSubmittedResult()) return
+            updateState { copy(isDraftSheetVisible = false) }
+            sendEffect(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."))
         }
 
         private suspend fun prepareSelectedPhotos(current: HomeUiState): List<SourceItem>? {
@@ -490,7 +504,7 @@ class HomeViewModel
         private fun retryDraft() {
             when (state.value.draftRetryMode) {
                 DraftRetryMode.POLLING -> draftTaskCoordinator.retry()
-                DraftRetryMode.NEW_DRAFT -> createDraft()
+                DraftRetryMode.NEW_DRAFT -> prepareDraftConsent()
                 null -> Unit
             }
         }
@@ -554,9 +568,6 @@ class HomeViewModel
         }
 
         private fun HomeUiState.withDraftTracking(trackingState: DraftTaskTrackingState): HomeUiState {
-            if (draftStatus == DraftCreationStatus.SUBMITTING && trackingState == DraftTaskTrackingState.Idle) {
-                return this
-            }
             val trackingTask = (trackingState as? DraftTaskTrackingState.WithTask)?.task
             val alignedState =
                 if (trackingTask != null && trackingTask.recordDate != selectedDate) {

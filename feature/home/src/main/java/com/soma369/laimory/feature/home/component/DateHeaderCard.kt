@@ -49,7 +49,6 @@ internal fun DateHeaderCard(
     val today = rememberToday()
     Surface(
         onClick = onClick,
-        enabled = state.draftStatus != DraftCreationStatus.SUBMITTING,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -269,7 +268,6 @@ private fun momentTitle(
 private fun draftActionLabel(status: DraftCreationStatus): String =
     when (status) {
         DraftCreationStatus.IDLE -> "초안 만들기"
-        DraftCreationStatus.SUBMITTING -> "생성 중"
         DraftCreationStatus.PROCESSING -> "초안 생성 중"
         DraftCreationStatus.LONG_RUNNING -> "오래 걸리고 있어요"
         DraftCreationStatus.SUCCESS -> "초안 보기"
@@ -279,10 +277,6 @@ private fun draftActionLabel(status: DraftCreationStatus): String =
 private fun formatNumber(value: Long): String = String.format(Locale.KOREA, "%,d", value)
 
 private val CARD_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
-
-@Preview(name = "초안 요청 중", showBackground = true)
-@Composable
-private fun DateHeaderCardSubmittingPreview() = DraftStatusPreview(DraftCreationStatus.SUBMITTING)
 
 @Preview(name = "초안 처리 중", showBackground = true)
 @Composable
