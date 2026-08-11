@@ -62,6 +62,17 @@ data class TimelineEventEditorPage(
     }
 }
 
+/**
+ * 타임라인 초안 생성 전 데이터 전송 확인·동의 화면.
+ *
+ * 전송 스냅샷은 nav args 로 직렬화하지 않고 feature:home 의 인메모리 준비 상태로 전달한다.
+ */
+data object DraftConsentPage : Page {
+    const val PATH = "/home/draft-consent"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object SettingsPage : Page {
     const val PATH = "/settings"
 
