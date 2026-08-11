@@ -1,34 +1,37 @@
 package com.soma369.laimory.feature.home.screen
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -37,15 +40,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.component.DraftConsentTermsSheet
-import com.soma369.laimory.feature.home.component.DraftConsentTypeDetailSheet
+import com.soma369.laimory.feature.home.component.iconRes
 import com.soma369.laimory.feature.home.component.label
-import com.soma369.laimory.feature.home.component.sentFieldsLabel
+import com.soma369.laimory.feature.home.component.subtitle
 import com.soma369.laimory.feature.home.component.titleRes
 import com.soma369.laimory.feature.home.state.DraftConsentTerm
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
@@ -56,7 +58,6 @@ import com.soma369.laimory.feature.home.state.DraftConsentUiState
 import com.soma369.laimory.feature.home.viewmodel.DraftConsentViewModel
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import com.soma369.laimory.core.ui.R as UiR
 
 @Composable
@@ -91,18 +92,6 @@ private fun DraftConsentContent(
 
     DraftConsentScreen(innerPadding = innerPadding, state = state, onIntent = onIntent)
 
-    state.openTypeDetail?.let { group ->
-        state.content
-            ?.typeSummaries
-            ?.firstOrNull { it.group == group }
-            ?.let { summary ->
-                DraftConsentTypeDetailSheet(
-                    summary = summary,
-                    onDismiss = { onIntent(DraftConsentUiIntent.CloseTypeDetail) },
-                )
-            }
-    }
-
     state.openTermsDetail?.let { term ->
         DraftConsentTermsSheet(
             term = term,
@@ -125,7 +114,7 @@ private fun DraftConsentScreen(
                 .padding(innerPadding),
     ) {
         LaimoryTopAppBar(
-            title = { Text("데이터 전송 동의") },
+            title = { Text("데이터 수집 동의") },
             onBackClick = { onIntent(DraftConsentUiIntent.NavigateBack) },
         )
         val content = state.content
@@ -134,49 +123,51 @@ private fun DraftConsentScreen(
             return
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = Spacing.extraLarge, vertical = Spacing.large),
-            verticalArrangement = Arrangement.spacedBy(Spacing.medium),
+        Column(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = Spacing.extraLarge)
+                    .padding(top = Spacing.medium, bottom = Spacing.extraLarge),
         ) {
-            item(key = "header") { ConsentHeader(content) }
+            ConsentHeader(content)
+            Spacer(modifier = Modifier.height(Spacing.extraLarge2))
 
-            items(items = content.typeSummaries, key = { it.group.name }) { summary ->
-                TypeSummaryRow(
-                    summary = summary,
-                    photoPreviewUris =
-                        if (summary.group == DraftConsentTypeGroup.PHOTO) content.photoPreviewUris else emptyList(),
-                    onClick = { onIntent(DraftConsentUiIntent.OpenTypeDetail(summary.group)) },
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(TYPE_CARD_GAP)) {
+                content.typeSummaries.forEach { summary ->
+                    TypeSummaryRow(
+                        summary = summary,
+                        onClick = { onIntent(DraftConsentUiIntent.OpenTypeDetail(summary.group)) },
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(Spacing.extraLarge2))
 
-            item(key = "thirdPartyNotice") {
-                Text(
-                    text = "알림·사진에는 다른 사람의 메시지, 얼굴 등 제3자의 개인정보가 포함될 수 있어요. 전송 전 상세 내용을 확인해주세요.",
-                    modifier = Modifier.padding(top = Spacing.small),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Text(
+                text = "동의 항목",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Spacer(modifier = Modifier.height(Spacing.medium))
+            Column(verticalArrangement = Arrangement.spacedBy(TYPE_CARD_GAP)) {
+                DraftConsentTerm.entries.forEach { term ->
+                    TermRow(
+                        term = term,
+                        checked = term in state.checkedTerms,
+                        enabled = !state.isSubmitting,
+                        onToggle = { onIntent(DraftConsentUiIntent.ToggleTerm(term)) },
+                        onOpenDetail = { onIntent(DraftConsentUiIntent.OpenTermsDetail(term)) },
+                    )
+                }
             }
+            Spacer(modifier = Modifier.height(Spacing.large))
 
-            item(key = "termsHeader") {
-                Text(
-                    text = "필수 동의 항목",
-                    modifier = Modifier.padding(top = Spacing.large),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            items(items = DraftConsentTerm.entries, key = DraftConsentTerm::name) { term ->
-                TermRow(
-                    term = term,
-                    checked = term in state.checkedTerms,
-                    enabled = !state.isSubmitting,
-                    onToggle = { onIntent(DraftConsentUiIntent.ToggleTerm(term)) },
-                    onOpenDetail = { onIntent(DraftConsentUiIntent.OpenTermsDetail(term)) },
-                )
-            }
+            Text(
+                text = "알림·사진에는 다른 사람의 메시지, 얼굴 등 제3자의 개인정보가 포함될 수 있어요. 전송 전 상세 내용을 확인해주세요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         SubmitArea(state = state, onIntent = onIntent)
@@ -185,21 +176,21 @@ private fun DraftConsentScreen(
 
 @Composable
 private fun ConsentHeader(content: DraftConsentUiContent) {
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall)) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
         Text(
-            text = content.recordDate.format(CONSENT_RECORD_DATE_FORMAT),
+            text = "타임라인 생성을 위해\n아래 데이터가 활용됩니다",
             style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
-            text = "선택 구간 ${content.windowText}",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "안전하게 암호화된 연결로 전송된 데이터를 기반으로 일상의 순간을 타임라인으로 기록합니다.",
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "아래 ${content.sentTotal}건의 데이터를 서버로 전송해 AI 타임라인 초안을 만들어요. 전송 내용을 확인하고 동의해주세요.",
-            modifier = Modifier.padding(top = Spacing.small),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            text = "선택 구간 · ${content.windowText} (총 ${content.sentTotal}건 전송)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -207,75 +198,61 @@ private fun ConsentHeader(content: DraftConsentUiContent) {
 @Composable
 private fun TypeSummaryRow(
     summary: DraftConsentTypeSummary,
-    photoPreviewUris: List<String>,
     onClick: () -> Unit,
 ) {
-    val contentColor =
+    val titleColor =
         if (summary.isSent) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         onClick = onClick,
         enabled = summary.isSent,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = Spacing.large, vertical = Spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(Spacing.small),
+        Row(
+            modifier =
+                Modifier
+                    .padding(Spacing.medium)
+                    .heightIn(min = TYPE_ROW_MIN_HEIGHT),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
+            Box(
                 modifier =
                     Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = TYPE_ROW_MIN_HEIGHT),
-                verticalAlignment = Alignment.CenterVertically,
+                        .size(TYPE_ICON_CONTAINER_SIZE)
+                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
-                ) {
-                    Text(
-                        text = summary.group.label(),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = contentColor,
-                    )
-                    Text(
-                        text = summary.group.sentFieldsLabel(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Icon(
+                    painter = painterResource(summary.group.iconRes()),
+                    contentDescription = null,
+                    modifier = Modifier.size(TYPE_ICON_SIZE),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = summary.group.label(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = titleColor,
+                )
                 Text(
                     text = summary.countLabel,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = contentColor,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (summary.isSent) {
-                    Icon(
-                        painter = painterResource(UiR.drawable.ico_default_caret_right),
-                        contentDescription = "${summary.group.label()} 전송 상세 보기",
-                        modifier =
-                            Modifier
-                                .padding(start = Spacing.extraSmall)
-                                .size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
-            if (photoPreviewUris.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
-                    photoPreviewUris.forEach { uri ->
-                        AsyncImage(
-                            model = uri,
-                            contentDescription = "전송할 사진 미리보기",
-                            modifier =
-                                Modifier
-                                    .size(PHOTO_PREVIEW_SIZE)
-                                    .clip(RoundedCornerShape(8.dp)),
-                            contentScale = ContentScale.Crop,
-                        )
-                    }
-                }
+            if (summary.isSent) {
+                Icon(
+                    painter = painterResource(UiR.drawable.ico_default_caret_right),
+                    contentDescription = "${summary.group.label()} 전송 상세 보기",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -289,36 +266,74 @@ private fun TermRow(
     onToggle: () -> Unit,
     onOpenDetail: () -> Unit,
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = TERM_ROW_MIN_HEIGHT)
-                .toggleable(
-                    value = checked,
-                    enabled = enabled,
-                    role = Role.Checkbox,
-                    onValueChange = { onToggle() },
-                ),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Checkbox(
-            checked = checked,
-            onCheckedChange = null,
-            enabled = enabled,
-        )
-        Text(
-            text = "${stringResource(term.titleRes())} (필수)",
+        Row(
             modifier =
                 Modifier
-                    .weight(1f)
-                    .padding(start = Spacing.small),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        TextButton(onClick = onOpenDetail) {
-            Text("보기")
+                    .heightIn(min = TERM_ROW_MIN_HEIGHT)
+                    .toggleable(
+                        value = checked,
+                        enabled = enabled,
+                        role = Role.Checkbox,
+                        onValueChange = { onToggle() },
+                    ).padding(start = Spacing.medium),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.small + 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ConsentCheckCircle(checked = checked)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "[필수] ${stringResource(term.titleRes())}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = term.subtitle(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onOpenDetail) {
+                Icon(
+                    painter = painterResource(UiR.drawable.ico_default_caret_right),
+                    contentDescription = "${stringResource(term.titleRes())} 상세 보기",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun ConsentCheckCircle(checked: Boolean) {
+    val background = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
+    val checkColor = if (checked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline
+    Box(
+        modifier =
+            Modifier
+                .size(CHECK_CIRCLE_SIZE)
+                .background(background, CircleShape)
+                .border(
+                    width = if (checked) 0.dp else 1.5.dp,
+                    color = if (checked) background else MaterialTheme.colorScheme.outline,
+                    shape = CircleShape,
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "✓",
+            style = MaterialTheme.typography.labelSmall,
+            color = checkColor,
+        )
     }
 }
 
@@ -351,7 +366,7 @@ private fun SubmitArea(
                     when {
                         state.isSubmitting -> "초안 생성 중…"
                         state.submitError != null -> "다시 시도"
-                        else -> "동의하고 초안 만들기"
+                        else -> "모두 동의 후 시작하기"
                     },
             )
         }
@@ -389,12 +404,14 @@ private fun MissingPreparationContent(onNavigateHome: () -> Unit) {
     }
 }
 
-private val CONSENT_RECORD_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy년 M월 d일")
-private val TYPE_ROW_MIN_HEIGHT = 48.dp
+private val TYPE_CARD_GAP = 6.dp
+private val TYPE_ROW_MIN_HEIGHT = 32.dp
+private val TYPE_ICON_CONTAINER_SIZE = 32.dp
+private val TYPE_ICON_SIZE = 20.dp
 private val TERM_ROW_MIN_HEIGHT = 48.dp
-private val PHOTO_PREVIEW_SIZE = 56.dp
+private val CHECK_CIRCLE_SIZE = 20.dp
 
-private fun previewContent(): DraftConsentUiContent =
+internal fun previewConsentContent(): DraftConsentUiContent =
     DraftConsentUiContent(
         attemptId = 1L,
         recordDate = LocalDate.of(2026, 8, 11),
@@ -405,10 +422,9 @@ private fun previewContent(): DraftConsentUiContent =
                 DraftConsentTypeSummary(DraftConsentTypeGroup.PHOTO, 6, 6, emptyList()),
                 DraftConsentTypeSummary(DraftConsentTypeGroup.CALENDAR, 3, 3, emptyList()),
                 DraftConsentTypeSummary(DraftConsentTypeGroup.LOCATION, 12, 12, emptyList()),
-                DraftConsentTypeSummary(DraftConsentTypeGroup.HEALTH, 2, 2, emptyList()),
+                DraftConsentTypeSummary(DraftConsentTypeGroup.HEALTH, 0, 0, emptyList()),
                 DraftConsentTypeSummary(DraftConsentTypeGroup.NOTIFICATION, 133, 100, emptyList()),
             ),
-        photoPreviewUris = emptyList(),
     )
 
 @Preview(name = "DraftConsent / Light", showBackground = true, widthDp = 360, heightDp = 800)
@@ -419,7 +435,7 @@ private fun DraftConsentScreenPreview() {
             innerPadding = PaddingValues(),
             state =
                 DraftConsentUiState(
-                    content = previewContent(),
+                    content = previewConsentContent(),
                     checkedTerms = setOf(DraftConsentTerm.SENSITIVE_INFO),
                 ),
             onIntent = {},
@@ -435,7 +451,7 @@ private fun DraftConsentScreenDarkPreview() {
             innerPadding = PaddingValues(),
             state =
                 DraftConsentUiState(
-                    content = previewContent(),
+                    content = previewConsentContent(),
                     checkedTerms = DraftConsentTerm.entries.toSet(),
                 ),
             onIntent = {},

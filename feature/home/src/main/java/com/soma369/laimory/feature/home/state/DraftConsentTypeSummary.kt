@@ -19,10 +19,12 @@ data class DraftConsentTypeSummary(
 
     /** 건수 표기. 원본과 전송 건수가 다르면 관계를 드러내고, 0건 유형은 숨기지 않고 명시한다. */
     val countLabel: String
-        get() =
-            when {
-                sentCount == 0 -> "0건 · 전송되지 않음"
-                originalCount != sentCount -> "수집 ${originalCount}건 중 ${sentCount}건 전송"
-                else -> "${sentCount}건 전송"
+        get() {
+            val unit = group.countUnit
+            return when {
+                sentCount == 0 -> "0$unit · 전송되지 않음"
+                originalCount != sentCount -> "수집 $originalCount$unit 중 $sentCount$unit 전송"
+                else -> "$sentCount$unit 포함"
             }
+        }
 }

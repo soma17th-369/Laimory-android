@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
@@ -50,7 +51,7 @@ class DraftConsentViewModel
             when (intent) {
                 is DraftConsentUiIntent.ToggleTerm -> toggleTerm(intent)
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
-                DraftConsentUiIntent.CloseTypeDetail -> updateState { copy(openTypeDetail = null) }
+                DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
                 is DraftConsentUiIntent.OpenTermsDetail -> updateState { copy(openTermsDetail = intent.term) }
                 DraftConsentUiIntent.CloseTermsDetail -> updateState { copy(openTermsDetail = null) }
                 DraftConsentUiIntent.Submit -> submit()
@@ -69,9 +70,9 @@ class DraftConsentViewModel
         }
 
         private fun openTypeDetail(intent: DraftConsentUiIntent.OpenTypeDetail) {
-            val summary = state.value.content?.typeSummaries?.firstOrNull { it.group == intent.group } ?: return
+            val summary = state.value.content?.summaryOf(intent.group) ?: return
             if (!summary.isSent) return
-            updateState { copy(openTypeDetail = intent.group) }
+            navigationHelper.navigateTo(DraftConsentDetailPage(intent.group.name))
         }
 
         private fun submit() {

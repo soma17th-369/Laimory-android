@@ -14,6 +14,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
@@ -226,7 +227,7 @@ class DraftConsentViewModelTest {
         }
 
     @Test
-    fun `전송 0건 유형의 상세는 열리지 않는다`() =
+    fun `유형 상세는 전송 항목이 있을 때만 상세 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(calendarItem("cal")))
             val viewModel = createViewModel()
@@ -234,11 +235,28 @@ class DraftConsentViewModelTest {
 
             viewModel.sendIntent(DraftConsentUiIntent.OpenTypeDetail(DraftConsentTypeGroup.PHOTO))
             runCurrent()
-            assertNull(viewModel.state.value.openTypeDetail)
+            assertTrue(navigationHelper.destinations.isEmpty())
 
             viewModel.sendIntent(DraftConsentUiIntent.OpenTypeDetail(DraftConsentTypeGroup.CALENDAR))
             runCurrent()
-            assertEquals(DraftConsentTypeGroup.CALENDAR, viewModel.state.value.openTypeDetail)
+            assertEquals(
+                listOf<Page>(DraftConsentDetailPage(DraftConsentTypeGroup.CALENDAR.name)),
+                navigationHelper.destinations,
+            )
+        }
+
+    @Test
+    fun `유형 상세에서의 복귀는 준비 상태를 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.CloseTypeDetail)
+            runCurrent()
+
+            assertEquals(1, navigationHelper.backCount)
+            assertNotNull(sessionStore.preparation.value)
         }
 
     private fun createViewModel(): DraftConsentViewModel =

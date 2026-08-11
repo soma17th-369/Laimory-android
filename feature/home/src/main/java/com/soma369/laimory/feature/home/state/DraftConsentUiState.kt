@@ -16,7 +16,6 @@ data class DraftConsentUiState(
     val checkedTerms: Set<DraftConsentTerm> = emptySet(),
     val isSubmitting: Boolean = false,
     val submitError: String? = null,
-    val openTypeDetail: DraftConsentTypeGroup? = null,
     val openTermsDetail: DraftConsentTerm? = null,
 ) : UiState {
     val isAllTermsChecked: Boolean

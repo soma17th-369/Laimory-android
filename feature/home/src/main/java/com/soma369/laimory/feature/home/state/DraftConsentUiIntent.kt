@@ -7,10 +7,12 @@ sealed interface DraftConsentUiIntent : UiIntent {
         val term: DraftConsentTerm,
     ) : DraftConsentUiIntent
 
+    /** 유형 상세 화면으로 이동한다. 전송 0건 유형은 무시된다. */
     data class OpenTypeDetail(
         val group: DraftConsentTypeGroup,
     ) : DraftConsentUiIntent
 
+    /** 유형 상세 화면에서 동의 화면으로 복귀한다. 준비 상태는 유지된다. */
     data object CloseTypeDetail : DraftConsentUiIntent
 
     data class OpenTermsDetail(
