@@ -16,15 +16,14 @@ internal fun DraftConsentTypeGroup.label(): String =
         DraftConsentTypeGroup.NOTIFICATION -> "알림"
     }
 
-/** 유형 행 아이콘. 기존 아이콘을 우선 재사용하고, 없던 map-pin·bell 은 디자인 에셋으로 추가했다. */
 @DrawableRes
 internal fun DraftConsentTypeGroup.iconRes(): Int =
     when (this) {
-        DraftConsentTypeGroup.PHOTO -> UiR.drawable.ico_timeline_photo
-        DraftConsentTypeGroup.CALENDAR -> UiR.drawable.ico_timeline_event_calendar_event
-        DraftConsentTypeGroup.LOCATION -> UiR.drawable.ico_default_map_pin
-        DraftConsentTypeGroup.HEALTH -> UiR.drawable.ico_timeline_event_exercise
-        DraftConsentTypeGroup.NOTIFICATION -> UiR.drawable.ico_default_bell
+        DraftConsentTypeGroup.PHOTO -> UiR.drawable.ico_collection_photo
+        DraftConsentTypeGroup.CALENDAR -> UiR.drawable.ico_collection_calendar
+        DraftConsentTypeGroup.LOCATION -> UiR.drawable.ico_collection_location
+        DraftConsentTypeGroup.HEALTH -> UiR.drawable.ico_collection_health
+        DraftConsentTypeGroup.NOTIFICATION -> UiR.drawable.ico_collection_notification
     }
 
 /**
