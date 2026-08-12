@@ -12,6 +12,14 @@ sealed interface DraftConsentUiIntent : UiIntent {
         val group: DraftConsentTypeGroup,
     ) : DraftConsentUiIntent
 
+    /**
+     * 상세 항목의 전송 포함↔미포함을 전환한다.
+     * 사진은 홈 선택이 정본이므로 무시되고, 제출 중에도 무시된다.
+     */
+    data class ToggleItemInclusion(
+        val itemKey: String,
+    ) : DraftConsentUiIntent
+
     /** 유형 상세 화면에서 동의 화면으로 복귀한다. 준비 상태는 유지된다. */
     data object CloseTypeDetail : DraftConsentUiIntent
 

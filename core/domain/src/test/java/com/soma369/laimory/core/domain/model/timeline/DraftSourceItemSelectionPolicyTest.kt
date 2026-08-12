@@ -163,6 +163,59 @@ class DraftSourceItemSelectionPolicyTest {
         assertEquals(listOf(early, sameTimeA, sameTimeB, late), selection.items)
     }
 
+    @Test
+    fun `excluding 은 제외 항목만 빼고 상한 여유를 재충원하지 않는다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 2))
+        val selection =
+            policy.select(
+                window,
+                listOf(
+                    item("noti-1", ItemType.NOTIFICATION, minute = 1),
+                    item("noti-2", ItemType.NOTIFICATION, minute = 2),
+                    item("noti-3", ItemType.NOTIFICATION, minute = 3),
+                ),
+            ).getOrThrow()
+        assertEquals(listOf("noti-2", "noti-3"), selection.items.map(SourceItem::rawId))
+
+        val submission = selection.excluding(setOf("noti-3"))
+
+        // 상한 때문에 잘렸던 noti-1 이 빈자리로 다시 들어오지 않는다.
+        assertEquals(listOf("noti-2"), submission.items.map(SourceItem::rawId))
+        assertEquals(1, submission.report.selectedCounts[ItemType.NOTIFICATION])
+        // 원본 건수는 수집 기준 그대로 유지된다.
+        assertEquals(3, submission.report.originalCounts[ItemType.NOTIFICATION])
+    }
+
+    @Test
+    fun `excluding 은 PHOTO 제외 요청을 무시한다`() {
+        val selection =
+            DraftSourceItemSelectionPolicy()
+                .select(
+                    window,
+                    listOf(
+                        item("photo-1", ItemType.PHOTO, minute = 1),
+                        item("cal-1", ItemType.CALENDAR, minute = 2),
+                    ),
+                ).getOrThrow()
+
+        val submission = selection.excluding(setOf("photo-1", "cal-1"))
+
+        // 사진은 홈 선택이 정본 — 잘못 전달된 사진 rawId 는 items 와 selectedCounts 에 그대로 남는다.
+        assertEquals(listOf("photo-1"), submission.items.map(SourceItem::rawId))
+        assertEquals(1, submission.report.selectedCounts[ItemType.PHOTO])
+        assertEquals(0, submission.report.selectedCounts[ItemType.CALENDAR])
+    }
+
+    @Test
+    fun `excluding 에 빈 집합을 주면 같은 선택을 반환한다`() {
+        val selection =
+            DraftSourceItemSelectionPolicy()
+                .select(window, listOf(item("cal-1", ItemType.CALENDAR, minute = 1)))
+                .getOrThrow()
+
+        assertEquals(selection, selection.excluding(emptySet()))
+    }
+
     private fun limits(
         stay: Int = 10,
         movement: Int = 10,
