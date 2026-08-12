@@ -21,6 +21,7 @@ import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
+import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.navigation.LaimoryNavGraph
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
@@ -55,6 +56,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var draftCompletionPushHandler: DraftCompletionPushHandler
 
+    @Inject
+    lateinit var draftConsentSessionStore: DraftConsentSessionStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         consumeSocialLoginCallback(intent)
@@ -75,7 +79,11 @@ class MainActivity : ComponentActivity() {
                             messages = messageHelper.messages,
                             navigationFlow = navigationHelper.navigationFlow,
                             authSessionStates = authSessionStates,
-                            onAuthRootReplaced = messageHelper::clearDialogs,
+                            onAuthRootReplaced = {
+                                // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
+                                messageHelper.clearDialogs()
+                                draftConsentSessionStore.clearAll()
+                            },
                         )
                         GlobalUiHost(
                             messageHelper = messageHelper,

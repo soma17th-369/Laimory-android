@@ -13,8 +13,8 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
-import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
-import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -23,18 +23,19 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
-import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
-import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
+import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.ui.theme.Emotion
+import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
@@ -48,10 +49,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -68,14 +73,14 @@ class HomeViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val sourceRepository = FakeSourceItemRepository()
-    private val draftRepository = FakeTimelineDraftRepository()
     private val recordRepository = FakeTimelineRecordRepository()
     private val photoSource = FakePhotoSource()
+    private val sessionStore = DraftConsentSessionStore()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
 
     @Test
-    fun `빈 범위에서는 초안 생성 요청을 보내지 않는다`() =
+    fun `빈 범위에서는 동의 화면으로 이동하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
             runCurrent()
@@ -83,51 +88,167 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
-            assertEquals(0, draftRepository.createCount)
+            assertNull(sessionStore.preparation.value)
+            assertTrue(navigationHelper.destinations.isEmpty())
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
         }
 
     @Test
-    fun `생성 중 설정 변경과 중복 요청을 무시한다`() =
+    fun `동의 준비는 전송 스냅샷을 확정하고 동의 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val zone = ZoneId.systemDefault()
             sourceRepository.items.value = listOf(todayItem("first"))
-            draftRepository.createGate = CompletableDeferred()
             val viewModel = createViewModel()
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
+
+            assertEquals(listOf<Page>(DraftConsentPage), navigationHelper.destinations)
+            val preparation = sessionStore.preparation.value
+            assertNotNull(preparation)
+            assertEquals(listOf("first"), preparation!!.selection.items.map(SourceItem::rawId))
+            assertEquals(LocalDate.now(zone), preparation.recordDate)
+            // 제출 전이므로 홈 상태는 그대로다 — 생성은 동의 완료 후에만 시작된다.
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+        }
+
+    @Test
+    fun `소비되지 않은 준비가 남아 있으면 중복 진입하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            assertEquals(1, navigationHelper.destinations.size)
+            assertEquals(1L, sessionStore.preparation.value?.attemptId)
+        }
+
+    @Test
+    fun `동의 화면에서 돌아와 다시 시도하면 새 시도로 준비한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            // 동의 화면 뒤로가기 = 준비 상태 폐기
+            sessionStore.clearPreparation()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            assertEquals(2, navigationHelper.destinations.size)
+            assertEquals(2L, sessionStore.preparation.value?.attemptId)
+        }
+
+    @Test
+    fun `생성 추적 중에는 설정 변경과 동의 준비를 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            draftTaskCoordinator.emitProcessing(LocalDate.now(ZoneId.systemDefault()))
+            val viewModel = createViewModel()
+            runCurrent()
+
             viewModel.sendIntent(HomeUiIntent.SelectEndDay(DraftEndDay.SAME_DAY))
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
-            assertEquals(1, draftRepository.createCount)
-            assertEquals(DraftCreationStatus.SUBMITTING, viewModel.state.value.draftStatus)
-            assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
-
-            draftRepository.createGate?.complete(DraftTaskHandle("task-1"))
-            runCurrent()
             assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
+            assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
+            assertNull(sessionStore.preparation.value)
+            assertTrue(navigationHelper.destinations.isEmpty())
         }
 
     @Test
-    fun `생성 실패 후에는 재시도할 수 있다`() =
+    fun `동의 제출 완료 복귀는 시트를 닫고 시작을 알린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("first"))
-            draftRepository.createFailure = IllegalStateException("failed")
             val viewModel = createViewModel()
             runCurrent()
-
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
             runCurrent()
-            assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
-
-            draftRepository.createFailure = null
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            sessionStore.markSubmitted()
+            val effect = async { viewModel.sideEffect.first() }
             runCurrent()
 
-            assertEquals(2, draftRepository.createCount)
-            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
+            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isDraftSheetVisible)
+            assertEquals(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."), effect.await())
+        }
+
+    @Test
+    fun `제출 결과가 없는 복귀는 시트 상태를 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isDraftSheetVisible)
+        }
+
+    @Test
+    fun `동의 제출 중 사진 접근 실패 복귀는 사진 재선택 흐름을 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            runCurrent()
+            sessionStore.markPhotoReselectionNeeded()
+            val effects = async { viewModel.sideEffect.take(2).toList() }
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertFalse(state.isDraftSheetVisible)
+            assertEquals(DraftCreationStatus.FAILED, state.draftStatus)
+            assertEquals(
+                listOf(
+                    HomeUiSideEffect.ShowSnackbar("선택한 사진에 접근할 수 없어요. 사진을 다시 선택해주세요."),
+                    HomeUiSideEffect.RequestPhotoAccess(),
+                ),
+                effects.await(),
+            )
+        }
+
+    @Test
+    fun `인증 경계 초기화는 이전 계정 시도 흔적을 지우고 새 생성 시작을 허용한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            sessionStore.markSubmitted()
+            sessionStore.markPhotoReselectionNeeded()
+
+            // 세션 만료·로그아웃으로 인증 root 가 교체되는 순간(MainActivity onAuthRootReplaced 경로)
+            sessionStore.clearAll()
+
+            // 이전 계정의 일회성 결과가 새 계정 홈에서 소비되지 않는다.
+            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
+            runCurrent()
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+
+            // 남은 준비물 가드에 걸리지 않고 새 시도를 시작할 수 있다.
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertEquals(2, navigationHelper.destinations.size)
+            assertNotNull(sessionStore.preparation.value)
         }
 
     @Test
@@ -146,7 +267,7 @@ class HomeViewModelTest {
             assertTrue(state.isPhotoSheetVisible)
             assertEquals(21, state.availablePhotos.size)
             assertEquals(20, state.pendingPhotoIds.size)
-            assertEquals(0, draftRepository.createCount)
+            assertNull(sessionStore.preparation.value)
         }
 
     @Test
@@ -243,7 +364,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `선택한 MediaStore 사진만 Room 저장 없이 초안 요청에 합친다`() =
+    fun `선택한 MediaStore 사진만 Room 저장 없이 전송 스냅샷에 합친다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value =
                 listOf(
@@ -262,17 +383,19 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
-            assertEquals(1, draftRepository.createCount)
+            val preparation = sessionStore.preparation.value
+            assertNotNull(preparation)
+            val items = preparation!!.selection.items
             assertEquals(
                 setOf("calendar", "prepared-photo-2"),
-                draftRepository.createdItems.mapTo(mutableSetOf(), SourceItem::rawId),
+                items.mapTo(mutableSetOf(), SourceItem::rawId),
             )
-            assertFalse(draftRepository.createdItems.any { it.sourceKey == "99" })
+            assertFalse(items.any { it.sourceKey == "99" })
             assertEquals(listOf(2L), photoSource.collectedRequests.single())
         }
 
     @Test
-    fun `선택 사진이 삭제되면 생성하지 않고 선택 화면에서 제외한다`() =
+    fun `선택 사진이 삭제되면 동의 화면으로 이동하지 않고 재선택을 유도한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("calendar"))
             photoSource.candidates = listOf(todayPhotoCandidate(1L), todayPhotoCandidate(2L))
@@ -288,7 +411,8 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
-            assertEquals(0, draftRepository.createCount)
+            assertNull(sessionStore.preparation.value)
+            assertTrue(navigationHelper.destinations.isEmpty())
             assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
             assertTrue(viewModel.state.value.isPhotoSheetVisible)
             assertEquals(setOf(2L), viewModel.state.value.selectedPhotoIds)
@@ -297,14 +421,13 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `생성 완료 후 새 데이터만 수신해도 완료 상태를 유지한다`() =
+    fun `생성 추적 중 새 데이터만 수신해도 추적 상태를 유지한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("first"))
+            draftTaskCoordinator.emitProcessing(LocalDate.now(ZoneId.systemDefault()))
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
             sourceRepository.items.value = listOf(todayItem("first"), todayItem("second"))
             runCurrent()
 
@@ -319,15 +442,13 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
             draftTaskCoordinator.emitSuccess(recordDate)
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ViewDraft)
             runCurrent()
 
             assertEquals(0, draftTaskCoordinator.discardCount)
-            assertEquals(listOf(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
+            assertEquals(listOf<Page>(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
         }
 
     @Test
@@ -366,21 +487,19 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `polling 오류에서 다시 시도하면 POST가 아니라 상태 조회를 재개한다`() =
+    fun `polling 오류에서 다시 시도하면 동의 준비가 아니라 상태 조회를 재개한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("first"))
+            draftTaskCoordinator.emitRetryableError(LocalDate.now(ZoneId.systemDefault()))
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
-            draftTaskCoordinator.emitRetryableError(LocalDate.now(ZoneId.systemDefault()))
-            runCurrent()
             viewModel.sendIntent(HomeUiIntent.RetryDraft)
             runCurrent()
 
-            assertEquals(1, draftRepository.createCount)
             assertEquals(1, draftTaskCoordinator.retryCount)
+            assertTrue(navigationHelper.destinations.isEmpty())
+            assertNull(sessionStore.preparation.value)
         }
 
     @Test
@@ -560,16 +679,16 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.SelectPastRecord(recordDate = recordDate))
             runCurrent()
 
-            assertEquals(listOf(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
+            assertEquals(listOf<Page>(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
         }
 
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             observeSourceItemsUseCase = ObserveSourceItemsUseCase(sourceRepository),
-            createTimelineDraftUseCase =
-                CreateTimelineDraftUseCase(
-                    repository = draftRepository,
-                    messageHelper = NoOpMessageHelper,
+            prepareTimelineDraftSelectionUseCase =
+                PrepareTimelineDraftSelectionUseCase(
+                    selectionPolicy = DraftSourceItemSelectionPolicy(),
+                    selectionReporter = DraftSourceItemSelectionReporter.NONE,
                 ),
             getDailyRecordsUseCase =
                 GetDailyRecordsUseCase(
@@ -578,6 +697,7 @@ class HomeViewModelTest {
                 ),
             getPhotosInWindowUseCase = GetPhotosInWindowUseCase(photoSource),
             prepareSelectedPhotosUseCase = PrepareSelectedPhotosUseCase(photoSource),
+            draftConsentSessionStore = sessionStore,
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
         )
@@ -689,31 +809,6 @@ class HomeViewModelTest {
         override suspend fun deleteExpired(cutoff: Instant): Int = 0
 
         override suspend fun clear(itemType: ItemType) = Unit
-    }
-
-    private class FakeTimelineDraftRepository : TimelineDraftRepository {
-        var createCount = 0
-        var createGate: CompletableDeferred<DraftTaskHandle>? = null
-        var createFailure: Throwable? = null
-        var createdItems: List<SourceItem> = emptyList()
-
-        override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> =
-            clientPhotoUris.mapIndexed { index, _ -> "uploaded-$index.jpg" }
-
-        override suspend fun createDraft(
-            recordDate: LocalDate,
-            zone: ZoneId,
-            window: RecordDateWindow,
-            items: List<SourceItem>,
-            uploadedPhotoFilenames: Map<String, String>,
-        ): DraftTaskHandle {
-            createCount++
-            createdItems = items
-            createFailure?.let { throw it }
-            return createGate?.await() ?: DraftTaskHandle("task-$createCount")
-        }
-
-        override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
     }
 
     private class FakePhotoSource : PhotoSource {

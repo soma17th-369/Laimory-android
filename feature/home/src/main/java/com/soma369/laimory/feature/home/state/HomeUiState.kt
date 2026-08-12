@@ -74,9 +74,9 @@ enum class HomeTimeField {
     END,
 }
 
+/** 제출 중 상태는 동의 화면이 소유한다 — 홈은 코디네이터 추적 상태만 반영한다. */
 enum class DraftCreationStatus {
     IDLE,
-    SUBMITTING,
     PROCESSING,
     LONG_RUNNING,
     SUCCESS,
@@ -89,7 +89,7 @@ enum class DraftRetryMode {
 }
 
 internal val DraftCreationStatus.isInProgress: Boolean
-    get() = this == DraftCreationStatus.SUBMITTING || this == DraftCreationStatus.PROCESSING
+    get() = this == DraftCreationStatus.PROCESSING
 
 internal val DraftCreationStatus.isDateLocked: Boolean
     get() = isInProgress || this == DraftCreationStatus.LONG_RUNNING

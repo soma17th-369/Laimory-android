@@ -151,9 +151,7 @@ private fun DraftActionButtons(
                 onClick = { onIntent(HomeUiIntent.CreateDraft) },
             )
 
-        DraftCreationStatus.SUBMITTING,
-        DraftCreationStatus.PROCESSING,
-        ->
+        DraftCreationStatus.PROCESSING ->
             DraftActionButton(
                 label = "초안 생성 중…",
                 enabled = false,

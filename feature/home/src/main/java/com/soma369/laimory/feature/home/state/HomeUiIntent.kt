@@ -62,7 +62,11 @@ sealed interface HomeUiIntent : UiIntent {
         val endDay: DraftEndDay,
     ) : HomeUiIntent
 
+    /** 전송 스냅샷을 확정하고 데이터 전송 동의 화면으로 이동한다. 생성 API 는 동의 완료 후에만 호출된다. */
     data object CreateDraft : HomeUiIntent
+
+    /** 동의 화면에서 제출을 마치고 복귀했는지 확인한다. 홈 재진입(ON_RESUME)마다 1회 소비한다. */
+    data object ConsumeDraftConsentResult : HomeUiIntent
 
     data object RetryDraft : HomeUiIntent
 

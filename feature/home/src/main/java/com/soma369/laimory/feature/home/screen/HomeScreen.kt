@@ -57,6 +57,8 @@ fun HomeRoute(
     }
     val context = LocalContext.current
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        // 동의 화면에서 제출을 마치고 복귀한 경우를 1회 소비한다.
+        viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
         viewModel.sendIntent(
             HomeUiIntent.RefreshPhotos(
                 hasAccess = PhotoPermission.canRead(context),

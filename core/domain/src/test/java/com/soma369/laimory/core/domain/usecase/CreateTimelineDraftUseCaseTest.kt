@@ -7,11 +7,8 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
-import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
-import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
-import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReport
-import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
@@ -49,8 +46,11 @@ class CreateTimelineDraftUseCaseTest {
         ): DraftTaskHandle {
             createdWindow = window
             createdItems = items
+            uploadedFilenamesByRawId = uploadedPhotoFilenames
             return DraftTaskHandle(taskId = "task-1")
         }
+
+        var uploadedFilenamesByRawId: Map<String, String> = emptyMap()
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
     }
@@ -82,22 +82,38 @@ class CreateTimelineDraftUseCaseTest {
             collectedAt = start,
         )
 
+    /** 실제 준비 단계와 같은 정책으로 selection 을 확정한다 — 준비 결과 = 전송 입력 계약을 그대로 검증한다. */
+    private fun selectionOf(
+        window: RecordDateWindow,
+        items: List<SourceItem>,
+    ): DraftSourceItemSelection = DraftSourceItemSelectionPolicy().select(window, items).getOrThrow()
+
     @Test
-    fun `sourceItems 를 startAt 오름차순으로 정렬해 전송한다`() =
+    fun `확정된 selection 아이템을 순서 그대로 전송한다`() =
         runBlocking {
             val repo = CapturingRepository()
             val useCase = CreateTimelineDraftUseCase(repo, noopMessageHelper)
-            // 표시용 최신순(내림차순)으로 들어와도 전송은 시간순이어야 한다.
-            val newest = item(at(18))
-            val middle = item(at(12))
-            val oldest = item(at(9))
-
             val window = RecordDateWindow.ofDate(date, zone)
-            val result = useCase(date, zone, window, listOf(newest, middle, oldest))
+            val selection = selectionOf(window, listOf(item(at(18)), item(at(12)), item(at(9))))
+
+            val result = useCase(date, zone, window, selection)
 
             assertTrue(result.isSuccess)
             assertEquals(window, repo.createdWindow)
-            assertEquals(listOf(oldest, middle, newest), repo.createdItems)
+            assertEquals(selection.items, repo.createdItems)
+        }
+
+    @Test
+    fun `PHOTO 가 없으면 업로드를 호출하지 않는다`() =
+        runBlocking {
+            val repo = CapturingRepository()
+            val useCase = CreateTimelineDraftUseCase(repo, noopMessageHelper)
+            val window = RecordDateWindow.ofDate(date, zone)
+
+            val result = useCase(date, zone, window, selectionOf(window, listOf(item(at(9)))))
+
+            assertTrue(result.isSuccess)
+            assertNull(repo.uploadedUris)
         }
 
     @Test
@@ -105,149 +121,19 @@ class CreateTimelineDraftUseCaseTest {
         runBlocking {
             val repo = CapturingRepository()
             val useCase = CreateTimelineDraftUseCase(repo, noopMessageHelper)
-            val latePhoto = item(at(20), PhotoPayload("late.jpg", "content://late", null, null, null))
-            val earlyPhoto = item(at(8), PhotoPayload("early.jpg", "content://early", null, null, null))
+            val window = RecordDateWindow.ofDate(date, zone)
+            val latePhoto = item(at(20), PhotoPayload("late.jpg", "content://late", null, null, null), rawId = "late")
+            val earlyPhoto = item(at(8), PhotoPayload("early.jpg", "content://early", null, null, null), rawId = "early")
 
-            val result = useCase(date, zone, RecordDateWindow.ofDate(date, zone), listOf(latePhoto, earlyPhoto))
+            val result = useCase(date, zone, window, selectionOf(window, listOf(latePhoto, earlyPhoto)))
 
             assertTrue(result.isSuccess)
             // 전송 순서는 시간순(early → late), 업로드도 그 순서의 URI 로 나간다.
             assertEquals(listOf(earlyPhoto, latePhoto), repo.createdItems)
             assertEquals(listOf("content://early", "content://late"), repo.uploadedUris)
-        }
-
-    @Test
-    fun `기록 창 밖 아이템은 사진 업로드와 생성 요청에서 모두 제외한다`() =
-        runBlocking {
-            val repo = CapturingRepository()
-            val useCase = CreateTimelineDraftUseCase(repo, noopMessageHelper)
-            val window =
-                RecordDateWindow(
-                    start = at(9),
-                    end = date.plusDays(1).atTime(2, 0).atZone(zone).toInstant(),
-                )
-            val before = item(at(8), PhotoPayload("before.jpg", "content://before", null, null, null))
-            val inside = item(at(20), PhotoPayload("inside.jpg", "content://inside", null, null, null))
-            val nextDayInside =
-                item(
-                    date.plusDays(1).atTime(1, 0).atZone(zone).toInstant(),
-                    PhotoPayload("next.jpg", "content://next", null, null, null),
-                )
-            val after =
-                item(
-                    date.plusDays(1).atTime(3, 0).atZone(zone).toInstant(),
-                    PhotoPayload("after.jpg", "content://after", null, null, null),
-                )
-
-            val result = useCase(date, zone, window, listOf(after, nextDayInside, inside, before))
-
-            assertTrue(result.isSuccess)
-            assertEquals(listOf(inside, nextDayInside), repo.createdItems)
-            assertEquals(listOf("content://inside", "content://next"), repo.uploadedUris)
-        }
-
-    @Test
-    fun `타입 상한을 적용한 최신 항목만 생성 요청에 전달한다`() =
-        runBlocking {
-            val repo = CapturingRepository()
-            val policy =
-                DraftSourceItemSelectionPolicy(
-                    limits =
-                        DraftSourceItemLimits(
-                            notification = 2,
-                            photo = 10,
-                        ),
-                )
-            val useCase =
-                CreateTimelineDraftUseCase(
-                    repository = repo,
-                    messageHelper = noopMessageHelper,
-                    selectionPolicy = policy,
-                )
-            val oldest = item(at(9), rawId = "oldest")
-            val middle = item(at(12), rawId = "middle")
-            val newest = item(at(18), rawId = "newest")
-
-            val result =
-                useCase(
-                    recordDate = date,
-                    zone = zone,
-                    window = RecordDateWindow.ofDate(date, zone),
-                    items = listOf(oldest, newest, middle),
-                )
-
-            assertTrue(result.isSuccess)
-            assertEquals(listOf(middle, newest), repo.createdItems)
-        }
-
-    @Test
-    fun `PHOTO 상한 초과 시 업로드와 생성 요청을 시작하지 않는다`() =
-        runBlocking {
-            val repo = CapturingRepository()
-            val policy =
-                DraftSourceItemSelectionPolicy(
-                    limits =
-                        DraftSourceItemLimits(photo = 2),
-                )
-            val useCase =
-                CreateTimelineDraftUseCase(
-                    repository = repo,
-                    messageHelper = noopMessageHelper,
-                    selectionPolicy = policy,
-                )
-            val photos =
-                (1..3).map { index ->
-                    item(
-                        start = at(10, index),
-                        rawId = "photo-$index",
-                        payload = PhotoPayload("$index.jpg", "content://$index", null, null, null),
-                    )
-                }
-
-            val result = useCase(date, zone, RecordDateWindow.ofDate(date, zone), photos)
-
-            assertTrue(result.isFailure)
-            assertTrue(result.exceptionOrNull() is DraftPhotoLimitExceededException)
-            assertNull(repo.uploadedUris)
-            assertNull(repo.createdItems)
-        }
-
-    @Test
-    fun `선택 리포터 실패도 Result failure로 반환하고 생성 요청을 시작하지 않는다`() =
-        runBlocking {
-            val repo = CapturingRepository()
-            val reporterFailure = IllegalStateException("report failed")
-            val reporter =
-                object : DraftSourceItemSelectionReporter {
-                    override val isEnabled: Boolean = true
-
-                    override fun reportSelection(report: DraftSourceItemSelectionReport) {
-                        throw reporterFailure
-                    }
-
-                    override fun reportRequestSize(
-                        sourceItemCount: Int,
-                        utf8ByteCount: Int,
-                    ) = Unit
-                }
-            val useCase =
-                CreateTimelineDraftUseCase(
-                    repository = repo,
-                    messageHelper = noopMessageHelper,
-                    selectionReporter = reporter,
-                )
-
-            val result =
-                useCase(
-                    recordDate = date,
-                    zone = zone,
-                    window = RecordDateWindow.ofDate(date, zone),
-                    items = listOf(item(at(9))),
-                )
-
-            assertTrue(result.isFailure)
-            assertEquals(reporterFailure, result.exceptionOrNull())
-            assertNull(repo.uploadedUris)
-            assertNull(repo.createdItems)
+            assertEquals(
+                mapOf("early" to "uploaded-content://early", "late" to "uploaded-content://late"),
+                repo.uploadedFilenamesByRawId,
+            )
         }
 }
