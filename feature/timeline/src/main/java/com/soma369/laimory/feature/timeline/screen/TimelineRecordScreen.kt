@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
@@ -46,7 +47,6 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEventCard
 import com.soma369.laimory.feature.timeline.component.TimelinePhotoViewerDialog
-import com.soma369.laimory.feature.timeline.component.TimelineSaveDialog
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
@@ -56,7 +56,6 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
-import com.soma369.laimory.feature.timeline.state.TimelineSaveDialogState
 import com.soma369.laimory.feature.timeline.viewmodel.TimelineRecordViewModel
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
@@ -126,19 +125,6 @@ private fun TimelineRecordContent(
         onDismiss = { onIntent(TimelineRecordUiIntent.DismissDelete) },
         onFinish = { onIntent(TimelineRecordUiIntent.FinishDelete) },
     )
-
-    TimelineSaveDialog(
-        state = state.saveDialogState,
-        confirmationTitle =
-            (state.content as? TimelineRecordUiContent.Record)
-                ?.value
-                ?.recordDate
-                ?.format(RecordDateFormatter)
-                ?.let { "$it 기록 작성을 완료할까요?" }
-                ?: "하루 기록 작성을 완료할까요?",
-        onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmSave) },
-        onDismiss = { onIntent(TimelineRecordUiIntent.DismissSave) },
-    )
 }
 
 @Composable
@@ -172,7 +158,7 @@ private fun TimelineRecordScreen(
                             onClick = { isRecordMenuExpanded = true },
                             enabled =
                                 state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                                    state.saveDialogState == TimelineSaveDialogState.Hidden &&
+                                    !state.isSavingRecord &&
                                     state.memoEditor == null,
                         ) {
                             Icon(
@@ -232,9 +218,10 @@ private fun TimelineRecordScreen(
                     if (content.value.isEditable) {
                         SaveRecordButton(
                             enabled =
-                                state.saveDialogState == TimelineSaveDialogState.Hidden &&
+                                !state.isSavingRecord &&
                                     state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
                                     state.memoEditor == null,
+                            isLoading = state.isSavingRecord,
                             onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
                         )
                     }
@@ -338,7 +325,7 @@ private fun TimelineRecordBody(
     modifier: Modifier = Modifier,
 ) {
     if (record.events.isEmpty()) {
-        TimelineRecordEmpty()
+        TimelineRecordEmpty(modifier = modifier)
         return
     }
 
@@ -372,6 +359,7 @@ private fun TimelineRecordBody(
 @Composable
 private fun SaveRecordButton(
     enabled: Boolean,
+    isLoading: Boolean,
     onClick: () -> Unit,
 ) {
     Button(
@@ -384,10 +372,17 @@ private fun SaveRecordButton(
                 .height(52.dp),
         shape = MaterialTheme.shapes.medium,
     ) {
-        Text(
-            text = "저장하기",
-            style = MaterialTheme.typography.titleSmall,
-        )
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            Text(
+                text = "저장하기",
+                style = MaterialTheme.typography.titleSmall,
+            )
+        }
     }
 }
 
@@ -397,10 +392,10 @@ private data class TimelinePhotoViewerState(
 )
 
 @Composable
-private fun TimelineRecordEmpty() {
+private fun TimelineRecordEmpty(modifier: Modifier = Modifier) {
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxSize()
                 .padding(horizontal = Spacing.large, vertical = Spacing.small),
     ) {

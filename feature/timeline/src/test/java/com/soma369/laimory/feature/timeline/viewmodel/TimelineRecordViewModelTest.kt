@@ -26,12 +26,12 @@ import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
-import com.soma369.laimory.feature.timeline.state.TimelineSaveDialogState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -53,6 +53,7 @@ class TimelineRecordViewModelTest {
     private val recordRepository = RecordingTimelineRecordRepository()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
+    private val messageHelper = RecordingUserMessageHelper()
 
     @Test
     fun `단건 조회 성공은 기록을 세션에 저장하고 nullable 필드까지 화면에 전달한다`() =
@@ -406,14 +407,23 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `DRAFT 기록의 저장 요청은 작성 완료 확인 다이얼로그를 연다`() =
+    fun `저장하기는 확인 다이얼로그 없이 즉시 작성 완료를 요청하고 홈으로 복귀한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
+            val effects = mutableListOf<TimelineRecordUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect(effects::add) }
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            runCurrent()
+            advanceUntilIdle()
 
-            assertEquals(TimelineSaveDialogState.Confirmation, viewModel.state.value.saveDialogState)
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+            assertEquals(1, draftTaskCoordinator.discardCount)
+            // 성공 후에는 화면 이탈까지 저장 중 상태를 유지해 큐에 남은 중복 요청을 차단한다.
+            assertEquals(true, viewModel.state.value.isSavingRecord)
+            assertEquals(1, navigationHelper.backCount)
+            // 완료 안내는 화면 pop과 함께 수집이 끊기지 않도록 Root 수명 채널로 보낸다.
+            assertEquals(listOf(UserMessage.DailyRecordSaved), messageHelper.sent)
+            assertTrue(effects.isEmpty())
         }
 
     @Test
@@ -425,9 +435,10 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            runCurrent()
+            advanceUntilIdle()
 
-            assertEquals(TimelineSaveDialogState.Hidden, viewModel.state.value.saveDialogState)
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(0, navigationHelper.backCount)
         }
 
     @Test
@@ -437,28 +448,10 @@ class TimelineRecordViewModelTest {
                 createLoadedViewModel(record = timeline(events = listOf(event()), status = null))
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            runCurrent()
-
-            assertEquals(TimelineSaveDialogState.Confirmation, viewModel.state.value.saveDialogState)
-        }
-
-    @Test
-    fun `저장 확인은 작성 완료 후 초안 추적을 정리하고 홈으로 복귀한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createLoadedViewModel()
-
-            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmSave)
             advanceUntilIdle()
 
             assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
-            assertEquals(1, draftTaskCoordinator.discardCount)
-            assertEquals(TimelineSaveDialogState.Hidden, viewModel.state.value.saveDialogState)
             assertEquals(1, navigationHelper.backCount)
-            assertEquals(
-                TimelineRecordUiSideEffect.ShowSnackbar("하루 기록 작성을 완료했어요."),
-                viewModel.sideEffect.first(),
-            )
         }
 
     @Test
@@ -468,7 +461,6 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmSave)
             advanceUntilIdle()
 
             assertEquals(0, draftTaskCoordinator.discardCount)
@@ -483,11 +475,11 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmSave)
             advanceUntilIdle()
 
             assertEquals(1, draftTaskCoordinator.discardCount)
             assertEquals(1, navigationHelper.backCount)
+            assertEquals(listOf(UserMessage.DailyRecordSaved), messageHelper.sent)
         }
 
     @Test
@@ -498,12 +490,11 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmSave)
             advanceUntilIdle()
 
             assertEquals(1, draftTaskCoordinator.discardCount)
             assertEquals(0, navigationHelper.backCount)
-            assertEquals(TimelineSaveDialogState.Hidden, viewModel.state.value.saveDialogState)
+            assertEquals(false, viewModel.state.value.isSavingRecord)
             // 세션 정리로 표시 중이던 기록은 Unavailable로 전환된다.
             assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
             assertEquals(
@@ -513,34 +504,43 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `네트워크 실패는 재시도 상태로 전환하고 초안을 유지한다`() =
+    fun `네트워크 실패는 초안을 유지한 채 안내하고 다시 저장할 수 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.saveFailure = ApiException.NetworkException()
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmSave)
             advanceUntilIdle()
 
-            assertTrue(viewModel.state.value.saveDialogState is TimelineSaveDialogState.RetryableError)
+            assertEquals(false, viewModel.state.value.isSavingRecord)
             assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
             assertEquals(0, navigationHelper.backCount)
+            assertEquals(
+                TimelineRecordUiSideEffect.ShowSnackbar("네트워크 상태를 확인한 뒤 다시 저장해주세요."),
+                viewModel.sideEffect.first(),
+            )
+
+            recordRepository.saveFailure = null
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE, RECORD_DATE), recordRepository.savedRecordDates)
+            assertEquals(1, navigationHelper.backCount)
         }
 
     @Test
-    fun `저장 중 중복 확인 요청을 막는다`() =
+    fun `저장 중 중복 요청을 막는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val gate = CompletableDeferred<Unit>()
             recordRepository.saveGate = gate
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmSave)
             runCurrent()
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
             runCurrent()
 
-            assertEquals(TimelineSaveDialogState.Saving, viewModel.state.value.saveDialogState)
+            assertEquals(true, viewModel.state.value.isSavingRecord)
             assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
 
             gate.complete(Unit)
@@ -569,17 +569,23 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `저장 다이얼로그가 열려 있으면 이벤트 선택과 메모 편집을 막는다`() =
+    fun `저장 중에는 이벤트 선택과 메모 편집을 막는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.saveGate = gate
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(timelineEventId = 1L))
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             runCurrent()
 
             assertTrue(navigationHelper.pages.isEmpty())
             assertEquals(null, viewModel.state.value.memoEditor)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
         }
 
     @Test
@@ -745,6 +751,7 @@ class TimelineRecordViewModelTest {
                 ),
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
+            messageHelper = messageHelper,
         )
 
     private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {
@@ -878,6 +885,14 @@ class TimelineRecordViewModelTest {
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             failure?.let { throw it }
             deletedRecordDates += recordDate
+        }
+    }
+
+    private class RecordingUserMessageHelper : MessageHelper {
+        val sent = mutableListOf<UserMessage>()
+
+        override fun send(message: UserMessage) {
+            sent += message
         }
     }
 
