@@ -25,7 +25,7 @@ internal fun DailyTimelineResponse.toDomain(): DailyTimeline =
                 TimelineEmotion.entries.firstOrNull { it.name == raw } ?: TimelineEmotion.UNKNOWN
             },
         events = events.map(TimelineEventResponse::toDomain),
-        // 미지원 문자열은 저장 가능 상태로 추정하지 않도록 null(읽기 전용)로 수렴한다.
+        // 미지원 문자열은 상태 미상(null)으로 수렴한다 — SAVED 판별은 화면 정책이 담당한다.
         status = status?.let { raw -> DailyRecordStatus.entries.firstOrNull { it.name == raw } },
     )
 

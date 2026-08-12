@@ -417,17 +417,29 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `읽기 전용 기록은 저장 요청을 무시한다`() =
+    fun `SAVED 기록은 저장 요청을 무시한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            listOf(DailyRecordStatus.SAVED, null).forEach { status ->
-                val viewModel =
-                    createLoadedViewModel(record = timeline(events = listOf(event()), status = status))
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
+                )
 
-                viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
-                runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
 
-                assertEquals(TimelineSaveDialogState.Hidden, viewModel.state.value.saveDialogState)
-            }
+            assertEquals(TimelineSaveDialogState.Hidden, viewModel.state.value.saveDialogState)
+        }
+
+    @Test
+    fun `상태를 알 수 없는 기록은 작성 중으로 간주해 저장을 허용한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(record = timeline(events = listOf(event()), status = null))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+
+            assertEquals(TimelineSaveDialogState.Confirmation, viewModel.state.value.saveDialogState)
         }
 
     @Test
