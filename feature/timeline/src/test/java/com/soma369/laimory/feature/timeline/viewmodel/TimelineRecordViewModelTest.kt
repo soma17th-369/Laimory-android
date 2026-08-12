@@ -626,6 +626,9 @@ class TimelineRecordViewModelTest {
     private class RecordingTimelineRecordRepository : TimelineRecordRepository {
         val requestedRecordDates = mutableListOf<LocalDate>()
         val deletedRecordDates = mutableListOf<LocalDate>()
+        val savedRecordDates = mutableListOf<LocalDate>()
+        var saveGate: CompletableDeferred<Unit>? = null
+        var saveFailure: ApiException? = null
         val updatedMemos = mutableListOf<Pair<Long, String?>>()
         var dailyRecordResult: Result<DailyTimeline>? = null
         var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
@@ -674,6 +677,15 @@ class TimelineRecordViewModelTest {
             timelineEventId: Long,
             timelineItemId: Long,
         ) = error("사용하지 않음")
+
+        override suspend fun saveDailyRecord(recordDate: LocalDate) {
+            savedRecordDates += recordDate
+            saveGate?.let { gate ->
+                saveGate = null
+                gate.await()
+            }
+            saveFailure?.let { throw it }
+        }
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             failure?.let { throw it }

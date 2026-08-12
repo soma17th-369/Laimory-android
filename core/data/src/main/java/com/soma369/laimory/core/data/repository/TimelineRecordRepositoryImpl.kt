@@ -52,6 +52,10 @@ class TimelineRecordRepositoryImpl
             remote.deleteTimelineEventPhoto(timelineEventId, timelineItemId)
         }
 
+        override suspend fun saveDailyRecord(recordDate: LocalDate) {
+            remote.saveDailyRecord(recordDate)
+        }
+
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             remote.deleteDailyRecord(recordDate)
         }

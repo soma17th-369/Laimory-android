@@ -33,4 +33,7 @@ interface TimelineRecordRepository {
 
     /** DailyRecord와 하위 Event·Item 전체를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
+
+    /** 전용 POST로 DRAFT 하루 기록을 SAVED로 확정한다. 성공 응답의 body는 null이다. */
+    suspend fun saveDailyRecord(recordDate: LocalDate)
 }

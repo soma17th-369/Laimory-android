@@ -31,6 +31,7 @@ class TimelineRecordRepositoryImplTest {
         var deletedEventId: Long? = null
         var deletedEventPhotoIds: Pair<Long, Long>? = null
         var deletedRecordDate: LocalDate? = null
+        var savedRecordDate: LocalDate? = null
         var updateFailure: Throwable? = null
         var getEventFailure: Throwable? = null
         val calls = mutableListOf<String>()
@@ -67,6 +68,10 @@ class TimelineRecordRepositoryImplTest {
             requestedEventId = timelineEventId
             requestedMemo = request.memo
             updateFailure?.let { throw it }
+        }
+
+        override suspend fun saveDailyRecord(recordDate: LocalDate) {
+            savedRecordDate = recordDate
         }
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {
@@ -217,6 +222,17 @@ class TimelineRecordRepositoryImplTest {
             assertNull(remote.requestedMemo)
             assertEquals(listOf("PUT"), remote.calls)
             assertNull(remote.requestedEventFetchId)
+        }
+
+    @Test
+    fun `하루 기록 저장은 날짜를 그대로 remote에 위임한다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+
+            repository.saveDailyRecord(LocalDate.of(2026, 8, 12))
+
+            assertEquals(LocalDate.of(2026, 8, 12), remote.savedRecordDate)
         }
 
     @Test
