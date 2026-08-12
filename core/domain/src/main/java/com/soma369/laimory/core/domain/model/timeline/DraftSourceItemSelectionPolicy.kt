@@ -70,7 +70,27 @@ data class DraftSourceItemSelectionReport(
 data class DraftSourceItemSelection(
     val items: List<SourceItem>,
     val report: DraftSourceItemSelectionReport,
-)
+) {
+    /**
+     * 사용자가 동의 화면에서 제외한 항목을 뺀 제출용 선택을 만든다.
+     *
+     * 제외로 생긴 타입별 상한 여유는 다시 채우지 않는다 — 사용자가 화면에서 확인한
+     * 항목만 전송된다는 계약을 유지한다. 원본 건수([DraftSourceItemSelectionReport.originalCounts])는
+     * 수집 기준 그대로 두고 selectedCounts 만 남은 항목 기준으로 갱신한다.
+     */
+    fun excluding(excludedRawIds: Set<String>): DraftSourceItemSelection {
+        if (excludedRawIds.isEmpty()) return this
+        val remaining = items.filterNot { it.rawId in excludedRawIds }
+        return DraftSourceItemSelection(
+            items = remaining,
+            report =
+                DraftSourceItemSelectionReport(
+                    originalCounts = report.originalCounts,
+                    selectedCounts = remaining.countsByType(),
+                ),
+        )
+    }
+}
 
 /**
  * 기록 창 필터 → 타입별 상한 → 최종 시간순 정렬을 수행하는 순수 정책.
