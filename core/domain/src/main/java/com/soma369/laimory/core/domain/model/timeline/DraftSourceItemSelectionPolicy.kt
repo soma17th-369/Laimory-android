@@ -75,12 +75,14 @@ data class DraftSourceItemSelection(
      * 사용자가 동의 화면에서 제외한 항목을 뺀 제출용 선택을 만든다.
      *
      * 제외로 생긴 타입별 상한 여유는 다시 채우지 않는다 — 사용자가 화면에서 확인한
-     * 항목만 전송된다는 계약을 유지한다. 원본 건수([DraftSourceItemSelectionReport.originalCounts])는
-     * 수집 기준 그대로 두고 selectedCounts 만 남은 항목 기준으로 갱신한다.
+     * 항목만 전송된다는 계약을 유지한다. PHOTO 는 홈 사진 선택이 유일한 정본이므로
+     * 사진 rawId 가 전달돼도 무시한다(호출부 방어와 이중 방어).
+     * 원본 건수([DraftSourceItemSelectionReport.originalCounts])는 수집 기준 그대로 두고
+     * selectedCounts 만 남은 항목 기준으로 갱신한다.
      */
     fun excluding(excludedRawIds: Set<String>): DraftSourceItemSelection {
         if (excludedRawIds.isEmpty()) return this
-        val remaining = items.filterNot { it.rawId in excludedRawIds }
+        val remaining = items.filterNot { it.itemType != ItemType.PHOTO && it.rawId in excludedRawIds }
         return DraftSourceItemSelection(
             items = remaining,
             report =

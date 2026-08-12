@@ -187,6 +187,26 @@ class DraftSourceItemSelectionPolicyTest {
     }
 
     @Test
+    fun `excluding 은 PHOTO 제외 요청을 무시한다`() {
+        val selection =
+            DraftSourceItemSelectionPolicy()
+                .select(
+                    window,
+                    listOf(
+                        item("photo-1", ItemType.PHOTO, minute = 1),
+                        item("cal-1", ItemType.CALENDAR, minute = 2),
+                    ),
+                ).getOrThrow()
+
+        val submission = selection.excluding(setOf("photo-1", "cal-1"))
+
+        // 사진은 홈 선택이 정본 — 잘못 전달된 사진 rawId 는 items 와 selectedCounts 에 그대로 남는다.
+        assertEquals(listOf("photo-1"), submission.items.map(SourceItem::rawId))
+        assertEquals(1, submission.report.selectedCounts[ItemType.PHOTO])
+        assertEquals(0, submission.report.selectedCounts[ItemType.CALENDAR])
+    }
+
+    @Test
     fun `excluding 에 빈 집합을 주면 같은 선택을 반환한다`() {
         val selection =
             DraftSourceItemSelectionPolicy()
