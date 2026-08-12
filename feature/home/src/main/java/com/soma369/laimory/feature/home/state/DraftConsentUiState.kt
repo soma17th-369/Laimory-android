@@ -17,11 +17,13 @@ data class DraftConsentUiState(
     val isSubmitting: Boolean = false,
     val submitError: String? = null,
     val openTermsDetail: DraftConsentTerm? = null,
+    /** 동의 문구 법무 확정 전 배포 가드 — false 면 모든 동의를 완료해도 제출할 수 없다. */
+    val isSubmissionAllowed: Boolean = true,
 ) : UiState {
     val isAllTermsChecked: Boolean
         get() = checkedTerms.size == DraftConsentTerm.entries.size
 
     /** 필수 동의를 모두 완료하기 전에는 생성 CTA 를 비활성화한다. */
     val canSubmit: Boolean
-        get() = content != null && isAllTermsChecked && !isSubmitting
+        get() = content != null && isAllTermsChecked && !isSubmitting && isSubmissionAllowed
 }

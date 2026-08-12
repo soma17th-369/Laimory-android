@@ -349,6 +349,13 @@ private fun SubmitArea(
                 .padding(horizontal = Spacing.extraLarge, vertical = Spacing.large),
         verticalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
+        if (!state.isSubmissionAllowed) {
+            Text(
+                text = "동의 문구의 법무 검토가 완료되기 전까지는 초안 생성을 시작할 수 없어요.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         state.submitError?.let { message ->
             Text(
                 text = message,

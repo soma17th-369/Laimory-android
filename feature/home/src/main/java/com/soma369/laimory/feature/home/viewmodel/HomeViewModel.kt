@@ -352,8 +352,26 @@ class HomeViewModel
                 }
         }
 
-        /** 동의 화면에서 제출이 완료된 채 복귀했는지 1회 확인하고, 완료면 시트를 닫고 시작을 알린다. */
+        /**
+         * 동의 화면 복귀 결과를 1회 확인한다 — 제출 완료면 시트를 닫고 시작을 알리고,
+         * 제출 시점 사진 접근 실패면 사진 재선택 흐름을 연다.
+         */
         private fun consumeDraftConsentResult() {
+            if (draftConsentSessionStore.consumePhotoReselectionNeeded()) {
+                preparedPhotoCache = null
+                val message = "선택한 사진에 접근할 수 없어요. 사진을 다시 선택해주세요."
+                updateState {
+                    copy(
+                        draftStatus = DraftCreationStatus.FAILED,
+                        draftRetryMode = DraftRetryMode.NEW_DRAFT,
+                        draftMessage = message,
+                        isDraftSheetVisible = false,
+                    )
+                }
+                sendEffect(HomeUiSideEffect.ShowSnackbar(message))
+                sendEffect(HomeUiSideEffect.RequestPhotoAccess())
+                return
+            }
             if (!draftConsentSessionStore.consumeSubmittedResult()) return
             updateState { copy(isDraftSheetVisible = false) }
             sendEffect(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."))

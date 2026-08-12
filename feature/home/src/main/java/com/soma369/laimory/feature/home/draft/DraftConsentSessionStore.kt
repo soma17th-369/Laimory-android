@@ -28,6 +28,7 @@ class DraftConsentSessionStore
 
         private var nextAttemptId = 1L
         private var hasSubmittedResult = false
+        private var needsPhotoReselection = false
 
         /** 새 생성 시도를 시작한다. 같은 데이터라도 항상 새 attemptId 를 받아 이전 시도와 구분된다. */
         fun prepare(
@@ -63,5 +64,27 @@ class DraftConsentSessionStore
             val result = hasSubmittedResult
             hasSubmittedResult = false
             return result
+        }
+
+        /** 제출 시점 사진 접근 실패를 기록한다. 홈이 복귀 시 [consumePhotoReselectionNeeded]로 한 번만 소비한다. */
+        fun markPhotoReselectionNeeded() {
+            needsPhotoReselection = true
+        }
+
+        /** 사진 재선택 필요 신호를 일회성으로 소비한다. 소비 후에는 false 를 반환한다. */
+        fun consumePhotoReselectionNeeded(): Boolean {
+            val result = needsPhotoReselection
+            needsPhotoReselection = false
+            return result
+        }
+
+        /**
+         * 인증 경계 교체(로그아웃·세션 만료) 시 시도 상태 전체를 초기화한다.
+         * 이전 계정의 스냅샷·일회성 결과가 다음 계정으로 이월되지 않게 하는 계정 경계 계약이다.
+         */
+        fun clearAll() {
+            mutablePreparation.value = null
+            hasSubmittedResult = false
+            needsPhotoReselection = false
         }
     }

@@ -1,7 +1,9 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -29,19 +31,28 @@ class DraftConsentViewModel
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
+        submissionGate: DraftConsentSubmissionGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
-            DraftConsentUiState(),
+            DraftConsentUiState(isSubmissionAllowed = submissionGate.isSubmissionAllowed()),
         ) {
+        private val isSubmissionAllowed = submissionGate.isSubmissionAllowed()
         private var activePreparation: DraftConsentPreparation? = null
 
         init {
             safeLaunch {
                 sessionStore.preparation.collect { preparation ->
-                    // 폐기(null)는 화면 이탈 경로에서만 발생하므로 상태를 건드리지 않는다.
-                    // 준비물 없이 화면이 복원된 경우(프로세스 재생성)는 초기 상태(content=null)가 안내를 담당한다.
-                    if (preparation != null && preparation.attemptId != activePreparation?.attemptId) {
-                        activePreparation = preparation
-                        updateState { DraftConsentUiState(content = preparation.toConsentContent()) }
+                    when {
+                        // 폐기(null) 시 activity 범위 ViewModel 에 알림 본문·사진 URI 같은
+                        // 민감 표시 모델과 체크 상태가 남지 않도록 즉시 초기화한다.
+                        preparation == null -> {
+                            activePreparation = null
+                            updateState { initialUiState() }
+                        }
+
+                        preparation.attemptId != activePreparation?.attemptId -> {
+                            activePreparation = preparation
+                            updateState { initialUiState().copy(content = preparation.toConsentContent()) }
+                        }
                     }
                 }
             }
@@ -102,8 +113,16 @@ class DraftConsentViewModel
         }
 
         private fun handleSubmitFailure(error: Throwable) {
-            // 같은 스냅샷으로 재시도 가능한 오류는 화면에 머물러 안내한다.
-            // 입력을 다시 골라야 하는 오류(접근 불가 사진 등)는 스냅샷 확정 단계에서 이미 홈이 걸러낸다.
+            // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 스냅샷 재시도로는 복구되지
+            // 않으므로 준비를 폐기하고 홈의 사진 재선택 흐름으로 복귀시킨다.
+            if (error is DraftPhotoAccessException) {
+                sessionStore.clearPreparation()
+                sessionStore.markPhotoReselectionNeeded()
+                activePreparation = null
+                navigationHelper.navigateToBack()
+                return
+            }
+            // 그 외에는 같은 스냅샷으로 재시도할 수 있게 화면에 머물러 안내한다.
             updateState {
                 copy(
                     isSubmitting = false,
@@ -119,4 +138,6 @@ class DraftConsentViewModel
             activePreparation = null
             navigationHelper.navigateToBack()
         }
+
+        private fun initialUiState(): DraftConsentUiState = DraftConsentUiState(isSubmissionAllowed = isSubmissionAllowed)
     }
