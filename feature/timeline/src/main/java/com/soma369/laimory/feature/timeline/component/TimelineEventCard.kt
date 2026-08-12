@@ -54,6 +54,7 @@ internal fun TimelineEventCard(
     event: TimelineEventUiModel,
     onEditClick: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
+    isEditable: Boolean = true,
     memoEditor: TimelineMemoEditorState? = null,
     onMemoClick: () -> Unit = {},
     onMemoChange: (String) -> Unit = {},
@@ -107,6 +108,7 @@ internal fun TimelineEventCard(
                         photoSlots = photoSlots,
                         onEditClick = onEditClick,
                         onPhotoClick = onPhotoClick,
+                        isEditable = isEditable,
                         memoEditor = memoEditor,
                         onMemoClick = onMemoClick,
                         onMemoChange = onMemoChange,
@@ -114,7 +116,7 @@ internal fun TimelineEventCard(
                         onMemoConfirm = onMemoConfirm,
                     )
                 } else {
-                    EventMainCard(event = event, onEditClick = onEditClick)
+                    EventMainCard(event = event, onEditClick = onEditClick, isEditable = isEditable)
                     if (photoSlots.isNotEmpty()) {
                         PhotoThumbnailRow(
                             photoSlots = photoSlots,
@@ -137,6 +139,7 @@ internal fun TimelineEventCard(
                     TimelineMemo(
                         memo = event.memo,
                         editor = memoEditor,
+                        isEditable = isEditable,
                         onClick = onMemoClick,
                         onValueChange = onMemoChange,
                         onCancel = onMemoCancel,
@@ -152,6 +155,7 @@ internal fun TimelineEventCard(
 private fun EventMainCard(
     event: TimelineEventUiModel,
     onEditClick: () -> Unit,
+    isEditable: Boolean,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -186,7 +190,7 @@ private fun EventMainCard(
                     )
                 }
             }
-            TimelineEditButton(onClick = onEditClick)
+            if (isEditable) TimelineEditButton(onClick = onEditClick)
         }
     }
 }
@@ -197,6 +201,7 @@ private fun PhotoMainEvent(
     photoSlots: List<String?>,
     onEditClick: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
+    isEditable: Boolean,
     memoEditor: TimelineMemoEditorState?,
     onMemoClick: () -> Unit,
     onMemoChange: (String) -> Unit,
@@ -232,11 +237,12 @@ private fun PhotoMainEvent(
                 label = event.photoLocationLabel(),
                 modifier = Modifier.weight(1f, fill = false),
             )
-            TimelineEditButton(onClick = onEditClick)
+            if (isEditable) TimelineEditButton(onClick = onEditClick)
         }
         TimelineMemo(
             memo = event.memo,
             editor = memoEditor,
+            isEditable = isEditable,
             onClick = onMemoClick,
             onValueChange = onMemoChange,
             onCancel = onMemoCancel,

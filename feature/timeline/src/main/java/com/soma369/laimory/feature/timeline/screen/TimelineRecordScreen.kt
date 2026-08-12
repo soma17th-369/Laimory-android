@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -42,6 +46,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEventCard
 import com.soma369.laimory.feature.timeline.component.TimelinePhotoViewerDialog
+import com.soma369.laimory.feature.timeline.component.TimelineSaveDialog
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
@@ -51,6 +56,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
+import com.soma369.laimory.feature.timeline.state.TimelineSaveDialogState
 import com.soma369.laimory.feature.timeline.viewmodel.TimelineRecordViewModel
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
@@ -120,6 +126,19 @@ private fun TimelineRecordContent(
         onDismiss = { onIntent(TimelineRecordUiIntent.DismissDelete) },
         onFinish = { onIntent(TimelineRecordUiIntent.FinishDelete) },
     )
+
+    TimelineSaveDialog(
+        state = state.saveDialogState,
+        confirmationTitle =
+            (state.content as? TimelineRecordUiContent.Record)
+                ?.value
+                ?.recordDate
+                ?.format(RecordDateFormatter)
+                ?.let { "$it 기록 작성을 완료할까요?" }
+                ?: "하루 기록 작성을 완료할까요?",
+        onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmSave) },
+        onDismiss = { onIntent(TimelineRecordUiIntent.DismissSave) },
+    )
 }
 
 @Composable
@@ -147,12 +166,13 @@ private fun TimelineRecordScreen(
             },
             onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
             actions = {
-                if (state.content is TimelineRecordUiContent.Record) {
+                if ((state.content as? TimelineRecordUiContent.Record)?.value?.isEditable == true) {
                     Box {
                         IconButton(
                             onClick = { isRecordMenuExpanded = true },
                             enabled =
                                 state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                                    state.saveDialogState == TimelineSaveDialogState.Hidden &&
                                     state.memoEditor == null,
                         ) {
                             Icon(
@@ -191,22 +211,34 @@ private fun TimelineRecordScreen(
                     onRetryClick = { onIntent(TimelineRecordUiIntent.RetryLoad) },
                 )
             is TimelineRecordUiContent.Record ->
-                TimelineRecordBody(
-                    record = content.value,
-                    memoEditor = state.memoEditor,
-                    onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
-                    onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
-                    onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
-                    onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
-                    onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
-                    onPhotoClick = { photoUrls, initialIndex ->
-                        photoViewerState =
-                            TimelinePhotoViewerState(
-                                photoUrls = photoUrls,
-                                initialIndex = initialIndex,
-                            )
-                    },
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TimelineRecordBody(
+                        record = content.value,
+                        memoEditor = state.memoEditor,
+                        onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
+                        onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
+                        onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
+                        onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
+                        onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
+                        onPhotoClick = { photoUrls, initialIndex ->
+                            photoViewerState =
+                                TimelinePhotoViewerState(
+                                    photoUrls = photoUrls,
+                                    initialIndex = initialIndex,
+                                )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (content.value.isEditable) {
+                        SaveRecordButton(
+                            enabled =
+                                state.saveDialogState == TimelineSaveDialogState.Hidden &&
+                                    state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                                    state.memoEditor == null,
+                            onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
+                        )
+                    }
+                }
         }
     }
 
@@ -303,6 +335,7 @@ private fun TimelineRecordBody(
     onMemoCancel: () -> Unit,
     onMemoConfirm: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (record.events.isEmpty()) {
         TimelineRecordEmpty()
@@ -311,7 +344,7 @@ private fun TimelineRecordBody(
 
     LazyColumn(
         modifier =
-            Modifier
+            modifier
                 .fillMaxSize()
                 .imePadding(),
         contentPadding = PaddingValues(horizontal = Spacing.large, vertical = Spacing.small),
@@ -325,6 +358,7 @@ private fun TimelineRecordBody(
                 event = event,
                 onEditClick = { onEventClick(event.timelineEventId) },
                 onPhotoClick = onPhotoClick,
+                isEditable = record.isEditable,
                 memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = onMemoChange,
@@ -332,6 +366,28 @@ private fun TimelineRecordBody(
                 onMemoConfirm = onMemoConfirm,
             )
         }
+    }
+}
+
+@Composable
+private fun SaveRecordButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.large, vertical = Spacing.medium)
+                .height(52.dp),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        Text(
+            text = "저장하기",
+            style = MaterialTheme.typography.titleSmall,
+        )
     }
 }
 
@@ -457,6 +513,7 @@ private fun previewRecord() =
     TimelineRecordUiModel(
         dailyRecordId = 31L,
         recordDate = LocalDate.of(2026, 5, 8),
+        isEditable = true,
         events =
             listOf(
                 TimelineEventUiModel(

@@ -12,9 +12,13 @@ data class TimelineRecordUiState(
     val memoEditor: TimelineMemoEditorState? = null,
     val deleteTarget: TimelineRecordDeleteTarget? = null,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
+    val saveDialogState: TimelineSaveDialogState = TimelineSaveDialogState.Hidden,
 ) : UiState {
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
+
+    val isSaving: Boolean
+        get() = saveDialogState == TimelineSaveDialogState.Saving
 }
 
 @Immutable

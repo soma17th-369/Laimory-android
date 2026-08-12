@@ -1,11 +1,15 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
+import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
+import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
@@ -20,6 +24,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
+import com.soma369.laimory.feature.timeline.state.TimelineSaveDialogState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -33,6 +38,7 @@ class TimelineRecordViewModel
         observeTimelineRecordUseCase: ObserveTimelineRecordUseCase,
         private val getDailyRecordUseCase: GetDailyRecordUseCase,
         private val saveTimelineRecordUseCase: SaveTimelineRecordUseCase,
+        private val completeDailyRecordUseCase: CompleteDailyRecordUseCase,
         private val updateTimelineEventMemoUseCase: UpdateTimelineEventMemoUseCase,
         private val deleteDailyRecordUseCase: DeleteDailyRecordUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
@@ -70,13 +76,18 @@ class TimelineRecordViewModel
                 TimelineRecordUiIntent.RetryLoad -> requestedRecordDate?.let(::loadRecord)
                 TimelineRecordUiIntent.NavigateBack ->
                     navigateBack()
+                TimelineRecordUiIntent.RequestSave -> requestSave()
+                TimelineRecordUiIntent.ConfirmSave -> saveRecord()
+                TimelineRecordUiIntent.DismissSave -> dismissSave()
                 TimelineRecordUiIntent.RequestDelete -> requestDelete()
                 TimelineRecordUiIntent.ConfirmDelete -> deleteRecord()
                 TimelineRecordUiIntent.DismissDelete -> dismissDelete()
                 TimelineRecordUiIntent.FinishDelete -> finishDelete()
                 is TimelineRecordUiIntent.SelectEvent ->
                     if (state.value.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                        state.value.memoEditor == null
+                        state.value.saveDialogState == TimelineSaveDialogState.Hidden &&
+                        state.value.memoEditor == null &&
+                        state.value.editableRecord() != null
                     ) {
                         navigationHelper.navigateTo(TimelineEventEditorPage(intent.timelineEventId))
                     }
@@ -89,7 +100,7 @@ class TimelineRecordViewModel
 
         private fun navigateBack() {
             val current = state.value
-            if (current.isDeleting || current.memoEditor?.isSaving == true) return
+            if (current.isDeleting || current.isSaving || current.memoEditor?.isSaving == true) return
             if (current.memoEditor != null) {
                 updateState { copy(memoEditor = null) }
             } else {
@@ -148,9 +159,86 @@ class TimelineRecordViewModel
                 }
         }
 
+        private fun requestSave() {
+            val current = state.value
+            val record = current.editableRecord() ?: return
+            if (current.saveDialogState != TimelineSaveDialogState.Hidden ||
+                current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.memoEditor != null
+            ) {
+                return
+            }
+            updateState { copy(saveDialogState = TimelineSaveDialogState.Confirmation) }
+        }
+
+        private suspend fun saveRecord() {
+            val current = state.value
+            val record = current.editableRecord() ?: return
+            val isConfirmable =
+                current.saveDialogState == TimelineSaveDialogState.Confirmation ||
+                    current.saveDialogState is TimelineSaveDialogState.RetryableError
+            if (!isConfirmable) return
+
+            updateState { copy(saveDialogState = TimelineSaveDialogState.Saving) }
+            completeDailyRecordUseCase(record.recordDate)
+                .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
+                .onFailure(::handleSaveFailure)
+        }
+
+        private suspend fun handleSaveOutcome(
+            outcome: CompleteDailyRecordOutcome,
+            recordDate: LocalDate,
+        ) {
+            discardDraftTracking(recordDate)
+            updateState { copy(saveDialogState = TimelineSaveDialogState.Hidden) }
+            when (outcome) {
+                CompleteDailyRecordOutcome.Completed,
+                CompleteDailyRecordOutcome.AlreadySaved,
+                -> {
+                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("하루 기록 작성을 완료했어요."))
+                    navigationHelper.navigateToBack()
+                }
+                // 세션 정리로 화면은 Unavailable로 전환된다.
+                CompleteDailyRecordOutcome.RecordUnavailable ->
+                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 기록이에요."))
+            }
+        }
+
+        private fun handleSaveFailure(error: Throwable) {
+            if (error is HandledException) {
+                updateState { copy(saveDialogState = TimelineSaveDialogState.Hidden) }
+                return
+            }
+            val message =
+                if (error is ApiException.NetworkException) {
+                    "네트워크 상태를 확인한 뒤 다시 시도해주세요."
+                } else {
+                    "일시적인 오류예요. 잠시 후 다시 시도해주세요."
+                }
+            updateState { copy(saveDialogState = TimelineSaveDialogState.RetryableError(message)) }
+        }
+
+        private fun dismissSave() {
+            if (state.value.isSaving) return
+            updateState { copy(saveDialogState = TimelineSaveDialogState.Hidden) }
+        }
+
+        private suspend fun discardDraftTracking(recordDate: LocalDate) {
+            val activeTask =
+                (draftTaskCoordinator.state.value as? DraftTaskTrackingState.WithTask)?.task
+            if (activeTask?.recordDate == recordDate) {
+                draftTaskCoordinator.discard()
+            }
+        }
+
         private fun requestDelete() {
-            val record = (state.value.content as? TimelineRecordUiContent.Record)?.value ?: return
-            if (state.value.deleteDialogState != TimelineDeleteDialogState.Hidden || state.value.memoEditor != null) return
+            val record = state.value.editableRecord() ?: return
+            if (state.value.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                state.value.saveDialogState != TimelineSaveDialogState.Hidden ||
+                state.value.memoEditor != null
+            ) {
+                return
+            }
             updateState {
                 copy(
                     deleteTarget =
@@ -239,13 +327,14 @@ class TimelineRecordViewModel
         private fun editMemo(timelineEventId: Long) {
             val current = state.value
             if (current.memoEditor != null ||
-                current.deleteDialogState != TimelineDeleteDialogState.Hidden
+                current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.saveDialogState != TimelineSaveDialogState.Hidden
             ) {
                 return
             }
             val event =
-                (current.content as? TimelineRecordUiContent.Record)
-                    ?.value
+                current
+                    .editableRecord()
                     ?.events
                     ?.firstOrNull { it.timelineEventId == timelineEventId }
                     ?: return
@@ -304,4 +393,6 @@ class TimelineRecordViewModel
                 else -> handleFailure(error)
             }
         }
+
+        private fun TimelineRecordUiState.editableRecord() = (content as? TimelineRecordUiContent.Record)?.value?.takeIf { it.isEditable }
     }

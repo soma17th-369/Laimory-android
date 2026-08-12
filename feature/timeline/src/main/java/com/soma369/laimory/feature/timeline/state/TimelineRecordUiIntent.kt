@@ -12,6 +12,12 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object NavigateBack : TimelineRecordUiIntent
 
+    data object RequestSave : TimelineRecordUiIntent
+
+    data object ConfirmSave : TimelineRecordUiIntent
+
+    data object DismissSave : TimelineRecordUiIntent
+
     data object RequestDelete : TimelineRecordUiIntent
 
     data object ConfirmDelete : TimelineRecordUiIntent
