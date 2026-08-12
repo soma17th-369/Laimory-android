@@ -90,7 +90,7 @@ class DraftConsentUiContentTest {
 
         val location = content.typeSummaries.first { it.group == DraftConsentTypeGroup.LOCATION }
         assertEquals(3, location.sentCount)
-        assertEquals("3건 포함", location.countLabel)
+        assertEquals("3건 포함", location.countLabel())
         assertEquals(listOf("체류한 장소", "이동 기록"), location.sections.map { it.title })
         assertEquals(2, location.sections[0].items.size)
         assertEquals(1, location.sections[1].items.size)
@@ -122,7 +122,7 @@ class DraftConsentUiContentTest {
         val notification = content.typeSummaries.first { it.group == DraftConsentTypeGroup.NOTIFICATION }
         assertEquals(3, notification.originalCount)
         assertEquals(2, notification.sentCount)
-        assertEquals("수집 3건 중 2건 전송", notification.countLabel)
+        assertEquals("수집 3건 중 2건 전송", notification.countLabel())
         assertEquals(2, notification.sections.single().items.size)
     }
 
@@ -135,7 +135,7 @@ class DraftConsentUiContentTest {
         assertEquals(DraftConsentTypeGroup.entries.size, content.typeSummaries.size)
         val photo = content.typeSummaries.first { it.group == DraftConsentTypeGroup.PHOTO }
         assertFalse(photo.isSent)
-        assertEquals("0장 · 전송되지 않음", photo.countLabel)
+        assertEquals("0장 · 전송되지 않음", photo.countLabel())
         assertTrue(photo.sections.isEmpty())
     }
 
@@ -153,7 +153,7 @@ class DraftConsentUiContentTest {
         val content = preparation(listOf(todayPhoto, nextDayPhoto)).toConsentContent()
 
         val photo = content.typeSummaries.first { it.group == DraftConsentTypeGroup.PHOTO }
-        assertEquals("2장 포함", photo.countLabel)
+        assertEquals("2장 포함", photo.countLabel())
         assertEquals(listOf("2026년 8월 12일", "2026년 8월 11일"), photo.sections.map { it.title })
         val todayItem = photo.sections[1].items.single()
         assertEquals("content://photo/today", todayItem.imageUri)

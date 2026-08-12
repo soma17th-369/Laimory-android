@@ -248,6 +248,92 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `항목 토글은 제외 집합과 전송 예정 건수를 갱신한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2")))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals(2, viewModel.state.value.includedTotal)
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            runCurrent()
+
+            assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
+            assertEquals(1, viewModel.state.value.includedTotal)
+            assertEquals(1, viewModel.state.value.excludedCountOf(DraftConsentTypeGroup.CALENDAR))
+
+            // 다시 누르면 포함으로 복귀한다.
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            runCurrent()
+            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
+            assertEquals(2, viewModel.state.value.includedTotal)
+        }
+
+    @Test
+    fun `사진 항목은 토글되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(photoItem(7L)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("photo-7"))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
+        }
+
+    @Test
+    fun `제외 항목을 뺀 결과만 제출한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2"), photoItem(7L)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertEquals(1, draftRepository.createCount)
+            assertEquals(listOf("cal-2", "photo-7"), draftRepository.createdItems.map(SourceItem::rawId))
+            assertEquals(listOf("content://photo/7"), draftRepository.uploadedUris)
+        }
+
+    @Test
+    fun `모든 항목을 제외하면 제출할 수 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.canSubmit)
+            assertEquals(0, draftRepository.createCount)
+            assertFalse(viewModel.state.value.isSubmitting)
+        }
+
+    @Test
+    fun `새 스냅샷이 들어오면 제외 상태도 초기화된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            runCurrent()
+            assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
+
+            prepare(listOf(calendarItem("cal-1")))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
+            assertEquals(1, viewModel.state.value.includedTotal)
+        }
+
+    @Test
     fun `제출 가드가 닫혀 있으면 모든 동의에도 제출하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(calendarItem("cal")))
