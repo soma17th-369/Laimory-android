@@ -49,6 +49,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -194,6 +196,59 @@ class HomeViewModelTest {
             runCurrent()
 
             assertTrue(viewModel.state.value.isDraftSheetVisible)
+        }
+
+    @Test
+    fun `동의 제출 중 사진 접근 실패 복귀는 사진 재선택 흐름을 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            runCurrent()
+            sessionStore.markPhotoReselectionNeeded()
+            val effects = async { viewModel.sideEffect.take(2).toList() }
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertFalse(state.isDraftSheetVisible)
+            assertEquals(DraftCreationStatus.FAILED, state.draftStatus)
+            assertEquals(
+                listOf(
+                    HomeUiSideEffect.ShowSnackbar("선택한 사진에 접근할 수 없어요. 사진을 다시 선택해주세요."),
+                    HomeUiSideEffect.RequestPhotoAccess(),
+                ),
+                effects.await(),
+            )
+        }
+
+    @Test
+    fun `인증 경계 초기화는 이전 계정 시도 흔적을 지우고 새 생성 시작을 허용한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            sessionStore.markSubmitted()
+            sessionStore.markPhotoReselectionNeeded()
+
+            // 세션 만료·로그아웃으로 인증 root 가 교체되는 순간(MainActivity onAuthRootReplaced 경로)
+            sessionStore.clearAll()
+
+            // 이전 계정의 일회성 결과가 새 계정 홈에서 소비되지 않는다.
+            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
+            runCurrent()
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+
+            // 남은 준비물 가드에 걸리지 않고 새 시도를 시작할 수 있다.
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertEquals(2, navigationHelper.destinations.size)
+            assertNotNull(sessionStore.preparation.value)
         }
 
     @Test

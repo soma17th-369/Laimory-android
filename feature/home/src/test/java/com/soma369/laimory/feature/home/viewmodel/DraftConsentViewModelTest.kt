@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
@@ -9,6 +10,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
+import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
@@ -246,6 +248,64 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `제출 가드가 닫혀 있으면 모든 동의에도 제출하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel(submissionAllowed = false)
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isAllTermsChecked)
+            assertFalse(viewModel.state.value.canSubmit)
+            assertEquals(0, draftRepository.uploadCount)
+            assertEquals(0, draftRepository.createCount)
+            assertFalse(viewModel.state.value.isSubmitting)
+        }
+
+    @Test
+    fun `준비 상태가 폐기되면 표시 모델과 체크 상태를 즉시 비운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal"), photoItem(7L)))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(DraftConsentTerm.SENSITIVE_INFO))
+            runCurrent()
+            assertNotNull(viewModel.state.value.content)
+
+            // 로그아웃·세션 만료로 인증 경계가 교체되면 store 전체가 초기화되는 경로
+            sessionStore.clearAll()
+            runCurrent()
+
+            assertNull(viewModel.state.value.content)
+            assertTrue(viewModel.state.value.checkedTerms.isEmpty())
+            assertFalse(viewModel.state.value.canSubmit)
+        }
+
+    @Test
+    fun `제출 중 사진 접근 실패는 준비를 폐기하고 사진 재선택 복귀를 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal"), photoItem(7L)))
+            draftRepository.uploadFailure = DraftPhotoAccessException("사진에 접근할 수 없습니다")
+            val viewModel = createViewModel()
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertNull(sessionStore.preparation.value)
+            assertTrue(sessionStore.consumePhotoReselectionNeeded())
+            assertFalse(sessionStore.consumeSubmittedResult())
+            assertEquals(1, navigationHelper.backCount)
+            assertEquals(0, draftRepository.createCount)
+            // 폐기와 함께 민감 표시 모델도 남지 않는다.
+            assertNull(viewModel.state.value.content)
+        }
+
+    @Test
     fun `유형 상세에서의 복귀는 준비 상태를 유지한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(calendarItem("cal")))
@@ -259,7 +319,7 @@ class DraftConsentViewModelTest {
             assertNotNull(sessionStore.preparation.value)
         }
 
-    private fun createViewModel(): DraftConsentViewModel =
+    private fun createViewModel(submissionAllowed: Boolean = true): DraftConsentViewModel =
         DraftConsentViewModel(
             sessionStore = sessionStore,
             createTimelineDraftUseCase =
@@ -269,6 +329,7 @@ class DraftConsentViewModelTest {
                 ),
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
+            submissionGate = DraftConsentSubmissionGate { submissionAllowed },
         )
 
     private fun checkAllTerms(viewModel: DraftConsentViewModel) {
@@ -329,12 +390,14 @@ class DraftConsentViewModelTest {
         var createCount = 0
         var createGate: CompletableDeferred<DraftTaskHandle>? = null
         var createFailure: Throwable? = null
+        var uploadFailure: Throwable? = null
         var createdItems: List<SourceItem> = emptyList()
         var uploadedUris: List<String>? = null
 
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> {
             uploadCount++
             uploadedUris = clientPhotoUris
+            uploadFailure?.let { throw it }
             return clientPhotoUris.mapIndexed { index, _ -> "uploaded-$index.jpg" }
         }
 
