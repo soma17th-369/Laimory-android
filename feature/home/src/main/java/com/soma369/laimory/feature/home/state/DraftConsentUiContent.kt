@@ -147,8 +147,8 @@ private fun SourceItem.toDetailItem(zone: ZoneId): DraftConsentDetailItem =
         is StayPayload ->
             DraftConsentDetailItem(
                 key = rawId,
-                title = payload.address ?: formatCoordinate(payload.latitude, payload.longitude),
-                description = if (payload.address != null) formatCoordinate(payload.latitude, payload.longitude) else null,
+                title = payload.address ?: UNRESOLVED_PLACE_LABEL,
+                description = null,
                 timeText = formatDateTimeRange(startAt, endAt, zone),
             )
 
@@ -178,7 +178,10 @@ private fun SourceItem.toDetailItem(zone: ZoneId): DraftConsentDetailItem =
             )
     }
 
-private fun GeoPoint.label(): String = address ?: formatCoordinate(latitude, longitude)
+/** 위경도 좌표는 전송 항목이지만 화면에는 노출하지 않고 주소 요약만 표시한다. */
+private fun GeoPoint.label(): String = address ?: UNRESOLVED_PLACE_LABEL
+
+private const val UNRESOLVED_PLACE_LABEL = "주소 미확인"
 
 private fun MovementPayload.Transport.label(): String =
     when (this) {
@@ -200,11 +203,6 @@ private fun HealthPayload.Metric.unitLabel(): String =
         HealthPayload.Metric.STEPS -> "보"
         HealthPayload.Metric.SLEEP -> "분"
     }
-
-private fun formatCoordinate(
-    latitude: Double,
-    longitude: Double,
-): String = String.format(Locale.KOREA, "위도 %.5f · 경도 %.5f", latitude, longitude)
 
 private fun formatDistance(distanceMeters: Double): String =
     if (distanceMeters >= 1000) {

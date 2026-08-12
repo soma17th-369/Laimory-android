@@ -15,6 +15,7 @@ import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
@@ -93,9 +94,11 @@ class DraftConsentUiContentTest {
         assertEquals(listOf("체류한 장소", "이동 기록"), location.sections.map { it.title })
         assertEquals(2, location.sections[0].items.size)
         assertEquals(1, location.sections[1].items.size)
-        // 주소가 있으면 주소를, 없으면 전송 좌표를 제목으로 보여준다.
+        // 좌표는 전송 항목이지만 화면에는 노출하지 않는다 — 주소가 있으면 주소, 없으면 대체 라벨.
         assertEquals("서울시 강남구", location.sections[0].items[0].title)
-        assertTrue(location.sections[0].items[1].title.contains("위도"))
+        assertNull(location.sections[0].items[0].description)
+        assertEquals("주소 미확인", location.sections[0].items[1].title)
+        assertEquals("주소 미확인 → 주소 미확인", location.sections[1].items[0].title)
         assertEquals("2.4km · 도보", location.sections[1].items[0].description)
     }
 

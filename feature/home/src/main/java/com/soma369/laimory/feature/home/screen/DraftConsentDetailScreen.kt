@@ -559,7 +559,7 @@ private fun DraftConsentDetailLocationPreview() {
                                         DraftConsentDetailItem(
                                             key = "stay-1",
                                             title = "서울 강남구",
-                                            description = "위도 37.49794 · 경도 127.02758",
+                                            description = null,
                                             timeText = "8월 11일 14:30 ~ 16:00",
                                         ),
                                     ),
