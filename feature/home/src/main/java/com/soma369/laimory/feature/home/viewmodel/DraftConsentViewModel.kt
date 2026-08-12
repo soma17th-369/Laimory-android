@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.home.viewmodel
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
@@ -61,6 +62,7 @@ class DraftConsentViewModel
         override suspend fun handleIntent(intent: DraftConsentUiIntent) {
             when (intent) {
                 is DraftConsentUiIntent.ToggleTerm -> toggleTerm(intent)
+                is DraftConsentUiIntent.ToggleItemInclusion -> toggleItemInclusion(intent)
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
                 is DraftConsentUiIntent.OpenTermsDetail -> updateState { copy(openTermsDetail = intent.term) }
@@ -80,6 +82,24 @@ class DraftConsentViewModel
             }
         }
 
+        private fun toggleItemInclusion(intent: DraftConsentUiIntent.ToggleItemInclusion) {
+            if (state.value.isSubmitting) return
+            val preparation = activePreparation ?: return
+            val item = preparation.selection.items.firstOrNull { it.rawId == intent.itemKey } ?: return
+            // 사진은 홈 사진 시트 선택이 정본이므로 여기서 제외할 수 없다.
+            if (item.itemType == ItemType.PHOTO) return
+            updateState {
+                copy(
+                    excludedRawIds =
+                        if (intent.itemKey in excludedRawIds) {
+                            excludedRawIds - intent.itemKey
+                        } else {
+                            excludedRawIds + intent.itemKey
+                        },
+                )
+            }
+        }
+
         private fun openTypeDetail(intent: DraftConsentUiIntent.OpenTypeDetail) {
             val summary = state.value.content?.summaryOf(intent.group) ?: return
             if (!summary.isSent) return
@@ -89,6 +109,8 @@ class DraftConsentViewModel
         private fun submit() {
             val preparation = activePreparation ?: return
             if (!state.value.canSubmit) return
+            // 스냅샷에서 사용자 제외 항목만 뺀 결과를 전송한다. 제외로 생긴 상한 여유는 재충원하지 않는다.
+            val submission = preparation.selection.excluding(state.value.excludedRawIds)
             updateState { copy(isSubmitting = true, submitError = null) }
             safeLaunch(onError = ::handleSubmitFailure) {
                 if (preparation.discardActiveTask) draftTaskCoordinator.discard()
@@ -97,7 +119,7 @@ class DraftConsentViewModel
                         preparation.recordDate,
                         preparation.zone,
                         preparation.window,
-                        preparation.selection,
+                        submission,
                     )
                 val handle =
                     result.getOrElse {

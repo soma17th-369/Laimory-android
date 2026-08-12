@@ -131,13 +131,17 @@ private fun DraftConsentScreen(
                     .padding(horizontal = Spacing.extraLarge)
                     .padding(top = Spacing.medium, bottom = Spacing.extraLarge),
         ) {
-            ConsentHeader(content)
+            ConsentHeader(content = content, includedTotal = state.includedTotal)
             Spacer(modifier = Modifier.height(Spacing.extraLarge2))
 
             Column(verticalArrangement = Arrangement.spacedBy(TYPE_CARD_GAP)) {
                 content.typeSummaries.forEach { summary ->
                     TypeSummaryRow(
                         summary = summary,
+                        countText =
+                            summary.countLabel(
+                                includedCount = summary.sentCount - state.excludedCountOf(summary.group),
+                            ),
                         onClick = { onIntent(DraftConsentUiIntent.OpenTypeDetail(summary.group)) },
                     )
                 }
@@ -175,7 +179,10 @@ private fun DraftConsentScreen(
 }
 
 @Composable
-private fun ConsentHeader(content: DraftConsentUiContent) {
+private fun ConsentHeader(
+    content: DraftConsentUiContent,
+    includedTotal: Int,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
         Text(
             text = "타임라인 생성을 위해\n아래 데이터가 활용됩니다",
@@ -188,7 +195,7 @@ private fun ConsentHeader(content: DraftConsentUiContent) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "선택 구간 · ${content.windowText} (총 ${content.sentTotal}건 전송)",
+            text = "선택 구간 · ${content.windowText} (총 ${includedTotal}건 전송)",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -198,6 +205,7 @@ private fun ConsentHeader(content: DraftConsentUiContent) {
 @Composable
 private fun TypeSummaryRow(
     summary: DraftConsentTypeSummary,
+    countText: String,
     onClick: () -> Unit,
 ) {
     val titleColor =
@@ -241,7 +249,7 @@ private fun TypeSummaryRow(
                     color = titleColor,
                 )
                 Text(
-                    text = summary.countLabel,
+                    text = countText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

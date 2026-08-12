@@ -14,6 +14,8 @@ import com.soma369.laimory.core.ui.base.UiState
 data class DraftConsentUiState(
     val content: DraftConsentUiContent? = null,
     val checkedTerms: Set<DraftConsentTerm> = emptySet(),
+    /** 현재 생성 시도에서 사용자가 전송에서 제외한 항목의 rawId. 스냅샷 항목의 부분집합이다. */
+    val excludedRawIds: Set<String> = emptySet(),
     val isSubmitting: Boolean = false,
     val submitError: String? = null,
     val openTermsDetail: DraftConsentTerm? = null,
@@ -23,7 +25,19 @@ data class DraftConsentUiState(
     val isAllTermsChecked: Boolean
         get() = checkedTerms.size == DraftConsentTerm.entries.size
 
-    /** 필수 동의를 모두 완료하기 전에는 생성 CTA 를 비활성화한다. */
+    /** 제외를 반영한 실제 전송 예정 건수. */
+    val includedTotal: Int
+        get() = (content?.sentTotal ?: 0) - excludedRawIds.size
+
+    fun isIncluded(itemKey: String): Boolean = itemKey !in excludedRawIds
+
+    /** 유형 안에서 사용자가 제외한 건수. */
+    fun excludedCountOf(group: DraftConsentTypeGroup): Int {
+        val summary = content?.summaryOf(group) ?: return 0
+        return summary.sections.sumOf { section -> section.items.count { it.key in excludedRawIds } }
+    }
+
+    /** 필수 동의를 모두 완료하고 전송할 항목이 1건 이상 남아 있어야 생성 CTA 가 활성화된다. */
     val canSubmit: Boolean
-        get() = content != null && isAllTermsChecked && !isSubmitting && isSubmissionAllowed
+        get() = content != null && isAllTermsChecked && !isSubmitting && isSubmissionAllowed && includedTotal > 0
 }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -34,6 +35,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -91,6 +95,8 @@ private fun DraftConsentDetailContent(
         innerPadding = innerPadding,
         summary = group?.let { state.content?.summaryOf(it) },
         title = group?.label() ?: "전송 상세",
+        excludedRawIds = state.excludedRawIds,
+        onToggleItem = { itemKey -> onIntent(DraftConsentUiIntent.ToggleItemInclusion(itemKey)) },
         onBack = { onIntent(DraftConsentUiIntent.CloseTypeDetail) },
     )
 }
@@ -101,6 +107,8 @@ private fun DraftConsentDetailScreen(
     summary: DraftConsentTypeSummary?,
     title: String,
     onBack: () -> Unit,
+    excludedRawIds: Set<String> = emptySet(),
+    onToggleItem: (String) -> Unit = {},
 ) {
     Column(
         modifier =
@@ -130,15 +138,28 @@ private fun DraftConsentDetailScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
             item(key = "notice") {
+                val excludedCount =
+                    summary.sections.sumOf { section -> section.items.count { it.key in excludedRawIds } }
+                val label = summary.countLabel(includedCount = summary.sentCount - excludedCount)
                 Text(
-                    text = "${summary.countLabel} · 아래 항목이 그대로 서버로 전송돼요. 이 화면에서는 수정할 수 없어요.",
+                    text =
+                        if (summary.group == DraftConsentTypeGroup.PHOTO) {
+                            "$label · 아래 사진이 그대로 서버로 전송돼요. 사진은 홈 사진 선택에서 변경할 수 있어요."
+                        } else {
+                            "$label · 항목을 누르면 전송에서 제외하거나 다시 포함할 수 있어요. 흐리게 표시된 항목은 전송되지 않아요."
+                        },
                     modifier = Modifier.padding(bottom = Spacing.small),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             summary.sections.forEach { section ->
-                sectionItems(group = summary.group, section = section)
+                sectionItems(
+                    group = summary.group,
+                    section = section,
+                    excludedRawIds = excludedRawIds,
+                    onToggleItem = onToggleItem,
+                )
             }
         }
     }
@@ -147,6 +168,8 @@ private fun DraftConsentDetailScreen(
 private fun LazyListScope.sectionItems(
     group: DraftConsentTypeGroup,
     section: DraftConsentDetailSection,
+    excludedRawIds: Set<String>,
+    onToggleItem: (String) -> Unit,
 ) {
     section.title?.let { sectionTitle ->
         item(key = "${group.name}-section-$sectionTitle") {
@@ -157,6 +180,7 @@ private fun LazyListScope.sectionItems(
             }
         }
     }
+    // 사진은 홈 선택이 정본이라 토글 없이 그대로 보여준다. 나머지 유형은 항목 탭으로 포함↔미포함을 전환한다.
     when (group) {
         DraftConsentTypeGroup.PHOTO ->
             items(
@@ -165,18 +189,42 @@ private fun LazyListScope.sectionItems(
             ) { row -> PhotoGridRow(row) }
 
         DraftConsentTypeGroup.CALENDAR ->
-            items(items = section.items, key = DraftConsentDetailItem::key) { item -> CalendarItemCard(item) }
+            items(items = section.items, key = DraftConsentDetailItem::key) { item ->
+                CalendarItemCard(
+                    item = item,
+                    included = item.key !in excludedRawIds,
+                    onToggle = { onToggleItem(item.key) },
+                )
+            }
 
         DraftConsentTypeGroup.LOCATION ->
             items(items = section.items, key = DraftConsentDetailItem::key) { item ->
-                if (item.title.contains(" → ")) MovementItemCard(item) else StayItemCard(item)
+                val included = item.key !in excludedRawIds
+                val onToggle = { onToggleItem(item.key) }
+                if (item.title.contains(" → ")) {
+                    MovementItemCard(item = item, included = included, onToggle = onToggle)
+                } else {
+                    StayItemCard(item = item, included = included, onToggle = onToggle)
+                }
             }
 
         DraftConsentTypeGroup.HEALTH ->
-            items(items = section.items, key = DraftConsentDetailItem::key) { item -> HealthItemCard(item) }
+            items(items = section.items, key = DraftConsentDetailItem::key) { item ->
+                HealthItemCard(
+                    item = item,
+                    included = item.key !in excludedRawIds,
+                    onToggle = { onToggleItem(item.key) },
+                )
+            }
 
         DraftConsentTypeGroup.NOTIFICATION ->
-            items(items = section.items, key = DraftConsentDetailItem::key) { item -> NotificationItemCard(item) }
+            items(items = section.items, key = DraftConsentDetailItem::key) { item ->
+                NotificationItemCard(
+                    item = item,
+                    included = item.key !in excludedRawIds,
+                    onToggle = { onToggleItem(item.key) },
+                )
+            }
     }
 }
 
@@ -283,8 +331,12 @@ private fun PhotoGridRow(row: List<DraftConsentDetailItem>) {
 }
 
 @Composable
-private fun CalendarItemCard(item: DraftConsentDetailItem) {
-    DetailCard {
+private fun CalendarItemCard(
+    item: DraftConsentDetailItem,
+    included: Boolean,
+    onToggle: () -> Unit,
+) {
+    DetailCard(included = included, onToggle = onToggle) {
         Box(
             modifier =
                 Modifier
@@ -319,8 +371,12 @@ private fun CalendarItemCard(item: DraftConsentDetailItem) {
 }
 
 @Composable
-private fun StayItemCard(item: DraftConsentDetailItem) {
-    DetailCard {
+private fun StayItemCard(
+    item: DraftConsentDetailItem,
+    included: Boolean,
+    onToggle: () -> Unit,
+) {
+    DetailCard(included = included, onToggle = onToggle) {
         Box(
             modifier =
                 Modifier
@@ -361,8 +417,12 @@ private fun StayItemCard(item: DraftConsentDetailItem) {
 }
 
 @Composable
-private fun MovementItemCard(item: DraftConsentDetailItem) {
-    DetailCard {
+private fun MovementItemCard(
+    item: DraftConsentDetailItem,
+    included: Boolean,
+    onToggle: () -> Unit,
+) {
+    DetailCard(included = included, onToggle = onToggle) {
         Column(
             modifier = Modifier.width(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -415,8 +475,12 @@ private fun MovementItemCard(item: DraftConsentDetailItem) {
 }
 
 @Composable
-private fun HealthItemCard(item: DraftConsentDetailItem) {
-    DetailCard {
+private fun HealthItemCard(
+    item: DraftConsentDetailItem,
+    included: Boolean,
+    onToggle: () -> Unit,
+) {
+    DetailCard(included = included, onToggle = onToggle) {
         Box(
             modifier =
                 Modifier
@@ -457,8 +521,12 @@ private fun HealthItemCard(item: DraftConsentDetailItem) {
 }
 
 @Composable
-private fun NotificationItemCard(item: DraftConsentDetailItem) {
-    DetailCard {
+private fun NotificationItemCard(
+    item: DraftConsentDetailItem,
+    included: Boolean,
+    onToggle: () -> Unit,
+) {
+    DetailCard(included = included, onToggle = onToggle) {
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -488,16 +556,42 @@ private fun NotificationItemCard(item: DraftConsentDetailItem) {
     }
 }
 
+/**
+ * 전송 항목 카드. Figma 상세 디자인의 상태 표현을 따른다 —
+ * 포함이면 primary 강조 테두리에 선명한 내용, 제외면 기본 테두리에 흐린(알파) 내용.
+ */
 @Composable
-private fun DetailCard(content: @Composable RowScope.() -> Unit) {
+private fun DetailCard(
+    included: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val border =
+        if (included) {
+            BorderStroke(width = 1.5.dp, color = MaterialTheme.colorScheme.primary)
+        } else {
+            BorderStroke(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
+        }
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .toggleable(
+                    value = included,
+                    role = Role.Checkbox,
+                    onValueChange = { onToggle() },
+                )
+                .semantics { stateDescription = if (included) "전송 포함" else "전송 제외" },
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant),
+        border = border,
     ) {
         Row(
-            modifier = Modifier.padding(Spacing.medium),
+            modifier =
+                Modifier
+                    .padding(Spacing.medium)
+                    .alpha(if (included) 1f else EXCLUDED_CONTENT_ALPHA),
             horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
@@ -539,50 +633,69 @@ private fun DetailUnavailableContent(onBack: () -> Unit) {
 private const val PHOTO_GRID_COLUMNS = 3
 private val PHOTO_GRID_GAP = 6.dp
 
+/** 미포함 항목의 흐림 처리 강도. 내용은 읽히되 포함 항목과 확실히 구분되는 수준. */
+private const val EXCLUDED_CONTENT_ALPHA = 0.55f
+
 @Preview(name = "DraftConsentDetail / 위치", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun DraftConsentDetailLocationPreview() {
     LaimoryTheme {
         DraftConsentDetailScreen(
             innerPadding = PaddingValues(),
-            summary =
-                DraftConsentTypeSummary(
-                    group = DraftConsentTypeGroup.LOCATION,
-                    originalCount = 3,
-                    sentCount = 3,
-                    sections =
-                        listOf(
-                            DraftConsentDetailSection(
-                                title = "체류한 장소",
-                                items =
-                                    listOf(
-                                        DraftConsentDetailItem(
-                                            key = "stay-1",
-                                            title = "서울 강남구",
-                                            description = null,
-                                            timeText = "8월 11일 14:30 ~ 16:00",
-                                        ),
-                                    ),
-                            ),
-                            DraftConsentDetailSection(
-                                title = "이동 기록",
-                                items =
-                                    listOf(
-                                        DraftConsentDetailItem(
-                                            key = "move-1",
-                                            title = "강남역 → 삼성역",
-                                            description = "1.2km · 도보",
-                                            timeText = "8월 11일 16:10",
-                                        ),
-                                    ),
-                            ),
-                        ),
-                ),
+            summary = locationPreviewSummary(),
             title = "위치",
             onBack = {},
         )
     }
 }
+
+@Preview(name = "DraftConsentDetail / 위치 제외 상태", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun DraftConsentDetailLocationExcludedPreview() {
+    LaimoryTheme {
+        DraftConsentDetailScreen(
+            innerPadding = PaddingValues(),
+            summary = locationPreviewSummary(),
+            title = "위치",
+            onBack = {},
+            excludedRawIds = setOf("move-1"),
+        )
+    }
+}
+
+private fun locationPreviewSummary(): DraftConsentTypeSummary =
+    DraftConsentTypeSummary(
+        group = DraftConsentTypeGroup.LOCATION,
+        originalCount = 3,
+        sentCount = 3,
+        sections =
+            listOf(
+                DraftConsentDetailSection(
+                    title = "체류한 장소",
+                    items =
+                        listOf(
+                            DraftConsentDetailItem(
+                                key = "stay-1",
+                                title = "서울 강남구",
+                                description = null,
+                                timeText = "8월 11일 14:30 ~ 16:00",
+                            ),
+                        ),
+                ),
+                DraftConsentDetailSection(
+                    title = "이동 기록",
+                    items =
+                        listOf(
+                            DraftConsentDetailItem(
+                                key = "move-1",
+                                title = "강남역 → 삼성역",
+                                description = "1.2km · 도보",
+                                timeText = "8월 11일 16:10",
+                            ),
+                        ),
+                ),
+            ),
+    )
 
 @Preview(name = "DraftConsentDetail / 알림 Dark", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
