@@ -1,0 +1,16 @@
+<!-- Figma MoodEmoji / emoji-down 글리프. 감정 색 원 위에 얹는 흰색 표정선이라 tint 없이 그대로 그린다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9.75 13.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M23.25 13.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.75 21C12.75 20.606 12.8858 20.2159 13.1496 19.8519C13.4135 19.488 13.8002 19.1573 14.2877 18.8787C14.7752 18.6001 15.354 18.3791 15.9909 18.2284C16.6279 18.0776 17.3106 18 18 18C18.6894 18 19.3721 18.0776 20.0091 18.2284C20.646 18.3791 21.2248 18.6001 21.7123 18.8787C22.1998 19.1573 22.5865 19.488 22.8504 19.852C23.1142 20.2159 23.25 20.606 23.25 21L18 21L12.75 21Z" />
+</vector>

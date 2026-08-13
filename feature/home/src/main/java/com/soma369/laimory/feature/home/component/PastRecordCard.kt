@@ -1,9 +1,7 @@
 package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,10 +22,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.soma369.laimory.core.ui.component.EmotionIcon
+import com.soma369.laimory.core.ui.component.EmotionIconDefaults
+import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
-import com.soma369.laimory.core.ui.theme.color
 import com.soma369.laimory.core.ui.theme.containerColor
 import com.soma369.laimory.feature.home.model.PastRecordUiModel
 import java.time.LocalDate
@@ -68,14 +67,13 @@ internal fun PastRecordCard(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(modifier = Modifier.weight(1f))
-                    record.emotion?.let { emotion ->
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(8.dp)
-                                    .background(emotion.color(), CircleShape),
-                        )
-                    }
+                    // 감정을 알 수 없는 기록도 중립 아이콘으로 표시한다 — 캘린더 셀과 같은 공통 컴포넌트.
+                    // 감정은 색으로만 구분되므로 카드 설명에 섞이도록 아이콘이 라벨을 들고 간다.
+                    EmotionIcon(
+                        emotion = record.emotion,
+                        size = EmotionIconDefaults.CompactSize,
+                        contentDescription = "감정 ${record.emotion.displayLabel()}",
+                    )
                 }
                 Text(
                     text = record.summary ?: "기록된 이벤트가 없어요",
