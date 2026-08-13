@@ -29,12 +29,13 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.component.EmotionIcon
 import com.soma369.laimory.core.ui.component.EmotionIconDefaults
-import com.soma369.laimory.core.ui.theme.Emotion
+import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.model.CalendarMonthGrid
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
@@ -204,7 +205,11 @@ private fun RowScope.CalendarDayCell(
         modifier =
             cellModifier
                 .clickable(onClickLabel = if (record != null) "기록 열기" else "날짜 선택") { onClick(date) }
-                .semantics { contentDescription = dayCellDescription(date, record, isToday) },
+                .semantics {
+                    contentDescription = dayCellDescription(date, record, isToday)
+                    // 선택 날짜는 테두리·색으로만 구분돼 접근성 서비스에는 보이지 않는다.
+                    selected = isSelected
+                },
     ) {
         CalendarDayCellContent(date = date, record = record, isSelected = isSelected)
     }
@@ -262,21 +267,8 @@ private fun dayCellDescription(
         if (isToday) append(", 오늘")
         append(", ")
         append(
-            when {
-                record == null -> "기록 없음"
-                record.emotion == null -> "기록 있음, 감정 미상"
-                else -> "기록 있음, ${record.emotion.label()}"
-            },
+            if (record == null) "기록 없음" else "기록 있음, 감정 ${record.emotion.displayLabel()}",
         )
-    }
-
-private fun Emotion.label(): String =
-    when (this) {
-        Emotion.JOY -> "활기"
-        Emotion.CALM -> "평온"
-        Emotion.MELLOW -> "무덤덤"
-        Emotion.WEARY -> "지침"
-        Emotion.DOWN -> "울적"
     }
 
 private val WEEK_DAYS: List<DayOfWeek> = List(DAYS_IN_WEEK) { index -> DayOfWeek.SUNDAY.plus(index.toLong()) }

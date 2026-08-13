@@ -24,8 +24,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -178,7 +181,12 @@ private fun RowScope.PickerMonthCell(
         modifier =
             Modifier
                 .weight(1f)
-                .height(MonthCellHeight),
+                .height(MonthCellHeight)
+                .semantics {
+                    // 선택 월도 배경·글자색으로만 표현돼 접근성 서비스에는 보이지 않는다.
+                    selected = isSelected
+                    role = Role.RadioButton
+                },
         shape = RoundedCornerShape(MonthCellCornerRadius),
         color =
             if (isSelected) {
