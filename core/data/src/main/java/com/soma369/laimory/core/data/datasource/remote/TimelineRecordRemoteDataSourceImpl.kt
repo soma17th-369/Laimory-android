@@ -52,4 +52,8 @@ class TimelineRecordRemoteDataSourceImpl
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             safeApiCallUnit { api.deleteDailyRecord(recordDate.toString()) }
         }
+
+        override suspend fun saveDailyRecord(recordDate: LocalDate) {
+            safeApiCallUnit { api.saveDailyRecord(recordDate.toString()) }
+        }
     }

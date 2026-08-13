@@ -873,6 +873,8 @@ class HomeViewModelTest {
             timelineItemId: Long,
         ) = error("사용하지 않음")
 
+        override suspend fun saveDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
+
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }
 

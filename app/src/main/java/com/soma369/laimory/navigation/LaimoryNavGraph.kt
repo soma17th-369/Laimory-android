@@ -120,4 +120,5 @@ private fun UserMessage.toText(): String =
         UserMessage.SessionExpired -> "세션이 만료되었습니다. 다시 로그인해 주세요."
         UserMessage.UnsupportedFeature -> "현재 버전에서 지원하지 않는 기능입니다."
         UserMessage.TemporaryUnavailable -> "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        UserMessage.DailyRecordSaved -> "하루 기록 작성을 완료했어요."
     }

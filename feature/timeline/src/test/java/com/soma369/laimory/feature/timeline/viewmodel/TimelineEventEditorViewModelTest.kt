@@ -636,6 +636,8 @@ class TimelineEventEditorViewModelTest {
             deletedPhotoIds += timelineEventId to timelineItemId
         }
 
+        override suspend fun saveDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
+
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = Unit
     }
 

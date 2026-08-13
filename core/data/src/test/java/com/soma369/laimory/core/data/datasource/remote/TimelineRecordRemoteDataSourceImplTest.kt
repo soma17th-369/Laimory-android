@@ -290,6 +290,19 @@ class TimelineRecordRemoteDataSourceImplTest {
         }
 
     @Test
+    fun `하루 기록 저장은 날짜 save 경로에 빈 body로 POST한다`() =
+        runTest {
+            server.enqueue(successUnitResponse())
+
+            remote.saveDailyRecord(RECORD_DATE)
+
+            val request = server.takeRequest()
+            assertEquals("POST", request.method)
+            assertEquals("/timeline/daily-records/2026-07-27/save", request.path)
+            assertEquals(0L, request.bodySize)
+        }
+
+    @Test
     fun `사진 삭제 실패 응답은 502와 기능 오류 코드를 보존한다`() =
         runTest {
             server.enqueue(

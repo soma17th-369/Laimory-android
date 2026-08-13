@@ -11,6 +11,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
+import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 
@@ -54,6 +55,11 @@ interface TimelineRecordApi {
 
     @DELETE("timeline/daily-records/{recordDate}")
     suspend fun deleteDailyRecord(
+        @Path("recordDate") recordDate: String,
+    ): Response<ApiResponse<Unit>>
+
+    @POST("timeline/daily-records/{recordDate}/save")
+    suspend fun saveDailyRecord(
         @Path("recordDate") recordDate: String,
     ): Response<ApiResponse<Unit>>
 }

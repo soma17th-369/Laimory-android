@@ -1,11 +1,17 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
+import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
+import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
+import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
@@ -33,15 +39,18 @@ class TimelineRecordViewModel
         observeTimelineRecordUseCase: ObserveTimelineRecordUseCase,
         private val getDailyRecordUseCase: GetDailyRecordUseCase,
         private val saveTimelineRecordUseCase: SaveTimelineRecordUseCase,
+        private val completeDailyRecordUseCase: CompleteDailyRecordUseCase,
         private val updateTimelineEventMemoUseCase: UpdateTimelineEventMemoUseCase,
         private val deleteDailyRecordUseCase: DeleteDailyRecordUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
+        private val messageHelper: MessageHelper,
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
         ) {
         private var requestedRecordDate: LocalDate? = null
         private var loadJob: Job? = null
+        private var saveJob: Job? = null
 
         init {
             safeLaunch {
@@ -70,13 +79,16 @@ class TimelineRecordViewModel
                 TimelineRecordUiIntent.RetryLoad -> requestedRecordDate?.let(::loadRecord)
                 TimelineRecordUiIntent.NavigateBack ->
                     navigateBack()
+                TimelineRecordUiIntent.RequestSave -> saveRecord()
                 TimelineRecordUiIntent.RequestDelete -> requestDelete()
                 TimelineRecordUiIntent.ConfirmDelete -> deleteRecord()
                 TimelineRecordUiIntent.DismissDelete -> dismissDelete()
                 TimelineRecordUiIntent.FinishDelete -> finishDelete()
                 is TimelineRecordUiIntent.SelectEvent ->
                     if (state.value.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                        state.value.memoEditor == null
+                        !state.value.isSavingRecord &&
+                        state.value.memoEditor == null &&
+                        state.value.editableRecord() != null
                     ) {
                         navigationHelper.navigateTo(TimelineEventEditorPage(intent.timelineEventId))
                     }
@@ -89,7 +101,7 @@ class TimelineRecordViewModel
 
         private fun navigateBack() {
             val current = state.value
-            if (current.isDeleting || current.memoEditor?.isSaving == true) return
+            if (current.isDeleting || current.isSavingRecord || current.memoEditor?.isSaving == true) return
             if (current.memoEditor != null) {
                 updateState { copy(memoEditor = null) }
             } else {
@@ -104,9 +116,11 @@ class TimelineRecordViewModel
                 updateState { copy(content = TimelineRecordUiContent.Unavailable, memoEditor = null) }
                 return
             }
+            // Record가 표시 중일 때만 재조회를 생략한다 — 저장 종결(Unavailable) 뒤 재진입이나
+            // 실패 상태는 다시 조회해 재사용된 ViewModel의 잔여 상태를 서버 기준으로 되돌린다.
             val isAlreadyPresented =
                 requestedRecordDate == recordDate &&
-                    state.value.content !is TimelineRecordUiContent.LoadFailed
+                    state.value.content is TimelineRecordUiContent.Record
             if (isAlreadyPresented) return
             requestedRecordDate = recordDate
             loadRecord(recordDate)
@@ -148,9 +162,83 @@ class TimelineRecordViewModel
                 }
         }
 
+        /**
+         * 확인 없이 즉시 작성 완료를 요청한다.
+         *
+         * 네트워크 대기가 직렬 Intent 루프를 점유하면 저장 중 들어온 Intent가 가드 대신 큐에 쌓여
+         * 실패 직후 재실행되므로, 요청은 별도 Job에서 수행하고 루프는 즉시 반환한다.
+         */
+        private fun saveRecord() {
+            val current = state.value
+            val record = current.editableRecord() ?: return
+            if (current.isSavingRecord ||
+                saveJob?.isActive == true ||
+                current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.memoEditor != null
+            ) {
+                return
+            }
+
+            updateState { copy(isSavingRecord = true) }
+            saveJob =
+                safeLaunch(onError = ::handleSaveFailure) {
+                    completeDailyRecordUseCase(record.recordDate)
+                        .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
+                        .onFailure(::handleSaveFailure)
+                }
+        }
+
+        private suspend fun handleSaveOutcome(
+            outcome: CompleteDailyRecordOutcome,
+            recordDate: LocalDate,
+        ) {
+            // 확정·소실 모두 화면 상태를 먼저 종결한다 — 중복 요청을 차단하고, 엔트리 밖 수명으로
+            // 재사용될 수 있는 ViewModel에 저장 중 상태가 남지 않게 한다.
+            updateState { copy(content = TimelineRecordUiContent.Unavailable, isSavingRecord = false) }
+            // 로컬 추적 정리 실패(DataStore I/O 등)는 이미 끝난 서버 저장을 되돌리지 않으므로
+            // 결과 반영을 막지 않는다. 추적이 남아도 재진입 시 SAVED 기록을 읽기 전용으로 연다.
+            runCatching { discardDraftTracking(recordDate) }
+            when (outcome) {
+                CompleteDailyRecordOutcome.Completed,
+                CompleteDailyRecordOutcome.AlreadySaved,
+                -> {
+                    // 화면 side effect는 pop과 함께 수집이 끊길 수 있어 Root 수명 채널로 안내한다.
+                    messageHelper.send(UserMessage.DailyRecordSaved)
+                    navigationHelper.navigateToBack()
+                }
+                CompleteDailyRecordOutcome.RecordUnavailable ->
+                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 기록이에요."))
+            }
+        }
+
+        private fun handleSaveFailure(error: Throwable) {
+            updateState { copy(isSavingRecord = false) }
+            if (error is HandledException) return
+            val message =
+                if (error is ApiException.NetworkException) {
+                    "네트워크 상태를 확인한 뒤 다시 저장해주세요."
+                } else {
+                    "저장하지 못했어요. 잠시 후 다시 시도해주세요."
+                }
+            sendEffect(TimelineRecordUiSideEffect.ShowSnackbar(message))
+        }
+
+        private suspend fun discardDraftTracking(recordDate: LocalDate) {
+            val activeTask =
+                (draftTaskCoordinator.state.value as? DraftTaskTrackingState.WithTask)?.task
+            if (activeTask?.recordDate == recordDate) {
+                draftTaskCoordinator.discard()
+            }
+        }
+
         private fun requestDelete() {
-            val record = (state.value.content as? TimelineRecordUiContent.Record)?.value ?: return
-            if (state.value.deleteDialogState != TimelineDeleteDialogState.Hidden || state.value.memoEditor != null) return
+            val record = state.value.editableRecord() ?: return
+            if (state.value.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                state.value.isSavingRecord ||
+                state.value.memoEditor != null
+            ) {
+                return
+            }
             updateState {
                 copy(
                     deleteTarget =
@@ -239,13 +327,14 @@ class TimelineRecordViewModel
         private fun editMemo(timelineEventId: Long) {
             val current = state.value
             if (current.memoEditor != null ||
-                current.deleteDialogState != TimelineDeleteDialogState.Hidden
+                current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.isSavingRecord
             ) {
                 return
             }
             val event =
-                (current.content as? TimelineRecordUiContent.Record)
-                    ?.value
+                current
+                    .editableRecord()
                     ?.events
                     ?.firstOrNull { it.timelineEventId == timelineEventId }
                     ?: return
@@ -304,4 +393,6 @@ class TimelineRecordViewModel
                 else -> handleFailure(error)
             }
         }
+
+        private fun TimelineRecordUiState.editableRecord() = (content as? TimelineRecordUiContent.Record)?.value?.takeIf { it.isEditable }
     }

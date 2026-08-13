@@ -7,10 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -94,8 +99,10 @@ private fun TimelineRecordContent(
         }
     }
 
-    BackHandler(enabled = state.memoEditor != null) {
-        onIntent(TimelineRecordUiIntent.NavigateBack)
+    // 저장 중 시스템·예측 뒤로가기는 소비만 한다 — 요청이 진행 중인 채 화면을 벗어나면
+    // 완료 시점의 뒤늦은 pop이 다른 화면을 닫고 실패 안내도 유실된다.
+    BackHandler(enabled = state.memoEditor != null || state.isSavingRecord) {
+        if (!state.isSavingRecord) onIntent(TimelineRecordUiIntent.NavigateBack)
     }
 
     TimelineRecordScreen(
@@ -147,12 +154,13 @@ private fun TimelineRecordScreen(
             },
             onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
             actions = {
-                if (state.content is TimelineRecordUiContent.Record) {
+                if ((state.content as? TimelineRecordUiContent.Record)?.value?.isEditable == true) {
                     Box {
                         IconButton(
                             onClick = { isRecordMenuExpanded = true },
                             enabled =
                                 state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                                    !state.isSavingRecord &&
                                     state.memoEditor == null,
                         ) {
                             Icon(
@@ -191,22 +199,35 @@ private fun TimelineRecordScreen(
                     onRetryClick = { onIntent(TimelineRecordUiIntent.RetryLoad) },
                 )
             is TimelineRecordUiContent.Record ->
-                TimelineRecordBody(
-                    record = content.value,
-                    memoEditor = state.memoEditor,
-                    onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
-                    onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
-                    onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
-                    onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
-                    onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
-                    onPhotoClick = { photoUrls, initialIndex ->
-                        photoViewerState =
-                            TimelinePhotoViewerState(
-                                photoUrls = photoUrls,
-                                initialIndex = initialIndex,
-                            )
-                    },
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TimelineRecordBody(
+                        record = content.value,
+                        memoEditor = state.memoEditor,
+                        onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
+                        onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
+                        onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
+                        onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
+                        onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
+                        onPhotoClick = { photoUrls, initialIndex ->
+                            photoViewerState =
+                                TimelinePhotoViewerState(
+                                    photoUrls = photoUrls,
+                                    initialIndex = initialIndex,
+                                )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (content.value.isEditable) {
+                        SaveRecordButton(
+                            enabled =
+                                !state.isSavingRecord &&
+                                    state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                                    state.memoEditor == null,
+                            isLoading = state.isSavingRecord,
+                            onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
+                        )
+                    }
+                }
         }
     }
 
@@ -303,15 +324,16 @@ private fun TimelineRecordBody(
     onMemoCancel: () -> Unit,
     onMemoConfirm: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (record.events.isEmpty()) {
-        TimelineRecordEmpty()
+        TimelineRecordEmpty(modifier = modifier)
         return
     }
 
     LazyColumn(
         modifier =
-            Modifier
+            modifier
                 .fillMaxSize()
                 .imePadding(),
         contentPadding = PaddingValues(horizontal = Spacing.large, vertical = Spacing.small),
@@ -325,11 +347,42 @@ private fun TimelineRecordBody(
                 event = event,
                 onEditClick = { onEventClick(event.timelineEventId) },
                 onPhotoClick = onPhotoClick,
+                isEditable = record.isEditable,
                 memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = onMemoChange,
                 onMemoCancel = onMemoCancel,
                 onMemoConfirm = onMemoConfirm,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SaveRecordButton(
+    enabled: Boolean,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.large, vertical = Spacing.medium)
+                .height(52.dp),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            Text(
+                text = "저장하기",
+                style = MaterialTheme.typography.titleSmall,
             )
         }
     }
@@ -341,10 +394,10 @@ private data class TimelinePhotoViewerState(
 )
 
 @Composable
-private fun TimelineRecordEmpty() {
+private fun TimelineRecordEmpty(modifier: Modifier = Modifier) {
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxSize()
                 .padding(horizontal = Spacing.large, vertical = Spacing.small),
     ) {
@@ -457,6 +510,7 @@ private fun previewRecord() =
     TimelineRecordUiModel(
         dailyRecordId = 31L,
         recordDate = LocalDate.of(2026, 5, 8),
+        isEditable = true,
         events =
             listOf(
                 TimelineEventUiModel(

@@ -1,5 +1,7 @@
 package com.soma369.laimory.core.data.model.timeline.response
 
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
+import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
@@ -20,6 +22,20 @@ class DailyTimelineListResponseTest {
             explicitNulls = false
             coerceInputValues = true
         }
+
+    @Test
+    fun `status는 DRAFT와 SAVED만 도메인 상태로 매핑하고 그 외는 null로 수렴한다`() {
+        fun decode(statusJson: String): DailyTimeline =
+            json
+                .decodeFromString<DailyTimelineResponse>(
+                    """{"dailyRecordId":1,"recordDate":"2026-08-12","events":[]$statusJson}""",
+                ).toDomain()
+
+        assertEquals(DailyRecordStatus.DRAFT, decode(""","status":"DRAFT"""").status)
+        assertEquals(DailyRecordStatus.SAVED, decode(""","status":"SAVED"""").status)
+        assertNull(decode("").status)
+        assertNull(decode(""","status":"ARCHIVED"""").status)
+    }
 
     @Test
     fun `빈 timelines는 빈 Domain 목록으로 매핑한다`() {

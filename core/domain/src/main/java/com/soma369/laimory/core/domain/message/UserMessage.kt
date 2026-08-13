@@ -14,4 +14,7 @@ sealed interface UserMessage {
 
     /** 일시적 오류 — 잠시 후 재시도. */
     data object TemporaryUnavailable : UserMessage
+
+    /** 하루 기록 작성 완료 — 화면 pop 이후에도 Root 채널로 안내한다. */
+    data object DailyRecordSaved : UserMessage
 }

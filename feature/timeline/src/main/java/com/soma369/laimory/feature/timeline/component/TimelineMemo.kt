@@ -57,6 +57,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 internal fun TimelineMemo(
     memo: String?,
     editor: TimelineMemoEditorState?,
+    isEditable: Boolean,
     onClick: () -> Unit,
     onValueChange: (String) -> Unit,
     onCancel: () -> Unit,
@@ -71,7 +72,7 @@ internal fun TimelineMemo(
                     .dashedRoundRectBorder(
                         color = MaterialTheme.colorScheme.outline,
                         cornerRadius = MaterialTheme.shapes.medium.topStart,
-                    ).clickable(onClick = onClick)
+                    ).clickable(enabled = isEditable, onClick = onClick)
                     .padding(horizontal = Spacing.medium, vertical = 10.dp),
             style = MaterialTheme.laimorySignature.note,
             color =
