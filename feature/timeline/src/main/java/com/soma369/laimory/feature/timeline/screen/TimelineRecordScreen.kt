@@ -99,8 +99,10 @@ private fun TimelineRecordContent(
         }
     }
 
-    BackHandler(enabled = state.memoEditor != null) {
-        onIntent(TimelineRecordUiIntent.NavigateBack)
+    // 저장 중 시스템·예측 뒤로가기는 소비만 한다 — 요청이 진행 중인 채 화면을 벗어나면
+    // 완료 시점의 뒤늦은 pop이 다른 화면을 닫고 실패 안내도 유실된다.
+    BackHandler(enabled = state.memoEditor != null || state.isSavingRecord) {
+        if (!state.isSavingRecord) onIntent(TimelineRecordUiIntent.NavigateBack)
     }
 
     TimelineRecordScreen(

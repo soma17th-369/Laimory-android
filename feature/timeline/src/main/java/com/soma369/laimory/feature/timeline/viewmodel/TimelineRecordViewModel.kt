@@ -50,6 +50,7 @@ class TimelineRecordViewModel
         ) {
         private var requestedRecordDate: LocalDate? = null
         private var loadJob: Job? = null
+        private var saveJob: Job? = null
 
         init {
             safeLaunch {
@@ -161,11 +162,17 @@ class TimelineRecordViewModel
                 }
         }
 
-        /** 확인 다이얼로그 없이 즉시 작성 완료를 요청한다. 진행 중에는 CTA 로딩으로 중복을 막는다. */
-        private suspend fun saveRecord() {
+        /**
+         * 확인 없이 즉시 작성 완료를 요청한다.
+         *
+         * 네트워크 대기가 직렬 Intent 루프를 점유하면 저장 중 들어온 Intent가 가드 대신 큐에 쌓여
+         * 실패 직후 재실행되므로, 요청은 별도 Job에서 수행하고 루프는 즉시 반환한다.
+         */
+        private fun saveRecord() {
             val current = state.value
             val record = current.editableRecord() ?: return
             if (current.isSavingRecord ||
+                saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
                 current.memoEditor != null
             ) {
@@ -173,19 +180,24 @@ class TimelineRecordViewModel
             }
 
             updateState { copy(isSavingRecord = true) }
-            completeDailyRecordUseCase(record.recordDate)
-                .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
-                .onFailure(::handleSaveFailure)
+            saveJob =
+                safeLaunch(onError = ::handleSaveFailure) {
+                    completeDailyRecordUseCase(record.recordDate)
+                        .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
+                        .onFailure(::handleSaveFailure)
+                }
         }
 
         private suspend fun handleSaveOutcome(
             outcome: CompleteDailyRecordOutcome,
             recordDate: LocalDate,
         ) {
-            discardDraftTracking(recordDate)
-            // 확정·소실 모두 화면 상태를 즉시 종결한다 — 큐에 남은 중복 요청을 동기 차단하고,
-            // 엔트리 밖 수명으로 재사용될 수 있는 ViewModel에 저장 중 상태가 남지 않게 한다.
+            // 확정·소실 모두 화면 상태를 먼저 종결한다 — 중복 요청을 차단하고, 엔트리 밖 수명으로
+            // 재사용될 수 있는 ViewModel에 저장 중 상태가 남지 않게 한다.
             updateState { copy(content = TimelineRecordUiContent.Unavailable, isSavingRecord = false) }
+            // 로컬 추적 정리 실패(DataStore I/O 등)는 이미 끝난 서버 저장을 되돌리지 않으므로
+            // 결과 반영을 막지 않는다. 추적이 남아도 재진입 시 SAVED 기록을 읽기 전용으로 연다.
+            runCatching { discardDraftTracking(recordDate) }
             when (outcome) {
                 CompleteDailyRecordOutcome.Completed,
                 CompleteDailyRecordOutcome.AlreadySaved,

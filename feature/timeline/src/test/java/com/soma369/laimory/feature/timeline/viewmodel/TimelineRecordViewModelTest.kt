@@ -571,6 +571,70 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `저장 실패 뒤 큐에 쌓인 요청이 자동으로 재실행되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.saveGate = gate
+            recordRepository.saveFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            // 저장 I/O가 Intent 루프를 점유하지 않으므로 중복 요청은 큐가 아니라 가드에서 걸러진다.
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+            assertEquals(false, viewModel.state.value.isSavingRecord)
+            assertEquals(0, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `저장 중 뒤로가기 요청은 실패 이후에도 화면을 닫지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.saveGate = gate
+            recordRepository.saveFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.NavigateBack)
+            runCurrent()
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(0, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `초안 추적 정리에 실패해도 저장 결과를 반영하고 이후 Intent를 계속 처리한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftTaskCoordinator.discardFailure = IllegalStateException("DataStore 정리 실패")
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+            assertEquals(false, viewModel.state.value.isSavingRecord)
+            assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
+            assertEquals(listOf(UserMessage.DailyRecordSaved), messageHelper.sent)
+            assertEquals(1, navigationHelper.backCount)
+
+            // Intent 소비 루프가 살아 있어 후속 Intent가 계속 처리된다.
+            viewModel.sendIntent(TimelineRecordUiIntent.RetryLoad)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
+        }
+
+    @Test
     fun `읽기 전용 기록은 편집과 삭제 진입을 전부 무시한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel =
@@ -923,6 +987,7 @@ class TimelineRecordViewModelTest {
             )
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
         var discardCount = 0
+        var discardFailure: Throwable? = null
 
         fun setActiveTask(recordDate: LocalDate) {
             mutableState.value = successState(recordDate)
@@ -945,6 +1010,7 @@ class TimelineRecordViewModelTest {
 
         override suspend fun discard() {
             discardCount++
+            discardFailure?.let { throw it }
             mutableState.value = DraftTaskTrackingState.Idle
         }
 
