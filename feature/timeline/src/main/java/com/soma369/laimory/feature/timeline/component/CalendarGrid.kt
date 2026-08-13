@@ -2,25 +2,29 @@ package com.soma369.laimory.feature.timeline.component
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -35,10 +39,16 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.model.CalendarMonthGrid
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
 import com.soma369.laimory.feature.timeline.model.DAYS_IN_WEEK
+import com.soma369.laimory.feature.timeline.model.MONTH_PAGE_COUNT
+import com.soma369.laimory.feature.timeline.model.monthOfPagerPage
+import com.soma369.laimory.feature.timeline.model.toCalendarMonthGrid
+import com.soma369.laimory.feature.timeline.model.toPagerPage
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.abs
 
 /** 일요일 시작 요일 헤더. 일요일만 error 계열로 구분한다(공휴일 색은 정본 데이터가 없어 범위 밖). */
 @Composable
@@ -62,11 +72,72 @@ internal fun CalendarWeekdayHeader(modifier: Modifier = Modifier) {
 }
 
 /**
- * 월간 날짜 격자.
+ * 월간 격자를 좌우로 넘기는 pager.
  *
- * 좌우 스와이프로 월을 넘긴다. 스와이프는 TalkBack 에 노출되지 않으므로 같은 동작을 접근성
- * 커스텀 액션으로도 제공한다.
+ * 드래그가 손가락을 따라오고 손을 떼면 가까운 달로 정착한다. 페이지 번호와 월은
+ * [toPagerPage]·[monthOfPagerPage] 로 1:1 대응하므로 앵커 상태를 따로 들지 않는다.
+ * 정착한 페이지만 [onVisibleMonthChange] 로 올려 드래그 중간 값이 상태에 새지 않게 한다.
+ *
+ * 스와이프는 TalkBack 에 노출되지 않으므로 같은 이동을 접근성 커스텀 액션으로도 제공한다.
  */
+@Composable
+internal fun CalendarMonthPager(
+    visibleMonth: YearMonth,
+    recordsByDate: Map<LocalDate, CalendarRecordUiModel>,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    onSelectDate: (LocalDate) -> Unit,
+    onVisibleMonthChange: (YearMonth) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val pagerState = rememberPagerState(initialPage = visibleMonth.toPagerPage()) { MONTH_PAGE_COUNT }
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .collect { page -> onVisibleMonthChange(monthOfPagerPage(page)) }
+    }
+    // 연·월 피커처럼 pager 밖에서 월이 바뀌면 따라 맞춘다.
+    LaunchedEffect(visibleMonth) {
+        val target = visibleMonth.toPagerPage()
+        if (target == pagerState.currentPage) return@LaunchedEffect
+        // 옆 달은 넘어가는 게 보이도록 애니메이션하고, 멀리 뛸 때는 즉시 옮긴다.
+        if (abs(target - pagerState.currentPage) <= 1) {
+            pagerState.animateScrollToPage(target)
+        } else {
+            pagerState.scrollToPage(target)
+        }
+    }
+
+    HorizontalPager(
+        state = pagerState,
+        modifier =
+            modifier.fillMaxWidth().semantics {
+                customActions =
+                    listOf(
+                        CustomAccessibilityAction("이전 달 보기") {
+                            onVisibleMonthChange(visibleMonth.minusMonths(1))
+                            true
+                        },
+                        CustomAccessibilityAction("다음 달 보기") {
+                            onVisibleMonthChange(visibleMonth.plusMonths(1))
+                            true
+                        },
+                    )
+            },
+    ) { page ->
+        val month = monthOfPagerPage(page)
+        CalendarMonthGridView(
+            grid = remember(month) { month.toCalendarMonthGrid() },
+            recordsByDate = recordsByDate,
+            selectedDate = selectedDate,
+            today = today,
+            onSelectDate = onSelectDate,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+/** 한 달치 날짜 격자. */
 @Composable
 internal fun CalendarMonthGridView(
     grid: CalendarMonthGrid,
@@ -74,42 +145,9 @@ internal fun CalendarMonthGridView(
     selectedDate: LocalDate,
     today: LocalDate,
     onSelectDate: (LocalDate) -> Unit,
-    onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .pointerInput(onPreviousMonth, onNextMonth) {
-                    var dragged = 0f
-                    detectHorizontalDragGestures(
-                        onDragStart = { dragged = 0f },
-                        onDragEnd = {
-                            when {
-                                dragged >= MonthSwipeThreshold.toPx() -> onPreviousMonth()
-                                dragged <= -MonthSwipeThreshold.toPx() -> onNextMonth()
-                            }
-                        },
-                    ) { change, dragAmount ->
-                        dragged += dragAmount
-                        change.consume()
-                    }
-                }.semantics {
-                    customActions =
-                        listOf(
-                            CustomAccessibilityAction("이전 달 보기") {
-                                onPreviousMonth()
-                                true
-                            },
-                            CustomAccessibilityAction("다음 달 보기") {
-                                onNextMonth()
-                                true
-                            },
-                        )
-                },
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         // 주 사이를 띄우지 않는다. Figma 는 행 간격 2px 을 선언하지만 셀 테두리가 그 틈을 거의 메워
         // 렌더 결과는 열 경계와 같은 연속된 hairline 이다. 간격을 그대로 옮기면 배경이 드러나
         // 가로선만 끊어져 보인다.
@@ -247,5 +285,4 @@ private val DayNumberBoxSize = 32.dp
 private val CellBorderWidth = 0.5.dp
 private val SelectedCellBorderWidth = 1.5.dp
 private val SelectedCellCornerRadius = 8.dp
-private val MonthSwipeThreshold = 48.dp
 private const val CELL_BORDER_ALPHA = 0.5f

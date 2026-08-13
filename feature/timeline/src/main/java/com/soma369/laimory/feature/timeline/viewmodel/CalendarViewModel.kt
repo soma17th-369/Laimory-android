@@ -38,8 +38,7 @@ class CalendarViewModel
                 }
 
                 CalendarUiIntent.RetryLoad -> syncRecords()
-                CalendarUiIntent.ShowPreviousMonth -> shiftVisibleMonth(-1)
-                CalendarUiIntent.ShowNextMonth -> shiftVisibleMonth(1)
+                is CalendarUiIntent.ShowMonth -> showMonth(intent.month)
                 is CalendarUiIntent.SelectDate -> selectDate(intent.date)
 
                 CalendarUiIntent.OpenMonthPicker ->
@@ -104,8 +103,8 @@ class CalendarViewModel
         }
 
         /** 월 전환은 선택 날짜를 건드리지 않는다 — TopBar 월 표기만 따라 바뀐다. */
-        private fun shiftVisibleMonth(months: Long) {
-            updateState { copy(visibleMonth = visibleMonth.plusMonths(months)) }
+        private fun showMonth(month: YearMonth) {
+            updateState { if (month == visibleMonth) this else copy(visibleMonth = month) }
         }
 
         /** 피커 연도만 넘긴다. 월을 고르지 않고 닫으면 달력은 원래 월에 그대로 있다. */

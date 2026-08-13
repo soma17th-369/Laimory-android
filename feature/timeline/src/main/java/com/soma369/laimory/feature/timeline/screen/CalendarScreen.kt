@@ -19,7 +19,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,11 +38,10 @@ import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
-import com.soma369.laimory.feature.timeline.component.CalendarMonthGridView
+import com.soma369.laimory.feature.timeline.component.CalendarMonthPager
 import com.soma369.laimory.feature.timeline.component.CalendarMonthPickerDialog
 import com.soma369.laimory.feature.timeline.component.CalendarWeekdayHeader
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
-import com.soma369.laimory.feature.timeline.model.toCalendarMonthGrid
 import com.soma369.laimory.feature.timeline.state.CalendarMonthPickerState
 import com.soma369.laimory.feature.timeline.state.CalendarRecordsUiContent
 import com.soma369.laimory.feature.timeline.state.CalendarUiIntent
@@ -129,19 +127,16 @@ private fun CalendarScreen(
                 CalendarRecordsUiContent.LoadFailed ->
                     CalendarLoadFailed(onRetryClick = { onIntent(CalendarUiIntent.RetryLoad) })
 
-                is CalendarRecordsUiContent.Content -> {
-                    val grid = remember(state.visibleMonth) { state.visibleMonth.toCalendarMonthGrid() }
-                    CalendarMonthGridView(
-                        grid = grid,
+                is CalendarRecordsUiContent.Content ->
+                    CalendarMonthPager(
+                        visibleMonth = state.visibleMonth,
                         recordsByDate = state.content.recordsByDate,
                         selectedDate = state.selectedDate,
                         today = state.today,
                         onSelectDate = { date -> onIntent(CalendarUiIntent.SelectDate(date)) },
-                        onPreviousMonth = { onIntent(CalendarUiIntent.ShowPreviousMonth) },
-                        onNextMonth = { onIntent(CalendarUiIntent.ShowNextMonth) },
+                        onVisibleMonthChange = { month -> onIntent(CalendarUiIntent.ShowMonth(month)) },
                         modifier = Modifier.weight(1f),
                     )
-                }
             }
         }
     }

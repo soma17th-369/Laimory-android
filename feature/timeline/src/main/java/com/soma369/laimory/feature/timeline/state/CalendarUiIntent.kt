@@ -11,9 +11,10 @@ sealed interface CalendarUiIntent : UiIntent {
     /** 조회 실패 상태에서의 명시적 다시 시도. */
     data object RetryLoad : CalendarUiIntent
 
-    data object ShowPreviousMonth : CalendarUiIntent
-
-    data object ShowNextMonth : CalendarUiIntent
+    /** pager 가 정착한 월 또는 접근성 액션으로 옮긴 월. 선택 날짜는 건드리지 않는다. */
+    data class ShowMonth(
+        val month: YearMonth,
+    ) : CalendarUiIntent
 
     /** 날짜 선택. 기록이 있는 날짜만 타임라인 기록 화면으로 진입한다. */
     data class SelectDate(

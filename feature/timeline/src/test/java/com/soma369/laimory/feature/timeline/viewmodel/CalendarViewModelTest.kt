@@ -103,7 +103,7 @@ class CalendarViewModelTest {
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
 
-            viewModel.sendIntent(CalendarUiIntent.ShowNextMonth)
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(2026, 6)))
             advanceUntilIdle()
 
             assertTrue(viewModel.state.value.content is CalendarRecordsUiContent.Content)
@@ -179,13 +179,13 @@ class CalendarViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
 
-            repeat(14) { viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth) }
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(1901, 3)))
             advanceUntilIdle()
-            assertEquals(YearMonth.of(2025, 3), viewModel.state.value.visibleMonth)
+            assertEquals(YearMonth.of(1901, 3), viewModel.state.value.visibleMonth)
 
-            repeat(28) { viewModel.sendIntent(CalendarUiIntent.ShowNextMonth) }
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(2999, 12)))
             advanceUntilIdle()
-            assertEquals(YearMonth.of(2027, 7), viewModel.state.value.visibleMonth)
+            assertEquals(YearMonth.of(2999, 12), viewModel.state.value.visibleMonth)
 
             assertEquals(TODAY, viewModel.state.value.selectedDate)
         }
@@ -263,11 +263,7 @@ class CalendarViewModelTest {
     fun `연·월 피커는 표시 중인 월의 연도로 열린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
-            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
-            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
-            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
-            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
-            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(2025, 12)))
             advanceUntilIdle()
             assertEquals(YearMonth.of(2025, 12), viewModel.state.value.visibleMonth)
 
