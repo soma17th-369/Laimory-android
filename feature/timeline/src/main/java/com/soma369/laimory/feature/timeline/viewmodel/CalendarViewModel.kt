@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.timeline.model.toCalendarRecordsByDate
+import com.soma369.laimory.feature.timeline.state.CalendarMonthPickerState
 import com.soma369.laimory.feature.timeline.state.CalendarRecordsUiContent
 import com.soma369.laimory.feature.timeline.state.CalendarUiIntent
 import com.soma369.laimory.feature.timeline.state.CalendarUiSideEffect
@@ -40,6 +41,15 @@ class CalendarViewModel
                 CalendarUiIntent.ShowPreviousMonth -> shiftVisibleMonth(-1)
                 CalendarUiIntent.ShowNextMonth -> shiftVisibleMonth(1)
                 is CalendarUiIntent.SelectDate -> selectDate(intent.date)
+
+                CalendarUiIntent.OpenMonthPicker ->
+                    updateState { copy(monthPicker = CalendarMonthPickerState(visibleMonth.year)) }
+
+                CalendarUiIntent.DismissMonthPicker -> updateState { copy(monthPicker = null) }
+                CalendarUiIntent.ShowPreviousPickerYear -> shiftPickerYear(-1)
+                CalendarUiIntent.ShowNextPickerYear -> shiftPickerYear(1)
+                is CalendarUiIntent.SelectMonth ->
+                    updateState { copy(visibleMonth = intent.month, monthPicker = null) }
             }
         }
 
@@ -96,6 +106,14 @@ class CalendarViewModel
         /** 월 전환은 선택 날짜를 건드리지 않는다 — TopBar 월 표기만 따라 바뀐다. */
         private fun shiftVisibleMonth(months: Long) {
             updateState { copy(visibleMonth = visibleMonth.plusMonths(months)) }
+        }
+
+        /** 피커 연도만 넘긴다. 월을 고르지 않고 닫으면 달력은 원래 월에 그대로 있다. */
+        private fun shiftPickerYear(years: Int) {
+            updateState {
+                val picker = monthPicker ?: return@updateState this
+                copy(monthPicker = picker.copy(year = picker.year + years))
+            }
         }
 
         private fun selectDate(date: LocalDate) {

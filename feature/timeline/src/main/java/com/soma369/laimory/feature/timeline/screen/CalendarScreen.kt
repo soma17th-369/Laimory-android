@@ -1,13 +1,18 @@
 package com.soma369.laimory.feature.timeline.screen
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -17,6 +22,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -30,9 +40,11 @@ import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.CalendarMonthGridView
+import com.soma369.laimory.feature.timeline.component.CalendarMonthPickerDialog
 import com.soma369.laimory.feature.timeline.component.CalendarWeekdayHeader
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
 import com.soma369.laimory.feature.timeline.model.toCalendarMonthGrid
+import com.soma369.laimory.feature.timeline.state.CalendarMonthPickerState
 import com.soma369.laimory.feature.timeline.state.CalendarRecordsUiContent
 import com.soma369.laimory.feature.timeline.state.CalendarUiIntent
 import com.soma369.laimory.feature.timeline.state.CalendarUiState
@@ -42,6 +54,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.soma369.laimory.core.ui.R as UiR
 
 @Composable
 fun CalendarRoute(
@@ -92,7 +105,12 @@ private fun CalendarScreen(
                 .padding(innerPadding),
     ) {
         LaimoryTopAppBar(
-            title = { Text(state.visibleMonth.format(VisibleMonthFormat)) },
+            title = {
+                VisibleMonthTitle(
+                    visibleMonth = state.visibleMonth,
+                    onClick = { onIntent(CalendarUiIntent.OpenMonthPicker) },
+                )
+            },
             // 바텀바 탭 루트라 뒤로가기를 노출하지 않는다.
             onBackClick = null,
         )
@@ -126,6 +144,48 @@ private fun CalendarScreen(
                 }
             }
         }
+    }
+
+    state.monthPicker?.let { picker ->
+        CalendarMonthPickerDialog(
+            pickerYear = picker.year,
+            visibleMonth = state.visibleMonth,
+            onPreviousYear = { onIntent(CalendarUiIntent.ShowPreviousPickerYear) },
+            onNextYear = { onIntent(CalendarUiIntent.ShowNextPickerYear) },
+            onSelectMonth = { month -> onIntent(CalendarUiIntent.SelectMonth(month)) },
+            onDismiss = { onIntent(CalendarUiIntent.DismissMonthPicker) },
+        )
+    }
+}
+
+/** 표시 월 표기이자 연·월 피커 진입점. 눌러서 이동할 수 있음을 caret 으로 드러낸다. */
+@Composable
+private fun VisibleMonthTitle(
+    visibleMonth: YearMonth,
+    onClick: () -> Unit,
+) {
+    val label = visibleMonth.format(VisibleMonthFormat)
+    Row(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(TitleCornerRadius))
+                .clickable(onClick = onClick)
+                .padding(horizontal = Spacing.small, vertical = Spacing.extraSmall)
+                .semantics { contentDescription = "$label, 눌러서 연·월 선택" },
+        horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label)
+        Icon(
+            painter = painterResource(UiR.drawable.ico_default_caret_right),
+            contentDescription = null,
+            // 아래 방향 caret 전용 에셋이 없어 오른쪽 caret 을 90도 돌려 쓴다.
+            modifier =
+                Modifier
+                    .size(TitleCaretSize)
+                    .rotate(TITLE_CARET_ROTATION),
+            tint = MaterialTheme.colorScheme.onBackground,
+        )
     }
 }
 
@@ -181,6 +241,9 @@ private val VisibleMonthFormat: DateTimeFormatter = DateTimeFormatter.ofPattern(
 
 /** Figma 요일 헤더 ↔ 주 격자 간격. spacing 토큰에 없는 값이라 화면 로컬 상수로 둔다. */
 private val CalendarHeaderSpacing = 10.dp
+private val TitleCornerRadius = 8.dp
+private val TitleCaretSize = 16.dp
+private const val TITLE_CARET_ROTATION = 90f
 
 @Preview(name = "기본", showBackground = true, heightDp = 760)
 @Composable
@@ -199,6 +262,11 @@ private fun CalendarScreenEmptyMonthPreview() =
         visibleMonth = YearMonth.of(2026, 8),
     )
 
+@Preview(name = "연·월 피커 열림", showBackground = true, heightDp = 760)
+@Composable
+private fun CalendarScreenMonthPickerPreview() =
+    PreviewCalendarScreen(previewContent(), monthPicker = CalendarMonthPickerState(year = 2026))
+
 @Preview(name = "로딩", showBackground = true, heightDp = 760)
 @Composable
 private fun CalendarScreenLoadingPreview() = PreviewCalendarScreen(CalendarRecordsUiContent.Loading)
@@ -215,6 +283,7 @@ private fun CalendarScreenLoadFailedPreview() = PreviewCalendarScreen(CalendarRe
 private fun PreviewCalendarScreen(
     content: CalendarRecordsUiContent,
     visibleMonth: YearMonth = YearMonth.of(2026, 5),
+    monthPicker: CalendarMonthPickerState? = null,
     darkTheme: Boolean = false,
 ) {
     LaimoryTheme(darkTheme = darkTheme) {
@@ -226,6 +295,7 @@ private fun PreviewCalendarScreen(
                     selectedDate = LocalDate.of(2026, 5, 26),
                     today = LocalDate.of(2026, 5, 26),
                     content = content,
+                    monthPicker = monthPicker,
                 ),
             onIntent = {},
         )

@@ -14,6 +14,8 @@ data class CalendarUiState(
     /** 기준 오늘. ON_RESUME 동기화마다 재계산해 자정 경과를 반영한다. */
     val today: LocalDate,
     val content: CalendarRecordsUiContent = CalendarRecordsUiContent.Loading,
+    /** 연·월 피커가 열려 있으면 non-null. */
+    val monthPicker: CalendarMonthPickerState? = null,
 ) : UiState {
     /** 조회 전·실패 상태에서는 빈 맵이라 모든 날짜가 "기록 없음"으로 다뤄진다. */
     val recordsByDate: Map<LocalDate, CalendarRecordUiModel>
