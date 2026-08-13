@@ -26,9 +26,9 @@ import com.soma369.laimory.feature.home.screen.DraftConsentRoute
 import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.settings.screen.SettingsRoute
+import com.soma369.laimory.feature.timeline.screen.CalendarRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineEventEditorRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRecordRoute
-import com.soma369.laimory.feature.timeline.screen.TimelineRoute
 import com.soma369.laimory.ui.PlaceholderScreen
 import com.soma369.laimory.core.ui.R as UiR
 
@@ -88,8 +88,7 @@ val appRoutes: List<AppRoute> =
                     activeIcon = UiR.drawable.ico_bot_nav_active_calendar,
                     inactiveIcon = UiR.drawable.ico_bot_nav_inactive_calendar,
                 ),
-            // 캘린더 화면이 준비되기 전까지 타임라인 셸을 이 탭에서 임시 호스팅한다.
-            render = { innerPadding, _ -> TimelineRoute(innerPadding = innerPadding) },
+            render = { innerPadding, _ -> CalendarRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = ReflectionPage.PATH,
