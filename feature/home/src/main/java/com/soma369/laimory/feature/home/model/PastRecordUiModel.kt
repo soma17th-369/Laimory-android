@@ -2,10 +2,10 @@ package com.soma369.laimory.feature.home.model
 
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
-import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
+import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.Emotion
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -42,13 +42,3 @@ internal fun DailyTimeline.toPastRecordUiModel(): PastRecordUiModel =
                         .thenBy(TimelineItem::timelineItemId),
                 )?.photoUrl,
     )
-
-private fun TimelineEmotion.toUiEmotionOrNull(): Emotion? =
-    when (this) {
-        TimelineEmotion.VERY_HAPPY -> Emotion.JOY
-        TimelineEmotion.HAPPY -> Emotion.CALM
-        TimelineEmotion.NEUTRAL -> Emotion.MELLOW
-        TimelineEmotion.UNHAPPY -> Emotion.WEARY
-        TimelineEmotion.VERY_UNHAPPY -> Emotion.DOWN
-        TimelineEmotion.UNKNOWN -> null
-    }
