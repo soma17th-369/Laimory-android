@@ -259,6 +259,87 @@ class CalendarViewModelTest {
             assertEquals(TODAY, viewModel.state.value.selectedDate)
         }
 
+    @Test
+    fun `연·월 피커는 표시 중인 월의 연도로 열린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousMonth)
+            advanceUntilIdle()
+            assertEquals(YearMonth.of(2025, 12), viewModel.state.value.visibleMonth)
+
+            viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
+            advanceUntilIdle()
+
+            assertEquals(2025, viewModel.state.value.monthPicker?.year)
+        }
+
+    @Test
+    fun `피커 연도만 넘기면 표시 월은 그대로다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
+            advanceUntilIdle()
+
+            repeat(3) { viewModel.sendIntent(CalendarUiIntent.ShowNextPickerYear) }
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousPickerYear)
+            advanceUntilIdle()
+
+            assertEquals(2028, viewModel.state.value.monthPicker?.year)
+            assertEquals(YearMonth.of(2026, 5), viewModel.state.value.visibleMonth)
+        }
+
+    @Test
+    fun `월을 고르면 표시 월을 옮기고 피커를 닫는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousPickerYear)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(CalendarUiIntent.SelectMonth(YearMonth.of(2025, 11)))
+            advanceUntilIdle()
+
+            assertEquals(YearMonth.of(2025, 11), viewModel.state.value.visibleMonth)
+            assertNull(viewModel.state.value.monthPicker)
+            // 월 전환은 스와이프와 마찬가지로 선택 날짜를 바꾸지 않는다.
+            assertEquals(TODAY, viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `피커를 그냥 닫으면 넘겨보던 연도는 버려진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
+            viewModel.sendIntent(CalendarUiIntent.ShowNextPickerYear)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(CalendarUiIntent.DismissMonthPicker)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.monthPicker)
+            assertEquals(YearMonth.of(2026, 5), viewModel.state.value.visibleMonth)
+
+            // 다시 열면 넘겨보던 연도가 아니라 표시 월의 연도에서 시작한다.
+            viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
+            advanceUntilIdle()
+            assertEquals(2026, viewModel.state.value.monthPicker?.year)
+        }
+
+    @Test
+    fun `피커가 닫혀 있으면 연도 이동 intent 를 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(CalendarUiIntent.ShowNextPickerYear)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.monthPicker)
+        }
+
     private fun createViewModel() =
         CalendarViewModel(
             getDailyRecordsUseCase = GetDailyRecordsUseCase(repository, messageHelper),
