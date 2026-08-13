@@ -418,12 +418,32 @@ class TimelineRecordViewModelTest {
 
             assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
             assertEquals(1, draftTaskCoordinator.discardCount)
-            // 성공 후에는 화면 이탈까지 저장 중 상태를 유지해 큐에 남은 중복 요청을 차단한다.
-            assertEquals(true, viewModel.state.value.isSavingRecord)
+            // 성공 시 화면 상태를 즉시 종결해 중복 요청을 동기 차단하고 잔여 저장 중 상태를 남기지 않는다.
+            assertEquals(false, viewModel.state.value.isSavingRecord)
+            assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
             assertEquals(1, navigationHelper.backCount)
             // 완료 안내는 화면 pop과 함께 수집이 끊기지 않도록 Root 수명 채널로 보낸다.
             assertEquals(listOf(UserMessage.DailyRecordSaved), messageHelper.sent)
             assertTrue(effects.isEmpty())
+        }
+
+    @Test
+    fun `저장 완료 후 같은 ViewModel로 재진입하면 서버 기준으로 다시 조회한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            advanceUntilIdle()
+            assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
+
+            // NavDisplay가 엔트리 스코프 ViewModel을 제공하지 않아 재진입 시 같은 인스턴스가 재사용된다.
+            recordRepository.dailyRecordResult =
+                Result.success(timeline(events = listOf(event()), status = DailyRecordStatus.SAVED))
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
+            advanceUntilIdle()
+
+            assertEquals(false, viewModel.state.value.isSavingRecord)
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(false, content.value.isEditable)
         }
 
     @Test

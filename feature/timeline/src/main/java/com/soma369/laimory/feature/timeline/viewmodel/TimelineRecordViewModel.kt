@@ -115,9 +115,11 @@ class TimelineRecordViewModel
                 updateState { copy(content = TimelineRecordUiContent.Unavailable, memoEditor = null) }
                 return
             }
+            // Record가 표시 중일 때만 재조회를 생략한다 — 저장 종결(Unavailable) 뒤 재진입이나
+            // 실패 상태는 다시 조회해 재사용된 ViewModel의 잔여 상태를 서버 기준으로 되돌린다.
             val isAlreadyPresented =
                 requestedRecordDate == recordDate &&
-                    state.value.content !is TimelineRecordUiContent.LoadFailed
+                    state.value.content is TimelineRecordUiContent.Record
             if (isAlreadyPresented) return
             requestedRecordDate = recordDate
             loadRecord(recordDate)
@@ -181,20 +183,19 @@ class TimelineRecordViewModel
             recordDate: LocalDate,
         ) {
             discardDraftTracking(recordDate)
+            // 확정·소실 모두 화면 상태를 즉시 종결한다 — 큐에 남은 중복 요청을 동기 차단하고,
+            // 엔트리 밖 수명으로 재사용될 수 있는 ViewModel에 저장 중 상태가 남지 않게 한다.
+            updateState { copy(content = TimelineRecordUiContent.Unavailable, isSavingRecord = false) }
             when (outcome) {
                 CompleteDailyRecordOutcome.Completed,
                 CompleteDailyRecordOutcome.AlreadySaved,
                 -> {
-                    // isSavingRecord는 화면 이탈까지 유지해 큐에 남은 중복 요청의 재실행을 막는다.
                     // 화면 side effect는 pop과 함께 수집이 끊길 수 있어 Root 수명 채널로 안내한다.
                     messageHelper.send(UserMessage.DailyRecordSaved)
                     navigationHelper.navigateToBack()
                 }
-                // 세션 정리로 화면은 Unavailable로 전환된다. 재시도가 가능해야 하므로 저장 중 상태는 푼다.
-                CompleteDailyRecordOutcome.RecordUnavailable -> {
-                    updateState { copy(isSavingRecord = false) }
+                CompleteDailyRecordOutcome.RecordUnavailable ->
                     sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 기록이에요."))
-                }
             }
         }
 
