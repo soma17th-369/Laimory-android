@@ -23,6 +23,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.component.EmotionIcon
+import com.soma369.laimory.core.ui.component.EmotionIconDefaults
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -66,7 +67,7 @@ internal fun PastRecordCard(
                     )
                     Spacer(modifier = Modifier.weight(1f))
                     // 감정을 알 수 없는 기록도 중립 아이콘으로 표시한다 — 캘린더 셀과 같은 공통 컴포넌트.
-                    EmotionIcon(emotion = record.emotion)
+                    EmotionIcon(emotion = record.emotion, size = EmotionIconDefaults.CompactSize)
                 }
                 Text(
                     text = record.summary ?: "기록된 이벤트가 없어요",

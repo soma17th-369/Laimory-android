@@ -109,8 +109,10 @@ internal fun CalendarMonthGridView(
                             },
                         )
                 },
-        verticalArrangement = Arrangement.spacedBy(WeekRowSpacing),
     ) {
+        // 주 사이를 띄우지 않는다. Figma 는 행 간격 2px 을 선언하지만 셀 테두리가 그 틈을 거의 메워
+        // 렌더 결과는 열 경계와 같은 연속된 hairline 이다. 간격을 그대로 옮기면 배경이 드러나
+        // 가로선만 끊어져 보인다.
         grid.weeks.forEach { week ->
             Row(modifier = Modifier.weight(1f)) {
                 week.forEach { date ->
@@ -241,7 +243,6 @@ private fun Emotion.label(): String =
 
 private val WEEK_DAYS: List<DayOfWeek> = List(DAYS_IN_WEEK) { index -> DayOfWeek.SUNDAY.plus(index.toLong()) }
 
-private val WeekRowSpacing = 2.dp
 private val DayNumberBoxSize = 32.dp
 private val CellBorderWidth = 0.5.dp
 private val SelectedCellBorderWidth = 1.5.dp

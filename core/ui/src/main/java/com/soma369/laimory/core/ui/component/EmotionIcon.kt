@@ -98,8 +98,16 @@ private fun Emotion.glyphRes(): Int =
     }
 
 object EmotionIconDefaults {
-    /** Figma `MoodEmoji` 컴포넌트 프레임 크기. */
-    val Size: Dp = 24.dp
+    /**
+     * Figma `MoodEmoji` 가 실제로 그려지는 지름.
+     *
+     * 컴포넌트 프레임은 24dp 지만 안쪽 원이 프레임을 넘겨 36dp 로 렌더된다(캘린더 셀 실측 기준).
+     * 레이아웃 슬롯이 아니라 눈에 보이는 크기를 정본으로 삼는다.
+     */
+    val Size: Dp = 36.dp
+
+    /** 목록 카드처럼 한 줄 안에 얹는 자리용 축소 크기. */
+    val CompactSize: Dp = 24.dp
 }
 
 private const val NEUTRAL_MARK_RATIO = 0.61f
