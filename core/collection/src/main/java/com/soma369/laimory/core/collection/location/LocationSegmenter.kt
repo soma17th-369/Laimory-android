@@ -39,6 +39,7 @@ internal sealed interface DetectedEvent {
  * - 반경 [dwellRadiusMeters] 안에서 [stayMillis] 이상 머물면 열린 체류를 확정하고 이후 샘플마다 갱신한다.
  * - 단발성 GPS 튐은 [requiredConsecutiveOutsideSamples] 연속 이탈 확인으로 흡수한다.
  * - [maxSampleGapMillis]보다 긴 공백은 이전 상태를 마지막 유효 샘플에서 닫고 새 구간을 시작한다.
+ * - 이동은 실제 지속 시간이 [minMovementDurationMillis] 이상일 때만 확정한다 — 모든 마감 경로에 같은 기준을 적용한다.
  * - [snapshot]은 Room에 저장할 수 있는 순수 상태이며, [initialSnapshot]으로 프로세스 재시작 뒤 복원한다.
  */
 internal class LocationSegmenter(
@@ -49,6 +50,7 @@ internal class LocationSegmenter(
     private val fallbackAccuracyMeters: Double = DEFAULT_FALLBACK_ACCURACY_METERS,
     private val minimumWeightAccuracyMeters: Double = DEFAULT_MINIMUM_WEIGHT_ACCURACY_METERS,
     private val requiredConsecutiveOutsideSamples: Int = DEFAULT_REQUIRED_CONSECUTIVE_OUTSIDE_SAMPLES,
+    private val minMovementDurationMillis: Long = DEFAULT_MIN_MOVEMENT_DURATION_MILLIS,
     initialSnapshot: LocationSegmentSnapshot? = null,
     private val rawIdFactory: () -> String = { UUID.randomUUID().toString() },
 ) {
@@ -62,6 +64,7 @@ internal class LocationSegmenter(
         require(fallbackAccuracyMeters in 0.0..maximumAccuracyMeters)
         require(minimumWeightAccuracyMeters > 0.0)
         require(requiredConsecutiveOutsideSamples >= 1)
+        require(minMovementDurationMillis >= 0L)
     }
 
     fun onSample(
@@ -228,7 +231,8 @@ internal class LocationSegmenter(
                         state = LocationSegmentState.AtPlace(place = updatedCandidate, confirmed = true),
                         previousSample = sample,
                     )
-                return listOf(move, dwell)
+                // 최소 지속 시간 미달로 이동이 걸러져도 도착한 체류는 그대로 확정한다.
+                return listOfNotNull(move, dwell)
             }
 
             currentSnapshot =
@@ -293,14 +297,9 @@ internal class LocationSegmenter(
                 }
             }
 
-            is LocationSegmentState.Traveling -> {
-                val end = snapshot.previousSample
-                if (end.timeMillis > state.startMillis) {
-                    listOf(state.toMove(end))
-                } else {
-                    emptyList()
-                }
-            }
+            is LocationSegmentState.Traveling ->
+                // 지속 시간 판정이 시각 역전(끝 <= 시작)까지 함께 걸러낸다.
+                listOfNotNull(state.toMove(snapshot.previousSample))
         }
 
     private fun newAtPlaceSnapshot(sample: LocationSample): LocationSegmentSnapshot =
@@ -355,7 +354,7 @@ internal class LocationSegmenter(
             endMillis = lastInsideSample.timeMillis,
         )
 
-    private fun LocationSegmentState.Traveling.toMove(endPlace: PlaceAccumulator): DetectedEvent.Move =
+    private fun LocationSegmentState.Traveling.toMove(endPlace: PlaceAccumulator): DetectedEvent.Move? =
         toMove(
             endLatitude = endPlace.latitude,
             endLongitude = endPlace.longitude,
@@ -363,7 +362,7 @@ internal class LocationSegmenter(
             eventDistanceMeters = candidateStartDistanceMeters,
         )
 
-    private fun LocationSegmentState.Traveling.toMove(end: LocationSample): DetectedEvent.Move =
+    private fun LocationSegmentState.Traveling.toMove(end: LocationSample): DetectedEvent.Move? =
         toMove(
             endLatitude = end.latitude,
             endLongitude = end.longitude,
@@ -371,13 +370,20 @@ internal class LocationSegmenter(
             eventDistanceMeters = totalDistanceMeters,
         )
 
+    /**
+     * 모든 마감 경로가 거치는 단일 확정 지점.
+     *
+     * 실제 이동 시간([endMillis] - startMillis)이 [minMovementDurationMillis] 미만이면 확정하지 않는다.
+     * 이동수단 분류·거리 계산보다 앞서 판정하므로 경로별로 기준이 갈리지 않는다.
+     */
     private fun LocationSegmentState.Traveling.toMove(
         endLatitude: Double,
         endLongitude: Double,
         endMillis: Long,
         eventDistanceMeters: Double,
-    ): DetectedEvent.Move =
-        DetectedEvent.Move(
+    ): DetectedEvent.Move? {
+        if (endMillis - startMillis < minMovementDurationMillis) return null
+        return DetectedEvent.Move(
             rawId = rawId,
             startLatitude = startLatitude,
             startLongitude = startLongitude,
@@ -388,6 +394,7 @@ internal class LocationSegmenter(
             distanceMeters = eventDistanceMeters,
             transport = inferTransport(eventDistanceMeters, endMillis - startMillis),
         )
+    }
 
     private fun inferTransport(
         distanceMeters: Double,
@@ -418,6 +425,14 @@ internal class LocationSegmenter(
 
         /** 단발성 GPS 튐을 흡수하기 위한 연속 반경 이탈 샘플 수. */
         const val DEFAULT_REQUIRED_CONSECUTIVE_OUTSIDE_SAMPLES = 2
+
+        /**
+         * 확정 저장할 이동의 최소 지속 시간.
+         *
+         * 관측 가능한 연속 구간 기준이다 — 샘플 공백으로 분절된 조각은 각각 판정하므로,
+         * 합산이 이 값을 넘어도 개별 조각이 미달이면 저장하지 않는다.
+         */
+        const val DEFAULT_MIN_MOVEMENT_DURATION_MILLIS = 20 * 60_000L
 
         /** 두 좌표 사이 대권거리(Haversine, m). */
         fun distanceMeters(

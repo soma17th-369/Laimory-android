@@ -13,6 +13,7 @@ class LocationSegmenterTest {
         stayMillis: Long = minute,
         maxSampleGapMillis: Long = 5 * minute,
         requiredConsecutiveOutsideSamples: Int = 2,
+        minMovementDurationMillis: Long = minMovement,
         initialSnapshot: LocationSegmentSnapshot? = null,
     ): LocationSegmenter {
         var nextId = 0
@@ -21,12 +22,16 @@ class LocationSegmenterTest {
             stayMillis = stayMillis,
             maxSampleGapMillis = maxSampleGapMillis,
             requiredConsecutiveOutsideSamples = requiredConsecutiveOutsideSamples,
+            minMovementDurationMillis = minMovementDurationMillis,
             initialSnapshot = initialSnapshot,
             rawIdFactory = { "raw-${nextId++}" },
         )
     }
 
     private val minute = 60_000L
+
+    // 운영 기본값(20분)은 축소해 검증한다 — 실제 상수는 별도 테스트가 고정한다.
+    private val minMovement = 2 * minute
     private val placeLat = 37.5000
     private val placeLng = 127.0000
 
@@ -90,9 +95,10 @@ class LocationSegmenterTest {
         segmenter.onSample(placeLat, placeLng, 2 * minute)
 
         val destinationLat = 37.54515
-        segmenter.onSample(destinationLat, placeLng, 3 * minute)
-        segmenter.onSample(destinationLat, placeLng, 3 * minute + 30_000L)
-        val arrival = segmenter.onSample(destinationLat, placeLng, 4 * minute)
+        // 이동 확정 시간(endAt - startAt)이 최소 지속 시간 이상이 되도록 이탈 시각을 둔다.
+        segmenter.onSample(destinationLat, placeLng, 4 * minute)
+        segmenter.onSample(destinationLat, placeLng, 4 * minute + 30_000L)
+        val arrival = segmenter.onSample(destinationLat, placeLng, 5 * minute + 30_000L)
 
         val move = arrival.filterIsInstance<DetectedEvent.Move>().single()
         val dwell = arrival.filterIsInstance<DetectedEvent.Dwell>().single()
@@ -100,8 +106,9 @@ class LocationSegmenterTest {
         assertEquals(destinationLat, move.endLatitude, 1e-9)
         assertEquals(MovementPayload.Transport.IN_VEHICLE, move.transport)
         assertTrue("distance ~5km", move.distanceMeters in 4800.0..5300.0)
-        assertEquals(3 * minute, dwell.startMillis)
-        assertEquals(4 * minute, dwell.endMillis)
+        assertEquals(minMovement, move.endMillis - move.startMillis)
+        assertEquals(4 * minute, dwell.startMillis)
+        assertEquals(5 * minute + 30_000L, dwell.endMillis)
     }
 
     @Test
@@ -191,16 +198,119 @@ class LocationSegmenterTest {
     }
 
     @Test
-    fun `짧은 이동도 추적 종료 시 Move로 마감한다`() {
+    fun `최소 지속 시간 미만 이동은 추적 종료 시에도 저장하지 않는다`() {
         val segmenter = segmenter()
         segmenter.onSample(placeLat, placeLng, 0L)
         segmenter.onSample(37.545, placeLng, 30_000L)
         segmenter.onSample(37.5451, placeLng, minute)
 
+        // 이동 확정 시간 1분 < 최소 지속 시간 2분.
+        assertTrue(segmenter.flush().isEmpty())
+        assertEquals(null, segmenter.snapshot())
+    }
+
+    @Test
+    fun `최소 지속 시간 이상 이동은 추적 종료 시 저장한다`() {
+        val segmenter = segmenter()
+        segmenter.onSample(placeLat, placeLng, 0L)
+        segmenter.onSample(37.545, placeLng, 30_000L)
+        segmenter.onSample(37.5451, placeLng, minute)
+        segmenter.onSample(37.56, placeLng, 3 * minute)
+
         val move = segmenter.flush().single() as DetectedEvent.Move
 
-        assertEquals(minute, move.endMillis)
-        assertTrue(move.distanceMeters > 4_800.0)
+        assertEquals(0L, move.startMillis)
+        assertEquals(3 * minute, move.endMillis)
+    }
+
+    @Test
+    fun `정상 도착 이동이 최소 지속 시간에 미달하면 이동만 버리고 체류는 확정한다`() {
+        val segmenter = segmenter()
+        segmenter.onSample(placeLat, placeLng, 0L)
+        segmenter.onSample(placeLat, placeLng, minute)
+
+        val destinationLat = 37.54515
+        // 이동 확정 시간 1분 < 최소 지속 시간 2분.
+        segmenter.onSample(destinationLat, placeLng, 2 * minute)
+        segmenter.onSample(destinationLat, placeLng, 2 * minute + 30_000L)
+        val arrival = segmenter.onSample(destinationLat, placeLng, 3 * minute + 30_000L)
+
+        assertTrue(arrival.filterIsInstance<DetectedEvent.Move>().isEmpty())
+        val dwell = arrival.filterIsInstance<DetectedEvent.Dwell>().single()
+        assertEquals(2 * minute, dwell.startMillis)
+        // 짧은 이동을 버려도 도착 체류와 진행 상태는 정상 확정된다.
+        val state = segmenter.snapshot()?.state as LocationSegmentState.AtPlace
+        assertTrue(state.confirmed)
+        assertEquals(dwell.rawId, state.place.rawId)
+    }
+
+    @Test
+    fun `정상 도착 이동은 최소 지속 시간 경계값에서 저장한다`() {
+        val boundary = segmenter().arriveAfterTravel(travelMillis = minMovement)
+        val justBelow = segmenter().arriveAfterTravel(travelMillis = minMovement - 1)
+
+        assertEquals(minMovement, boundary.filterIsInstance<DetectedEvent.Move>().single().let { it.endMillis - it.startMillis })
+        assertTrue(justBelow.filterIsInstance<DetectedEvent.Move>().isEmpty())
+    }
+
+    @Test
+    fun `샘플 공백으로 닫는 이동도 최소 지속 시간 기준을 따른다`() {
+        val shortSegmenter = segmenter()
+        shortSegmenter.onSample(placeLat, placeLng, 0L)
+        shortSegmenter.onSample(placeLat, placeLng, minute)
+        shortSegmenter.onSample(37.545, placeLng, 2 * minute)
+        shortSegmenter.onSample(37.5451, placeLng, 2 * minute + 30_000L)
+        // 이동 확정 시간 1분 30초 < 2분.
+        val closedShort = shortSegmenter.onSample(placeLat, placeLng, 9 * minute)
+
+        val longSegmenter = segmenter()
+        longSegmenter.onSample(placeLat, placeLng, 0L)
+        longSegmenter.onSample(placeLat, placeLng, minute)
+        longSegmenter.onSample(37.545, placeLng, 2 * minute)
+        longSegmenter.onSample(37.5451, placeLng, 2 * minute + 30_000L)
+        longSegmenter.onSample(37.56, placeLng, 4 * minute)
+        // 이동 확정 시간 3분 >= 2분.
+        val closedLong = longSegmenter.onSample(placeLat, placeLng, 10 * minute)
+
+        assertTrue(closedShort.filterIsInstance<DetectedEvent.Move>().isEmpty())
+        val move = closedLong.filterIsInstance<DetectedEvent.Move>().single()
+        assertEquals(minute, move.startMillis)
+        assertEquals(4 * minute, move.endMillis)
+    }
+
+    @Test
+    fun `복원한 이동 상태를 마감할 때도 최소 지속 시간 기준을 따른다`() {
+        val original = segmenter()
+        original.onSample(placeLat, placeLng, 0L)
+        original.onSample(placeLat, placeLng, minute)
+        original.onSample(37.545, placeLng, 2 * minute)
+        original.onSample(37.5451, placeLng, 2 * minute + 30_000L)
+        val traveling = LocationSegmentSnapshotCodec.decode(LocationSegmentSnapshotCodec.encode(original.snapshot()!!))
+
+        // 복원 직후 마감: 이동 확정 시간 1분 30초 < 2분.
+        assertTrue(segmenter(initialSnapshot = traveling).flush().isEmpty())
+
+        val resumed = segmenter(initialSnapshot = traveling)
+        resumed.onSample(37.56, placeLng, 4 * minute)
+        val move = resumed.flush().single() as DetectedEvent.Move
+
+        assertEquals(minute, move.startMillis)
+        assertEquals(4 * minute, move.endMillis)
+    }
+
+    @Test
+    fun `운영 기본 최소 이동 지속 시간은 20분이다`() {
+        assertEquals(20 * minute, LocationSegmenter.DEFAULT_MIN_MOVEMENT_DURATION_MILLIS)
+    }
+
+    /** 체류 확정 후 [travelMillis]만큼 이동해 새 장소에 도착하는 시퀀스. 도착 시점의 이벤트를 돌려준다. */
+    private fun LocationSegmenter.arriveAfterTravel(travelMillis: Long): List<DetectedEvent> {
+        onSample(placeLat, placeLng, 0L)
+        onSample(placeLat, placeLng, minute)
+        val departure = minute + travelMillis
+        onSample(37.54515, placeLng, departure)
+        onSample(37.54515, placeLng, departure + 30_000L)
+        return onSample(37.54515, placeLng, departure + 30_000L + minute)
     }
 
     @Test
