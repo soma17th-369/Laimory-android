@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.component
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +22,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -52,11 +57,21 @@ internal fun CalendarMonthPickerDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        // 창을 화면 전체로 늘렸기 때문에 플랫폼의 dismissOnClickOutside 가 동작하지 않는다
+        // (바깥 터치 판정이 창 경계 기준이라 "바깥"이 존재하지 않는다). 빈 영역 탭을 직접 받는다.
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(Spacing.extraLarge2),
+                    .pointerInput(onDismiss) { detectTapGestures { onDismiss() } }
+                    .semantics {
+                        // 터치 바깥 닫기는 TalkBack 에 안 잡히므로 같은 동작을 액션으로 노출한다.
+                        contentDescription = "연·월 선택 닫기"
+                        onClick {
+                            onDismiss()
+                            true
+                        }
+                    }.padding(Spacing.extraLarge2),
             contentAlignment = Alignment.Center,
         ) {
             CalendarMonthPickerContent(
@@ -82,7 +97,9 @@ private fun CalendarMonthPickerContent(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .widthIn(max = PickerMaxWidth),
+                .widthIn(max = PickerMaxWidth)
+                // 카드 안 여백을 눌렀을 때 바깥 닫기로 새지 않게 탭을 여기서 삼킨다.
+                .pointerInput(Unit) { detectTapGestures { } },
         shape = RoundedCornerShape(PickerCornerRadius),
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = PickerShadowElevation,
