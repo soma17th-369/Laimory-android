@@ -30,4 +30,6 @@ dependencies {
 
     implementation(libs.lifecycle.viewmodel)
     implementation(libs.coroutines.android)
+
+    testImplementation(libs.junit)
 }
