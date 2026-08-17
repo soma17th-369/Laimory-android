@@ -46,6 +46,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import com.soma369.laimory.core.ui.R as UiR
@@ -153,6 +154,7 @@ internal fun TimelineEditorTextSection(
 
 @Composable
 internal fun TimelineEventTimeSection(
+    recordDate: LocalDate,
     startAt: LocalDateTime,
     endAt: LocalDateTime?,
     enabled: Boolean,
@@ -162,43 +164,43 @@ internal fun TimelineEventTimeSection(
     modifier: Modifier = Modifier,
 ) {
     TimelineEditorSection(title = "시간", modifier = modifier) {
-        Text(
-            text = "시작",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        TimelineTimeField(
-            text = startAt.format(SummaryTimeFormatter),
-            enabled = enabled,
-            isActive = false,
-            isError = error != null,
-            onClick = { onOpenPicker(TimelineEventTimeField.START) },
-            modifier = Modifier.fillMaxWidth(),
-        )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            TimelineTimeField(
+                text = summaryLabel(recordDate, startAt),
+                enabled = enabled,
+                isActive = false,
+                isError = error != null,
+                onClick = { onOpenPicker(TimelineEventTimeField.START) },
+                modifier = Modifier.weight(1f),
+            )
             Text(
-                text = "종료",
-                style = MaterialTheme.typography.labelMedium,
+                text = "~",
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (endAt != null) {
+            TimelineTimeField(
+                text = endAt?.let { summaryLabel(recordDate, it) } ?: "없음",
+                enabled = enabled,
+                isActive = false,
+                isError = error != null,
+                onClick = { onOpenPicker(TimelineEventTimeField.END) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (endAt != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
                 TextButton(onClick = onClearEnd, enabled = enabled) {
                     Text("종료 없음")
                 }
             }
         }
-        TimelineTimeField(
-            text = endAt?.format(SummaryTimeFormatter) ?: "없음",
-            enabled = enabled,
-            isActive = false,
-            isError = error != null,
-            onClick = { onOpenPicker(TimelineEventTimeField.END) },
-            modifier = Modifier.fillMaxWidth(),
-        )
         error?.let {
             Text(
                 text = it,
@@ -206,6 +208,25 @@ internal fun TimelineEventTimeSection(
                 color = MaterialTheme.colorScheme.error,
             )
         }
+    }
+}
+
+/**
+ * 요약 필드에 표시할 시각.
+ *
+ * 가로로 나란히 두면 필드 하나가 화면 반쪽뿐이라 `(MM.dd) HH:mm`은 좁은 화면에서 잘린다.
+ * 기록 날짜와 같으면 시각만, 다음 날이면 `익일`만 앞에 붙여 짧게 유지한다. 시트로는 고를 수 없는
+ * 날짜는 서버 값에서만 올 수 있으므로 그때만 날짜를 그대로 보여준다.
+ */
+internal fun summaryLabel(
+    recordDate: LocalDate,
+    dateTime: LocalDateTime,
+): String {
+    val time = dateTime.format(SummaryTimeFormatter)
+    return when (dateTime.toLocalDate()) {
+        recordDate -> time
+        recordDate.plusDays(1) -> "익일 $time"
+        else -> "(${dateTime.format(SummaryDateFormatter)}) $time"
     }
 }
 
@@ -439,9 +460,8 @@ private fun Modifier.dashedBorder(color: Color): Modifier =
         }
     }
 
-// 시트와 같은 형식으로 날짜까지 보여준다. 시각만 보이면 시작·종료를 모두 익일로 고른 경우
-// 두 필드가 평범한 시각으로 보여 고른 날짜를 확인할 수 없다.
-private val SummaryTimeFormatter = DateTimeFormatter.ofPattern("(MM.dd) HH:mm")
+private val SummaryTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val SummaryDateFormatter = DateTimeFormatter.ofPattern("MM.dd")
 private val EventTypeCircleSize = 44.dp
 private val EventTypeIconSize = 24.dp
 private val EventTypeItemWidth = 44.dp

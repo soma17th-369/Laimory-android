@@ -359,6 +359,7 @@ private fun TimelineEventEditorBody(
             }
             item {
                 TimelineEventTimeSection(
+                    recordDate = state.recordDate ?: form.startAt.toLocalDate(),
                     startAt = form.startAt,
                     endAt = form.endAt,
                     enabled = enabled,
