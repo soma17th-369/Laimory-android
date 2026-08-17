@@ -1,7 +1,6 @@
 package com.soma369.laimory.core.ui.component.timepicker
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -119,42 +118,62 @@ class LaimoryTimePickerMathTest {
     }
 
     @Test
-    fun `빠른 조정은 스냅 없이 정확히 더한다`() {
-        val adjusted =
-            LaimoryTimePickerMath.quickAdjust(value(hour = 10, minute = 37), minutes = 5, dates = sameAndNextDay)
-
-        assertEquals(value(hour = 10, minute = 42), adjusted)
-    }
-
-    @Test
-    fun `빠른 조정이 자정을 넘으면 허용된 다음 날짜로 이동한다`() {
-        val adjusted =
-            LaimoryTimePickerMath.quickAdjust(value(hour = 23, minute = 30), minutes = 60, dates = sameAndNextDay)
-
-        assertEquals(value(hour = 0, minute = 30, date = tomorrow), adjusted)
-    }
-
-    @Test
-    fun `빠른 조정 결과가 허용 날짜를 벗어나면 null을 반환해 버튼을 막는다`() {
-        val beyondLastDate =
-            LaimoryTimePickerMath.quickAdjust(
-                value(hour = 23, minute = 30, date = tomorrow),
-                minutes = 60,
-                dates = sameAndNextDay,
-            )
-        val beyondSingleDate =
-            LaimoryTimePickerMath.quickAdjust(value(hour = 23, minute = 30), minutes = 60, dates = singleDay)
-
-        assertNull(beyondLastDate)
-        assertNull(beyondSingleDate)
-    }
-
-    @Test
     fun `표시용 선택지를 만들어도 값 자체는 변하지 않는다`() {
         val original = value(hour = 10, minute = 37)
 
         LaimoryTimePickerMath.minuteOptions(TimePickerMinuteStep.FIVE, original.time.minute)
 
         assertEquals(37, original.time.minute)
+    }
+
+    @Test
+    fun `자정을 넘길 때 시 롤러는 한 칸만 앞으로 간다`() {
+        // 시 열: 선택지 24개를 201주기 반복, 지금 자리는 23시(2423).
+        val target =
+            LaimoryTimePickerMath.nearestIndexOf(
+                selectedIndex = 0,
+                current = 2423,
+                optionCount = 24,
+                itemCount = 24 * 201,
+            )
+
+        assertEquals(2424, target)
+    }
+
+    @Test
+    fun `자정을 거슬러 올라갈 때도 시 롤러는 한 칸만 뒤로 간다`() {
+        val target =
+            LaimoryTimePickerMath.nearestIndexOf(
+                selectedIndex = 23,
+                current = 2400,
+                optionCount = 24,
+                itemCount = 24 * 201,
+            )
+
+        assertEquals(2399, target)
+    }
+
+    @Test
+    fun `순환하지 않는 열은 목록 안의 자리만 고른다`() {
+        val toNextDay =
+            LaimoryTimePickerMath.nearestIndexOf(selectedIndex = 1, current = 0, optionCount = 2, itemCount = 2)
+        val toSameDay =
+            LaimoryTimePickerMath.nearestIndexOf(selectedIndex = 0, current = 1, optionCount = 2, itemCount = 2)
+
+        assertEquals(1, toNextDay)
+        assertEquals(0, toSameDay)
+    }
+
+    @Test
+    fun `자정을 넘지 않는 이동은 제자리 주기를 그대로 쓴다`() {
+        val target =
+            LaimoryTimePickerMath.nearestIndexOf(
+                selectedIndex = 17,
+                current = 2416,
+                optionCount = 24,
+                itemCount = 24 * 201,
+            )
+
+        assertEquals(2417, target)
     }
 }

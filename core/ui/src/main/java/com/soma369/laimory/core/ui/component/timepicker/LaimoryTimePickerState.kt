@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import kotlin.math.abs
 
 /**
  * 타임 피커 날짜 롤러의 한 항목.
@@ -54,13 +55,14 @@ data class LaimoryTimePickerValue(
 /**
  * 타임 피커의 순수 계산.
  *
- * Android 의존이 없어 JVM 테스트로 검증한다. 롤러 순환과 자정 carry, 빠른 조정의 허용 범위 판정을
- * 모두 이곳에서 결정하고, Composable은 결과를 표시만 한다.
+ * Android 의존이 없어 JVM 테스트로 검증한다. 롤러 순환과 자정 carry 판정을 이곳에서 결정하고,
+ * Composable은 결과를 표시만 한다.
  *
  * 자정 carry 규칙:
  * - 분이 한 바퀴 돌면 시가 ±1, 시가 한 바퀴 돌면 날짜가 ±1로 이어진다(시계 자릿수와 동일).
  * - 날짜 롤러가 없으면(선택지 1개) 옮길 날짜가 없으므로 시·분만 순환하고 날짜는 그대로 둔다.
- * - 날짜 롤러가 있어도 목록의 처음·끝을 넘어서는 이동은 하지 않는다.
+ * - 날짜 롤러가 있으면 시·분 롤러가 순환하지 않으므로(경계에서 스크롤이 멈춘다) carry는 날짜 열을
+ *   직접 굴릴 때만 일어난다. 목록의 처음·끝을 넘어서는 이동은 어느 경우에도 하지 않는다.
  */
 internal object LaimoryTimePickerMath {
     /** 시 선택지(0~23). */
@@ -127,19 +129,23 @@ internal object LaimoryTimePickerMath {
     }
 
     /**
-     * 빠른 조정 결과. 스냅 없이 정확히 [minutes]를 더하고, 허용 범위를 벗어나면 null을 반환한다.
+     * 지금 자리([current])에서 가장 가까운, [selectedIndex]를 가리키는 자리.
      *
-     * 범위 밖이면 버튼을 비활성화하기 위한 신호다 — 클램프하거나 임의로 보정하지 않는다.
+     * 순환 롤러는 같은 값이 여러 자리에 반복되므로 어느 자리로 옮길지 골라야 한다. 같은 주기 안에서만
+     * 고르면 23시에서 0시로 넘어갈 때 한 칸 앞이 아니라 스물세 칸 뒤로 되감긴다 — 자정을 넘겼을 뿐인데
+     * 시 롤러가 반대 방향으로 크게 도는 것처럼 보인다. 앞뒤 주기까지 후보에 넣어 가장 가까운 자리를 쓴다.
      */
-    fun quickAdjust(
-        value: LaimoryTimePickerValue,
-        minutes: Long,
-        dates: List<TimePickerDateOption>,
-    ): LaimoryTimePickerValue? {
-        val adjusted = LaimoryTimePickerValue.of(value.dateTime.plusMinutes(minutes))
-        val allowedDates = dates.map(TimePickerDateOption::date)
-        val isWithinDates = if (allowedDates.isEmpty()) adjusted.date == value.date else adjusted.date in allowedDates
-        return adjusted.takeIf { isWithinDates }
+    fun nearestIndexOf(
+        selectedIndex: Int,
+        current: Int,
+        optionCount: Int,
+        itemCount: Int,
+    ): Int {
+        val sameCycle = (current / optionCount) * optionCount + selectedIndex
+        return listOf(sameCycle - optionCount, sameCycle, sameCycle + optionCount)
+            .filter { it in 0 until itemCount }
+            .minByOrNull { abs(it - current) }
+            ?: selectedIndex.coerceIn(0, itemCount - 1)
     }
 
     private const val HOURS_PER_DAY = 24
