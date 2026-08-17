@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -154,41 +155,50 @@ internal fun TimelineEditorTextSection(
 internal fun TimelineEventTimeSection(
     startAt: LocalDateTime,
     endAt: LocalDateTime?,
-    activeField: TimelineEventTimeField?,
     enabled: Boolean,
     error: String?,
-    onStartClick: () -> Unit,
-    onEndClick: () -> Unit,
+    onOpenPicker: (TimelineEventTimeField) -> Unit,
+    onClearEnd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     TimelineEditorSection(title = "시간", modifier = modifier) {
+        Text(
+            text = "시작",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TimelineTimeField(
+            text = startAt.format(TimeFormatter),
+            enabled = enabled,
+            isActive = false,
+            isError = error != null,
+            onClick = { onOpenPicker(TimelineEventTimeField.START) },
+            modifier = Modifier.fillMaxWidth(),
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TimelineTimeField(
-                text = startAt.format(TimeFormatter),
-                enabled = enabled,
-                isActive = activeField == TimelineEventTimeField.START,
-                isError = error != null,
-                onClick = onStartClick,
-                modifier = Modifier.weight(1f),
-            )
             Text(
-                text = "~",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "종료",
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TimelineTimeField(
-                text = endAt?.format(TimeFormatter) ?: "없음",
-                enabled = enabled,
-                isActive = activeField == TimelineEventTimeField.END,
-                isError = error != null,
-                onClick = onEndClick,
-                modifier = Modifier.weight(1f),
-            )
+            if (endAt != null) {
+                TextButton(onClick = onClearEnd, enabled = enabled) {
+                    Text("종료 없음")
+                }
+            }
         }
+        TimelineTimeField(
+            text = endAt?.let { endTimeLabel(startAt, it) } ?: "없음",
+            enabled = enabled,
+            isActive = false,
+            isError = error != null,
+            onClick = { onOpenPicker(TimelineEventTimeField.END) },
+            modifier = Modifier.fillMaxWidth(),
+        )
         error?.let {
             Text(
                 text = it,
@@ -197,6 +207,15 @@ internal fun TimelineEventTimeSection(
             )
         }
     }
+}
+
+/** 종료가 다음 날로 넘어갔는지 한눈에 보이도록 날짜가 다를 때만 `익일`을 앞에 붙인다. */
+private fun endTimeLabel(
+    startAt: LocalDateTime,
+    endAt: LocalDateTime,
+): String {
+    val formatted = endAt.format(TimeFormatter)
+    return if (endAt.toLocalDate() == startAt.toLocalDate()) formatted else "익일 $formatted"
 }
 
 @Composable

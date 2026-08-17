@@ -18,6 +18,7 @@ import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerColumn
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorForm
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
@@ -30,8 +31,9 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
+import com.soma369.laimory.feature.timeline.state.TimelineEventTimeSheetState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.time.LocalTime
+import java.time.LocalDateTime
 import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
@@ -69,10 +71,12 @@ class TimelineEventEditorViewModel
                         transform = { copy(memo = intent.value) },
                         clearValidation = { copy(memoError = null) },
                     )
-                is TimelineEventEditorUiIntent.ShowTimePicker -> showTimePicker(intent.field)
-                TimelineEventEditorUiIntent.DismissTimePicker ->
-                    updateState { copy(editingTimeField = null) }
-                is TimelineEventEditorUiIntent.SelectTime -> selectTime(intent.field, intent.time)
+                is TimelineEventEditorUiIntent.OpenTimeSheet -> openTimeSheet(intent.field)
+                is TimelineEventEditorUiIntent.ExpandTimeField -> expandTimeField(intent.field)
+                is TimelineEventEditorUiIntent.ChangeTime ->
+                    changeTime(intent.field, intent.dateTime, intent.column)
+                TimelineEventEditorUiIntent.ConfirmTimeSheet -> confirmTimeSheet()
+                TimelineEventEditorUiIntent.DismissTimeSheet -> updateState { copy(timeSheet = null) }
                 TimelineEventEditorUiIntent.ClearEndTime -> clearEndTime()
                 is TimelineEventEditorUiIntent.AddPhotos -> addPhotos(intent.clientPhotoUris)
                 is TimelineEventEditorUiIntent.RemovePendingPhoto -> removePendingPhoto(intent.rawId)
@@ -96,12 +100,9 @@ class TimelineEventEditorViewModel
 
         private fun initialize(timelineEventId: Long) {
             if (state.value.timelineEventId == timelineEventId && state.value.form != null) return
-            val event =
-                observeTimelineRecordUseCase()
-                    .value
-                    ?.events
-                    ?.firstOrNull { it.timelineEventId == timelineEventId }
-            if (event == null) {
+            val timeline = observeTimelineRecordUseCase().value
+            val event = timeline?.events?.firstOrNull { it.timelineEventId == timelineEventId }
+            if (timeline == null || event == null) {
                 updateState {
                     copy(
                         timelineEventId = timelineEventId,
@@ -115,6 +116,7 @@ class TimelineEventEditorViewModel
             updateState {
                 TimelineEventEditorUiState(
                     timelineEventId = timelineEventId,
+                    recordDate = timeline.recordDate,
                     content = TimelineEventEditorUiContent.Editor,
                     originalForm = form,
                     form = form,
@@ -136,40 +138,73 @@ class TimelineEventEditorViewModel
             }
         }
 
-        private fun showTimePicker(field: TimelineEventTimeField) {
-            if (!canEdit()) return
-            updateState { copy(editingTimeField = field) }
-        }
-
-        private fun selectTime(
-            field: TimelineEventTimeField,
-            time: LocalTime,
-        ) {
+        /**
+         * 시간 설정 시트를 연다.
+         *
+         * 종료가 비어 있는데 종료 줄을 열면 롤러가 가리킬 값이 없으므로, 시작 한 시간 뒤를 기준으로
+         * 채워 편집을 시작한다. 이 값은 시트의 임시 값일 뿐이라 확인을 누르지 않으면 폼에 남지 않는다.
+         */
+        private fun openTimeSheet(field: TimelineEventTimeField) {
             if (!canEdit()) return
             updateState {
                 val currentForm = form ?: return@updateState this
-                val normalizedTime = time.withSecond(0).withNano(0)
-                val nextForm =
-                    when (field) {
-                        TimelineEventTimeField.START ->
-                            currentForm.copy(startAt = currentForm.startAt.with(normalizedTime))
-                        TimelineEventTimeField.END ->
-                            currentForm.copy(
-                                endAt =
-                                    (currentForm.endAt ?: currentForm.startAt)
-                                        .with(normalizedTime)
-                                        .let { selectedEndAt ->
-                                            if (selectedEndAt < currentForm.startAt) {
-                                                selectedEndAt.plusDays(1)
-                                            } else {
-                                                selectedEndAt
-                                            }
-                                        },
-                            )
+                val seededEnd =
+                    when {
+                        currentForm.endAt != null -> currentForm.endAt
+                        field == TimelineEventTimeField.END -> currentForm.startAt.plusHours(1)
+                        else -> null
                     }
                 copy(
-                    form = nextForm,
-                    editingTimeField = null,
+                    timeSheet =
+                        TimelineEventTimeSheetState(
+                            baseDate = recordDate ?: currentForm.startAt.toLocalDate(),
+                            startAt = currentForm.startAt,
+                            endAt = seededEnd,
+                            expandedField = field,
+                        ),
+                )
+            }
+        }
+
+        private fun expandTimeField(field: TimelineEventTimeField?) {
+            updateState {
+                val sheet = timeSheet ?: return@updateState this
+                copy(timeSheet = sheet.copy(expandedField = field))
+            }
+        }
+
+        /**
+         * 롤러가 고른 날짜·시각을 시트의 임시 값에만 반영한다.
+         *
+         * 사용자가 종료 날짜를 직접 고르므로 시작보다 이른 종료를 익일로 추론하지 않는다. 다만 시작·종료가
+         * 뒤집히면 종료를 최소 허용 시각으로 밀어 롤러가 따라 움직이게 한다. 서버에서 이미 뒤집힌 값이
+         * 내려온 경우처럼 사용자가 만지지 않은 조합은 저장 시 [TimelineEventEditorValidation.timeError]가 막는다.
+         */
+        private fun changeTime(
+            field: TimelineEventTimeField,
+            dateTime: LocalDateTime,
+            column: TimePickerColumn,
+        ) {
+            updateState {
+                val sheet = timeSheet ?: return@updateState this
+                val normalized = dateTime.withSecond(0).withNano(0)
+                val nextSheet =
+                    when (field) {
+                        TimelineEventTimeField.START -> sheet.copy(startAt = normalized)
+                        TimelineEventTimeField.END -> sheet.copy(endAt = normalized)
+                    }
+                copy(timeSheet = nextSheet.withEndAfterStart(column))
+            }
+        }
+
+        private fun confirmTimeSheet() {
+            updateState {
+                val sheet = timeSheet ?: return@updateState this
+                val currentForm = form ?: return@updateState this
+                if (!sheet.isConfirmEnabled) return@updateState this
+                copy(
+                    form = currentForm.copy(startAt = sheet.startAt, endAt = sheet.endAt),
+                    timeSheet = null,
                     validation = validation.copy(timeError = null),
                 )
             }
@@ -180,7 +215,6 @@ class TimelineEventEditorViewModel
             updateState {
                 copy(
                     form = form?.copy(endAt = null),
-                    editingTimeField = null,
                     validation = validation.copy(timeError = null),
                 )
             }
@@ -310,6 +344,11 @@ class TimelineEventEditorViewModel
 
         private fun navigateBack() {
             if (state.value.isSaving || state.value.isDeleting || state.value.isDeletingPhoto) return
+            // 시간 설정 시트가 열려 있으면 화면을 벗어나기 전에 시트부터 닫는다.
+            if (state.value.timeSheet != null) {
+                updateState { copy(timeSheet = null) }
+                return
+            }
             if (state.value.hasUnsavedChanges) {
                 updateState { copy(isDiscardDialogVisible = true) }
             } else {
@@ -376,12 +415,9 @@ class TimelineEventEditorViewModel
 
         private fun syncExistingPhotosFromSession(): Boolean {
             val timelineEventId = state.value.timelineEventId ?: return false
-            val event =
-                observeTimelineRecordUseCase()
-                    .value
-                    ?.events
-                    ?.firstOrNull { it.timelineEventId == timelineEventId }
-            if (event == null) {
+            val timeline = observeTimelineRecordUseCase().value
+            val event = timeline?.events?.firstOrNull { it.timelineEventId == timelineEventId }
+            if (timeline == null || event == null) {
                 showUnavailableAfterPhotoDelete()
                 return false
             }
@@ -590,8 +626,8 @@ private fun TimelineEventEditorForm.validate() =
                 null
             },
         timeError =
-            if (endAt != null && endAt < startAt) {
-                "종료 시각은 시작 시각보다 빠를 수 없어요."
+            if (endAt != null && endAt <= startAt) {
+                "종료 시각은 시작 시각보다 뒤여야 해요."
             } else {
                 null
             },

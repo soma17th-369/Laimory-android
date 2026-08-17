@@ -23,6 +23,7 @@ import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerColumn
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
@@ -48,7 +49,6 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -244,30 +244,271 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
-    fun `종료 시각이 시작 시각보다 이르면 익일로 해석한다`() =
+    fun `시트에서 고른 시각은 확인을 눌러야 폼에 반영된다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = initializedViewModel()
 
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.START))
             viewModel.sendIntent(
-                TimelineEventEditorUiIntent.SelectTime(
+                TimelineEventEditorUiIntent.ChangeTime(
                     field = TimelineEventTimeField.START,
-                    time = LocalTime.of(23, 0),
+                    dateTime = LocalDateTime.of(2026, 5, 8, 23, 0),
+                    column = TimePickerColumn.HOUR,
                 ),
             )
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ClearEndTime)
+            // 사용자가 날짜 열에서 익일을 직접 고른 경우 — 추론하지 않고 고른 값을 그대로 쓴다.
             viewModel.sendIntent(
-                TimelineEventEditorUiIntent.SelectTime(
+                TimelineEventEditorUiIntent.ChangeTime(
                     field = TimelineEventTimeField.END,
-                    time = LocalTime.of(7, 0),
+                    dateTime = LocalDateTime.of(2026, 5, 9, 7, 0),
+                    column = TimePickerColumn.HOUR,
                 ),
             )
             runCurrent()
 
-            assertEquals(
-                LocalDateTime.of(2026, 5, 9, 7, 0),
-                viewModel.state.value.form?.endAt,
+            assertEquals(LocalDateTime.of(2026, 5, 8, 8, 30), viewModel.state.value.form?.startAt)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 23, 0), viewModel.state.value.form?.startAt)
+            assertEquals(LocalDateTime.of(2026, 5, 9, 7, 0), viewModel.state.value.form?.endAt)
+            assertEquals(null, viewModel.state.value.timeSheet)
+        }
+
+    @Test
+    fun `당일 익일 기준은 시작 시각이 아니라 기록 날짜로 고정된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기록 날짜는 05-08, 이벤트는 자정을 넘겨 05-09 새벽에 시작한다.
+            sessionRepository.save(
+                timeline().copy(
+                    events =
+                        listOf(
+                            event().copy(
+                                startAt = LocalDateTime.of(2026, 5, 9, 1, 0),
+                                endAt = LocalDateTime.of(2026, 5, 9, 2, 0),
+                            ),
+                        ),
+                ),
             )
-            assertEquals(null, viewModel.state.value.validation.timeError)
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.START))
+            runCurrent()
+
+            // 시작 날짜(05-09)가 아니라 기록 날짜(05-08)가 `당일`이라야 익일 새벽이 익일로 보인다.
+            assertEquals(LocalDate.of(2026, 5, 8), viewModel.state.value.timeSheet?.baseDate)
+        }
+
+    @Test
+    fun `시트를 닫으면 고른 값을 버린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.START))
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.START,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 23, 0),
+                    column = TimePickerColumn.HOUR,
+                ),
+            )
+            viewModel.sendIntent(TimelineEventEditorUiIntent.DismissTimeSheet)
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 8, 30), viewModel.state.value.form?.startAt)
+            assertEquals(null, viewModel.state.value.timeSheet)
+        }
+
+    @Test
+    fun `손대지 않은 서버 값이 뒤집혀 있으면 확정할 수 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(
+                timeline().copy(events = listOf(event().copy(endAt = LocalDateTime.of(2026, 5, 8, 7, 0)))),
+            )
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 7, 0), viewModel.state.value.timeSheet?.endAt)
+            assertEquals(false, viewModel.state.value.timeSheet?.isConfirmEnabled)
+        }
+
+    @Test
+    fun `시를 굴려 뒤집히면 고른 분은 두고 같은 시로만 올린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            // 시작 08:30. 분 40은 시작 분보다 크므로 같은 시(08시)로 충분하다.
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.END,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 7, 40),
+                    column = TimePickerColumn.HOUR,
+                ),
+            )
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 8, 40), viewModel.state.value.timeSheet?.endAt)
+        }
+
+    @Test
+    fun `시를 굴려 뒤집혔는데 분이 더 이르면 한 시간을 올린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            // 시작 08:30. 분 10은 시작 분보다 이르므로 08:10으로는 모자라 09:10이 된다.
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.END,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 7, 10),
+                    column = TimePickerColumn.HOUR,
+                ),
+            )
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 9, 10), viewModel.state.value.timeSheet?.endAt)
+        }
+
+    @Test
+    fun `분이 시작과 같으면 길이 0을 피해 한 시간을 올린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.END,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 8, 30),
+                    column = TimePickerColumn.HOUR,
+                ),
+            )
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 9, 30), viewModel.state.value.timeSheet?.endAt)
+        }
+
+    @Test
+    fun `분을 굴리다 뒤집히면 종료를 시작 일 분 뒤로 민다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.END,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 8, 10),
+                    column = TimePickerColumn.MINUTE,
+                ),
+            )
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 8, 31), viewModel.state.value.timeSheet?.endAt)
+        }
+
+    @Test
+    fun `시작을 종료 뒤로 올리면 종료도 고른 분을 지키며 밀린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.START))
+            // 시작 08:30 → 10:30. 종료 09:00의 분 0은 시작 분보다 이르므로 11:00이 된다.
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.START,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 10, 30),
+                    column = TimePickerColumn.HOUR,
+                ),
+            )
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 10, 30), viewModel.state.value.timeSheet?.startAt)
+            assertEquals(LocalDateTime.of(2026, 5, 8, 11, 0), viewModel.state.value.timeSheet?.endAt)
+        }
+
+    @Test
+    fun `뒤집히지 않는 조정은 그대로 둔다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.END,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 8, 31),
+                    column = TimePickerColumn.MINUTE,
+                ),
+            )
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 8, 31), viewModel.state.value.timeSheet?.endAt)
+        }
+
+    @Test
+    fun `서버 값이 이미 뒤집혀 있으면 저장을 막는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(
+                timeline().copy(events = listOf(event().copy(endAt = LocalDateTime.of(2026, 5, 8, 7, 0)))),
+            )
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("종료 시각은 시작 시각보다 뒤여야 해요.", viewModel.state.value.validation.timeError)
+            assertTrue(recordRepository.commands.isEmpty())
+        }
+
+    @Test
+    fun `종료가 비어 있으면 시작 한 시간 뒤를 기준으로 시트를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ClearEndTime)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 8, 9, 30), viewModel.state.value.timeSheet?.endAt)
+            // 시트에서 확정하기 전까지 폼은 여전히 종료 없음이다.
+            assertEquals(null, viewModel.state.value.form?.endAt)
+        }
+
+    @Test
+    fun `시트가 열린 상태에서 뒤로가기는 시트만 닫는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.START))
+            runCurrent()
+            assertEquals(TimelineEventTimeField.START, viewModel.state.value.timeSheet?.expandedField)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            runCurrent()
+
+            assertEquals(null, viewModel.state.value.timeSheet)
+            assertEquals(0, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `시트의 펼침은 한 번에 하나만 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.START))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ExpandTimeField(TimelineEventTimeField.END))
+            runCurrent()
+            assertEquals(TimelineEventTimeField.END, viewModel.state.value.timeSheet?.expandedField)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ExpandTimeField(null))
+            runCurrent()
+
+            assertEquals(null, viewModel.state.value.timeSheet?.expandedField)
+            // 접기만 했을 뿐 시트는 열려 있다.
+            assertTrue(viewModel.state.value.timeSheet != null)
         }
 
     @Test
