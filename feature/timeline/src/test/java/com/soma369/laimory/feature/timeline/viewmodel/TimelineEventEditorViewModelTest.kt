@@ -478,6 +478,83 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
+    fun `종료 기본값은 고를 수 있는 마지막 시각을 넘지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기록 날짜는 05-08. 시작이 익일 23:30이면 한 시간 뒤는 날짜 선택지 밖(05-10)이다.
+            sessionRepository.save(
+                timeline().copy(
+                    events =
+                        listOf(
+                            event().copy(
+                                startAt = LocalDateTime.of(2026, 5, 9, 23, 30),
+                                endAt = null,
+                            ),
+                        ),
+                ),
+            )
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 9, 23, 59), viewModel.state.value.timeSheet?.endAt)
+            assertEquals(true, viewModel.state.value.timeSheet?.isConfirmEnabled)
+        }
+
+    @Test
+    fun `유효한 종료가 없으면 기본값을 채우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(
+                timeline().copy(
+                    events =
+                        listOf(
+                            event().copy(
+                                startAt = LocalDateTime.of(2026, 5, 9, 23, 59),
+                                endAt = null,
+                            ),
+                        ),
+                ),
+            )
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            runCurrent()
+
+            assertEquals(null, viewModel.state.value.timeSheet?.endAt)
+        }
+
+    @Test
+    fun `밀어낸 종료가 범위를 넘으면 고른 값을 두고 확정을 막는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(
+                timeline().copy(
+                    events =
+                        listOf(
+                            event().copy(
+                                startAt = LocalDateTime.of(2026, 5, 9, 23, 40),
+                                endAt = LocalDateTime.of(2026, 5, 9, 23, 50),
+                            ),
+                        ),
+                ),
+            )
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.END))
+            // 분 10은 시작 분 40보다 이르므로 밀어내면 익일 24:10 — 고를 수 없는 값이다.
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.END,
+                    dateTime = LocalDateTime.of(2026, 5, 9, 23, 10),
+                    column = TimePickerColumn.HOUR,
+                ),
+            )
+            runCurrent()
+
+            assertEquals(LocalDateTime.of(2026, 5, 9, 23, 10), viewModel.state.value.timeSheet?.endAt)
+            assertEquals(false, viewModel.state.value.timeSheet?.isConfirmEnabled)
+        }
+
+    @Test
     fun `시트가 열린 상태에서 뒤로가기는 시트만 닫는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = initializedViewModel()

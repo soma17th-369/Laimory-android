@@ -141,28 +141,21 @@ class TimelineEventEditorViewModel
         /**
          * 시간 설정 시트를 연다.
          *
-         * 종료가 비어 있는데 종료 줄을 열면 롤러가 가리킬 값이 없으므로, 시작 한 시간 뒤를 기준으로
-         * 채워 편집을 시작한다. 이 값은 시트의 임시 값일 뿐이라 확인을 누르지 않으면 폼에 남지 않는다.
+         * 종료가 비어 있는데 종료 줄을 열면 롤러가 가리킬 값이 없으므로 기준 값을 채워 편집을 시작한다.
+         * 이 값은 시트의 임시 값일 뿐이라 확인을 누르지 않으면 폼에 남지 않는다.
          */
         private fun openTimeSheet(field: TimelineEventTimeField) {
             if (!canEdit()) return
             updateState {
                 val currentForm = form ?: return@updateState this
-                val seededEnd =
-                    when {
-                        currentForm.endAt != null -> currentForm.endAt
-                        field == TimelineEventTimeField.END -> currentForm.startAt.plusHours(1)
-                        else -> null
-                    }
-                copy(
-                    timeSheet =
-                        TimelineEventTimeSheetState(
-                            baseDate = recordDate ?: currentForm.startAt.toLocalDate(),
-                            startAt = currentForm.startAt,
-                            endAt = seededEnd,
-                            expandedField = field,
-                        ),
-                )
+                val sheet =
+                    TimelineEventTimeSheetState(
+                        baseDate = recordDate ?: currentForm.startAt.toLocalDate(),
+                        startAt = currentForm.startAt,
+                        endAt = currentForm.endAt,
+                        expandedField = field,
+                    )
+                copy(timeSheet = if (field == TimelineEventTimeField.END) sheet.withSeededEnd() else sheet)
             }
         }
 

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,6 +20,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -220,15 +222,18 @@ private fun SheetHeader(
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Icon(
-            painter = painterResource(R.drawable.ico_default_close),
-            contentDescription = "닫기",
-            modifier =
-                Modifier
-                    .size(CloseIconSize)
-                    .clickable(onClick = onClose),
-            tint = MaterialTheme.colorScheme.onSurface,
-        )
+        // 아이콘은 24dp지만 누를 수 있는 영역은 최소 터치 크기를 지켜야 한다.
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier.size(CloseTouchTargetSize).offset(x = CloseIconInset),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ico_default_close),
+                contentDescription = "닫기",
+                modifier = Modifier.size(CloseIconSize),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
     }
 }
 
@@ -306,6 +311,10 @@ private val SheetCornerRadius = 24.dp
 private val DragHandleWidth = 40.dp
 private val DragHandleHeight = 4.dp
 private val CloseIconSize = 24.dp
+private val CloseTouchTargetSize = 48.dp
+
+// 터치 영역을 넓혀도 아이콘은 Figma대로 시트 오른쪽 끝에 맞춘다.
+private val CloseIconInset = 12.dp
 private val RowChevronSize = 16.dp
 private val ConfirmButtonHeight = 52.dp
 private val ConfirmButtonCornerRadius = 16.dp

@@ -168,7 +168,7 @@ internal fun TimelineEventTimeSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         TimelineTimeField(
-            text = startAt.format(TimeFormatter),
+            text = startAt.format(SummaryTimeFormatter),
             enabled = enabled,
             isActive = false,
             isError = error != null,
@@ -192,7 +192,7 @@ internal fun TimelineEventTimeSection(
             }
         }
         TimelineTimeField(
-            text = endAt?.let { endTimeLabel(startAt, it) } ?: "없음",
+            text = endAt?.format(SummaryTimeFormatter) ?: "없음",
             enabled = enabled,
             isActive = false,
             isError = error != null,
@@ -207,15 +207,6 @@ internal fun TimelineEventTimeSection(
             )
         }
     }
-}
-
-/** 종료가 다음 날로 넘어갔는지 한눈에 보이도록 날짜가 다를 때만 `익일`을 앞에 붙인다. */
-private fun endTimeLabel(
-    startAt: LocalDateTime,
-    endAt: LocalDateTime,
-): String {
-    val formatted = endAt.format(TimeFormatter)
-    return if (endAt.toLocalDate() == startAt.toLocalDate()) formatted else "익일 $formatted"
 }
 
 @Composable
@@ -448,7 +439,9 @@ private fun Modifier.dashedBorder(color: Color): Modifier =
         }
     }
 
-private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+// 시트와 같은 형식으로 날짜까지 보여준다. 시각만 보이면 시작·종료를 모두 익일로 고른 경우
+// 두 필드가 평범한 시각으로 보여 고른 날짜를 확인할 수 없다.
+private val SummaryTimeFormatter = DateTimeFormatter.ofPattern("(MM.dd) HH:mm")
 private val EventTypeCircleSize = 44.dp
 private val EventTypeIconSize = 24.dp
 private val EventTypeItemWidth = 44.dp

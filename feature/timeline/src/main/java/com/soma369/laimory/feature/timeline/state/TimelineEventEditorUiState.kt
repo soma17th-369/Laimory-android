@@ -114,6 +114,9 @@ data class TimelineEventEditorValidation(
         get() = titleError == null && subtitleError == null && timeError == null && memoError == null
 }
 
+private const val LAST_SELECTABLE_HOUR = 23
+private const val LAST_SELECTABLE_MINUTE = 59
+
 enum class TimelineEventTimeField {
     START,
     END,
@@ -135,9 +138,34 @@ data class TimelineEventTimeSheetState(
     val endAt: LocalDateTime?,
     val expandedField: TimelineEventTimeField?,
 ) {
-    /** 종료가 시작보다 뒤일 때만 확정할 수 있다. 종료를 두지 않는 이벤트는 언제나 확정 가능하다. */
+    /**
+     * 시트가 고를 수 있는 마지막 시각.
+     *
+     * 날짜 선택지가 `당일`·`익일` 두 개뿐이므로 익일의 끝이 경계다. 자동으로 채우거나 보정한 값이
+     * 이 경계를 넘으면 롤러로는 되돌릴 수 없는 값이 폼에 들어간다.
+     */
+    val lastSelectableAt: LocalDateTime
+        get() = baseDate.plusDays(1).atTime(LAST_SELECTABLE_HOUR, LAST_SELECTABLE_MINUTE)
+
+    /**
+     * 종료가 시작보다 뒤이고 고를 수 있는 범위 안일 때만 확정할 수 있다.
+     *
+     * 종료를 두지 않는 이벤트는 언제나 확정 가능하다.
+     */
     val isConfirmEnabled: Boolean
-        get() = endAt == null || endAt.isAfter(startAt)
+        get() = endAt == null || (endAt.isAfter(startAt) && !endAt.isAfter(lastSelectableAt))
+
+    /**
+     * 종료가 비어 있을 때 편집을 시작할 기준 값을 채운다.
+     *
+     * 시작 한 시간 뒤를 쓰되 고를 수 있는 마지막 시각을 넘지 않는다. 시작이 이미 경계에 붙어 있어
+     * 유효한 종료가 없으면 채우지 않는다 — 없는 값을 지어내느니 종료 줄을 두지 않는 편이 낫다.
+     */
+    fun withSeededEnd(): TimelineEventTimeSheetState {
+        if (endAt != null) return this
+        val seeded = minOf(startAt.plusHours(1), lastSelectableAt)
+        return if (seeded.isAfter(startAt)) copy(endAt = seeded) else this
+    }
 
     /**
      * 시작·종료가 뒤집혔으면 종료를 최소 허용 시각으로 밀어낸다.
@@ -165,6 +193,9 @@ data class TimelineEventTimeSheetState(
                 }
                 TimePickerColumn.MINUTE, TimePickerColumn.DATE -> startAt.plusMinutes(1)
             }
+        // 밀어낸 결과가 고를 수 있는 범위를 넘으면 롤러로 되돌릴 수 없는 값이 된다.
+        // 그럴 땐 사용자가 고른 값을 그대로 두고 확인 버튼이 막게 한다.
+        if (pushed.isAfter(lastSelectableAt)) return this
         return copy(endAt = pushed)
     }
 }
