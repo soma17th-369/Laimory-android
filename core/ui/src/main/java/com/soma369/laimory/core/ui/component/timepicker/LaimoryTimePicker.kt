@@ -28,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -219,9 +220,15 @@ private fun TimePickerRollers(
     onValueChange: (LaimoryTimePickerValue) -> Unit,
 ) {
     val showDateColumn = dates.size > 1
+    // 목록 길이가 스크롤 도중 바뀌면 위치가 튀므로, 펼친 시점의 분을 기준으로 한 번만 만든다.
+    // 빠른 조정으로 간격 밖 분이 생기면 그 값도 함께 포함해 표시가 어긋나지 않게 한다.
+    var extraMinutes by remember(minuteStep) { mutableStateOf(setOf(value.time.minute)) }
+    LaunchedEffect(value.time.minute) {
+        if (!minuteStep.contains(value.time.minute)) extraMinutes = extraMinutes + value.time.minute
+    }
     val minuteOptions =
-        remember(minuteStep, value.time.minute) {
-            LaimoryTimePickerMath.minuteOptions(minuteStep, value.time.minute)
+        remember(minuteStep, extraMinutes) {
+            (minuteStep.options() + extraMinutes).distinct().sorted()
         }
     Column(
         modifier =
@@ -312,7 +319,19 @@ private fun SpinnerColumn(
     val cycles = if (isCyclic) CYCLIC_REPEAT_COUNT else 1
     val baseIndex = if (isCyclic) options.size * (cycles / 2) else 0
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = baseIndex + selectedIndex)
-    var lastIndex by remember { mutableIntStateOf(baseIndex + selectedIndex) }
+    // 목록 구성이 바뀌면 이동량 기준점도 다시 잡는다.
+    var lastIndex by remember(options.size) { mutableIntStateOf(baseIndex + selectedIndex) }
+
+    // 스크롤이 아닌 경로(빠른 조정·다른 열의 자정 carry)로 값이 바뀌면 롤러도 따라 이동한다.
+    // 같은 순환 주기 안에서 가장 가까운 자리로 옮겨 위치가 튀지 않게 한다.
+    LaunchedEffect(selectedIndex, options.size) {
+        if (listState.isScrollInProgress) return@LaunchedEffect
+        val target = (lastIndex / options.size) * options.size + selectedIndex
+        if (listState.firstVisibleItemIndex != target) {
+            listState.scrollToItem(target)
+            lastIndex = target
+        }
+    }
     // 스크롤 중에도 가운데 행 강조가 따라오도록 실시간 인덱스를 따로 본다.
     val centerIndex by remember(listState) { derivedStateOf { listState.firstVisibleItemIndex } }
 
