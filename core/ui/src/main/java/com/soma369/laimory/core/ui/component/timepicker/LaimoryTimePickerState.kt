@@ -129,6 +129,76 @@ internal object LaimoryTimePickerMath {
     }
 
     /**
+     * [range] 안에서 고를 수 있는 분. 범위가 없으면 [minuteOptions] 그대로다.
+     *
+     * 현재 값 보존은 [minuteOptions]가 하고, 여기서는 범위 밖 선택지를 걷어내기만 한다 — 보존된 값이
+     * 범위 밖이면 목록에서 빠지고 롤러가 경계로 붙는다.
+     */
+    fun allowedMinutes(
+        date: LocalDate,
+        hour: Int,
+        step: TimePickerMinuteStep,
+        currentMinute: Int,
+        range: ClosedRange<LocalDateTime>?,
+    ): List<Int> {
+        val options = minuteOptions(step, currentMinute)
+        if (range == null) return options
+        return options.filter { minute -> LocalDateTime.of(date, LocalTime.of(hour, minute)) in range }
+    }
+
+    /** [range] 안에서 고를 수 있는 시. 그 시에 고를 분이 하나도 없으면 시도 내놓지 않는다. */
+    fun allowedHours(
+        date: LocalDate,
+        step: TimePickerMinuteStep,
+        currentMinute: Int,
+        range: ClosedRange<LocalDateTime>?,
+    ): List<Int> {
+        if (range == null) return hourOptions()
+        return hourOptions().filter { hour -> allowedMinutes(date, hour, step, currentMinute, range).isNotEmpty() }
+    }
+
+    /** [range] 안에 고를 시각이 하나도 없는 날짜는 롤러에서 뺀다. */
+    fun allowedDates(
+        dates: List<TimePickerDateOption>,
+        step: TimePickerMinuteStep,
+        currentMinute: Int,
+        range: ClosedRange<LocalDateTime>?,
+    ): List<TimePickerDateOption> {
+        if (range == null) return dates
+        return dates.filter { option -> allowedHours(option.date, step, currentMinute, range).isNotEmpty() }
+    }
+
+    /**
+     * 목록 안에서 [delta]칸 이동한 값. 범위가 있는 열은 순환하지 않으므로 끝에서 멈춘다.
+     *
+     * 목록에 없는 현재 값(범위 밖에서 넘어온 값)은 가장 가까운 선택지를 기준으로 삼는다.
+     */
+    fun scrollWithin(
+        options: List<Int>,
+        current: Int,
+        delta: Int,
+    ): Int {
+        if (options.isEmpty()) return current
+        val currentIndex =
+            options.indexOf(current).takeIf { it >= 0 }
+                ?: options.indices.minByOrNull { abs(options[it] - current) } ?: 0
+        return options[(currentIndex + delta).coerceIn(0, options.lastIndex)]
+    }
+
+    /** [range] 밖으로 나간 값을 가까운 경계로 붙인다. 범위가 없으면 그대로 둔다. */
+    fun coerceIntoRange(
+        value: LaimoryTimePickerValue,
+        range: ClosedRange<LocalDateTime>?,
+    ): LaimoryTimePickerValue {
+        if (range == null) return value
+        return when {
+            value.dateTime < range.start -> LaimoryTimePickerValue.of(range.start)
+            value.dateTime > range.endInclusive -> LaimoryTimePickerValue.of(range.endInclusive)
+            else -> value
+        }
+    }
+
+    /**
      * 지금 자리([current])에서 가장 가까운, [selectedIndex]를 가리키는 자리.
      *
      * 순환 롤러는 같은 값이 여러 자리에 반복되므로 어느 자리로 옮길지 골라야 한다. 같은 주기 안에서만

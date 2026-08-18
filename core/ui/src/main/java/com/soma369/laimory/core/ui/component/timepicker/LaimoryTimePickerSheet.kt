@@ -29,6 +29,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -40,6 +41,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.tabularFigures
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -56,6 +58,13 @@ data class TimePickerField(
     val value: LaimoryTimePickerValue,
     val dates: List<TimePickerDateOption> = emptyList(),
     val minuteStep: TimePickerMinuteStep = TimePickerMinuteStep.FIVE,
+    /**
+     * 고를 수 있는 값의 범위. null 이면 제한하지 않는다.
+     *
+     * 범위를 주면 롤러가 그 밖의 날짜·시·분을 아예 내놓지 않는다 — 고르게 두고 확인에서 막으면
+     * 왜 안 되는지 알기 어렵다. 범위가 있는 열은 끝에서 멈추고 순환하지 않는다.
+     */
+    val range: ClosedRange<LocalDateTime>? = null,
 )
 
 /**
@@ -81,6 +90,7 @@ fun LaimoryTimePickerSheet(
     title: String = "시간 설정",
     confirmLabel: String = "확인",
     confirmEnabled: Boolean = true,
+    supportingText: String? = null,
 ) {
     // 시트 상태는 밖으로 내보내지 않는다 — 실험 API를 호출부까지 번지게 하지 않기 위해서다.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -102,6 +112,7 @@ fun LaimoryTimePickerSheet(
             title = title,
             confirmLabel = confirmLabel,
             confirmEnabled = confirmEnabled,
+            supportingText = supportingText,
         )
     }
 }
@@ -117,6 +128,7 @@ private fun TimePickerSheetContent(
     title: String,
     confirmLabel: String,
     confirmEnabled: Boolean,
+    supportingText: String? = null,
 ) {
     // 롤러를 펼치면 세로 여유가 줄어드는 만큼 줄 간격도 함께 좁힌다(Figma Collapsed/Expanded).
     // 롤러가 나타나고 사라지는 동안 여백이 한 번에 튀면 같이 끊겨 보이므로 함께 이어서 움직인다.
@@ -161,6 +173,7 @@ private fun TimePickerSheetContent(
                         dates = field.dates,
                         minuteStep = field.minuteStep,
                         onValueChange = { value, column -> onValueChange(field.id, value, column) },
+                        range = field.range,
                     )
                 }
                 if (index != fields.lastIndex) {
@@ -168,8 +181,26 @@ private fun TimePickerSheetContent(
                 }
             }
         }
+        // 고를 수 있는 범위를 미리 알려 두고, 확정할 수 없는 값이면 같은 자리에서 이유가 된다.
+        supportingText?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color =
+                    if (confirmEnabled) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+            )
+        }
         Button(
-            modifier = Modifier.fillMaxWidth().height(ConfirmButtonHeight),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(ConfirmButtonHeight)
+                    // 비활성 버튼은 "사용 안 함"만 읽히므로 왜 확정할 수 없는지 상태로 함께 알린다.
+                    .semantics { if (!confirmEnabled && supportingText != null) stateDescription = supportingText },
             onClick = onConfirm,
             enabled = confirmEnabled,
             shape = RoundedCornerShape(ConfirmButtonCornerRadius),
