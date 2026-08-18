@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
@@ -42,7 +43,10 @@ class GetDailyRecordUseCaseTest {
             timelineItemId: Long,
         ) = error("사용하지 않음")
 
-        override suspend fun saveDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
+        override suspend fun saveDailyRecord(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }

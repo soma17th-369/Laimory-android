@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
@@ -21,6 +22,7 @@ import java.time.LocalDate
 
 class CompleteDailyRecordUseCaseTest {
     private val recordDate: LocalDate = LocalDate.of(2026, 8, 12)
+    private val emotion: TimelineEmotion = TimelineEmotion.HAPPY
 
     @Test
     fun `저장 성공은 Completed를 반환하고 같은 날짜의 세션을 비운다`() =
@@ -29,10 +31,10 @@ class CompleteDailyRecordUseCaseTest {
             val session = FakeSessionRepository(timeline(recordDate))
             val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
-            val outcome = useCase(recordDate).getOrNull()
+            val outcome = useCase(recordDate, emotion).getOrNull()
 
             assertEquals(CompleteDailyRecordOutcome.Completed, outcome)
-            assertEquals(listOf(recordDate), repository.savedRecordDates)
+            assertEquals(listOf(recordDate to emotion), repository.savedRecords)
             assertTrue(session.cleared)
         }
 
@@ -43,7 +45,7 @@ class CompleteDailyRecordUseCaseTest {
             val session = FakeSessionRepository(timeline(recordDate.plusDays(1)))
             val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
-            useCase(recordDate)
+            useCase(recordDate, emotion)
 
             assertFalse(session.cleared)
         }
@@ -58,7 +60,7 @@ class CompleteDailyRecordUseCaseTest {
             val session = FakeSessionRepository(timeline(recordDate))
             val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
-            val outcome = useCase(recordDate).getOrNull()
+            val outcome = useCase(recordDate, emotion).getOrNull()
 
             assertEquals(CompleteDailyRecordOutcome.AlreadySaved, outcome)
             assertTrue(session.cleared)
@@ -74,7 +76,7 @@ class CompleteDailyRecordUseCaseTest {
             val session = FakeSessionRepository(timeline(recordDate))
             val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
-            val outcome = useCase(recordDate).getOrNull()
+            val outcome = useCase(recordDate, emotion).getOrNull()
 
             assertEquals(CompleteDailyRecordOutcome.RecordUnavailable, outcome)
             assertTrue(session.cleared)
@@ -87,7 +89,7 @@ class CompleteDailyRecordUseCaseTest {
             val session = FakeSessionRepository(timeline(recordDate))
             val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
-            val failure = useCase(recordDate).exceptionOrNull()
+            val failure = useCase(recordDate, emotion).exceptionOrNull()
 
             assertTrue(failure is ApiException.NetworkException)
             assertFalse(session.cleared)
@@ -103,7 +105,7 @@ class CompleteDailyRecordUseCaseTest {
                 )
             val useCase = CompleteDailyRecordUseCase(repository, FakeSessionRepository(null), helper)
 
-            val failure = useCase(recordDate).exceptionOrNull()
+            val failure = useCase(recordDate, emotion).exceptionOrNull()
 
             assertTrue(failure is HandledException)
             assertEquals(listOf(UserMessage.SessionExpired), helper.messages)
@@ -121,7 +123,7 @@ class CompleteDailyRecordUseCaseTest {
     private class FakeRecordRepository(
         private val failure: Throwable? = null,
     ) : TimelineRecordRepository {
-        val savedRecordDates = mutableListOf<LocalDate>()
+        val savedRecords = mutableListOf<Pair<LocalDate, TimelineEmotion>>()
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
@@ -141,8 +143,11 @@ class CompleteDailyRecordUseCaseTest {
             timelineItemId: Long,
         ) = error("사용하지 않음")
 
-        override suspend fun saveDailyRecord(recordDate: LocalDate) {
-            savedRecordDates += recordDate
+        override suspend fun saveDailyRecord(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
+            savedRecords += recordDate to emotion
             failure?.let { throw it }
         }
 

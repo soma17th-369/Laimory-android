@@ -45,6 +45,7 @@ import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
+import com.soma369.laimory.feature.timeline.component.TimelineEmotionSheet
 import com.soma369.laimory.feature.timeline.component.TimelineEventCard
 import com.soma369.laimory.feature.timeline.component.TimelinePhotoViewerDialog
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
@@ -110,6 +111,16 @@ private fun TimelineRecordContent(
         state = state,
         onIntent = onIntent,
     )
+
+    state.emotionSheet?.let { emotionSheet ->
+        TimelineEmotionSheet(
+            state = emotionSheet,
+            isSaving = state.isSavingRecord,
+            onSelect = { onIntent(TimelineRecordUiIntent.SelectEmotion(it)) },
+            onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmEmotion) },
+            onDismiss = { onIntent(TimelineRecordUiIntent.DismissEmotionSheet) },
+        )
+    }
 
     TimelineDeleteDialog(
         state = state.deleteDialogState,
@@ -221,6 +232,7 @@ private fun TimelineRecordScreen(
                         SaveRecordButton(
                             enabled =
                                 !state.isSavingRecord &&
+                                    state.emotionSheet == null &&
                                     state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
                                     state.memoEditor == null,
                             isLoading = state.isSavingRecord,

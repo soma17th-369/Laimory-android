@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.exception.TimelineEventPhotoDeleteExcepti
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
@@ -153,7 +154,10 @@ class DeleteTimelineEventPhotoUseCaseTest {
             deletedPhotoIds = timelineEventId to timelineItemId
         }
 
-        override suspend fun saveDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
+        override suspend fun saveDailyRecord(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }

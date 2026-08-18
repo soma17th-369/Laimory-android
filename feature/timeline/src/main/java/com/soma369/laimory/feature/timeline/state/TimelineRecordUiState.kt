@@ -12,6 +12,7 @@ data class TimelineRecordUiState(
     val memoEditor: TimelineMemoEditorState? = null,
     val deleteTarget: TimelineRecordDeleteTarget? = null,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
+    val emotionSheet: TimelineEmotionSheetState? = null,
     val isSavingRecord: Boolean = false,
 ) : UiState {
     val isDeleting: Boolean

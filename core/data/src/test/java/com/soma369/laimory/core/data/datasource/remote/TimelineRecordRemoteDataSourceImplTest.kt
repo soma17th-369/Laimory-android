@@ -3,6 +3,8 @@ package com.soma369.laimory.core.data.datasource.remote
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -14,6 +16,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -290,16 +293,48 @@ class TimelineRecordRemoteDataSourceImplTest {
         }
 
     @Test
-    fun `하루 기록 저장은 날짜 save 경로에 빈 body로 POST한다`() =
+    fun `하루 기록 저장은 날짜 save 경로에 선택한 감정을 body로 POST한다`() =
         runTest {
             server.enqueue(successUnitResponse())
 
-            remote.saveDailyRecord(RECORD_DATE)
+            remote.saveDailyRecord(RECORD_DATE, TimelineEmotion.HAPPY)
 
             val request = server.takeRequest()
             assertEquals("POST", request.method)
             assertEquals("/timeline/daily-records/2026-07-27/save", request.path)
-            assertEquals(0L, request.bodySize)
+            assertEquals("""{"emotionType":"HAPPY"}""", request.body.readUtf8())
+        }
+
+    @Test
+    fun `선택 가능한 감정 5종은 서버 literal 그대로 직렬화된다`() =
+        runTest {
+            val literals =
+                TimelineEmotion.SELECTABLE.map { emotion ->
+                    server.enqueue(successUnitResponse())
+                    remote.saveDailyRecord(RECORD_DATE, emotion)
+                    server.takeRequest().body.readUtf8()
+                }
+
+            assertEquals(
+                listOf(
+                    """{"emotionType":"VERY_HAPPY"}""",
+                    """{"emotionType":"HAPPY"}""",
+                    """{"emotionType":"NEUTRAL"}""",
+                    """{"emotionType":"UNHAPPY"}""",
+                    """{"emotionType":"VERY_UNHAPPY"}""",
+                ),
+                literals,
+            )
+        }
+
+    @Test
+    fun `감정 미상은 저장 요청으로 나가지 못한다`() =
+        runTest {
+            // UNKNOWN 은 조회에서 모르는 literal 을 수렴시키는 표시 상태다. 서버로 돌려보내면 400 이므로
+            // 요청을 만들기 전에 막는다.
+            assertThrows(IllegalArgumentException::class.java) {
+                runBlocking { remote.saveDailyRecord(RECORD_DATE, TimelineEmotion.UNKNOWN) }
+            }
         }
 
     @Test
