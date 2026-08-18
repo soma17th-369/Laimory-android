@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.response.toDomain
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -23,6 +24,7 @@ import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.time.LocalDate
+import java.time.YearMonth
 
 class TimelineRecordRemoteDataSourceImplTest {
     private lateinit var server: MockWebServer
@@ -290,6 +292,75 @@ class TimelineRecordRemoteDataSourceImplTest {
             val request = server.takeRequest()
             assertEquals("DELETE", request.method)
             assertEquals("/timeline/daily-records/2026-07-27", request.path)
+        }
+
+    @Test
+    fun `월별 조회는 monthly-records 경로에 year 와 month 를 붙여 GET한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """
+                        {
+                          "header":{"code":0,"message":""},
+                          "body":{"dailyRecords":[
+                            {"recordDate":"2026-07-01","emotionType":"VERY_HAPPY"},
+                            {"recordDate":"2026-07-27","emotionType":null}
+                          ]}
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+            val response = remote.getMonthlyDailyRecords(YearMonth.of(2026, 7)).toDomain()
+
+            val request = server.takeRequest()
+            assertEquals("GET", request.method)
+            assertEquals("/timeline/monthly-records?year=2026&month=7", request.path)
+            assertEquals(
+                listOf(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 27)),
+                response.map { it.recordDate },
+            )
+            // 감정이 없는 기록은 null 로 남아 표시 계층이 중립을 고른다.
+            assertEquals(listOf(TimelineEmotion.VERY_HAPPY, null), response.map { it.emotion })
+        }
+
+    @Test
+    fun `월별 조회의 모르는 감정 literal 은 UNKNOWN 으로 수렴한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """
+                        {
+                          "header":{"code":0,"message":""},
+                          "body":{"dailyRecords":[{"recordDate":"2026-07-02","emotionType":"ECSTATIC"}]}
+                        }
+                        """.trimIndent(),
+                    ),
+            )
+
+            val response = remote.getMonthlyDailyRecords(YearMonth.of(2026, 7)).toDomain()
+
+            assertEquals(listOf(TimelineEmotion.UNKNOWN), response.map { it.emotion })
+        }
+
+    @Test
+    fun `기록이 없는 월은 빈 목록으로 온다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """
+                        {"header":{"code":0,"message":""},"body":{"dailyRecords":[]}}
+                        """.trimIndent(),
+                    ),
+            )
+
+            assertTrue(remote.getMonthlyDailyRecords(YearMonth.of(2026, 7)).toDomain().isEmpty())
         }
 
     @Test

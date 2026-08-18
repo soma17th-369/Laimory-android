@@ -5,11 +5,13 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 sealed interface CalendarUiIntent : UiIntent {
-    /** 진입·복귀(ON_RESUME) 시 오늘을 재계산하고 서버 기록을 재동기화한다. */
+    /** 진입·복귀(ON_RESUME) 시 오늘을 재계산하고 월별 캐시를 무효화한 뒤 표시 월 주변을 재검증한다. */
     data object Sync : CalendarUiIntent
 
-    /** 조회 실패 상태에서의 명시적 다시 시도. */
-    data object RetryLoad : CalendarUiIntent
+    /** 조회에 실패한 월 페이지에서의 명시적 다시 시도. */
+    data class RetryMonth(
+        val month: YearMonth,
+    ) : CalendarUiIntent
 
     /** pager 가 정착한 월 또는 접근성 액션으로 옮긴 월. 선택 날짜는 건드리지 않는다. */
     data class ShowMonth(

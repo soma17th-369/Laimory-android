@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
@@ -15,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.YearMonth
 
 class GetDailyRecordUseCaseTest {
     private class FakeRecordRepository(
@@ -47,6 +49,8 @@ class GetDailyRecordUseCaseTest {
             recordDate: LocalDate,
             emotion: TimelineEmotion,
         ) = error("사용하지 않음")
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }

@@ -1,10 +1,12 @@
 package com.soma369.laimory.core.domain.repository
 
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import java.time.LocalDate
+import java.time.YearMonth
 
 /** 서버에 저장된 확정 타임라인 기록의 조회·편집 계약. */
 interface TimelineRecordRepository {
@@ -34,6 +36,9 @@ interface TimelineRecordRepository {
 
     /** DailyRecord와 하위 Event·Item 전체를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
+
+    /** 표시 월의 기록 날짜와 감정만 조회한다. 캘린더 탐색용이라 Event graph 는 포함하지 않는다. */
+    suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord>
 
     /** 전용 POST로 선택한 하루 감정과 함께 DRAFT 하루 기록을 SAVED로 확정한다. 성공 응답의 body는 null이다. */
     suspend fun saveDailyRecord(

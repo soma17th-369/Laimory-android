@@ -1,15 +1,21 @@
 package com.soma369.laimory.feature.timeline.model
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.YearMonth
 
 class CalendarMonthPageTest {
     @Test
-    fun `기준 월은 가운데 페이지에 놓인다`() {
-        assertEquals(MONTH_PAGE_CENTER, PAGER_EPOCH_MONTH.toPagerPage())
-        assertEquals(PAGER_EPOCH_MONTH, monthOfPagerPage(MONTH_PAGE_CENTER))
+    fun `범위의 첫 달이 0 페이지다`() {
+        assertEquals(0, CALENDAR_FIRST_MONTH.toPagerPage())
+        assertEquals(CALENDAR_FIRST_MONTH, monthOfPagerPage(0))
+    }
+
+    @Test
+    fun `페이지 수는 범위 안의 월 수와 같아 마지막 페이지가 마지막 달이다`() {
+        assertEquals(CALENDAR_YEAR_RANGE.count() * MONTHS_IN_YEAR, MONTH_PAGE_COUNT)
+        assertEquals(MONTH_PAGE_COUNT - 1, CALENDAR_LAST_MONTH.toPagerPage())
+        assertEquals(CALENDAR_LAST_MONTH, monthOfPagerPage(MONTH_PAGE_COUNT - 1))
     }
 
     @Test
@@ -39,10 +45,13 @@ class CalendarMonthPageTest {
     }
 
     @Test
-    fun `양 끝 페이지도 넘치지 않고 월로 바뀐다`() {
-        // Int 범위 전체가 유효한 페이지여야 스크롤이 끝에서 막히지 않는다.
-        assertTrue(monthOfPagerPage(0).year < PAGER_EPOCH_MONTH.year)
-        assertTrue(monthOfPagerPage(Int.MAX_VALUE).year > PAGER_EPOCH_MONTH.year)
-        assertEquals(MONTH_PAGE_COUNT, Int.MAX_VALUE)
+    fun `범위 밖 월은 경계로 잘린다`() {
+        assertEquals(CALENDAR_FIRST_MONTH, YearMonth.of(999, 12).coerceToCalendarRange())
+        assertEquals(CALENDAR_LAST_MONTH, YearMonth.of(10000, 1).coerceToCalendarRange())
+        assertEquals(YearMonth.of(2026, 5), YearMonth.of(2026, 5).coerceToCalendarRange())
+    }
+
+    private companion object {
+        const val MONTHS_IN_YEAR = 12
     }
 }

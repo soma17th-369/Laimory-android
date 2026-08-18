@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
@@ -19,6 +20,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.YearMonth
 
 class CompleteDailyRecordUseCaseTest {
     private val recordDate: LocalDate = LocalDate.of(2026, 8, 12)
@@ -150,6 +152,8 @@ class CompleteDailyRecordUseCaseTest {
             savedRecords += recordDate to emotion
             failure?.let { throw it }
         }
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }

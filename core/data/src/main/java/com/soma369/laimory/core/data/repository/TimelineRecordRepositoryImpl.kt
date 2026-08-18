@@ -5,11 +5,13 @@ import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventM
 import com.soma369.laimory.core.data.model.timeline.request.toRequestJson
 import com.soma369.laimory.core.data.model.timeline.response.toDomain
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import java.time.LocalDate
+import java.time.YearMonth
 import javax.inject.Inject
 
 class TimelineRecordRepositoryImpl
@@ -52,6 +54,9 @@ class TimelineRecordRepositoryImpl
         ) {
             remote.deleteTimelineEventPhoto(timelineEventId, timelineItemId)
         }
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> =
+            remote.getMonthlyDailyRecords(month).toDomain()
 
         override suspend fun saveDailyRecord(
             recordDate: LocalDate,

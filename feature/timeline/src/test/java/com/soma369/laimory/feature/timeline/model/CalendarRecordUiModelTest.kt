@@ -1,6 +1,6 @@
 package com.soma369.laimory.feature.timeline.model
 
-import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.ui.theme.Emotion
 import org.junit.Assert.assertEquals
@@ -23,7 +23,7 @@ class CalendarRecordUiModelTest {
 
         expected.entries.forEachIndexed { index, (emotion, uiEmotion) ->
             val date = LocalDate.of(2026, 5, index + 1)
-            val records = listOf(timeline(id = index.toLong(), date = date, emotion = emotion)).toCalendarRecordsByDate()
+            val records = listOf(record(date = date, emotion = emotion)).toCalendarRecordsByDate()
 
             assertEquals(uiEmotion, records.getValue(date).emotion)
         }
@@ -36,8 +36,8 @@ class CalendarRecordUiModelTest {
 
         val records =
             listOf(
-                timeline(id = 1L, date = unknownDate, emotion = TimelineEmotion.UNKNOWN),
-                timeline(id = 2L, date = missingDate, emotion = null),
+                record(date = unknownDate, emotion = TimelineEmotion.UNKNOWN),
+                record(date = missingDate, emotion = null),
             ).toCalendarRecordsByDate()
 
         assertNull(records.getValue(unknownDate).emotion)
@@ -48,33 +48,24 @@ class CalendarRecordUiModelTest {
     }
 
     @Test
-    fun `같은 날짜가 중복되면 서버 정렬상 첫 번째 기록을 대표로 남긴다`() {
-        val date = LocalDate.of(2026, 5, 20)
-
-        val records =
-            listOf(
-                timeline(id = 1L, date = date, emotion = TimelineEmotion.VERY_HAPPY),
-                timeline(id = 2L, date = date, emotion = TimelineEmotion.VERY_UNHAPPY),
-                timeline(id = 3L, date = date, emotion = TimelineEmotion.NEUTRAL),
-            ).toCalendarRecordsByDate()
-
-        assertEquals(1, records.size)
-        assertEquals(Emotion.JOY, records.getValue(date).emotion)
+    fun `기록이 없는 월은 빈 맵이 된다`() {
+        assertTrue(emptyList<MonthlyDailyRecord>().toCalendarRecordsByDate().isEmpty())
     }
 
     @Test
-    fun `빈 목록은 빈 맵이 된다`() {
-        assertTrue(emptyList<DailyTimeline>().toCalendarRecordsByDate().isEmpty())
+    fun `같은 월의 여러 날짜가 각각 키로 남는다`() {
+        val records =
+            listOf(
+                record(date = LocalDate.of(2026, 5, 1), emotion = TimelineEmotion.HAPPY),
+                record(date = LocalDate.of(2026, 5, 2), emotion = null),
+                record(date = LocalDate.of(2026, 5, 3), emotion = TimelineEmotion.VERY_UNHAPPY),
+            ).toCalendarRecordsByDate()
+
+        assertEquals(3, records.size)
     }
 
-    private fun timeline(
-        id: Long,
+    private fun record(
         date: LocalDate,
         emotion: TimelineEmotion?,
-    ) = DailyTimeline(
-        dailyRecordId = id,
-        recordDate = date,
-        emotion = emotion,
-        events = emptyList(),
-    )
+    ) = MonthlyDailyRecord(recordDate = date, emotion = emotion)
 }

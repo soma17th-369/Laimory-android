@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +39,8 @@ import com.soma369.laimory.core.ui.component.EmotionIcon
 import com.soma369.laimory.core.ui.component.EmotionIconDefaults
 import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.model.CALENDAR_FIRST_MONTH
+import com.soma369.laimory.feature.timeline.model.CALENDAR_LAST_MONTH
 import com.soma369.laimory.feature.timeline.model.CalendarMonthGrid
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
 import com.soma369.laimory.feature.timeline.model.DAYS_IN_WEEK
@@ -44,6 +48,7 @@ import com.soma369.laimory.feature.timeline.model.MONTH_PAGE_COUNT
 import com.soma369.laimory.feature.timeline.model.monthOfPagerPage
 import com.soma369.laimory.feature.timeline.model.toCalendarMonthGrid
 import com.soma369.laimory.feature.timeline.model.toPagerPage
+import com.soma369.laimory.feature.timeline.state.MonthlyRecordsUiContent
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -79,16 +84,20 @@ internal fun CalendarWeekdayHeader(modifier: Modifier = Modifier) {
  * [toPagerPage]·[monthOfPagerPage] 로 1:1 대응하므로 앵커 상태를 따로 들지 않는다.
  * 정착한 페이지만 [onVisibleMonthChange] 로 올려 드래그 중간 값이 상태에 새지 않게 한다.
  *
+ * 조회 중·실패는 pager 를 걷어내지 않고 [months] 를 따라 페이지 안에서 표현한다. 화면 전체를 로딩으로
+ * 바꾸면 pager 가 컴포지션에서 빠져 스와이프가 끊기고 정착 페이지가 다시 발행된다.
+ *
  * 스와이프는 TalkBack 에 노출되지 않으므로 같은 이동을 접근성 커스텀 액션으로도 제공한다.
  */
 @Composable
 internal fun CalendarMonthPager(
     visibleMonth: YearMonth,
-    recordsByDate: Map<LocalDate, CalendarRecordUiModel>,
+    months: Map<YearMonth, MonthlyRecordsUiContent>,
     selectedDate: LocalDate,
     today: LocalDate,
     onSelectDate: (LocalDate) -> Unit,
     onVisibleMonthChange: (YearMonth) -> Unit,
+    onRetryMonth: (YearMonth) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val pagerState = rememberPagerState(initialPage = visibleMonth.toPagerPage()) { MONTH_PAGE_COUNT }
@@ -113,28 +122,81 @@ internal fun CalendarMonthPager(
         state = pagerState,
         modifier =
             modifier.fillMaxWidth().semantics {
+                // 경계 밖으로는 움직일 수 없으므로 액션도 내놓지 않는다. 남겨 두면 눌러도 그대로인데
+                // TalkBack 에는 이동에 성공했다고 전달된다.
                 customActions =
-                    listOf(
-                        CustomAccessibilityAction("이전 달 보기") {
-                            onVisibleMonthChange(visibleMonth.minusMonths(1))
-                            true
-                        },
-                        CustomAccessibilityAction("다음 달 보기") {
-                            onVisibleMonthChange(visibleMonth.plusMonths(1))
-                            true
-                        },
-                    )
+                    buildList {
+                        if (visibleMonth.isAfter(CALENDAR_FIRST_MONTH)) {
+                            add(
+                                CustomAccessibilityAction("이전 달 보기") {
+                                    onVisibleMonthChange(visibleMonth.minusMonths(1))
+                                    true
+                                },
+                            )
+                        }
+                        if (visibleMonth.isBefore(CALENDAR_LAST_MONTH)) {
+                            add(
+                                CustomAccessibilityAction("다음 달 보기") {
+                                    onVisibleMonthChange(visibleMonth.plusMonths(1))
+                                    true
+                                },
+                            )
+                        }
+                    }
             },
     ) { page ->
         val month = monthOfPagerPage(page)
-        CalendarMonthGridView(
-            grid = remember(month) { month.toCalendarMonthGrid() },
-            recordsByDate = recordsByDate,
-            selectedDate = selectedDate,
-            today = today,
-            onSelectDate = onSelectDate,
-            modifier = Modifier.fillMaxSize(),
+        when (val content = months[month] ?: MonthlyRecordsUiContent.Loading) {
+            MonthlyRecordsUiContent.Loading -> CalendarMonthLoading()
+            MonthlyRecordsUiContent.LoadFailed -> CalendarMonthLoadFailed(onRetryClick = { onRetryMonth(month) })
+            is MonthlyRecordsUiContent.Records ->
+                CalendarMonthGridView(
+                    grid = remember(month) { month.toCalendarMonthGrid() },
+                    recordsByDate = content.recordsByDate,
+                    selectedDate = selectedDate,
+                    today = today,
+                    onSelectDate = onSelectDate,
+                    modifier = Modifier.fillMaxSize(),
+                )
+        }
+    }
+}
+
+/** 내용이 아직 없는 달. 격자 자리를 그대로 차지해 페이지를 넘기는 동안 화면 높이가 흔들리지 않는다. */
+@Composable
+private fun CalendarMonthLoading() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                // 진행 표시는 그림이라 TalkBack 이 읽을 것이 없다. 어떤 상태인지 문구로 알린다.
+                .semantics { contentDescription = "이 달을 불러오는 중" },
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator()
+    }
+}
+
+/** 내용 없이 실패한 달. 화면 전체가 아니라 이 달만 다시 시도한다. */
+@Composable
+private fun CalendarMonthLoadFailed(onRetryClick: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = "이 달의 기록을 불러오지 못했어요.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
+        OutlinedButton(
+            onClick = onRetryClick,
+            modifier = Modifier.padding(top = Spacing.medium),
+        ) {
+            Text("다시 시도")
+        }
     }
 }
 
