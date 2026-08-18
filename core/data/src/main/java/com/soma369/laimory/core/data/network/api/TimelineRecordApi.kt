@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.network.api
 
 import com.soma369.laimory.core.data.model.common.ApiResponse
+import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
@@ -61,5 +62,6 @@ interface TimelineRecordApi {
     @POST("timeline/daily-records/{recordDate}/save")
     suspend fun saveDailyRecord(
         @Path("recordDate") recordDate: String,
+        @Body request: SaveDailyRecordRequest,
     ): Response<ApiResponse<Unit>>
 }

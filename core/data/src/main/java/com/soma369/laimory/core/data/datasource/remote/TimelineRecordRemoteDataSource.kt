@@ -4,6 +4,7 @@ import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventM
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import kotlinx.serialization.json.JsonObject
 import java.time.LocalDate
 
@@ -46,6 +47,9 @@ interface TimelineRecordRemoteDataSource {
     /** 하루 기록과 하위 Event를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
 
-    /** DRAFT 하루 기록을 SAVED로 확정한다. 성공 응답의 body는 null이다. */
-    suspend fun saveDailyRecord(recordDate: LocalDate)
+    /** 선택한 하루 감정과 함께 DRAFT 하루 기록을 SAVED로 확정한다. 성공 응답의 body는 null이다. */
+    suspend fun saveDailyRecord(
+        recordDate: LocalDate,
+        emotion: TimelineEmotion,
+    )
 }

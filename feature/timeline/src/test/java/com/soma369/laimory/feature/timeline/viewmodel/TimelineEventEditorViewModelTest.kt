@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
@@ -954,7 +955,10 @@ class TimelineEventEditorViewModelTest {
             deletedPhotoIds += timelineEventId to timelineItemId
         }
 
-        override suspend fun saveDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
+        override suspend fun saveDailyRecord(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = Unit
     }

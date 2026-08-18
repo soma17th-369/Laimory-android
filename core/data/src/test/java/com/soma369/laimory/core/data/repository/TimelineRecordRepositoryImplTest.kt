@@ -6,6 +6,7 @@ import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListRe
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineItemResponse
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
@@ -32,6 +33,7 @@ class TimelineRecordRepositoryImplTest {
         var deletedEventPhotoIds: Pair<Long, Long>? = null
         var deletedRecordDate: LocalDate? = null
         var savedRecordDate: LocalDate? = null
+        var savedEmotion: TimelineEmotion? = null
         var updateFailure: Throwable? = null
         var getEventFailure: Throwable? = null
         val calls = mutableListOf<String>()
@@ -70,8 +72,12 @@ class TimelineRecordRepositoryImplTest {
             updateFailure?.let { throw it }
         }
 
-        override suspend fun saveDailyRecord(recordDate: LocalDate) {
+        override suspend fun saveDailyRecord(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
             savedRecordDate = recordDate
+            savedEmotion = emotion
         }
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {
@@ -225,14 +231,15 @@ class TimelineRecordRepositoryImplTest {
         }
 
     @Test
-    fun `하루 기록 저장은 날짜를 그대로 remote에 위임한다`() =
+    fun `하루 기록 저장은 날짜와 선택한 감정을 그대로 remote에 위임한다`() =
         runTest {
             val remote = FakeRemote()
             val repository = TimelineRecordRepositoryImpl(remote)
 
-            repository.saveDailyRecord(LocalDate.of(2026, 8, 12))
+            repository.saveDailyRecord(LocalDate.of(2026, 8, 12), TimelineEmotion.VERY_UNHAPPY)
 
             assertEquals(LocalDate.of(2026, 8, 12), remote.savedRecordDate)
+            assertEquals(TimelineEmotion.VERY_UNHAPPY, remote.savedEmotion)
         }
 
     @Test
