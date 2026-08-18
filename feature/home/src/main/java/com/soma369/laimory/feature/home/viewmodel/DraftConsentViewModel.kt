@@ -10,6 +10,8 @@ import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
+import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import com.soma369.laimory.feature.home.state.DraftConsentUiSideEffect
 import com.soma369.laimory.feature.home.state.DraftConsentUiState
@@ -29,6 +31,7 @@ class DraftConsentViewModel
     @Inject
     constructor(
         private val sessionStore: DraftConsentSessionStore,
+        private val loadingSessionStore: DraftLoadingSessionStore,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
@@ -127,6 +130,8 @@ class DraftConsentViewModel
                         return@safeLaunch
                     }
                 draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
+                // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
+                loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
                 sessionStore.clearPreparation()
                 sessionStore.markSubmitted()
                 activePreparation = null
