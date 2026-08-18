@@ -9,6 +9,7 @@ import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
@@ -40,9 +41,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimelineRecordViewModelTest {
@@ -407,16 +410,148 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `저장하기는 확인 다이얼로그 없이 즉시 작성 완료를 요청하고 홈으로 복귀한다`() =
+    fun `저장 CTA는 저장 대신 감정 시트를 열고 무덤덤을 기본으로 고른다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            advanceUntilIdle()
+
+            val sheet = viewModel.state.value.emotionSheet
+            assertEquals(RECORD_DATE, sheet?.recordDate)
+            assertEquals(TimelineEmotion.NEUTRAL, sheet?.selected)
+            // 시트를 여는 것만으로는 아무 요청도 나가지 않는다.
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(false, viewModel.state.value.isSavingRecord)
+        }
+
+    @Test
+    fun `감정을 다시 고르면 선택이 교체되고 그 감정이 저장 요청에 실린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.UNHAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.VERY_HAPPY))
+            runCurrent()
+
+            assertEquals(TimelineEmotion.VERY_HAPPY, viewModel.state.value.emotionSheet?.selected)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(listOf(TimelineEmotion.VERY_HAPPY), recordRepository.savedEmotions)
+        }
+
+    @Test
+    fun `시트를 닫으면 저장하지 않고 초안과 화면을 그대로 둔다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.HAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.DismissEmotionSheet)
+            advanceUntilIdle()
+
+            assertEquals(null, viewModel.state.value.emotionSheet)
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
+            assertEquals(0, navigationHelper.backCount)
+
+            // 다시 열면 기본 선택으로 돌아온다.
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+
+            assertEquals(TimelineEmotion.NEUTRAL, viewModel.state.value.emotionSheet?.selected)
+        }
+
+    @Test
+    fun `저장 중에는 시트를 닫거나 감정을 바꿀 수 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.saveGate = gate
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.VERY_UNHAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.VERY_HAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.DismissEmotionSheet)
+            runCurrent()
+
+            // 요청이 떠 있는 동안 시트가 사라지거나 선택이 바뀌면 안내와 종결이 갈 곳을 잃는다.
+            assertEquals(TimelineEmotion.VERY_UNHAPPY, viewModel.state.value.emotionSheet?.selected)
+            assertEquals(true, viewModel.state.value.isSavingRecord)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(TimelineEmotion.VERY_UNHAPPY), recordRepository.savedEmotions)
+        }
+
+    @Test
+    fun `실패한 뒤에는 시트와 선택 감정을 유지해 같은 감정으로 다시 저장한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.saveFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.UNHAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(TimelineEmotion.UNHAPPY, viewModel.state.value.emotionSheet?.selected)
+            assertEquals(false, viewModel.state.value.isSavingRecord)
+
+            recordRepository.saveFailure = null
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(TimelineEmotion.UNHAPPY, TimelineEmotion.UNHAPPY),
+                recordRepository.savedEmotions,
+            )
+        }
+
+    @Test
+    fun `시트 안내 문구의 날짜는 오늘 어제 그 밖을 구분한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            assertEquals("오늘", viewModel.state.value.emotionSheet?.dateLabel)
+
+            // 자정을 넘겨 저장하면 같은 초안이 "어제"가 된다.
+            clock = Clock.fixed(Instant.parse("2026-05-09T12:00:00Z"), ZoneOffset.UTC)
+            val nextDayViewModel = createLoadedViewModel()
+            nextDayViewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            assertEquals("어제", nextDayViewModel.state.value.emotionSheet?.dateLabel)
+
+            clock = Clock.fixed(Instant.parse("2026-05-20T12:00:00Z"), ZoneOffset.UTC)
+            val pastViewModel = createLoadedViewModel()
+            pastViewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            assertEquals("05.08", pastViewModel.state.value.emotionSheet?.dateLabel)
+        }
+
+    @Test
+    fun `시트의 확인은 선택한 감정으로 작성 완료를 요청하고 홈으로 복귀한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
             val effects = mutableListOf<TimelineRecordUiSideEffect>()
             backgroundScope.launch { viewModel.sideEffect.collect(effects::add) }
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+            // 아무것도 고치지 않고 확인만 누르면 기본 선택(무덤덤)이 그대로 실린다.
+            assertEquals(listOf(TimelineEmotion.NEUTRAL), recordRepository.savedEmotions)
+            assertEquals(null, viewModel.state.value.emotionSheet)
             assertEquals(1, draftTaskCoordinator.discardCount)
             // 성공 시 화면 상태를 즉시 종결해 중복 요청을 동기 차단하고 잔여 저장 중 상태를 남기지 않는다.
             assertEquals(false, viewModel.state.value.isSavingRecord)
@@ -432,6 +567,7 @@ class TimelineRecordViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
             assertEquals(TimelineRecordUiContent.Unavailable, viewModel.state.value.content)
 
@@ -447,7 +583,7 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `SAVED 기록은 저장 요청을 무시한다`() =
+    fun `SAVED 기록은 감정 시트를 열지도 저장하지도 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel =
                 createLoadedViewModel(
@@ -455,8 +591,10 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
+            assertEquals(null, viewModel.state.value.emotionSheet)
             assertTrue(recordRepository.savedRecordDates.isEmpty())
             assertEquals(0, navigationHelper.backCount)
         }
@@ -468,6 +606,7 @@ class TimelineRecordViewModelTest {
                 createLoadedViewModel(record = timeline(events = listOf(event()), status = null))
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
@@ -481,6 +620,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(0, draftTaskCoordinator.discardCount)
@@ -495,6 +635,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(1, draftTaskCoordinator.discardCount)
@@ -510,6 +651,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(1, draftTaskCoordinator.discardCount)
@@ -530,6 +672,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(false, viewModel.state.value.isSavingRecord)
@@ -542,6 +685,7 @@ class TimelineRecordViewModelTest {
 
             recordRepository.saveFailure = null
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(listOf(RECORD_DATE, RECORD_DATE), recordRepository.savedRecordDates)
@@ -556,8 +700,10 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             runCurrent()
 
             assertEquals(true, viewModel.state.value.isSavingRecord)
@@ -579,10 +725,13 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             runCurrent()
             // 저장 I/O가 Intent 루프를 점유하지 않으므로 중복 요청은 큐가 아니라 가드에서 걸러진다.
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             runCurrent()
 
             gate.complete(Unit)
@@ -602,6 +751,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.NavigateBack)
             runCurrent()
@@ -619,6 +769,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
             assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
@@ -660,6 +811,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(timelineEventId = 1L))
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
@@ -806,6 +958,9 @@ class TimelineRecordViewModelTest {
             assertEquals(0, draftTaskCoordinator.discardCount)
         }
 
+    /** 기록 날짜([RECORD_DATE])가 "오늘"이 되도록 고정한다 — 안내 문구 검증에 기준 시각이 필요하다. */
+    private var clock: Clock = Clock.fixed(Instant.parse("2026-05-08T12:00:00Z"), ZoneOffset.UTC)
+
     private fun createViewModel() =
         TimelineRecordViewModel(
             observeTimelineRecordUseCase = ObserveTimelineRecordUseCase(repository),
@@ -836,6 +991,7 @@ class TimelineRecordViewModelTest {
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
             messageHelper = messageHelper,
+            clock = clock,
         )
 
     private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {
@@ -906,6 +1062,7 @@ class TimelineRecordViewModelTest {
         val requestedRecordDates = mutableListOf<LocalDate>()
         val deletedRecordDates = mutableListOf<LocalDate>()
         val savedRecordDates = mutableListOf<LocalDate>()
+        val savedEmotions = mutableListOf<TimelineEmotion>()
         var saveGate: CompletableDeferred<Unit>? = null
         var saveFailure: ApiException? = null
         val updatedMemos = mutableListOf<Pair<Long, String?>>()
@@ -957,8 +1114,12 @@ class TimelineRecordViewModelTest {
             timelineItemId: Long,
         ) = error("사용하지 않음")
 
-        override suspend fun saveDailyRecord(recordDate: LocalDate) {
+        override suspend fun saveDailyRecord(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
             savedRecordDates += recordDate
+            savedEmotions += emotion
             saveGate?.let { gate ->
                 saveGate = null
                 gate.await()

@@ -9,6 +9,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
@@ -18,8 +19,10 @@ import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordDeleteTarget
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
@@ -29,7 +32,9 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import java.time.Clock
 import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 
 @HiltViewModel
@@ -45,6 +50,7 @@ class TimelineRecordViewModel
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
+        private val clock: Clock,
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
         ) {
@@ -79,7 +85,10 @@ class TimelineRecordViewModel
                 TimelineRecordUiIntent.RetryLoad -> requestedRecordDate?.let(::loadRecord)
                 TimelineRecordUiIntent.NavigateBack ->
                     navigateBack()
-                TimelineRecordUiIntent.RequestSave -> saveRecord()
+                TimelineRecordUiIntent.RequestSave -> openEmotionSheet()
+                is TimelineRecordUiIntent.SelectEmotion -> selectEmotion(intent.emotion)
+                TimelineRecordUiIntent.ConfirmEmotion -> saveRecord()
+                TimelineRecordUiIntent.DismissEmotionSheet -> dismissEmotionSheet()
                 TimelineRecordUiIntent.RequestDelete -> requestDelete()
                 TimelineRecordUiIntent.ConfirmDelete -> deleteRecord()
                 TimelineRecordUiIntent.DismissDelete -> dismissDelete()
@@ -162,8 +171,44 @@ class TimelineRecordViewModel
                 }
         }
 
+        /** 저장 CTA는 감정 선택 시트를 여는 데까지만 관여한다 — 실제 저장은 시트의 `확인`이 일으킨다. */
+        private fun openEmotionSheet() {
+            val current = state.value
+            val record = current.editableRecord() ?: return
+            if (current.emotionSheet != null ||
+                current.isSavingRecord ||
+                saveJob?.isActive == true ||
+                current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.memoEditor != null
+            ) {
+                return
+            }
+            val today = LocalDate.now(clock.withZone(ZoneId.systemDefault()))
+            updateState {
+                copy(
+                    emotionSheet =
+                        TimelineEmotionSheetState(
+                            recordDate = record.recordDate,
+                            dateLabel = timelineEmotionDateLabel(record.recordDate, today),
+                        ),
+                )
+            }
+        }
+
+        private fun selectEmotion(emotion: TimelineEmotion) {
+            val current = state.value
+            if (current.emotionSheet == null || current.isSavingRecord) return
+            updateState { copy(emotionSheet = emotionSheet?.copy(selected = emotion)) }
+        }
+
+        private fun dismissEmotionSheet() {
+            // 저장 요청이 떠 있는 동안 시트를 닫으면 완료 시점의 뒤늦은 pop·안내가 갈 곳을 잃는다.
+            if (state.value.isSavingRecord) return
+            updateState { copy(emotionSheet = null) }
+        }
+
         /**
-         * 확인 없이 즉시 작성 완료를 요청한다.
+         * 시트에서 고른 감정으로 작성 완료를 요청한다.
          *
          * 네트워크 대기가 직렬 Intent 루프를 점유하면 저장 중 들어온 Intent가 가드 대신 큐에 쌓여
          * 실패 직후 재실행되므로, 요청은 별도 Job에서 수행하고 루프는 즉시 반환한다.
@@ -171,6 +216,7 @@ class TimelineRecordViewModel
         private fun saveRecord() {
             val current = state.value
             val record = current.editableRecord() ?: return
+            val sheet = current.emotionSheet ?: return
             if (current.isSavingRecord ||
                 saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
@@ -182,7 +228,7 @@ class TimelineRecordViewModel
             updateState { copy(isSavingRecord = true) }
             saveJob =
                 safeLaunch(onError = ::handleSaveFailure) {
-                    completeDailyRecordUseCase(record.recordDate)
+                    completeDailyRecordUseCase(record.recordDate, sheet.selected)
                         .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
                         .onFailure(::handleSaveFailure)
                 }
@@ -194,7 +240,7 @@ class TimelineRecordViewModel
         ) {
             // 확정·소실 모두 화면 상태를 먼저 종결한다 — 중복 요청을 차단하고, 엔트리 밖 수명으로
             // 재사용될 수 있는 ViewModel에 저장 중 상태가 남지 않게 한다.
-            updateState { copy(content = TimelineRecordUiContent.Unavailable, isSavingRecord = false) }
+            updateState { copy(content = TimelineRecordUiContent.Unavailable, emotionSheet = null, isSavingRecord = false) }
             // 로컬 추적 정리 실패(DataStore I/O 등)는 이미 끝난 서버 저장을 되돌리지 않으므로
             // 결과 반영을 막지 않는다. 추적이 남아도 재진입 시 SAVED 기록을 읽기 전용으로 연다.
             runCatching { discardDraftTracking(recordDate) }
