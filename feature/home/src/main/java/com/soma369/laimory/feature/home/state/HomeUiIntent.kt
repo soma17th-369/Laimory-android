@@ -47,20 +47,31 @@ sealed interface HomeUiIntent : UiIntent {
         val date: LocalDate,
     ) : HomeUiIntent
 
+    /** 시각 선택 시트를 열고 누른 줄을 펼친다. */
     data class ShowTimePicker(
         val field: HomeTimeField,
     ) : HomeUiIntent
 
-    data object DismissTimePicker : HomeUiIntent
+    /** 시트 안에서 펼친 줄을 바꾼다. null 이면 모두 접는다. */
+    data class ExpandTimeField(
+        val field: HomeTimeField?,
+    ) : HomeUiIntent
 
-    data class SelectTime(
+    /**
+     * 시트 롤러를 굴린 결과. 확인 전까지는 시트 임시 값만 바뀐다.
+     *
+     * 종료 줄의 [date]는 날짜 롤러가 가리키는 날이라 당일·익일 선택을 겸한다.
+     */
+    data class ChangeSheetTime(
         val field: HomeTimeField,
+        val date: LocalDate,
         val time: LocalTime,
     ) : HomeUiIntent
 
-    data class SelectEndDay(
-        val endDay: DraftEndDay,
-    ) : HomeUiIntent
+    /** 시트의 확인 — 임시 값을 기록 범위로 확정한다. */
+    data object ConfirmTimeSheet : HomeUiIntent
+
+    data object DismissTimePicker : HomeUiIntent
 
     /** 전송 스냅샷을 확정하고 데이터 전송 동의 화면으로 이동한다. 생성 API 는 동의 완료 후에만 호출된다. */
     data object CreateDraft : HomeUiIntent

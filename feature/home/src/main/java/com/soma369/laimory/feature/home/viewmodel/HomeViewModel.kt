@@ -26,6 +26,7 @@ import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeTimeField
+import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
@@ -34,7 +35,6 @@ import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.nonPhotoSourceItems
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
-import com.soma369.laimory.feature.home.state.withEndDaySelection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -94,10 +94,12 @@ class HomeViewModel
                 HomeUiIntent.ShowDatePicker -> updateState { copy(isDatePickerVisible = true) }
                 HomeUiIntent.DismissDatePicker -> updateState { copy(isDatePickerVisible = false) }
                 is HomeUiIntent.SelectDate -> selectDate(intent.date)
-                is HomeUiIntent.ShowTimePicker -> updateState { copy(editingTimeField = intent.field) }
-                HomeUiIntent.DismissTimePicker -> updateState { copy(editingTimeField = null) }
-                is HomeUiIntent.SelectTime -> selectTime(intent.field, intent.time)
-                is HomeUiIntent.SelectEndDay -> selectEndDay(intent.endDay)
+                is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
+                is HomeUiIntent.ExpandTimeField ->
+                    updateState { copy(timeSheet = timeSheet?.copy(expandedField = intent.field)) }
+                is HomeUiIntent.ChangeSheetTime -> changeSheetTime(intent.field, intent.date, intent.time)
+                HomeUiIntent.ConfirmTimeSheet -> confirmTimeSheet()
+                HomeUiIntent.DismissTimePicker -> updateState { copy(timeSheet = null) }
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
                 HomeUiIntent.ConsumeDraftConsentResult -> consumeDraftConsentResult()
                 HomeUiIntent.RetryDraft -> retryDraft()
@@ -268,37 +270,58 @@ class HomeViewModel
             onRecordWindowChanged()
         }
 
-        private fun selectTime(
-            field: HomeTimeField,
-            time: LocalTime,
-        ) {
+        private fun showTimeSheet(field: HomeTimeField) {
             if (state.value.draftStatus.isInputLocked) return
             updateState {
+                copy(
+                    timeSheet =
+                        HomeTimeSheetState(
+                            recordDate = selectedDate,
+                            startTime = startTime,
+                            endDay = endDay,
+                            endTime = endTime,
+                            expandedField = field,
+                        ),
+                )
+            }
+        }
+
+        /**
+         * 종료 줄의 날짜 롤러가 당일·익일 선택을 겸하므로 고른 날짜를 그대로 종료 일시로 받는다.
+         *
+         * 시작을 늦추면 최소 길이 때문에 종료 하한이 밀리므로, 이미 고른 종료가 범위 밖이 되면
+         * 경계로 붙여 둔다 — 그대로 두면 롤러에 없는 값이 남아 확인만 막힌다.
+         */
+        private fun changeSheetTime(
+            field: HomeTimeField,
+            date: LocalDate,
+            time: LocalTime,
+        ) {
+            updateState {
+                val sheet = timeSheet ?: return@updateState this
                 val next =
                     when (field) {
-                        HomeTimeField.START -> copy(startTime = time)
-                        HomeTimeField.END -> copy(endTime = time)
-                    }.copy(
-                        editingTimeField = null,
+                        HomeTimeField.START -> sheet.withStartTime(time)
+                        HomeTimeField.END -> sheet.withEnd(date.atTime(time))
+                    }
+                copy(timeSheet = next)
+            }
+        }
+
+        private fun confirmTimeSheet() {
+            val sheet = state.value.timeSheet ?: return
+            if (state.value.draftStatus.isInputLocked || !sheet.isConfirmEnabled) return
+            updateState {
+                val next =
+                    copy(
+                        startTime = sheet.startTime,
+                        endDay = sheet.endDay,
+                        endTime = sheet.endTime,
+                        timeSheet = null,
                         draftStatus = DraftCreationStatus.IDLE,
                         draftRetryMode = null,
                         draftMessage = null,
                     )
-                next.refreshSourceSummary(sourceItems, photoCandidates, zone)
-            }
-            onRecordWindowChanged()
-        }
-
-        private fun selectEndDay(endDay: DraftEndDay) {
-            if (state.value.draftStatus.isInputLocked) return
-            updateState {
-                val next =
-                    withEndDaySelection(endDay)
-                        .copy(
-                            draftStatus = DraftCreationStatus.IDLE,
-                            draftRetryMode = null,
-                            draftMessage = null,
-                        )
                 next.refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
             onRecordWindowChanged()

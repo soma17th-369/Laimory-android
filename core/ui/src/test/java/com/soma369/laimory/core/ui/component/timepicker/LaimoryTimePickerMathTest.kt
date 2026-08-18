@@ -176,4 +176,76 @@ class LaimoryTimePickerMathTest {
 
         assertEquals(2417, target)
     }
+
+    @Test
+    fun `범위 밖 분은 선택지에서 빠진다`() {
+        val range = today.atTime(6, 0)..tomorrow.atTime(6, 0)
+
+        val atLowerBound = LaimoryTimePickerMath.allowedMinutes(today, 6, TimePickerMinuteStep.FIVE, 0, range)
+        val atUpperBound = LaimoryTimePickerMath.allowedMinutes(tomorrow, 6, TimePickerMinuteStep.FIVE, 0, range)
+
+        assertEquals(TimePickerMinuteStep.FIVE.options(), atLowerBound)
+        // 익일 06:00 이 상한이라 그 시각에는 0분만 남는다.
+        assertEquals(listOf(0), atUpperBound)
+    }
+
+    @Test
+    fun `고를 분이 없는 시는 시 선택지에서도 빠진다`() {
+        val range = today.atTime(6, 0)..tomorrow.atTime(6, 0)
+
+        val sameDayHours = LaimoryTimePickerMath.allowedHours(today, TimePickerMinuteStep.FIVE, 0, range)
+        val nextDayHours = LaimoryTimePickerMath.allowedHours(tomorrow, TimePickerMinuteStep.FIVE, 0, range)
+
+        assertEquals((6..23).toList(), sameDayHours)
+        assertEquals((0..6).toList(), nextDayHours)
+    }
+
+    @Test
+    fun `고를 시각이 하나도 없는 날짜는 날짜 선택지에서 빠진다`() {
+        val dates =
+            listOf(
+                TimePickerDateOption(today, "당일"),
+                TimePickerDateOption(tomorrow, "익일"),
+            )
+        // 시작이 늦어 종료 하한이 익일로 밀린 경우.
+        val range = tomorrow.atTime(5, 55)..tomorrow.atTime(6, 0)
+
+        val allowed = LaimoryTimePickerMath.allowedDates(dates, TimePickerMinuteStep.FIVE, 0, range)
+
+        assertEquals(listOf(tomorrow), allowed.map(TimePickerDateOption::date))
+    }
+
+    @Test
+    fun `범위가 있는 열은 끝에서 멈춘다`() {
+        val hours = listOf(0, 1, 2, 3, 4, 5, 6)
+
+        assertEquals(0, LaimoryTimePickerMath.scrollWithin(hours, current = 0, delta = -3))
+        assertEquals(6, LaimoryTimePickerMath.scrollWithin(hours, current = 6, delta = 3))
+        assertEquals(3, LaimoryTimePickerMath.scrollWithin(hours, current = 2, delta = 1))
+    }
+
+    @Test
+    fun `목록에 없는 값은 가장 가까운 선택지를 기준으로 옮긴다`() {
+        val hours = listOf(6, 7, 8)
+
+        // 범위가 좁아져 12시가 사라진 뒤 굴리면 가장 가까운 8시에서 출발한다.
+        assertEquals(8, LaimoryTimePickerMath.scrollWithin(hours, current = 12, delta = 0))
+        assertEquals(7, LaimoryTimePickerMath.scrollWithin(hours, current = 12, delta = -1))
+    }
+
+    @Test
+    fun `범위 밖 값은 가까운 경계로 붙는다`() {
+        val range = today.atTime(6, 0)..tomorrow.atTime(6, 0)
+
+        assertEquals(
+            LaimoryTimePickerValue.of(today.atTime(6, 0)),
+            LaimoryTimePickerMath.coerceIntoRange(LaimoryTimePickerValue.of(today.atTime(3, 0)), range),
+        )
+        assertEquals(
+            LaimoryTimePickerValue.of(tomorrow.atTime(6, 0)),
+            LaimoryTimePickerMath.coerceIntoRange(LaimoryTimePickerValue.of(tomorrow.atTime(9, 0)), range),
+        )
+        val inside = LaimoryTimePickerValue.of(today.atTime(20, 0))
+        assertEquals(inside, LaimoryTimePickerMath.coerceIntoRange(inside, range))
+    }
 }

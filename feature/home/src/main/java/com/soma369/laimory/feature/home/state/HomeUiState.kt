@@ -30,20 +30,28 @@ data class HomeUiState(
     val isDraftSheetVisible: Boolean = false,
     val isPhotoSheetVisible: Boolean = false,
     val isDatePickerVisible: Boolean = false,
-    val editingTimeField: HomeTimeField? = null,
+    val timeSheet: HomeTimeSheetState? = null,
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
     val pastRecords: HomePastRecordsUiState = HomePastRecordsUiState.Loading,
 ) : UiState {
-    fun recordDateWindow(zone: ZoneId): RecordDateWindow? =
-        runCatching {
-            val endDate = selectedDate.plusDays(endDay.dayOffset.toLong())
+    /**
+     * 지금 설정으로 만들어지는 기록 창. 정책을 벗어나면 null 이라 초안 생성이 막힌다.
+     *
+     * 최소 길이·종료 허용 범위는 [DraftWindowPolicy]가 갖는다 — 공용 [RecordDateWindow] 에 넣으면
+     * 사진 조회·수집 선별 등 같은 모델을 쓰는 다른 경로까지 함께 좁아진다.
+     */
+    fun recordDateWindow(zone: ZoneId): RecordDateWindow? {
+        val endDateTime = selectedDate.plusDays(endDay.dayOffset.toLong()).atTime(endTime)
+        if (!DraftWindowPolicy.isValid(selectedDate, startTime, endDateTime)) return null
+        return runCatching {
             RecordDateWindow(
                 start = selectedDate.atTime(startTime).atZone(zone).toInstant(),
-                end = endDate.atTime(endTime).atZone(zone).toInstant(),
+                end = endDateTime.atZone(zone).toInstant(),
             )
         }.getOrNull()
+    }
 }
 
 @Immutable
@@ -62,11 +70,13 @@ data class HomeSourceSummary(
     val totalItemCount: Int = 0,
 )
 
+/** 기록 창의 종료일. [label]은 기록 날짜를 기준으로 한 상대 표현이라 화면·피커가 함께 쓴다. */
 enum class DraftEndDay(
     val dayOffset: Int,
+    val label: String,
 ) {
-    SAME_DAY(0),
-    NEXT_DAY(1),
+    SAME_DAY(0, "당일"),
+    NEXT_DAY(1, "익일"),
 }
 
 enum class HomeTimeField {
@@ -96,16 +106,6 @@ internal val DraftCreationStatus.isDateLocked: Boolean
 
 internal val DraftCreationStatus.isInputLocked: Boolean
     get() = isDateLocked || this == DraftCreationStatus.SUCCESS
-
-internal fun HomeUiState.withEndDaySelection(endDay: DraftEndDay): HomeUiState {
-    val adjustedEndTime =
-        if (endDay == DraftEndDay.SAME_DAY && endTime <= startTime) {
-            LocalTime.of(23, 59)
-        } else {
-            endTime
-        }
-    return copy(endDay = endDay, endTime = adjustedEndTime)
-}
 
 internal fun HomeUiState.refreshSourceSummary(
     items: List<SourceItem>,

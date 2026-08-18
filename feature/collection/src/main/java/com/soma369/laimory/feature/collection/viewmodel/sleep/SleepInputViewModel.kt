@@ -9,6 +9,7 @@ import com.soma369.laimory.feature.collection.screen.sleep.SleepInputMath
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiIntent
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiSideEffect
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiState
+import com.soma369.laimory.feature.collection.state.sleep.SleepTimeSheetState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
 import java.time.LocalDate
@@ -41,10 +42,29 @@ class SleepInputViewModel
 
         override suspend fun handleIntent(intent: SleepInputUiIntent) {
             when (intent) {
-                is SleepInputUiIntent.ShowTimePicker -> updateState { copy(editingField = intent.field) }
-                SleepInputUiIntent.DismissTimePicker -> updateState { copy(editingField = null) }
-                is SleepInputUiIntent.SetBedTime -> updateState { copy(bedTime = intent.time, editingField = null) }
-                is SleepInputUiIntent.SetWakeTime -> updateState { copy(wakeTime = intent.time, editingField = null) }
+                is SleepInputUiIntent.ShowTimePicker ->
+                    updateState {
+                        copy(
+                            timeSheet =
+                                SleepTimeSheetState(
+                                    bedTime = bedTime,
+                                    wakeTime = wakeTime,
+                                    expandedField = intent.field,
+                                ),
+                        )
+                    }
+                is SleepInputUiIntent.ExpandTimeField ->
+                    updateState { copy(timeSheet = timeSheet?.copy(expandedField = intent.field)) }
+                is SleepInputUiIntent.ChangeSheetTime ->
+                    updateState { copy(timeSheet = timeSheet?.withTime(intent.field, intent.time)) }
+                SleepInputUiIntent.ConfirmTimeSheet ->
+                    updateState {
+                        val sheet = timeSheet ?: return@updateState this
+                        copy(bedTime = sheet.bedTime, wakeTime = sheet.wakeTime, timeSheet = null)
+                    }
+                SleepInputUiIntent.DismissTimePicker -> updateState { copy(timeSheet = null) }
+                is SleepInputUiIntent.SetBedTime -> updateState { copy(bedTime = intent.time) }
+                is SleepInputUiIntent.SetWakeTime -> updateState { copy(wakeTime = intent.time) }
                 is SleepInputUiIntent.SelectDate -> moveToDate(intent.date)
                 SleepInputUiIntent.PreviousDay -> moveToDate(state.value.wakeDate.minusDays(1))
                 SleepInputUiIntent.NextDay -> moveToDate(state.value.wakeDate.plusDays(1))

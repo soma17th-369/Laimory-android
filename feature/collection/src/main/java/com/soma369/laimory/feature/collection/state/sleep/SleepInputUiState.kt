@@ -18,8 +18,8 @@ data class SleepInputUiState(
     /** 수면 자동 감지(Sleep API → HC) 활성 여부. 온보딩 카드 토글의 소스. */
     val autoDetectionEnabled: Boolean = false,
     val isSaving: Boolean = false,
-    /** 시간 피커 다이얼로그 대상. null 이면 닫힘. */
-    val editingField: SleepTimeField? = null,
+    /** 취침·기상 시각 선택 시트. null 이면 닫힘. */
+    val timeSheet: SleepTimeSheetState? = null,
     /** 날짜 선택 다이얼로그 노출 여부. */
     val showDatePicker: Boolean = false,
 ) : UiState

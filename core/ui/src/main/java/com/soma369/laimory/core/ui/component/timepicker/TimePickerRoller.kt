@@ -43,6 +43,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import java.time.LocalDateTime
 
 /**
  * 타임 피커 롤러. 열 이름 줄과 3행이 보이는 스크롤 영역으로 구성된다.
@@ -57,23 +58,32 @@ internal fun TimePickerRoller(
     minuteStep: TimePickerMinuteStep,
     onValueChange: (LaimoryTimePickerValue, TimePickerColumn) -> Unit,
     modifier: Modifier = Modifier,
+    range: ClosedRange<LocalDateTime>? = null,
 ) {
-    val showDateColumn = dates.size > 1
+    // 범위 밖 선택지는 아예 내놓지 않는다 — 고를 수 있게 두고 확인에서 막으면 왜 안 되는지 알기 어렵다.
+    val dateOptions = LaimoryTimePickerMath.allowedDates(dates, minuteStep, value.time.minute, range)
+    val showDateColumn = dateOptions.size > 1
     // 날짜 열이 있으면 시·분은 순환하지 않는다.
     //
     // 순환하면 목록 끝을 넘는 순간 날짜가 함께 밀려야 하는데, 날짜 목록도 끝이라 밀 수 없으면 시만
     // 한 바퀴 감겨 하루 가까이 되돌아간다(익일 08시에서 앞으로 굴렸는데 익일 05시가 되는 식).
     // 값을 거부하면 이번엔 롤러만 움직여 표시와 값이 어긋나므로, 스크롤 자체를 막아 해결한다.
-    val isTimeCyclic = !showDateColumn
+    // 범위가 있으면 끝에서 멈춰야 하므로 순환하지 않는다.
+    val isTimeCyclic = !showDateColumn && range == null
     // 목록 길이가 스크롤 도중 바뀌면 위치가 튀므로, 간격 밖 분이 생기면 선택지에 더하기만 한다.
     var extraMinutes by remember(minuteStep) { mutableStateOf(setOf(value.time.minute)) }
     LaunchedEffect(value.time.minute, minuteStep) {
         if (!minuteStep.contains(value.time.minute)) extraMinutes = extraMinutes + value.time.minute
     }
     val minuteOptions =
-        remember(minuteStep, extraMinutes) {
-            (minuteStep.options() + extraMinutes).distinct().sorted()
+        if (range == null) {
+            remember(minuteStep, extraMinutes) {
+                (minuteStep.options() + extraMinutes).distinct().sorted()
+            }
+        } else {
+            LaimoryTimePickerMath.allowedMinutes(value.date, value.time.hour, minuteStep, value.time.minute, range)
         }
+    val hourOptions = LaimoryTimePickerMath.allowedHours(value.date, minuteStep, value.time.minute, range)
 
     // 롤러가 끝에 닿아도 남은 스크롤이 시트로 번져 시트째 내려가지 않도록 여기서 삼킨다.
     // 날짜 열은 선택지가 두어 개뿐이라 경계에 자주 닿는다.
@@ -90,14 +100,16 @@ internal fun TimePickerRoller(
                 if (showDateColumn) {
                     SpinnerColumn(
                         modifier = Modifier.weight(1f),
-                        options = dates.map(TimePickerDateOption::label),
-                        selectedIndex = dates.indexOfFirst { it.date == value.date }.coerceAtLeast(0),
+                        options = dateOptions.map(TimePickerDateOption::label),
+                        selectedIndex = dateOptions.indexOfFirst { it.date == value.date }.coerceAtLeast(0),
                         isCyclic = false,
                         columnLabel = "날짜",
                         textStyle = MaterialTheme.typography.titleLarge,
                         onDelta = { delta ->
+                            // 날짜를 옮기면 그 날에 고를 수 없는 시각이 될 수 있어 범위 안으로 붙인다.
+                            val shifted = LaimoryTimePickerMath.shiftDate(value, delta, dateOptions)
                             onValueChange(
-                                LaimoryTimePickerMath.shiftDate(value, delta, dates),
+                                LaimoryTimePickerMath.coerceIntoRange(shifted, range),
                                 TimePickerColumn.DATE,
                             )
                         },
@@ -105,16 +117,23 @@ internal fun TimePickerRoller(
                 }
                 SpinnerColumn(
                     modifier = Modifier.weight(1f),
-                    options = LaimoryTimePickerMath.hourOptions().map { "%02d".format(it) },
-                    selectedIndex = value.time.hour,
+                    options = hourOptions.map { "%02d".format(it) },
+                    selectedIndex = hourOptions.indexOf(value.time.hour).coerceAtLeast(0),
                     isCyclic = isTimeCyclic,
                     columnLabel = "시",
                     textStyle = MaterialTheme.typography.headlineMedium,
                     onDelta = { delta ->
-                        onValueChange(
-                            LaimoryTimePickerMath.scrollHour(value, delta, dates),
-                            TimePickerColumn.HOUR,
-                        )
+                        val next =
+                            if (range == null) {
+                                LaimoryTimePickerMath.scrollHour(value, delta, dateOptions)
+                            } else {
+                                val hour = LaimoryTimePickerMath.scrollWithin(hourOptions, value.time.hour, delta)
+                                LaimoryTimePickerMath.coerceIntoRange(
+                                    value.copy(time = value.time.withHour(hour)),
+                                    range,
+                                )
+                            }
+                        onValueChange(next, TimePickerColumn.HOUR)
                     },
                 )
                 SpinnerColumn(
@@ -125,10 +144,17 @@ internal fun TimePickerRoller(
                     columnLabel = "분",
                     textStyle = MaterialTheme.typography.headlineMedium,
                     onDelta = { delta ->
-                        onValueChange(
-                            LaimoryTimePickerMath.scrollMinute(value, delta, minuteStep, dates),
-                            TimePickerColumn.MINUTE,
-                        )
+                        val next =
+                            if (range == null) {
+                                LaimoryTimePickerMath.scrollMinute(value, delta, minuteStep, dateOptions)
+                            } else {
+                                val minute = LaimoryTimePickerMath.scrollWithin(minuteOptions, value.time.minute, delta)
+                                LaimoryTimePickerMath.coerceIntoRange(
+                                    value.copy(time = value.time.withMinute(minute)),
+                                    range,
+                                )
+                            }
+                        onValueChange(next, TimePickerColumn.MINUTE)
                     },
                 )
             }

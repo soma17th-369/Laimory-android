@@ -29,17 +29,23 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
 import com.soma369.laimory.core.ui.permission.PhotoPermission
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.DraftSettingsSheet
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
-import com.soma369.laimory.feature.home.component.HomeTimePickerDialog
 import com.soma369.laimory.feature.home.component.PastRecordCard
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
+import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomeTimeField
+import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
@@ -143,14 +149,60 @@ private fun HomeContent(
         )
     }
 
-    state.editingTimeField?.let { field ->
-        HomeTimePickerDialog(
-            initial = if (field == HomeTimeField.START) state.startTime else state.endTime,
-            onConfirm = { onIntent(HomeUiIntent.SelectTime(field, it)) },
+    state.timeSheet?.let { sheet ->
+        LaimoryTimePickerSheet(
+            fields = draftTimePickerFields(sheet),
+            expandedFieldId = sheet.expandedField?.name,
+            onExpandedFieldChange = { id ->
+                onIntent(HomeUiIntent.ExpandTimeField(id?.let(HomeTimeField::valueOf)))
+            },
+            onValueChange = { id, value, _ ->
+                onIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.valueOf(id), value.date, value.time))
+            },
+            onConfirm = { onIntent(HomeUiIntent.ConfirmTimeSheet) },
             onDismiss = { onIntent(HomeUiIntent.DismissTimePicker) },
+            title = "초안 범위 시각",
+            confirmEnabled = sheet.isConfirmEnabled,
+            supportingText = DRAFT_WINDOW_GUIDE,
         )
     }
 }
+
+/**
+ * 시작·종료 두 줄을 한 시트에서 다룬다.
+ *
+ * 시작은 기록 날짜에 고정이라 날짜 열을 두지 않는다. 종료만 당일·익일 두 선택지를 열어, 예전 종료일
+ * 칩이 하던 일을 날짜 열이 대신한다.
+ */
+private fun draftTimePickerFields(sheet: HomeTimeSheetState): List<TimePickerField> =
+    listOf(
+        TimePickerField(
+            id = HomeTimeField.START.name,
+            label = "시작 시각",
+            value = LaimoryTimePickerValue(date = sheet.recordDate, time = sheet.startTime),
+            // 선택지가 하나뿐이라 날짜 롤러는 감춰지고 값에만 날짜가 붙는다 — 시작일 고정 정책을
+            // 유지하면서 어느 날의 시각인지 함께 읽힌다.
+            dates = listOf(TimePickerDateOption(sheet.recordDate, DraftEndDay.SAME_DAY.label)),
+            minuteStep = TimePickerMinuteStep.FIVE,
+        ),
+        TimePickerField(
+            id = HomeTimeField.END.name,
+            label = "종료 시각",
+            value = LaimoryTimePickerValue.of(sheet.endDateTime),
+            dates =
+                DraftEndDay.entries.map { endDay ->
+                    TimePickerDateOption(
+                        date = sheet.recordDate.plusDays(endDay.dayOffset.toLong()),
+                        label = endDay.label,
+                    )
+                },
+            minuteStep = TimePickerMinuteStep.FIVE,
+            range = sheet.endRange,
+        ),
+    )
+
+/** 롤러가 이미 범위를 좁히지만, 왜 그 폭인지는 문구로 알려야 알 수 있다. */
+private const val DRAFT_WINDOW_GUIDE = "기록 범위는 6시간 이상이어야 하고, 종료는 익일 06:00까지 고를 수 있어요."
 
 @Composable
 private fun HomeScreen(
