@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
@@ -50,6 +51,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -959,6 +961,8 @@ class TimelineEventEditorViewModelTest {
             recordDate: LocalDate,
             emotion: TimelineEmotion,
         ) = error("사용하지 않음")
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = Unit
     }
