@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -171,6 +173,7 @@ internal fun TimelineEventTimeSection(
         ) {
             TimelineTimeField(
                 text = summaryLabel(recordDate, startAt),
+                label = "시작 시각",
                 enabled = enabled,
                 isActive = false,
                 isError = error != null,
@@ -184,6 +187,7 @@ internal fun TimelineEventTimeSection(
             )
             TimelineTimeField(
                 text = endAt?.let { summaryLabel(recordDate, it) } ?: "없음",
+                label = "종료 시각",
                 enabled = enabled,
                 isActive = false,
                 isError = error != null,
@@ -334,6 +338,7 @@ private fun TimelineEditorSection(
 @Composable
 private fun TimelineTimeField(
     text: String,
+    label: String,
     enabled: Boolean,
     isActive: Boolean,
     isError: Boolean,
@@ -343,7 +348,8 @@ private fun TimelineTimeField(
     LaimorySelectField(
         value = text,
         onClick = onClick,
-        modifier = modifier,
+        // 필드 안에는 시각만 있어 화면을 못 보면 어느 쪽이 시작이고 종료인지 알 수 없다.
+        modifier = modifier.semantics { contentDescription = "$label, $text" },
         enabled = enabled,
         isActive = isActive,
         isError = isError,
