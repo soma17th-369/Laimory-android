@@ -35,7 +35,7 @@ class ObserveDraftTaskUseCaseTest {
     private val clock = Clock.fixed(requestedAt, ZoneId.of("UTC"))
 
     @Test
-    fun `PROCESSING은 즉시 조회하고 5초 뒤 다시 조회한다`() =
+    fun `PROCESSING은 즉시 조회하고 60초 뒤 다시 조회한다`() =
         runTest {
             val repository = QueueRepository(mutableListOf(processing(), processing()))
             val events = mutableListOf<DraftTaskPollingEvent>()
@@ -44,7 +44,7 @@ class ObserveDraftTaskUseCaseTest {
             runCurrent()
             assertEquals(1, repository.statusCallCount)
 
-            advanceTimeBy(4_999)
+            advanceTimeBy(59_999)
             runCurrent()
             assertEquals(1, repository.statusCallCount)
 

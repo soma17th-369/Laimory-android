@@ -57,7 +57,7 @@ class DefaultDraftTaskCoordinatorTest {
             assertTrue(coordinator.state.value is DraftTaskTrackingState.Processing)
             assertEquals(1, draftRepository.statusCallCount)
 
-            advanceTimeBy(5_000)
+            advanceTimeBy(60_000)
             runCurrent()
 
             val successState = coordinator.state.value as DraftTaskTrackingState.Success
