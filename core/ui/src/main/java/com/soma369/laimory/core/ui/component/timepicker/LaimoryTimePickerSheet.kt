@@ -212,12 +212,9 @@ private fun TimeRow(
         Text(
             text = field.label,
             modifier = Modifier.clearAndSetSemantics {},
-            style =
-                if (isExpanded) {
-                    MaterialTheme.typography.bodyMedium
-                } else {
-                    MaterialTheme.typography.titleMedium
-                },
+            // 펼쳐도 글자 크기는 그대로 두고 색만 바꾼다. 줄여 놓으면 지금 고르고 있는 줄이 오히려
+            // 작아져 어색하다.
+            style = MaterialTheme.typography.titleMedium,
             color =
                 if (isExpanded) {
                     MaterialTheme.colorScheme.primary
