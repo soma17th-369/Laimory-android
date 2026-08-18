@@ -30,7 +30,7 @@ data class HomeUiState(
     val isDraftSheetVisible: Boolean = false,
     val isPhotoSheetVisible: Boolean = false,
     val isDatePickerVisible: Boolean = false,
-    val editingTimeField: HomeTimeField? = null,
+    val timeSheet: HomeTimeSheetState? = null,
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
@@ -62,11 +62,13 @@ data class HomeSourceSummary(
     val totalItemCount: Int = 0,
 )
 
+/** 기록 창의 종료일. [label]은 기록 날짜를 기준으로 한 상대 표현이라 화면·피커가 함께 쓴다. */
 enum class DraftEndDay(
     val dayOffset: Int,
+    val label: String,
 ) {
-    SAME_DAY(0),
-    NEXT_DAY(1),
+    SAME_DAY(0, "당일"),
+    NEXT_DAY(1, "익일"),
 }
 
 enum class HomeTimeField {
@@ -96,16 +98,6 @@ internal val DraftCreationStatus.isDateLocked: Boolean
 
 internal val DraftCreationStatus.isInputLocked: Boolean
     get() = isDateLocked || this == DraftCreationStatus.SUCCESS
-
-internal fun HomeUiState.withEndDaySelection(endDay: DraftEndDay): HomeUiState {
-    val adjustedEndTime =
-        if (endDay == DraftEndDay.SAME_DAY && endTime <= startTime) {
-            LocalTime.of(23, 59)
-        } else {
-            endTime
-        }
-    return copy(endDay = endDay, endTime = adjustedEndTime)
-}
 
 internal fun HomeUiState.refreshSourceSummary(
     items: List<SourceItem>,

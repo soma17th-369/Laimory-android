@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -23,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
-import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
@@ -77,30 +75,10 @@ internal fun DraftSettingsSheet(
                 onClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
-                Text(
-                    "종료일",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
-                    FilterChip(
-                        selected = state.endDay == DraftEndDay.SAME_DAY,
-                        enabled = isInputEnabled,
-                        onClick = { onIntent(HomeUiIntent.SelectEndDay(DraftEndDay.SAME_DAY)) },
-                        label = { Text("당일") },
-                    )
-                    FilterChip(
-                        selected = state.endDay == DraftEndDay.NEXT_DAY,
-                        enabled = isInputEnabled,
-                        onClick = { onIntent(HomeUiIntent.SelectEndDay(DraftEndDay.NEXT_DAY)) },
-                        label = { Text("익일") },
-                    )
-                }
-            }
             SettingRow(
                 label = "종료 시각",
-                value = state.endTime.format(TIME_FORMAT),
+                // 종료일은 피커의 날짜 열이 가지므로 값 표기에서 당일·익일을 함께 읽는다.
+                value = "${state.endDay.label} ${state.endTime.format(TIME_FORMAT)}",
                 enabled = isInputEnabled,
                 onClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END)) },
             )

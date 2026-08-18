@@ -7,8 +7,10 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -62,36 +64,30 @@ class HomeUiStateTest {
     }
 
     @Test
-    fun `익일 자정 상태에서 당일을 선택하면 종료 시각을 23시 59분으로 보정한다`() {
-        val state =
-            HomeUiState(
-                selectedDate = date,
-                startTime = LocalTime.MIDNIGHT,
-                endDay = DraftEndDay.NEXT_DAY,
-                endTime = LocalTime.MIDNIGHT,
+    fun `당일 종료가 시작보다 앞이면 시트 확인을 막는다`() {
+        val sheet =
+            HomeTimeSheetState(
+                startTime = LocalTime.of(9, 0),
+                endDay = DraftEndDay.SAME_DAY,
+                endTime = LocalTime.of(8, 0),
+                expandedField = null,
             )
 
-        val adjusted = state.withEndDaySelection(DraftEndDay.SAME_DAY)
-
-        assertEquals(DraftEndDay.SAME_DAY, adjusted.endDay)
-        assertEquals(LocalTime.of(23, 59), adjusted.endTime)
-        assertNotNull(adjusted.recordDateWindow(zone))
+        assertFalse(sheet.isConfirmEnabled)
+        assertTrue(sheet.copy(endTime = LocalTime.of(9, 30)).isConfirmEnabled)
     }
 
     @Test
-    fun `당일 종료가 이미 시작보다 뒤라면 기존 종료 시각을 유지한다`() {
-        val state =
-            HomeUiState(
-                selectedDate = date,
-                startTime = LocalTime.of(9, 0),
+    fun `종료가 익일이면 시각과 무관하게 확인할 수 있다`() {
+        val sheet =
+            HomeTimeSheetState(
+                startTime = LocalTime.MIDNIGHT,
                 endDay = DraftEndDay.NEXT_DAY,
-                endTime = LocalTime.of(18, 0),
+                endTime = LocalTime.MIDNIGHT,
+                expandedField = null,
             )
 
-        val adjusted = state.withEndDaySelection(DraftEndDay.SAME_DAY)
-
-        assertEquals(DraftEndDay.SAME_DAY, adjusted.endDay)
-        assertEquals(LocalTime.of(18, 0), adjusted.endTime)
+        assertTrue(sheet.isConfirmEnabled)
     }
 
     @Test

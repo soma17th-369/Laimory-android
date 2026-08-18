@@ -29,22 +29,29 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
 import com.soma369.laimory.core.ui.permission.PhotoPermission
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.DraftSettingsSheet
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
-import com.soma369.laimory.feature.home.component.HomeTimePickerDialog
 import com.soma369.laimory.feature.home.component.PastRecordCard
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
+import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomeTimeField
+import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 
 @Composable
 fun HomeRoute(
@@ -143,14 +150,59 @@ private fun HomeContent(
         )
     }
 
-    state.editingTimeField?.let { field ->
-        HomeTimePickerDialog(
-            initial = if (field == HomeTimeField.START) state.startTime else state.endTime,
-            onConfirm = { onIntent(HomeUiIntent.SelectTime(field, it)) },
+    state.timeSheet?.let { sheet ->
+        LaimoryTimePickerSheet(
+            fields = draftTimePickerFields(sheet, state.selectedDate),
+            expandedFieldId = sheet.expandedField?.name,
+            onExpandedFieldChange = { id ->
+                onIntent(HomeUiIntent.ExpandTimeField(id?.let(HomeTimeField::valueOf)))
+            },
+            onValueChange = { id, value, _ ->
+                onIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.valueOf(id), value.date, value.time))
+            },
+            onConfirm = { onIntent(HomeUiIntent.ConfirmTimeSheet) },
             onDismiss = { onIntent(HomeUiIntent.DismissTimePicker) },
+            title = "초안 범위 시각",
+            confirmEnabled = sheet.isConfirmEnabled,
         )
     }
 }
+
+/**
+ * 시작·종료 두 줄을 한 시트에서 다룬다.
+ *
+ * 시작은 기록 날짜에 고정이라 날짜 열을 두지 않는다. 종료만 당일·익일 두 선택지를 열어, 예전 종료일
+ * 칩이 하던 일을 날짜 열이 대신한다.
+ */
+private fun draftTimePickerFields(
+    sheet: HomeTimeSheetState,
+    selectedDate: LocalDate,
+): List<TimePickerField> =
+    listOf(
+        TimePickerField(
+            id = HomeTimeField.START.name,
+            label = "시작 시각",
+            value = LaimoryTimePickerValue(date = selectedDate, time = sheet.startTime),
+            minuteStep = TimePickerMinuteStep.FIVE,
+        ),
+        TimePickerField(
+            id = HomeTimeField.END.name,
+            label = "종료 시각",
+            value =
+                LaimoryTimePickerValue(
+                    date = selectedDate.plusDays(sheet.endDay.dayOffset.toLong()),
+                    time = sheet.endTime,
+                ),
+            dates =
+                DraftEndDay.entries.map { endDay ->
+                    TimePickerDateOption(
+                        date = selectedDate.plusDays(endDay.dayOffset.toLong()),
+                        label = endDay.label,
+                    )
+                },
+            minuteStep = TimePickerMinuteStep.FIVE,
+        ),
+    )
 
 @Composable
 private fun HomeScreen(

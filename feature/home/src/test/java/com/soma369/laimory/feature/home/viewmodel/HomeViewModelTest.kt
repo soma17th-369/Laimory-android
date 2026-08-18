@@ -157,11 +157,13 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SelectEndDay(DraftEndDay.SAME_DAY))
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
             assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
+            // 추적 중에는 시각 시트를 열지도 못한다.
+            assertNull(viewModel.state.value.timeSheet)
             assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
             assertNull(sessionStore.preparation.value)
             assertTrue(navigationHelper.destinations.isEmpty())
@@ -330,7 +332,7 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true, limited = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.SelectTime(HomeTimeField.START, LocalTime.of(9, 0)))
+            viewModel.selectStartTime(LocalTime.of(9, 0))
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true, limited = true))
             runCurrent()
@@ -353,7 +355,7 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.SelectTime(HomeTimeField.START, LocalTime.of(9, 0)))
+            viewModel.selectStartTime(LocalTime.of(9, 0))
             runCurrent()
 
             latestResult.complete(listOf(todayPhotoCandidate(2L)))
@@ -683,6 +685,96 @@ class HomeViewModelTest {
 
             assertEquals(listOf<Page>(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
         }
+
+    @Test
+    fun `시각 시트는 확인 전까지 기록 범위를 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.sendIntent(
+                HomeUiIntent.ChangeSheetTime(HomeTimeField.START, LocalDate.now(ZoneId.systemDefault()), LocalTime.of(9, 0)),
+            )
+            runCurrent()
+
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.timeSheet?.startTime)
+            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.startTime)
+            assertNull(viewModel.state.value.timeSheet)
+        }
+
+    @Test
+    fun `시트를 닫으면 고르던 값을 버린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.sendIntent(
+                HomeUiIntent.ChangeSheetTime(HomeTimeField.START, LocalDate.now(ZoneId.systemDefault()), LocalTime.of(9, 0)),
+            )
+            viewModel.sendIntent(HomeUiIntent.DismissTimePicker)
+            runCurrent()
+
+            assertNull(viewModel.state.value.timeSheet)
+            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
+        }
+
+    @Test
+    fun `종료 날짜 롤러가 당일과 익일을 겸한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today, LocalTime.of(23, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            assertEquals(DraftEndDay.SAME_DAY, viewModel.state.value.endDay)
+            assertEquals(LocalTime.of(23, 0), viewModel.state.value.endTime)
+
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(2, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
+            assertEquals(LocalTime.of(2, 0), viewModel.state.value.endTime)
+        }
+
+    @Test
+    fun `종료가 시작보다 앞인 조합은 확인해도 반영되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(9, 0))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today, LocalTime.of(8, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            // 확인이 막히므로 시트는 열린 채 남고 기록 범위도 그대로다.
+            assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
+            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.endTime)
+            assertEquals(false, viewModel.state.value.timeSheet?.isConfirmEnabled)
+        }
+
+    /** 시각 시트를 열어 시작 시각만 바꾸고 확정하는 흐름. */
+    private fun HomeViewModel.selectStartTime(time: LocalTime) {
+        sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+        sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, LocalDate.now(ZoneId.systemDefault()), time))
+        sendIntent(HomeUiIntent.ConfirmTimeSheet)
+    }
 
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
