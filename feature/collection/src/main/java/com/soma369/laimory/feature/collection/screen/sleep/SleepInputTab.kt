@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
@@ -29,9 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,11 +53,16 @@ import androidx.health.connect.client.PermissionController
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
 import com.soma369.laimory.feature.collection.screen.HealthPermissions
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiIntent
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiSideEffect
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiState
 import com.soma369.laimory.feature.collection.state.sleep.SleepTimeField
+import com.soma369.laimory.feature.collection.state.sleep.SleepTimeSheetState
 import com.soma369.laimory.feature.collection.viewmodel.sleep.SleepInputViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -170,20 +172,19 @@ private fun SleepInputContent(
         onToggleAutoDetection = onToggleAutoDetection,
     )
 
-    state.editingField?.let { field ->
-        val initial = if (field == SleepTimeField.BED) state.bedTime else state.wakeTime
-        SleepTimePickerDialog(
-            initial = initial,
-            onConfirm = { time ->
-                onIntent(
-                    if (field == SleepTimeField.BED) {
-                        SleepInputUiIntent.SetBedTime(time)
-                    } else {
-                        SleepInputUiIntent.SetWakeTime(time)
-                    },
-                )
+    state.timeSheet?.let { sheet ->
+        LaimoryTimePickerSheet(
+            fields = sleepTimePickerFields(sheet, state.wakeDate),
+            expandedFieldId = sheet.expandedField?.name,
+            onExpandedFieldChange = { id ->
+                onIntent(SleepInputUiIntent.ExpandTimeField(id?.let(SleepTimeField::valueOf)))
             },
+            onValueChange = { id, value, _ ->
+                onIntent(SleepInputUiIntent.ChangeSheetTime(SleepTimeField.valueOf(id), value.time))
+            },
+            onConfirm = { onIntent(SleepInputUiIntent.ConfirmTimeSheet) },
             onDismiss = { onIntent(SleepInputUiIntent.DismissTimePicker) },
+            title = "수면 시간",
         )
     }
 
@@ -505,31 +506,30 @@ private fun SleepTimeRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SleepTimePickerDialog(
-    initial: LocalTime,
-    onConfirm: (LocalTime) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val pickerState = rememberTimePickerState(initialHour = initial.hour, initialMinute = initial.minute, is24Hour = false)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = { onConfirm(LocalTime.of(pickerState.hour, pickerState.minute)) }) {
-                Text("확인")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("취소") }
-        },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                TimePicker(state = pickerState)
-            }
-        },
+/**
+ * 취침·기상 두 줄을 한 시트에서 다룬다.
+ *
+ * 날짜 열은 두지 않는다 — 취침일은 기상일과 두 시각에서 파생되는 계산값이라 사용자가 고를 값이 아니다.
+ * 값에 담는 날짜는 롤러에 드러나지 않지만 하루 경계 계산에 쓰이므로 기상일을 그대로 넘긴다.
+ */
+private fun sleepTimePickerFields(
+    sheet: SleepTimeSheetState,
+    wakeDate: LocalDate,
+): List<TimePickerField> =
+    listOf(
+        TimePickerField(
+            id = SleepTimeField.BED.name,
+            label = "취침 시간",
+            value = LaimoryTimePickerValue(date = wakeDate, time = sheet.bedTime),
+            minuteStep = TimePickerMinuteStep.FIVE,
+        ),
+        TimePickerField(
+            id = SleepTimeField.WAKE.name,
+            label = "기상 시간",
+            value = LaimoryTimePickerValue(date = wakeDate, time = sheet.wakeTime),
+            minuteStep = TimePickerMinuteStep.FIVE,
+        ),
     )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

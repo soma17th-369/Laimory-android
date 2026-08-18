@@ -5,7 +5,20 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 sealed interface SleepInputUiIntent : UiIntent {
+    /** 시각 선택 시트를 열고 누른 줄을 펼친다. */
     data class ShowTimePicker(val field: SleepTimeField) : SleepInputUiIntent
+
+    /** 시트 안에서 펼친 줄을 바꾼다. null 이면 모두 접는다. */
+    data class ExpandTimeField(val field: SleepTimeField?) : SleepInputUiIntent
+
+    /** 시트 롤러를 굴린 결과. 확인 전까지는 시트 임시 값만 바뀐다. */
+    data class ChangeSheetTime(
+        val field: SleepTimeField,
+        val time: LocalTime,
+    ) : SleepInputUiIntent
+
+    /** 시트의 확인 — 임시 값을 취침·기상 시각으로 확정한다. */
+    data object ConfirmTimeSheet : SleepInputUiIntent
 
     data object DismissTimePicker : SleepInputUiIntent
 
