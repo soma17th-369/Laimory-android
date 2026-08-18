@@ -64,30 +64,77 @@ class HomeUiStateTest {
     }
 
     @Test
-    fun `당일 종료가 시작보다 앞이면 시트 확인을 막는다`() {
+    fun `기록 범위가 6시간 미만이면 확인을 막고 창도 만들지 않는다`() {
         val sheet =
             HomeTimeSheetState(
+                recordDate = date,
                 startTime = LocalTime.of(9, 0),
                 endDay = DraftEndDay.SAME_DAY,
-                endTime = LocalTime.of(8, 0),
+                endTime = LocalTime.of(14, 0),
                 expandedField = null,
             )
 
         assertFalse(sheet.isConfirmEnabled)
-        assertTrue(sheet.copy(endTime = LocalTime.of(9, 30)).isConfirmEnabled)
+        assertTrue(sheet.copy(endTime = LocalTime.of(15, 0)).isConfirmEnabled)
+        assertNull(
+            HomeUiState(
+                selectedDate = date,
+                startTime = LocalTime.of(9, 0),
+                endDay = DraftEndDay.SAME_DAY,
+                endTime = LocalTime.of(14, 0),
+            ).recordDateWindow(zone),
+        )
     }
 
     @Test
-    fun `종료가 익일이면 시각과 무관하게 확인할 수 있다`() {
+    fun `종료는 당일 06시부터 익일 06시까지만 고를 수 있다`() {
         val sheet =
             HomeTimeSheetState(
+                recordDate = date,
+                startTime = LocalTime.MIDNIGHT,
+                endDay = DraftEndDay.SAME_DAY,
+                endTime = LocalTime.of(5, 55),
+                expandedField = null,
+            )
+
+        // 당일 06:00 이전은 최소 길이와 무관하게 범위 밖이다.
+        assertFalse(sheet.isConfirmEnabled)
+        assertTrue(sheet.copy(endTime = LocalTime.of(6, 0)).isConfirmEnabled)
+        // 익일 06:00 이 상한이라 그 뒤는 고를 수 없다.
+        assertTrue(sheet.copy(endDay = DraftEndDay.NEXT_DAY, endTime = LocalTime.of(6, 0)).isConfirmEnabled)
+        assertFalse(sheet.copy(endDay = DraftEndDay.NEXT_DAY, endTime = LocalTime.of(6, 5)).isConfirmEnabled)
+    }
+
+    @Test
+    fun `기본 설정인 당일 자정부터 익일 자정까지는 유효하다`() {
+        assertNotNull(
+            HomeUiState(
+                selectedDate = date,
+                startTime = LocalTime.MIDNIGHT,
+                endDay = DraftEndDay.NEXT_DAY,
+                endTime = LocalTime.MIDNIGHT,
+            ).recordDateWindow(zone),
+        )
+    }
+
+    @Test
+    fun `시작을 늦추면 종료 하한이 최소 길이만큼 밀린다`() {
+        val sheet =
+            HomeTimeSheetState(
+                recordDate = date,
                 startTime = LocalTime.MIDNIGHT,
                 endDay = DraftEndDay.NEXT_DAY,
                 endTime = LocalTime.MIDNIGHT,
                 expandedField = null,
             )
 
-        assertTrue(sheet.isConfirmEnabled)
+        val late = sheet.withStartTime(LocalTime.of(23, 55))
+
+        assertEquals(date.plusDays(1).atTime(5, 55), late.endRange.start)
+        assertEquals(date.plusDays(1).atTime(6, 0), late.endRange.endInclusive)
+        // 범위 밖으로 밀린 종료(익일 00:00)는 가까운 경계로 붙는다.
+        assertEquals(date.plusDays(1).atTime(5, 55), late.endDateTime)
+        assertTrue(late.isConfirmEnabled)
     }
 
     @Test
@@ -120,14 +167,15 @@ class HomeUiStateTest {
                 selectedDate = date,
                 startTime = LocalTime.of(22, 0),
                 endDay = DraftEndDay.NEXT_DAY,
-                endTime = LocalTime.of(2, 0),
+                // 최소 6시간 정책을 지키는 범위여야 창이 만들어진다.
+                endTime = LocalTime.of(4, 0),
             )
         val candidates =
             listOf(
                 candidate(id = 1L, dateTime = date.atTime(21, 59)),
                 candidate(id = 2L, dateTime = date.atTime(23, 0)),
                 candidate(id = 3L, dateTime = date.plusDays(1).atTime(1, 0)),
-                candidate(id = 4L, dateTime = date.plusDays(1).atTime(2, 0)),
+                candidate(id = 4L, dateTime = date.plusDays(1).atTime(4, 0)),
             )
 
         val refreshed = state.refreshSourceSummary(emptyList(), candidates, zone)

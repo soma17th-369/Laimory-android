@@ -51,7 +51,6 @@ import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 import kotlinx.coroutines.flow.Flow
-import java.time.LocalDate
 
 @Composable
 fun HomeRoute(
@@ -152,7 +151,7 @@ private fun HomeContent(
 
     state.timeSheet?.let { sheet ->
         LaimoryTimePickerSheet(
-            fields = draftTimePickerFields(sheet, state.selectedDate),
+            fields = draftTimePickerFields(sheet),
             expandedFieldId = sheet.expandedField?.name,
             onExpandedFieldChange = { id ->
                 onIntent(HomeUiIntent.ExpandTimeField(id?.let(HomeTimeField::valueOf)))
@@ -164,6 +163,7 @@ private fun HomeContent(
             onDismiss = { onIntent(HomeUiIntent.DismissTimePicker) },
             title = "초안 범위 시각",
             confirmEnabled = sheet.isConfirmEnabled,
+            supportingText = DRAFT_WINDOW_GUIDE,
         )
     }
 }
@@ -174,35 +174,35 @@ private fun HomeContent(
  * 시작은 기록 날짜에 고정이라 날짜 열을 두지 않는다. 종료만 당일·익일 두 선택지를 열어, 예전 종료일
  * 칩이 하던 일을 날짜 열이 대신한다.
  */
-private fun draftTimePickerFields(
-    sheet: HomeTimeSheetState,
-    selectedDate: LocalDate,
-): List<TimePickerField> =
+private fun draftTimePickerFields(sheet: HomeTimeSheetState): List<TimePickerField> =
     listOf(
         TimePickerField(
             id = HomeTimeField.START.name,
             label = "시작 시각",
-            value = LaimoryTimePickerValue(date = selectedDate, time = sheet.startTime),
+            value = LaimoryTimePickerValue(date = sheet.recordDate, time = sheet.startTime),
+            // 선택지가 하나뿐이라 날짜 롤러는 감춰지고 값에만 날짜가 붙는다 — 시작일 고정 정책을
+            // 유지하면서 어느 날의 시각인지 함께 읽힌다.
+            dates = listOf(TimePickerDateOption(sheet.recordDate, DraftEndDay.SAME_DAY.label)),
             minuteStep = TimePickerMinuteStep.FIVE,
         ),
         TimePickerField(
             id = HomeTimeField.END.name,
             label = "종료 시각",
-            value =
-                LaimoryTimePickerValue(
-                    date = selectedDate.plusDays(sheet.endDay.dayOffset.toLong()),
-                    time = sheet.endTime,
-                ),
+            value = LaimoryTimePickerValue.of(sheet.endDateTime),
             dates =
                 DraftEndDay.entries.map { endDay ->
                     TimePickerDateOption(
-                        date = selectedDate.plusDays(endDay.dayOffset.toLong()),
+                        date = sheet.recordDate.plusDays(endDay.dayOffset.toLong()),
                         label = endDay.label,
                     )
                 },
             minuteStep = TimePickerMinuteStep.FIVE,
+            range = sheet.endRange,
         ),
     )
+
+/** 롤러가 이미 범위를 좁히지만, 왜 그 폭인지는 문구로 알려야 알 수 있다. */
+private const val DRAFT_WINDOW_GUIDE = "기록 범위는 6시간 이상이어야 하고, 종료는 익일 06:00까지 고를 수 있어요."
 
 @Composable
 private fun HomeScreen(

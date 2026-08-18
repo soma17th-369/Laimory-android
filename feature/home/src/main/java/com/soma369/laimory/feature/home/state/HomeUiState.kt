@@ -36,14 +36,22 @@ data class HomeUiState(
     val draftMessage: String? = null,
     val pastRecords: HomePastRecordsUiState = HomePastRecordsUiState.Loading,
 ) : UiState {
-    fun recordDateWindow(zone: ZoneId): RecordDateWindow? =
-        runCatching {
-            val endDate = selectedDate.plusDays(endDay.dayOffset.toLong())
+    /**
+     * 지금 설정으로 만들어지는 기록 창. 정책을 벗어나면 null 이라 초안 생성이 막힌다.
+     *
+     * 최소 길이·종료 허용 범위는 [DraftWindowPolicy]가 갖는다 — 공용 [RecordDateWindow] 에 넣으면
+     * 사진 조회·수집 선별 등 같은 모델을 쓰는 다른 경로까지 함께 좁아진다.
+     */
+    fun recordDateWindow(zone: ZoneId): RecordDateWindow? {
+        val endDateTime = selectedDate.plusDays(endDay.dayOffset.toLong()).atTime(endTime)
+        if (!DraftWindowPolicy.isValid(selectedDate, startTime, endDateTime)) return null
+        return runCatching {
             RecordDateWindow(
                 start = selectedDate.atTime(startTime).atZone(zone).toInstant(),
-                end = endDate.atTime(endTime).atZone(zone).toInstant(),
+                end = endDateTime.atZone(zone).toInstant(),
             )
         }.getOrNull()
+    }
 }
 
 @Immutable

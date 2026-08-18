@@ -85,7 +85,7 @@ internal fun DraftSettingsSheet(
 
             if (!isValid) {
                 Text(
-                    "종료 시각은 시작 시각보다 뒤로 설정해주세요.",
+                    "기록 범위는 6시간 이상, 종료는 익일 06:00까지로 설정해주세요.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )

@@ -276,6 +276,7 @@ class HomeViewModel
                 copy(
                     timeSheet =
                         HomeTimeSheetState(
+                            recordDate = selectedDate,
                             startTime = startTime,
                             endDay = endDay,
                             endTime = endTime,
@@ -285,7 +286,12 @@ class HomeViewModel
             }
         }
 
-        /** 종료 줄의 날짜 롤러가 당일·익일 선택을 겸하므로, 고른 날짜를 기록 날짜와의 차이로 되돌린다. */
+        /**
+         * 종료 줄의 날짜 롤러가 당일·익일 선택을 겸하므로 고른 날짜를 그대로 종료 일시로 받는다.
+         *
+         * 시작을 늦추면 최소 길이 때문에 종료 하한이 밀리므로, 이미 고른 종료가 범위 밖이 되면
+         * 경계로 붙여 둔다 — 그대로 두면 롤러에 없는 값이 남아 확인만 막힌다.
+         */
         private fun changeSheetTime(
             field: HomeTimeField,
             date: LocalDate,
@@ -295,12 +301,8 @@ class HomeViewModel
                 val sheet = timeSheet ?: return@updateState this
                 val next =
                     when (field) {
-                        HomeTimeField.START -> sheet.copy(startTime = time)
-                        HomeTimeField.END ->
-                            sheet.copy(
-                                endDay = if (date == selectedDate) DraftEndDay.SAME_DAY else DraftEndDay.NEXT_DAY,
-                                endTime = time,
-                            )
+                        HomeTimeField.START -> sheet.withStartTime(time)
+                        HomeTimeField.END -> sheet.withEnd(date.atTime(time))
                     }
                 copy(timeSheet = next)
             }

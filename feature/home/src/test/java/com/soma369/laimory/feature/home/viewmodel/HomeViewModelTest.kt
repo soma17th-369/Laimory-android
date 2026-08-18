@@ -739,6 +739,7 @@ class HomeViewModelTest {
 
             assertEquals(DraftEndDay.SAME_DAY, viewModel.state.value.endDay)
             assertEquals(LocalTime.of(23, 0), viewModel.state.value.endTime)
+            assertNotNull(viewModel.state.value.recordDateWindow(ZoneId.systemDefault()))
 
             viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(2, 0)))
@@ -750,7 +751,25 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `종료가 시작보다 앞인 조합은 확인해도 반영되지 않는다`() =
+    fun `시작을 늦추면 종료가 최소 6시간 뒤로 따라 밀린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(23, 55)))
+            runCurrent()
+
+            // 기본 종료(익일 00:00)는 최소 길이를 못 채우므로 하한인 익일 05:55 로 붙는다.
+            val sheet = viewModel.state.value.timeSheet
+            assertEquals(DraftEndDay.NEXT_DAY, sheet?.endDay)
+            assertEquals(LocalTime.of(5, 55), sheet?.endTime)
+            assertEquals(true, sheet?.isConfirmEnabled)
+        }
+
+    @Test
+    fun `6시간을 못 채우는 조합은 확인해도 반영되지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
@@ -759,7 +778,7 @@ class HomeViewModelTest {
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
-            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today, LocalTime.of(8, 0)))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today, LocalTime.of(14, 0)))
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             runCurrent()
 
