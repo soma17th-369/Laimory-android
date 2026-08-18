@@ -98,15 +98,10 @@ class CalendarViewModel
          */
         private fun loadAroundVisibleMonth() {
             val visible = state.value.visibleMonth
-            listOf(visible, visible.minusMonths(1), visible.plusMonths(1)).forEach { month ->
-                loadMonth(month, isVisibleMonth = month == visible)
-            }
+            listOf(visible, visible.minusMonths(1), visible.plusMonths(1)).forEach(::loadMonth)
         }
 
-        private fun loadMonth(
-            month: YearMonth,
-            isVisibleMonth: Boolean = month == state.value.visibleMonth,
-        ) {
+        private fun loadMonth(month: YearMonth) {
             if (month.year !in CALENDAR_YEAR_RANGE) return
             if (month in inFlightMonths) return
             val cached = state.value.months[month]
@@ -118,11 +113,11 @@ class CalendarViewModel
 
             inFlightMonths += month
             val requestGeneration = generation
-            safeLaunch(onError = { error -> handleMonthFailure(month, requestGeneration, isVisibleMonth, error) }) {
+            safeLaunch(onError = { error -> handleMonthFailure(month, requestGeneration, error) }) {
                 try {
                     getMonthlyDailyRecordsUseCase(month)
                         .onSuccess { records -> applyMonthRecords(month, requestGeneration, records.toCalendarRecordsByDate()) }
-                        .onFailure { error -> handleMonthFailure(month, requestGeneration, isVisibleMonth, error) }
+                        .onFailure { error -> handleMonthFailure(month, requestGeneration, error) }
                 } finally {
                     // 세대가 지난 요청은 이미 비워진 집합을 건드리지 않는다 — 새 요청을 지워버리지 않기 위해서다.
                     if (requestGeneration == generation) inFlightMonths -= month
@@ -143,7 +138,6 @@ class CalendarViewModel
         private fun handleMonthFailure(
             month: YearMonth,
             requestGeneration: Int,
-            isVisibleMonth: Boolean,
             error: Throwable,
         ) {
             if (requestGeneration != generation) return
@@ -156,7 +150,9 @@ class CalendarViewModel
                 }
             }
             // 이웃 월 prefetch 실패까지 안내하면 사용자가 하지 않은 조작으로 스낵바가 뜬다. 보고 있는 달만 알린다.
-            if (isVisibleMonth) handleFailure(error)
+            // 판단은 요청을 시작할 때가 아니라 실패한 시점의 표시 월로 한다 — prefetch 하던 달로 이미 넘어와 있을 수 있고,
+            // 같은 월 요청은 in-flight 에서 막히므로 그 사이 이동은 새 요청으로 다시 잡히지 않는다.
+            if (month == state.value.visibleMonth) handleFailure(error)
         }
 
         /** 월 전환은 선택 날짜를 건드리지 않는다 — TopBar 월 표기만 따라 바뀐다. */

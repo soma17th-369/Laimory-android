@@ -228,6 +228,45 @@ class CalendarViewModelTest {
         }
 
     @Test
+    fun `prefetch 하던 달로 넘어온 뒤 실패하면 그 실패를 안내한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val nextMonth = THIS_MONTH.plusMonths(1)
+            val gate = CompletableDeferred<List<MonthlyDailyRecord>>()
+            repository.gates[nextMonth] = gate
+            val viewModel = createViewModel()
+            val messages = collectSnackbars(viewModel)
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+
+            // prefetch 로 시작한 요청이지만 도착 전에 사용자가 그 달로 넘어와 있다.
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(nextMonth))
+            advanceUntilIdle()
+            gate.completeExceptionally(ApiException.NetworkException())
+            advanceUntilIdle()
+
+            assertEquals(listOf(ApiException.NETWORK_ERROR), messages)
+        }
+
+    @Test
+    fun `이미 떠난 달의 실패는 뒤늦게 도착해도 안내하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<List<MonthlyDailyRecord>>()
+            repository.gates[THIS_MONTH] = gate
+            val viewModel = createViewModel()
+            val messages = collectSnackbars(viewModel)
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(THIS_MONTH.plusMonths(2)))
+            advanceUntilIdle()
+            gate.completeExceptionally(ApiException.NetworkException())
+            advanceUntilIdle()
+
+            assertTrue(messages.isEmpty())
+            assertEquals(MonthlyRecordsUiContent.LoadFailed, viewModel.state.value.contentOf(THIS_MONTH))
+        }
+
+    @Test
     fun `무효화 이전에 시작된 응답은 새 상태를 되살리지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val staleGate = CompletableDeferred<List<MonthlyDailyRecord>>()

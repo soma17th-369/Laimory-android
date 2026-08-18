@@ -160,10 +160,10 @@ private fun PickerYearStepper(
             modifier = Modifier.size(StepperTouchTarget),
             enabled = canShowPreviousYear,
         ) {
+            // tint 를 직접 주면 IconButton 의 disabled content color 를 덮어써 비활성 버튼이 활성처럼 보인다.
             Icon(
                 painter = painterResource(UiR.drawable.ico_default_caret_left),
                 contentDescription = "이전 해 보기",
-                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(StepperIconSize),
             )
         }
@@ -182,7 +182,6 @@ private fun PickerYearStepper(
             Icon(
                 painter = painterResource(UiR.drawable.ico_default_caret_right),
                 contentDescription = "다음 해 보기",
-                tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(StepperIconSize),
             )
         }

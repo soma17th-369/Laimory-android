@@ -39,6 +39,8 @@ import com.soma369.laimory.core.ui.component.EmotionIcon
 import com.soma369.laimory.core.ui.component.EmotionIconDefaults
 import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.model.CALENDAR_FIRST_MONTH
+import com.soma369.laimory.feature.timeline.model.CALENDAR_LAST_MONTH
 import com.soma369.laimory.feature.timeline.model.CalendarMonthGrid
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
 import com.soma369.laimory.feature.timeline.model.DAYS_IN_WEEK
@@ -120,17 +122,27 @@ internal fun CalendarMonthPager(
         state = pagerState,
         modifier =
             modifier.fillMaxWidth().semantics {
+                // 경계 밖으로는 움직일 수 없으므로 액션도 내놓지 않는다. 남겨 두면 눌러도 그대로인데
+                // TalkBack 에는 이동에 성공했다고 전달된다.
                 customActions =
-                    listOf(
-                        CustomAccessibilityAction("이전 달 보기") {
-                            onVisibleMonthChange(visibleMonth.minusMonths(1))
-                            true
-                        },
-                        CustomAccessibilityAction("다음 달 보기") {
-                            onVisibleMonthChange(visibleMonth.plusMonths(1))
-                            true
-                        },
-                    )
+                    buildList {
+                        if (visibleMonth.isAfter(CALENDAR_FIRST_MONTH)) {
+                            add(
+                                CustomAccessibilityAction("이전 달 보기") {
+                                    onVisibleMonthChange(visibleMonth.minusMonths(1))
+                                    true
+                                },
+                            )
+                        }
+                        if (visibleMonth.isBefore(CALENDAR_LAST_MONTH)) {
+                            add(
+                                CustomAccessibilityAction("다음 달 보기") {
+                                    onVisibleMonthChange(visibleMonth.plusMonths(1))
+                                    true
+                                },
+                            )
+                        }
+                    }
             },
     ) { page ->
         val month = monthOfPagerPage(page)
