@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,6 +36,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -45,6 +48,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import com.soma369.laimory.core.ui.R as UiR
@@ -152,13 +156,13 @@ internal fun TimelineEditorTextSection(
 
 @Composable
 internal fun TimelineEventTimeSection(
+    recordDate: LocalDate,
     startAt: LocalDateTime,
     endAt: LocalDateTime?,
-    activeField: TimelineEventTimeField?,
     enabled: Boolean,
     error: String?,
-    onStartClick: () -> Unit,
-    onEndClick: () -> Unit,
+    onOpenPicker: (TimelineEventTimeField) -> Unit,
+    onClearEnd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     TimelineEditorSection(title = "시간", modifier = modifier) {
@@ -168,11 +172,12 @@ internal fun TimelineEventTimeSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TimelineTimeField(
-                text = startAt.format(TimeFormatter),
+                text = summaryLabel(recordDate, startAt),
+                label = "시작 시각",
                 enabled = enabled,
-                isActive = activeField == TimelineEventTimeField.START,
+                isActive = false,
                 isError = error != null,
-                onClick = onStartClick,
+                onClick = { onOpenPicker(TimelineEventTimeField.START) },
                 modifier = Modifier.weight(1f),
             )
             Text(
@@ -181,13 +186,24 @@ internal fun TimelineEventTimeSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             TimelineTimeField(
-                text = endAt?.format(TimeFormatter) ?: "없음",
+                text = endAt?.let { summaryLabel(recordDate, it) } ?: "없음",
+                label = "종료 시각",
                 enabled = enabled,
-                isActive = activeField == TimelineEventTimeField.END,
+                isActive = false,
                 isError = error != null,
-                onClick = onEndClick,
+                onClick = { onOpenPicker(TimelineEventTimeField.END) },
                 modifier = Modifier.weight(1f),
             )
+        }
+        if (endAt != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onClearEnd, enabled = enabled) {
+                    Text("종료 없음")
+                }
+            }
         }
         error?.let {
             Text(
@@ -196,6 +212,25 @@ internal fun TimelineEventTimeSection(
                 color = MaterialTheme.colorScheme.error,
             )
         }
+    }
+}
+
+/**
+ * 요약 필드에 표시할 시각.
+ *
+ * 가로로 나란히 두면 필드 하나가 화면 반쪽뿐이라 `(MM.dd) HH:mm`은 좁은 화면에서 잘린다.
+ * 기록 날짜와 같으면 시각만, 다음 날이면 `익일`만 앞에 붙여 짧게 유지한다. 시트로는 고를 수 없는
+ * 날짜는 서버 값에서만 올 수 있으므로 그때만 날짜를 그대로 보여준다.
+ */
+internal fun summaryLabel(
+    recordDate: LocalDate,
+    dateTime: LocalDateTime,
+): String {
+    val time = dateTime.format(SummaryTimeFormatter)
+    return when (dateTime.toLocalDate()) {
+        recordDate -> time
+        recordDate.plusDays(1) -> "익일 $time"
+        else -> "(${dateTime.format(SummaryDateFormatter)}) $time"
     }
 }
 
@@ -303,6 +338,7 @@ private fun TimelineEditorSection(
 @Composable
 private fun TimelineTimeField(
     text: String,
+    label: String,
     enabled: Boolean,
     isActive: Boolean,
     isError: Boolean,
@@ -312,7 +348,8 @@ private fun TimelineTimeField(
     LaimorySelectField(
         value = text,
         onClick = onClick,
-        modifier = modifier,
+        // 필드 안에는 시각만 있어 화면을 못 보면 어느 쪽이 시작이고 종료인지 알 수 없다.
+        modifier = modifier.semantics { contentDescription = "$label, $text" },
         enabled = enabled,
         isActive = isActive,
         isError = isError,
@@ -429,7 +466,8 @@ private fun Modifier.dashedBorder(color: Color): Modifier =
         }
     }
 
-private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val SummaryTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val SummaryDateFormatter = DateTimeFormatter.ofPattern("MM.dd")
 private val EventTypeCircleSize = 44.dp
 private val EventTypeIconSize = 24.dp
 private val EventTypeItemWidth = 44.dp

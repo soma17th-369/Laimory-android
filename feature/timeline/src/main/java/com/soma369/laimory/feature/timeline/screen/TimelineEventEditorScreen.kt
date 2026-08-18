@@ -22,15 +22,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -46,6 +43,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
@@ -66,10 +68,10 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
+import com.soma369.laimory.feature.timeline.state.TimelineEventTimeSheetState
 import com.soma369.laimory.feature.timeline.viewmodel.TimelineEventEditorViewModel
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDateTime
-import java.time.LocalTime
 import com.soma369.laimory.core.ui.R as UiR
 
 @Composable
@@ -141,20 +143,28 @@ private fun TimelineEventEditorContent(
         titleFocusRequester = titleFocusRequester,
     )
 
-    state.editingTimeField?.let { field ->
-        state.form?.let { form ->
-            TimelineEventTimePickerDialog(
-                field = field,
-                initialTime =
-                    when (field) {
-                        TimelineEventTimeField.START -> form.startAt.toLocalTime()
-                        TimelineEventTimeField.END -> form.endAt?.toLocalTime() ?: form.startAt.toLocalTime()
-                    },
-                onConfirm = { onIntent(TimelineEventEditorUiIntent.SelectTime(field, it)) },
-                onClearEnd = { onIntent(TimelineEventEditorUiIntent.ClearEndTime) },
-                onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissTimePicker) },
-            )
-        }
+    state.timeSheet?.let { sheet ->
+        LaimoryTimePickerSheet(
+            fields = timePickerFields(sheet),
+            expandedFieldId = sheet.expandedField?.name,
+            onExpandedFieldChange = { id ->
+                onIntent(
+                    TimelineEventEditorUiIntent.ExpandTimeField(id?.let(TimelineEventTimeField::valueOf)),
+                )
+            },
+            onValueChange = { id, value, column ->
+                onIntent(
+                    TimelineEventEditorUiIntent.ChangeTime(
+                        field = TimelineEventTimeField.valueOf(id),
+                        dateTime = value.dateTime,
+                        column = column,
+                    ),
+                )
+            },
+            onConfirm = { onIntent(TimelineEventEditorUiIntent.ConfirmTimeSheet) },
+            onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissTimeSheet) },
+            confirmEnabled = sheet.isConfirmEnabled,
+        )
     }
 
     if (state.isDiscardDialogVisible) {
@@ -197,6 +207,42 @@ private fun TimelineEventEditorContent(
         onConfirm = { onIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval) },
         onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissExistingPhotoRemoval) },
     )
+}
+
+/**
+ * 시간 설정 시트에 넘길 줄 구성.
+ *
+ * 타임라인은 자정을 넘겨 이어질 수 있으므로 시작·종료 모두 기록 날짜 기준 `당일`·`익일` 중에서 고른다.
+ * 종료가 비어 있는 이벤트는 종료 줄 자체를 두지 않는다.
+ */
+private fun timePickerFields(sheet: TimelineEventTimeSheetState): List<TimePickerField> {
+    val dates =
+        listOf(
+            TimePickerDateOption(sheet.baseDate, "당일"),
+            TimePickerDateOption(sheet.baseDate.plusDays(1), "익일"),
+        )
+    return buildList {
+        add(
+            TimePickerField(
+                id = TimelineEventTimeField.START.name,
+                label = "시작 시각",
+                value = LaimoryTimePickerValue.of(sheet.startAt),
+                dates = dates,
+                minuteStep = TimePickerMinuteStep.ONE,
+            ),
+        )
+        sheet.endAt?.let { endAt ->
+            add(
+                TimePickerField(
+                    id = TimelineEventTimeField.END.name,
+                    label = "종료 시각",
+                    value = LaimoryTimePickerValue.of(endAt),
+                    dates = dates,
+                    minuteStep = TimePickerMinuteStep.ONE,
+                ),
+            )
+        }
+    }
 }
 
 @Composable
@@ -313,17 +359,13 @@ private fun TimelineEventEditorBody(
             }
             item {
                 TimelineEventTimeSection(
+                    recordDate = state.recordDate ?: form.startAt.toLocalDate(),
                     startAt = form.startAt,
                     endAt = form.endAt,
-                    activeField = state.editingTimeField,
                     enabled = enabled,
                     error = state.validation.timeError,
-                    onStartClick = {
-                        onIntent(TimelineEventEditorUiIntent.ShowTimePicker(TimelineEventTimeField.START))
-                    },
-                    onEndClick = {
-                        onIntent(TimelineEventEditorUiIntent.ShowTimePicker(TimelineEventTimeField.END))
-                    },
+                    onOpenPicker = { onIntent(TimelineEventEditorUiIntent.OpenTimeSheet(it)) },
+                    onClearEnd = { onIntent(TimelineEventEditorUiIntent.ClearEndTime) },
                 )
             }
             item {
@@ -404,57 +446,6 @@ private fun TimelineEventEditorBody(
             }
         }
     }
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-private fun TimelineEventTimePickerDialog(
-    field: TimelineEventTimeField,
-    initialTime: LocalTime,
-    onConfirm: (LocalTime) -> Unit,
-    onClearEnd: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val pickerState =
-        rememberTimePickerState(
-            initialHour = initialTime.hour,
-            initialMinute = initialTime.minute,
-            is24Hour = true,
-        )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                if (field == TimelineEventTimeField.START) {
-                    "시작 시각"
-                } else {
-                    "종료 시각"
-                },
-            )
-        },
-        text = { TimePicker(state = pickerState) },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onConfirm(LocalTime.of(pickerState.hour, pickerState.minute))
-                },
-            ) {
-                Text("확인")
-            }
-        },
-        dismissButton = {
-            Row {
-                if (field == TimelineEventTimeField.END) {
-                    TextButton(onClick = onClearEnd) {
-                        Text("종료 없음")
-                    }
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("취소")
-                }
-            }
-        },
-    )
 }
 
 @Composable

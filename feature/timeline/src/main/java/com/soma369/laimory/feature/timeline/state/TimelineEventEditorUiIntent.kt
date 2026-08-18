@@ -2,7 +2,8 @@ package com.soma369.laimory.feature.timeline.state
 
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.ui.base.UiIntent
-import java.time.LocalTime
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerColumn
+import java.time.LocalDateTime
 
 sealed interface TimelineEventEditorUiIntent : UiIntent {
     data class Initialize(
@@ -25,16 +26,32 @@ sealed interface TimelineEventEditorUiIntent : UiIntent {
         val value: String,
     ) : TimelineEventEditorUiIntent
 
-    data class ShowTimePicker(
+    /** 시간 설정 시트를 열고 [field] 줄을 펼친다. 종료가 비어 있으면 편집할 기준 값을 채워 연다. */
+    data class OpenTimeSheet(
         val field: TimelineEventTimeField,
     ) : TimelineEventEditorUiIntent
 
-    data object DismissTimePicker : TimelineEventEditorUiIntent
-
-    data class SelectTime(
-        val field: TimelineEventTimeField,
-        val time: LocalTime,
+    /** 시트 안에서 펼칠 줄을 지정한다. null이면 모두 접는다 — 펼침은 한 번에 하나만 유지한다. */
+    data class ExpandTimeField(
+        val field: TimelineEventTimeField?,
     ) : TimelineEventEditorUiIntent
+
+    /**
+     * 시트가 고른 날짜·시각을 임시 값에 반영한다. 폼에는 확인을 눌러야 옮겨 담는다.
+     *
+     * [column]은 사용자가 방금 굴린 열이다 — 시작·종료가 뒤집히면 그 열의 단위로 되돌린다.
+     */
+    data class ChangeTime(
+        val field: TimelineEventTimeField,
+        val dateTime: LocalDateTime,
+        val column: TimePickerColumn,
+    ) : TimelineEventEditorUiIntent
+
+    /** 시트의 임시 값을 폼에 확정하고 시트를 닫는다. */
+    data object ConfirmTimeSheet : TimelineEventEditorUiIntent
+
+    /** 시트를 닫고 임시 값을 버린다. */
+    data object DismissTimeSheet : TimelineEventEditorUiIntent
 
     data object ClearEndTime : TimelineEventEditorUiIntent
 
