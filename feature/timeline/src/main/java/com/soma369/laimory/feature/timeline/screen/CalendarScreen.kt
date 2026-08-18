@@ -2,19 +2,15 @@ package com.soma369.laimory.feature.timeline.screen
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,7 +22,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -41,11 +36,12 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.CalendarMonthPager
 import com.soma369.laimory.feature.timeline.component.CalendarMonthPickerDialog
 import com.soma369.laimory.feature.timeline.component.CalendarWeekdayHeader
+import com.soma369.laimory.feature.timeline.model.CALENDAR_YEAR_RANGE
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
 import com.soma369.laimory.feature.timeline.state.CalendarMonthPickerState
-import com.soma369.laimory.feature.timeline.state.CalendarRecordsUiContent
 import com.soma369.laimory.feature.timeline.state.CalendarUiIntent
 import com.soma369.laimory.feature.timeline.state.CalendarUiState
+import com.soma369.laimory.feature.timeline.state.MonthlyRecordsUiContent
 import com.soma369.laimory.feature.timeline.viewmodel.CalendarViewModel
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
@@ -121,23 +117,17 @@ private fun CalendarScreen(
             verticalArrangement = Arrangement.spacedBy(CalendarHeaderSpacing),
         ) {
             CalendarWeekdayHeader()
-            when (state.content) {
-                CalendarRecordsUiContent.Loading -> CalendarLoading()
-                CalendarRecordsUiContent.Empty -> CalendarEmpty()
-                CalendarRecordsUiContent.LoadFailed ->
-                    CalendarLoadFailed(onRetryClick = { onIntent(CalendarUiIntent.RetryLoad) })
-
-                is CalendarRecordsUiContent.Content ->
-                    CalendarMonthPager(
-                        visibleMonth = state.visibleMonth,
-                        recordsByDate = state.content.recordsByDate,
-                        selectedDate = state.selectedDate,
-                        today = state.today,
-                        onSelectDate = { date -> onIntent(CalendarUiIntent.SelectDate(date)) },
-                        onVisibleMonthChange = { month -> onIntent(CalendarUiIntent.ShowMonth(month)) },
-                        modifier = Modifier.weight(1f),
-                    )
-            }
+            // 로딩·실패도 페이지 안에서 표현하므로 pager 는 최초 진입부터 계속 떠 있다.
+            CalendarMonthPager(
+                visibleMonth = state.visibleMonth,
+                months = state.months,
+                selectedDate = state.selectedDate,
+                today = state.today,
+                onSelectDate = { date -> onIntent(CalendarUiIntent.SelectDate(date)) },
+                onVisibleMonthChange = { month -> onIntent(CalendarUiIntent.ShowMonth(month)) },
+                onRetryMonth = { month -> onIntent(CalendarUiIntent.RetryMonth(month)) },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 
@@ -145,6 +135,8 @@ private fun CalendarScreen(
         CalendarMonthPickerDialog(
             pickerYear = picker.year,
             visibleMonth = state.visibleMonth,
+            canShowPreviousYear = picker.year > CALENDAR_YEAR_RANGE.first,
+            canShowNextYear = picker.year < CALENDAR_YEAR_RANGE.last,
             onPreviousYear = { onIntent(CalendarUiIntent.ShowPreviousPickerYear) },
             onNextYear = { onIntent(CalendarUiIntent.ShowNextPickerYear) },
             onSelectMonth = { month -> onIntent(CalendarUiIntent.SelectMonth(month)) },
@@ -184,54 +176,6 @@ private fun VisibleMonthTitle(
     }
 }
 
-@Composable
-private fun CalendarLoading() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator()
-    }
-}
-
-@Composable
-private fun CalendarEmpty() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "아직 저장된 기록이 없어요.\n초안을 만들어 하루를 기록해보세요.",
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
-private fun CalendarLoadFailed(onRetryClick: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = "기록을 불러오지 못했어요.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        OutlinedButton(
-            onClick = onRetryClick,
-            modifier = Modifier.padding(top = Spacing.medium),
-        ) {
-            Text("다시 시도")
-        }
-    }
-}
-
 private val VisibleMonthFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy년 M월", Locale.KOREA)
 
 /** Figma 요일 헤더 ↔ 주 격자 간격. spacing 토큰에 없는 값이라 화면 로컬 상수로 둔다. */
@@ -242,42 +186,35 @@ private const val TITLE_CARET_ROTATION = 90f
 
 @Preview(name = "기본", showBackground = true, heightDp = 760)
 @Composable
-private fun CalendarScreenDefaultPreview() = PreviewCalendarScreen(previewContent())
+private fun CalendarScreenDefaultPreview() = PreviewCalendarScreen(previewMonths())
 
 @Preview(name = "선택 · 다크", showBackground = true, heightDp = 760)
 @Composable
-private fun CalendarScreenDarkPreview() = PreviewCalendarScreen(previewContent(), darkTheme = true)
+private fun CalendarScreenDarkPreview() = PreviewCalendarScreen(previewMonths(), darkTheme = true)
 
 @Preview(name = "빈 월", showBackground = true, heightDp = 760)
 @Composable
 private fun CalendarScreenEmptyMonthPreview() =
     PreviewCalendarScreen(
-        previewContent(),
-        // 기록이 없는 월도 전체 Empty 가 아니라 정상 격자로 표시한다.
-        visibleMonth = YearMonth.of(2026, 8),
+        // 기록이 없는 월도 정상 격자다. 다른 달로 계속 넘길 수 있어야 한다.
+        months = mapOf(PREVIEW_MONTH to MonthlyRecordsUiContent.Records(emptyMap())),
     )
 
 @Preview(name = "연·월 피커 열림", showBackground = true, heightDp = 760)
 @Composable
-private fun CalendarScreenMonthPickerPreview() =
-    PreviewCalendarScreen(previewContent(), monthPicker = CalendarMonthPickerState(year = 2026))
+private fun CalendarScreenMonthPickerPreview() = PreviewCalendarScreen(previewMonths(), monthPicker = CalendarMonthPickerState(year = 2026))
 
-@Preview(name = "로딩", showBackground = true, heightDp = 760)
+@Preview(name = "월 로딩", showBackground = true, heightDp = 760)
 @Composable
-private fun CalendarScreenLoadingPreview() = PreviewCalendarScreen(CalendarRecordsUiContent.Loading)
+private fun CalendarScreenLoadingPreview() = PreviewCalendarScreen(mapOf(PREVIEW_MONTH to MonthlyRecordsUiContent.Loading))
 
-@Preview(name = "전체 Empty", showBackground = true, heightDp = 760)
+@Preview(name = "월 조회 실패", showBackground = true, heightDp = 760)
 @Composable
-private fun CalendarScreenEmptyPreview() = PreviewCalendarScreen(CalendarRecordsUiContent.Empty)
-
-@Preview(name = "조회 실패", showBackground = true, heightDp = 760)
-@Composable
-private fun CalendarScreenLoadFailedPreview() = PreviewCalendarScreen(CalendarRecordsUiContent.LoadFailed)
+private fun CalendarScreenLoadFailedPreview() = PreviewCalendarScreen(mapOf(PREVIEW_MONTH to MonthlyRecordsUiContent.LoadFailed))
 
 @Composable
 private fun PreviewCalendarScreen(
-    content: CalendarRecordsUiContent,
-    visibleMonth: YearMonth = YearMonth.of(2026, 5),
+    months: Map<YearMonth, MonthlyRecordsUiContent>,
     monthPicker: CalendarMonthPickerState? = null,
     darkTheme: Boolean = false,
 ) {
@@ -286,10 +223,10 @@ private fun PreviewCalendarScreen(
             innerPadding = PaddingValues(),
             state =
                 CalendarUiState(
-                    visibleMonth = visibleMonth,
+                    visibleMonth = PREVIEW_MONTH,
                     selectedDate = LocalDate.of(2026, 5, 26),
                     today = LocalDate.of(2026, 5, 26),
-                    content = content,
+                    months = months,
                     monthPicker = monthPicker,
                 ),
             onIntent = {},
@@ -297,8 +234,10 @@ private fun PreviewCalendarScreen(
     }
 }
 
+private val PREVIEW_MONTH: YearMonth = YearMonth.of(2026, 5)
+
 /** 감정 5종 + 감정 미상을 모두 덮는 미리보기 데이터. */
-private fun previewContent(): CalendarRecordsUiContent.Content {
+private fun previewMonths(): Map<YearMonth, MonthlyRecordsUiContent> {
     val emotions =
         listOf(
             1 to Emotion.JOY,
@@ -316,5 +255,5 @@ private fun previewContent(): CalendarRecordsUiContent.Content {
             LocalDate.of(2026, 5, 10).let { date ->
                 date to CalendarRecordUiModel(recordDate = date, emotion = null)
             }
-    return CalendarRecordsUiContent.Content(records)
+    return mapOf(PREVIEW_MONTH to MonthlyRecordsUiContent.Records(records))
 }

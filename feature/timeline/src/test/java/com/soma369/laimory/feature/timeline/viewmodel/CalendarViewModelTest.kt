@@ -5,20 +5,26 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
-import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
+import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.ui.theme.Emotion
-import com.soma369.laimory.feature.timeline.state.CalendarRecordsUiContent
+import com.soma369.laimory.feature.timeline.model.CALENDAR_FIRST_MONTH
+import com.soma369.laimory.feature.timeline.model.CALENDAR_LAST_MONTH
 import com.soma369.laimory.feature.timeline.state.CalendarUiIntent
+import com.soma369.laimory.feature.timeline.state.MonthlyRecordsUiContent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,7 +45,7 @@ class CalendarViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private val repository = RecordingDailyRecordsRepository()
+    private val repository = RecordingMonthlyRepository()
     private val messageHelper = RecordingUserMessageHelper()
     private val navigationHelper = RecordingNavigationHelper()
     private val clock = MutableClock(BASE_INSTANT)
@@ -66,134 +72,225 @@ class CalendarViewModelTest {
             // BASE_INSTANT 는 UTC 로 5월 25일이지만 서울에서는 이미 5월 26일이다.
             assertEquals(TODAY, viewModel.state.value.today)
             assertEquals(TODAY, viewModel.state.value.selectedDate)
-            assertEquals(YearMonth.of(2026, 5), viewModel.state.value.visibleMonth)
+            assertEquals(THIS_MONTH, viewModel.state.value.visibleMonth)
         }
 
     @Test
-    fun `동기화 성공은 날짜별 대표 기록을 상태에 담는다`() =
+    fun `동기화는 표시 월과 이웃 월을 함께 조회하고 각 월 슬롯에 담는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.records = listOf(timeline(1L, TODAY, TimelineEmotion.VERY_HAPPY))
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.VERY_HAPPY)))
             val viewModel = createViewModel()
 
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
 
-            val content = viewModel.state.value.content as CalendarRecordsUiContent.Content
-            assertEquals(setOf(TODAY), content.recordsByDate.keys)
+            assertEquals(
+                setOf(THIS_MONTH, THIS_MONTH.minusMonths(1), THIS_MONTH.plusMonths(1)),
+                repository.requestedMonths.toSet(),
+            )
             assertEquals(Emotion.JOY, viewModel.state.value.recordOf(TODAY)?.emotion)
+            // 기록이 없는 이웃 월도 빈 격자를 가진 정상 상태다.
+            assertEquals(
+                MonthlyRecordsUiContent.Records(emptyMap()),
+                viewModel.state.value.contentOf(THIS_MONTH.plusMonths(1)),
+            )
         }
 
     @Test
-    fun `서버 전체 응답이 비어 있을 때만 전체 Empty 로 내려간다`() =
+    fun `조회 중인 월만 로딩이고 다른 월은 병렬로 채워진다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.records = emptyList()
+            repository.gates[THIS_MONTH] = CompletableDeferred()
             val viewModel = createViewModel()
 
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
 
-            assertEquals(CalendarRecordsUiContent.Empty, viewModel.state.value.content)
+            assertEquals(MonthlyRecordsUiContent.Loading, viewModel.state.value.contentOf(THIS_MONTH))
+            assertTrue(viewModel.state.value.contentOf(THIS_MONTH.minusMonths(1)) is MonthlyRecordsUiContent.Records)
+            assertTrue(viewModel.state.value.contentOf(THIS_MONTH.plusMonths(1)) is MonthlyRecordsUiContent.Records)
         }
 
     @Test
-    fun `기록이 없는 월로 이동해도 Content 를 유지한다`() =
+    fun `같은 월 요청은 중복 차단하고 캐시된 월은 다시 부르지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.records = listOf(timeline(1L, TODAY, TimelineEmotion.HAPPY))
+            repository.gates[THIS_MONTH] = CompletableDeferred()
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
 
-            viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(2026, 6)))
+            // 진행 중인 월도, 이미 받아 둔 이웃 월도 다시 요청하지 않는다.
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(THIS_MONTH))
             advanceUntilIdle()
 
-            assertTrue(viewModel.state.value.content is CalendarRecordsUiContent.Content)
-            assertEquals(YearMonth.of(2026, 6), viewModel.state.value.visibleMonth)
-            assertNull(viewModel.state.value.recordOf(LocalDate.of(2026, 6, 1)))
+            assertEquals(1, repository.requestedMonths.count { it == THIS_MONTH })
+            assertEquals(1, repository.requestedMonths.count { it == THIS_MONTH.minusMonths(1) })
         }
 
     @Test
-    fun `최초 조회 실패는 전체 오류 상태로 표시한다`() =
+    fun `왕복 스와이프는 캐시를 재사용하고 새로 보이는 달만 조회한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+            repository.requestedMonths.clear()
+
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(THIS_MONTH.plusMonths(1)))
+            advanceUntilIdle()
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(THIS_MONTH))
+            advanceUntilIdle()
+
+            // 6월로 넘어가며 7월만 새로 받고, 5월로 돌아올 때는 아무것도 받지 않는다.
+            assertEquals(listOf(THIS_MONTH.plusMonths(2)), repository.requestedMonths)
+        }
+
+    @Test
+    fun `복귀 재동기화는 격자를 비우지 않고 표시 월을 다시 검증한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+
+            val revalidationGate = CompletableDeferred<List<MonthlyDailyRecord>>()
+            repository.gates[THIS_MONTH] = revalidationGate
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+
+            // 재검증이 끝나기 전에도 보고 있던 격자는 그대로 남는다. (깜빡임 방지)
+            val revalidating = viewModel.state.value.contentOf(THIS_MONTH) as MonthlyRecordsUiContent.Records
+            assertEquals(setOf(TODAY), revalidating.recordsByDate.keys)
+            assertTrue(revalidating.isStale)
+
+            revalidationGate.complete(listOf(MonthlyDailyRecord(TODAY.minusDays(1), TimelineEmotion.VERY_UNHAPPY)))
+            advanceUntilIdle()
+
+            val revalidated = viewModel.state.value.contentOf(THIS_MONTH) as MonthlyRecordsUiContent.Records
+            assertEquals(setOf(TODAY.minusDays(1)), revalidated.recordsByDate.keys)
+            assertTrue(!revalidated.isStale)
+        }
+
+    @Test
+    fun `캐시가 있는 월의 재조회 실패는 기존 내용을 유지하고 안내한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+
+            val messages = collectSnackbars(viewModel)
+
             repository.failure = ApiException.NetworkException()
-            val viewModel = createViewModel()
-
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
 
-            assertEquals(CalendarRecordsUiContent.LoadFailed, viewModel.state.value.content)
-        }
-
-    @Test
-    fun `이미 격자를 보여주는 중이면 재동기화 실패로 지우지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            repository.records = listOf(timeline(1L, TODAY, TimelineEmotion.HAPPY))
-            val viewModel = createViewModel()
-            viewModel.sendIntent(CalendarUiIntent.Sync)
-            advanceUntilIdle()
-
-            repository.failure = ApiException.NetworkException()
-            viewModel.sendIntent(CalendarUiIntent.Sync)
-            advanceUntilIdle()
-
-            val content = viewModel.state.value.content as CalendarRecordsUiContent.Content
+            val content = viewModel.state.value.contentOf(THIS_MONTH) as MonthlyRecordsUiContent.Records
             assertEquals(setOf(TODAY), content.recordsByDate.keys)
+            assertEquals(listOf(ApiException.NETWORK_ERROR), messages)
         }
 
     @Test
-    fun `조회 실패 후 다시 시도는 재조회한다`() =
+    fun `내용이 없는 월의 실패는 그 월 페이지에 남고 다시 시도로 복구한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.failure = ApiException.NetworkException()
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
+
+            assertEquals(MonthlyRecordsUiContent.LoadFailed, viewModel.state.value.contentOf(THIS_MONTH))
 
             repository.failure = null
-            repository.records = listOf(timeline(1L, TODAY, TimelineEmotion.NEUTRAL))
-            viewModel.sendIntent(CalendarUiIntent.RetryLoad)
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.NEUTRAL)))
+            viewModel.sendIntent(CalendarUiIntent.RetryMonth(THIS_MONTH))
             advanceUntilIdle()
 
-            assertEquals(2, repository.callCount)
             assertEquals(Emotion.MELLOW, viewModel.state.value.recordOf(TODAY)?.emotion)
         }
 
     @Test
-    fun `진행 중인 동기화가 있으면 중복 요청하지 않는다`() =
+    fun `이웃 월 prefetch 실패는 안내하지 않고 그 월에만 남는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            val gate = CompletableDeferred<List<DailyTimeline>>()
-            repository.gate = gate
+            repository.failure = ApiException.NetworkException()
+            repository.failingMonths = setOf(THIS_MONTH.plusMonths(1))
             val viewModel = createViewModel()
+            val messages = collectSnackbars(viewModel)
 
             viewModel.sendIntent(CalendarUiIntent.Sync)
-            runCurrent()
-            viewModel.sendIntent(CalendarUiIntent.Sync)
-            runCurrent()
-            assertEquals(1, repository.callCount)
-
-            gate.complete(emptyList())
             advanceUntilIdle()
-            assertEquals(1, repository.callCount)
+
+            // 사용자가 하지 않은 조작으로 스낵바가 뜨지 않아야 한다.
+            assertTrue(messages.isEmpty())
+            assertEquals(MonthlyRecordsUiContent.LoadFailed, viewModel.state.value.contentOf(THIS_MONTH.plusMonths(1)))
+            assertTrue(viewModel.state.value.contentOf(THIS_MONTH) is MonthlyRecordsUiContent.Records)
         }
 
     @Test
-    fun `월 전환은 과거·미래 제한 없이 이동하고 선택 날짜를 바꾸지 않는다`() =
+    fun `무효화 이전에 시작된 응답은 새 상태를 되살리지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val staleGate = CompletableDeferred<List<MonthlyDailyRecord>>()
+            repository.gates[THIS_MONTH] = staleGate
             val viewModel = createViewModel()
-
-            viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(1901, 3)))
+            viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
-            assertEquals(YearMonth.of(1901, 3), viewModel.state.value.visibleMonth)
 
-            viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(2999, 12)))
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+            viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
-            assertEquals(YearMonth.of(2999, 12), viewModel.state.value.visibleMonth)
+            assertEquals(Emotion.CALM, viewModel.state.value.recordOf(TODAY)?.emotion)
 
+            // 무효화 이전 요청이 뒤늦게 도착해도 이미 반영된 최신 결과를 덮지 않는다.
+            staleGate.complete(listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.VERY_UNHAPPY)))
+            advanceUntilIdle()
+
+            assertEquals(Emotion.CALM, viewModel.state.value.recordOf(TODAY)?.emotion)
+        }
+
+    @Test
+    fun `늦게 온 이웃 월 응답은 그 월 슬롯에만 기록된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val neighborGate = CompletableDeferred<List<MonthlyDailyRecord>>()
+            repository.gates[THIS_MONTH.minusMonths(1)] = neighborGate
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(THIS_MONTH.plusMonths(1)))
+            advanceUntilIdle()
+
+            val neighborDate = TODAY.minusMonths(1)
+            neighborGate.complete(listOf(MonthlyDailyRecord(neighborDate, TimelineEmotion.HAPPY)))
+            advanceUntilIdle()
+
+            assertEquals(THIS_MONTH.plusMonths(1), viewModel.state.value.visibleMonth)
+            assertEquals(Emotion.CALM, viewModel.state.value.recordOf(neighborDate)?.emotion)
+            assertTrue(viewModel.state.value.recordsOf(THIS_MONTH.plusMonths(1)).isEmpty())
+        }
+
+    @Test
+    fun `조회 중인 월의 날짜 탭은 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.gates[THIS_MONTH] = CompletableDeferred()
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.Sync)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(CalendarUiIntent.SelectDate(TODAY.minusDays(2)))
+            advanceUntilIdle()
+
+            // 기록 유무를 모르는 동안에는 선택도 이동도 하지 않는다.
+            assertTrue(navigationHelper.pages.isEmpty())
             assertEquals(TODAY, viewModel.state.value.selectedDate)
         }
 
     @Test
     fun `기록이 있는 날짜를 선택하면 단건 조회 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.records = listOf(timeline(1L, TODAY, TimelineEmotion.HAPPY))
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
@@ -208,7 +305,8 @@ class CalendarViewModelTest {
     @Test
     fun `기록이 없는 날짜는 선택만 갱신하고 이동하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.records = listOf(timeline(1L, TODAY, TimelineEmotion.HAPPY))
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
@@ -224,22 +322,51 @@ class CalendarViewModelTest {
     @Test
     fun `재동기화로 선택 날짜의 기록이 사라지면 빈 날짜가 된다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.records = listOf(timeline(1L, TODAY, TimelineEmotion.HAPPY))
+            repository.recordsByMonth =
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
 
-            repository.records = emptyList()
+            repository.recordsByMonth = emptyMap()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
 
             assertEquals(TODAY, viewModel.state.value.selectedDate)
             assertNull(viewModel.state.value.recordOf(TODAY))
 
-            // 기록이 사라진 뒤에는 같은 날짜를 눌러도 이동하지 않는다.
             viewModel.sendIntent(CalendarUiIntent.SelectDate(TODAY))
             advanceUntilIdle()
             assertTrue(navigationHelper.pages.isEmpty())
+        }
+
+    @Test
+    fun `월 전환은 서버 허용 범위 밖으로 나가지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(CALENDAR_FIRST_MONTH.minusMonths(1)))
+            advanceUntilIdle()
+            assertEquals(CALENDAR_FIRST_MONTH, viewModel.state.value.visibleMonth)
+
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(CALENDAR_LAST_MONTH.plusMonths(1)))
+            advanceUntilIdle()
+            assertEquals(CALENDAR_LAST_MONTH, viewModel.state.value.visibleMonth)
+
+            assertEquals(TODAY, viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `범위 경계에서는 바깥 이웃 월을 조회하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(CALENDAR_FIRST_MONTH))
+            advanceUntilIdle()
+
+            assertTrue(repository.requestedMonths.contains(CALENDAR_FIRST_MONTH))
+            assertTrue(repository.requestedMonths.contains(CALENDAR_FIRST_MONTH.plusMonths(1)))
+            assertTrue(repository.requestedMonths.none { it.year < CALENDAR_FIRST_MONTH.year })
         }
 
     @Test
@@ -255,7 +382,7 @@ class CalendarViewModelTest {
 
             assertEquals(LocalDate.of(2026, 6, 1), viewModel.state.value.today)
             // 오늘이 바뀌어도 표시 월과 선택 날짜는 사용자 조작으로만 바뀐다.
-            assertEquals(YearMonth.of(2026, 5), viewModel.state.value.visibleMonth)
+            assertEquals(THIS_MONTH, viewModel.state.value.visibleMonth)
             assertEquals(TODAY, viewModel.state.value.selectedDate)
         }
 
@@ -265,7 +392,6 @@ class CalendarViewModelTest {
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.ShowMonth(YearMonth.of(2025, 12)))
             advanceUntilIdle()
-            assertEquals(YearMonth.of(2025, 12), viewModel.state.value.visibleMonth)
 
             viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
             advanceUntilIdle()
@@ -285,7 +411,21 @@ class CalendarViewModelTest {
             advanceUntilIdle()
 
             assertEquals(2028, viewModel.state.value.monthPicker?.year)
-            assertEquals(YearMonth.of(2026, 5), viewModel.state.value.visibleMonth)
+            assertEquals(THIS_MONTH, viewModel.state.value.visibleMonth)
+        }
+
+    @Test
+    fun `피커 연도는 서버 허용 범위에서 멈춘다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(CalendarUiIntent.ShowMonth(CALENDAR_FIRST_MONTH))
+            viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(CalendarUiIntent.ShowPreviousPickerYear)
+            advanceUntilIdle()
+
+            assertEquals(CALENDAR_FIRST_MONTH.year, viewModel.state.value.monthPicker?.year)
         }
 
     @Test
@@ -303,6 +443,9 @@ class CalendarViewModelTest {
             assertNull(viewModel.state.value.monthPicker)
             // 월 전환은 스와이프와 마찬가지로 선택 날짜를 바꾸지 않는다.
             assertEquals(TODAY, viewModel.state.value.selectedDate)
+            // 고른 달도 이웃과 함께 채운다.
+            assertTrue(repository.requestedMonths.contains(YearMonth.of(2025, 11)))
+            assertTrue(repository.requestedMonths.contains(YearMonth.of(2025, 12)))
         }
 
     @Test
@@ -317,7 +460,7 @@ class CalendarViewModelTest {
             advanceUntilIdle()
 
             assertNull(viewModel.state.value.monthPicker)
-            assertEquals(YearMonth.of(2026, 5), viewModel.state.value.visibleMonth)
+            assertEquals(THIS_MONTH, viewModel.state.value.visibleMonth)
 
             // 다시 열면 넘겨보던 연도가 아니라 표시 월의 연도에서 시작한다.
             viewModel.sendIntent(CalendarUiIntent.OpenMonthPicker)
@@ -336,39 +479,42 @@ class CalendarViewModelTest {
             assertNull(viewModel.state.value.monthPicker)
         }
 
+    /**
+     * 스낵바를 즉시 수집한다.
+     *
+     * 기본 디스패처로 collect 를 걸면 발행 시점에 수집이 아직 시작되지 않아 메시지를 놓친다 —
+     * 수집 자체를 검증에 쓰려면 unconfined 로 붙여야 한다.
+     */
+    private fun TestScope.collectSnackbars(viewModel: CalendarViewModel): List<String> {
+        val messages = mutableListOf<String>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.snackbar.toList(messages) }
+        return messages
+    }
+
     private fun createViewModel() =
         CalendarViewModel(
-            getDailyRecordsUseCase = GetDailyRecordsUseCase(repository, messageHelper),
+            getMonthlyDailyRecordsUseCase = GetMonthlyDailyRecordsUseCase(repository, messageHelper),
             navigationHelper = navigationHelper,
             clock = clock,
         )
 
-    private fun timeline(
-        id: Long,
-        date: LocalDate,
-        emotion: TimelineEmotion?,
-    ) = DailyTimeline(
-        dailyRecordId = id,
-        recordDate = date,
-        emotion = emotion,
-        events = emptyList(),
-    )
-
-    private class RecordingDailyRecordsRepository : TimelineRecordRepository {
-        var records: List<DailyTimeline> = emptyList()
+    private class RecordingMonthlyRepository : TimelineRecordRepository {
+        val requestedMonths = mutableListOf<YearMonth>()
+        val gates = mutableMapOf<YearMonth, CompletableDeferred<List<MonthlyDailyRecord>>>()
+        var recordsByMonth: Map<YearMonth, List<MonthlyDailyRecord>> = emptyMap()
         var failure: ApiException? = null
-        var gate: CompletableDeferred<List<DailyTimeline>>? = null
-        var callCount = 0
 
-        override suspend fun getDailyRecords(): List<DailyTimeline> {
-            callCount++
-            gate?.let { pending ->
-                gate = null
-                return pending.await()
-            }
-            failure?.let { throw it }
-            return records
+        /** 비어 있으면 모든 월이 실패한다. */
+        var failingMonths: Set<YearMonth> = emptySet()
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> {
+            requestedMonths += month
+            gates.remove(month)?.let { pending -> return pending.await() }
+            failure?.takeIf { failingMonths.isEmpty() || month in failingMonths }?.let { throw it }
+            return recordsByMonth[month].orEmpty()
         }
+
+        override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
         override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
 
@@ -438,5 +584,6 @@ class CalendarViewModelTest {
         /** UTC 로는 2026-05-25, 서울로는 2026-05-26 01:00. */
         val BASE_INSTANT: Instant = Instant.parse("2026-05-25T16:00:00Z")
         val TODAY: LocalDate = LocalDate.of(2026, 5, 26)
+        val THIS_MONTH: YearMonth = YearMonth.of(2026, 5)
     }
 }

@@ -51,6 +51,8 @@ import com.soma369.laimory.core.ui.R as UiR
 internal fun CalendarMonthPickerDialog(
     pickerYear: Int,
     visibleMonth: YearMonth,
+    canShowPreviousYear: Boolean,
+    canShowNextYear: Boolean,
     onPreviousYear: () -> Unit,
     onNextYear: () -> Unit,
     onSelectMonth: (YearMonth) -> Unit,
@@ -80,6 +82,8 @@ internal fun CalendarMonthPickerDialog(
             CalendarMonthPickerContent(
                 pickerYear = pickerYear,
                 visibleMonth = visibleMonth,
+                canShowPreviousYear = canShowPreviousYear,
+                canShowNextYear = canShowNextYear,
                 onPreviousYear = onPreviousYear,
                 onNextYear = onNextYear,
                 onSelectMonth = onSelectMonth,
@@ -92,6 +96,8 @@ internal fun CalendarMonthPickerDialog(
 private fun CalendarMonthPickerContent(
     pickerYear: Int,
     visibleMonth: YearMonth,
+    canShowPreviousYear: Boolean,
+    canShowNextYear: Boolean,
     onPreviousYear: () -> Unit,
     onNextYear: () -> Unit,
     onSelectMonth: (YearMonth) -> Unit,
@@ -113,6 +119,8 @@ private fun CalendarMonthPickerContent(
         ) {
             PickerYearStepper(
                 pickerYear = pickerYear,
+                canShowPreviousYear = canShowPreviousYear,
+                canShowNextYear = canShowNextYear,
                 onPreviousYear = onPreviousYear,
                 onNextYear = onNextYear,
             )
@@ -137,6 +145,8 @@ private fun CalendarMonthPickerContent(
 @Composable
 private fun PickerYearStepper(
     pickerYear: Int,
+    canShowPreviousYear: Boolean,
+    canShowNextYear: Boolean,
     onPreviousYear: () -> Unit,
     onNextYear: () -> Unit,
 ) {
@@ -144,7 +154,12 @@ private fun PickerYearStepper(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onPreviousYear, modifier = Modifier.size(StepperTouchTarget)) {
+        // 서버가 받는 연도 범위 끝에서는 눌러도 반응하지 않는 대신 이동할 수 없음을 상태로 보여준다.
+        IconButton(
+            onClick = onPreviousYear,
+            modifier = Modifier.size(StepperTouchTarget),
+            enabled = canShowPreviousYear,
+        ) {
             Icon(
                 painter = painterResource(UiR.drawable.ico_default_caret_left),
                 contentDescription = "이전 해 보기",
@@ -159,7 +174,11 @@ private fun PickerYearStepper(
             color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
         )
-        IconButton(onClick = onNextYear, modifier = Modifier.size(StepperTouchTarget)) {
+        IconButton(
+            onClick = onNextYear,
+            modifier = Modifier.size(StepperTouchTarget),
+            enabled = canShowNextYear,
+        ) {
             Icon(
                 painter = painterResource(UiR.drawable.ico_default_caret_right),
                 contentDescription = "다음 해 보기",
@@ -265,6 +284,8 @@ private fun PreviewMonthPicker(pickerYear: Int = 2026) {
         CalendarMonthPickerContent(
             pickerYear = pickerYear,
             visibleMonth = YearMonth.of(2026, 5),
+            canShowPreviousYear = true,
+            canShowNextYear = true,
             onPreviousYear = {},
             onNextYear = {},
             onSelectMonth = {},
