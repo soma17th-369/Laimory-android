@@ -1,11 +1,8 @@
 package com.soma369.laimory.core.data.model.timeline.response
 
-import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
-import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import kotlinx.serialization.Serializable
-import java.time.LocalDate
 
 @Serializable
 data class DailyTimelineResponse(
@@ -20,15 +17,8 @@ internal fun DailyTimelineResponse.toDomain(): DailyTimeline =
     DailyTimeline(
         dailyRecordId = dailyRecordId,
         recordDate = recordDate.parseLocalDate("recordDate"),
-        emotion =
-            emotionType?.let { raw ->
-                TimelineEmotion.entries.firstOrNull { it.name == raw } ?: TimelineEmotion.UNKNOWN
-            },
+        emotion = emotionType.toTimelineEmotionOrNull(),
         events = events.map(TimelineEventResponse::toDomain),
         // 미지원 문자열은 상태 미상(null)으로 수렴한다 — SAVED 판별은 화면 정책이 담당한다.
         status = status?.let { raw -> DailyRecordStatus.entries.firstOrNull { it.name == raw } },
     )
-
-private fun String.parseLocalDate(fieldName: String): LocalDate =
-    runCatching { LocalDate.parse(this) }
-        .getOrElse { throw ApiException.UnknownException("잘못된 $fieldName 형식입니다: $this") }

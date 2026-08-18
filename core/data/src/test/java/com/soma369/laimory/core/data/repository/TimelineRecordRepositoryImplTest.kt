@@ -4,6 +4,8 @@ import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataS
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
+import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
+import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineItemResponse
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -21,6 +23,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 
 class TimelineRecordRepositoryImplTest {
     private class FakeRemote : TimelineRecordRemoteDataSource {
@@ -34,6 +37,7 @@ class TimelineRecordRepositoryImplTest {
         var deletedRecordDate: LocalDate? = null
         var savedRecordDate: LocalDate? = null
         var savedEmotion: TimelineEmotion? = null
+        var requestedMonth: YearMonth? = null
         var updateFailure: Throwable? = null
         var getEventFailure: Throwable? = null
         val calls = mutableListOf<String>()
@@ -70,6 +74,13 @@ class TimelineRecordRepositoryImplTest {
             requestedEventId = timelineEventId
             requestedMemo = request.memo
             updateFailure?.let { throw it }
+        }
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): MonthlyDailyRecordListResponse {
+            requestedMonth = month
+            return MonthlyDailyRecordListResponse(
+                dailyRecords = listOf(MonthlyDailyRecordResponse(recordDate = "2026-07-05", emotionType = "HAPPY")),
+            )
         }
 
         override suspend fun saveDailyRecord(
@@ -228,6 +239,19 @@ class TimelineRecordRepositoryImplTest {
             assertNull(remote.requestedMemo)
             assertEquals(listOf("PUT"), remote.calls)
             assertNull(remote.requestedEventFetchId)
+        }
+
+    @Test
+    fun `월별 조회는 표시 월을 그대로 위임하고 도메인 모델로 옮긴다`() =
+        runTest {
+            val remote = FakeRemote()
+            val repository = TimelineRecordRepositoryImpl(remote)
+
+            val records = repository.getMonthlyDailyRecords(YearMonth.of(2026, 7))
+
+            assertEquals(YearMonth.of(2026, 7), remote.requestedMonth)
+            assertEquals(listOf(LocalDate.of(2026, 7, 5)), records.map { it.recordDate })
+            assertEquals(listOf(TimelineEmotion.HAPPY), records.map { it.emotion })
         }
 
     @Test

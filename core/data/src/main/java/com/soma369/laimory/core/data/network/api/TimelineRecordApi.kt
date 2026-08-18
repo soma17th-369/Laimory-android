@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordReque
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
+import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import kotlinx.serialization.json.JsonObject
 import retrofit2.Response
@@ -15,11 +16,19 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /** 서버 확정 타임라인 기록 API(`/a/api/{applicationVersion}/timeline`). 인증 필요. */
 interface TimelineRecordApi {
     @GET("timeline/daily-records")
     suspend fun getDailyRecords(): Response<ApiResponse<DailyTimelineListResponse>>
+
+    /** 캘린더 탐색용 월별 조회. `year`·`month` 는 필수이며 서버가 `1000..9999` 범위를 벗어나면 거절한다. */
+    @GET("timeline/monthly-records")
+    suspend fun getMonthlyDailyRecords(
+        @Query("year") year: Int,
+        @Query("month") month: Int,
+    ): Response<ApiResponse<MonthlyDailyRecordListResponse>>
 
     @GET("timeline/daily-records/{recordDate}")
     suspend fun getDailyRecord(

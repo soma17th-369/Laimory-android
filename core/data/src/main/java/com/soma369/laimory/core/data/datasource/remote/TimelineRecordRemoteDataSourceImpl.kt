@@ -4,6 +4,7 @@ import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordReque
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
+import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.safeApiCall
@@ -11,6 +12,7 @@ import com.soma369.laimory.core.data.network.safeApiCallUnit
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import kotlinx.serialization.json.JsonObject
 import java.time.LocalDate
+import java.time.YearMonth
 import javax.inject.Inject
 
 class TimelineRecordRemoteDataSourceImpl
@@ -19,6 +21,9 @@ class TimelineRecordRemoteDataSourceImpl
         private val api: TimelineRecordApi,
     ) : TimelineRecordRemoteDataSource {
         override suspend fun getDailyRecords(): DailyTimelineListResponse = safeApiCall { api.getDailyRecords() }
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): MonthlyDailyRecordListResponse =
+            safeApiCall { api.getMonthlyDailyRecords(month.year, month.monthValue) }
 
         override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimelineResponse =
             safeApiCall { api.getDailyRecord(recordDate.toString()) }

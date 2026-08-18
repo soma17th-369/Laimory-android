@@ -3,10 +3,12 @@ package com.soma369.laimory.core.data.datasource.remote
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
+import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import kotlinx.serialization.json.JsonObject
 import java.time.LocalDate
+import java.time.YearMonth
 
 /** 확정 타임라인 기록 API의 원격 호출 경로. */
 interface TimelineRecordRemoteDataSource {
@@ -43,6 +45,9 @@ interface TimelineRecordRemoteDataSource {
         timelineEventId: Long,
         timelineItemId: Long,
     )
+
+    /** 표시 월의 기록 날짜와 감정만 조회한다. */
+    suspend fun getMonthlyDailyRecords(month: YearMonth): MonthlyDailyRecordListResponse
 
     /** 하루 기록과 하위 Event를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
