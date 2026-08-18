@@ -6,6 +6,7 @@ import androidx.lifecycle.LifecycleRegistry
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
@@ -14,6 +15,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -49,6 +51,7 @@ class DraftTaskProcessLifecycleObserverTest {
     private class DelayedBackgroundCoordinator : DraftTaskCoordinator {
         override val state: StateFlow<DraftTaskTrackingState> =
             MutableStateFlow(DraftTaskTrackingState.Idle)
+        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
         val allowBackground = CompletableDeferred<Unit>()
         var foregroundCount = 0
         var backgroundCount = 0

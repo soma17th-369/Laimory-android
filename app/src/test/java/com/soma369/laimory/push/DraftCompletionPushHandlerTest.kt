@@ -3,6 +3,7 @@ package com.soma369.laimory.push
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
@@ -13,6 +14,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -172,6 +174,7 @@ class DraftCompletionPushHandlerTest {
 
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
         override val state: StateFlow<DraftTaskTrackingState> = MutableStateFlow(DraftTaskTrackingState.Idle)
+        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
         val refreshedTaskIds = mutableListOf<String>()
 
         override suspend fun start(

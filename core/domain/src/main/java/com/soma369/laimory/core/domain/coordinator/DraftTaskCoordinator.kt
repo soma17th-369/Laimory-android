@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.domain.coordinator
 
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
 
@@ -8,6 +10,15 @@ import java.time.LocalDate
 interface DraftTaskCoordinator {
     /** 현재 추적 중인 초안 작업의 상태다. */
     val state: StateFlow<DraftTaskTrackingState>
+
+    /**
+     * 같은 작업이 처음 완료될 때 한 번만 발행되는 신호.
+     *
+     * [state]는 지속 상태라 `Success`가 계속 남는다. 화면이 그것을 구독해 자동 이동이나 스낵바를
+     * 띄우면 회전·프로세스 복원·백스택 복귀마다 되풀이된다. 화면 효과는 이 흐름으로만 트리거한다.
+     * 재생하지 않으므로(`replay = 0`) 지난 완료는 다시 오지 않는다.
+     */
+    val completions: Flow<DraftTaskCompletion>
 
     /**
      * 새 초안 생성 작업을 추적하고 활성 작업으로 영속화한다.

@@ -15,6 +15,7 @@ import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
@@ -49,6 +50,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -1003,6 +1005,7 @@ class HomeViewModelTest {
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
+        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
         var retryCount = 0
         var discardCount = 0
 

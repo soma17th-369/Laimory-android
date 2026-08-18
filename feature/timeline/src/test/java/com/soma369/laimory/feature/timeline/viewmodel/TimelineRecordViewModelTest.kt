@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -30,8 +31,10 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -1151,6 +1154,7 @@ class TimelineRecordViewModelTest {
                 successState(LocalDate.of(2026, 5, 8)),
             )
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
+        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
         var discardCount = 0
         var discardFailure: Throwable? = null
 

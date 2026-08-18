@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
@@ -21,6 +22,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -329,6 +333,62 @@ class DefaultDraftTaskCoordinatorTest {
 
             assertEquals(1, draftRepository.statusCallCount)
             assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
+        }
+
+    @Test
+    fun `완료 뒤 같은 FCM이 재전달돼도 신호와 저장이 늘지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val draftRepository = QueueDraftRepository(processing(), success(), success())
+            val activeRepository = FakeActiveDraftTaskRepository()
+            val sessionRepository = FakeTimelineRecordSessionRepository()
+            val coordinator =
+                coordinator(draftRepository, activeRepository, sessionRepository, backgroundScope)
+            val completions = mutableListOf<DraftTaskCompletion>()
+            val collectJob = backgroundScope.launch { coordinator.completions.toList(completions) }
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            advanceTimeBy(DraftPollingPolicy.DEFAULT_INTERVAL_MILLIS)
+            runCurrent()
+
+            assertEquals(1, completions.size)
+            assertEquals("task-1", completions.single().taskId)
+            // 이동 날짜는 활성 작업이 아니라 서버 결과에서 온다.
+            assertEquals(date, completions.single().recordDate)
+
+            // 같은 FCM이 재전달돼도 신호와 저장은 늘어나지 않는다.
+            coordinator.refreshFromCompletionSignal("task-1")
+            runCurrent()
+
+            assertEquals(1, completions.size)
+            assertEquals(1, sessionRepository.saveCount)
+            collectJob.cancel()
+        }
+
+    @Test
+    fun `완료 신호는 재생하지 않아 나중에 구독해도 다시 오지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val draftRepository = QueueDraftRepository(success())
+            val coordinator =
+                coordinator(
+                    draftRepository,
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+
+            // 완료 뒤에 구독한 화면은 지난 완료를 받지 않는다 — 자동 이동이 되풀이되면 안 된다.
+            val late = mutableListOf<DraftTaskCompletion>()
+            val collectJob = backgroundScope.launch { coordinator.completions.toList(late) }
+            runCurrent()
+
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
+            assertTrue(late.isEmpty())
+            collectJob.cancel()
         }
 
     private fun coordinator(

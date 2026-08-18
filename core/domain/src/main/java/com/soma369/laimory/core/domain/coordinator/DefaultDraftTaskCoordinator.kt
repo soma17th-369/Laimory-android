@@ -2,6 +2,7 @@ package com.soma369.laimory.core.domain.coordinator
 
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskPollingEvent
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatusOutcome
@@ -14,8 +15,12 @@ import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -37,6 +42,15 @@ class DefaultDraftTaskCoordinator
     ) : DraftTaskCoordinator {
         private val mutex = Mutex()
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
+        private val mutableCompletions =
+            MutableSharedFlow<DraftTaskCompletion>(
+                replay = 0,
+                extraBufferCapacity = 1,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST,
+            )
+
+        /** 결과 저장과 완료 신호를 작업당 한 번으로 묶는 기준. */
+        private var completedTaskId: String? = null
         private var activeTask: ActiveDraftTask? = null
         private var pollingJob: Job? = null
         private var completionRefreshJob: Job? = null
@@ -46,6 +60,8 @@ class DefaultDraftTaskCoordinator
         private var pauseAtLongRunning = true
 
         override val state: StateFlow<DraftTaskTrackingState> = mutableState.asStateFlow()
+
+        override val completions: Flow<DraftTaskCompletion> = mutableCompletions.asSharedFlow()
 
         override suspend fun start(
             taskId: String,
@@ -58,6 +74,7 @@ class DefaultDraftTaskCoordinator
                 completionRefreshJob?.cancel()
                 completionRefreshJob = null
                 pendingCompletionTaskId = null
+                completedTaskId = null
                 activeTaskRepository.save(task)
                 activeTask = task
                 hasRestored = true
@@ -202,6 +219,7 @@ class DefaultDraftTaskCoordinator
                 completionRefreshJob?.cancel()
                 completionRefreshJob = null
                 pendingCompletionTaskId = null
+                completedTaskId = null
                 activeTask = null
                 hasRestored = true
                 pauseAtLongRunning = true
@@ -271,10 +289,22 @@ class DefaultDraftTaskCoordinator
                             val timeline =
                                 snapshot.result
                                     ?: return markRetryableErrorLocked(task)
-                            if (mutableState.value !is DraftTaskTrackingState.Success) {
+                            // FCM과 폴링이 같은 완료를 함께 감지하거나 같은 FCM이 재전달돼도
+                            // 저장과 완료 신호는 작업당 한 번이다.
+                            val isFirstCompletion = completedTaskId != task.taskId
+                            if (isFirstCompletion) {
                                 saveTimelineRecordUseCase(timeline)
+                                completedTaskId = task.taskId
                             }
                             mutableState.value = DraftTaskTrackingState.Success(task)
+                            if (isFirstCompletion) {
+                                mutableCompletions.tryEmit(
+                                    DraftTaskCompletion(
+                                        taskId = task.taskId,
+                                        recordDate = timeline.recordDate,
+                                    ),
+                                )
+                            }
                         }
 
                         DraftTaskStatus.FAILED ->
