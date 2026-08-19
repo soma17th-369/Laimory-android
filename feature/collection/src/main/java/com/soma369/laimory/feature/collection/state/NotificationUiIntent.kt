@@ -3,6 +3,9 @@ package com.soma369.laimory.feature.collection.state
 import com.soma369.laimory.core.ui.base.UiIntent
 
 sealed interface NotificationUiIntent : UiIntent {
+    /** 기본 키워드 사용 여부를 토글한다. */
+    data object ToggleDefaultKeywords : NotificationUiIntent
+
     /** 키워드 필터를 추가한다. */
     data class AddKeyword(val keyword: String) : NotificationUiIntent
 

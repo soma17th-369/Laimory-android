@@ -41,6 +41,7 @@ class NotificationCollectionViewModel
                     updateState {
                         copy(
                             collectOnClick = filter.collectOnClick,
+                            useDefaultKeywords = filter.useDefaultKeywords,
                             keywords = filter.keywords,
                             allowedPackages = filter.allowedPackages,
                         )
@@ -55,6 +56,8 @@ class NotificationCollectionViewModel
 
         override suspend fun handleIntent(intent: NotificationUiIntent) {
             when (intent) {
+                NotificationUiIntent.ToggleDefaultKeywords ->
+                    updateFilter { copy(useDefaultKeywords = !useDefaultKeywords) }
                 is NotificationUiIntent.AddKeyword -> {
                     val keyword = intent.keyword.trim()
                     if (keyword.isNotEmpty()) updateFilter { copy(keywords = keywords + keyword) }
