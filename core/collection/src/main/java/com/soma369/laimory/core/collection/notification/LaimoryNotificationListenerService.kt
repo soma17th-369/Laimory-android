@@ -25,6 +25,7 @@ import javax.inject.Inject
  *
  * 과거 알림 백필은 불가하며(#95 제약), 서비스가 붙어있는 동안 게시/클릭된 알림만 잡는다.
  * 현재 필터([NotificationFilter])는 DataStore 관찰로 캐시해 두고, 알림 이벤트마다 그 스냅샷으로 판정한다.
+ * 첫 emission 전에는 판정하지 않고 알림을 버린다 — 기본값으로 사용자 설정을 우회할 수 있기 때문이다.
  * - 게시([onNotificationPosted]): 키워드 또는 앱이 일치하면 수집.
  * - 제거([onNotificationRemoved]) reason=click: 클릭 수집이 켜져 있으면 키워드·앱 설정과 무관하게 수집.
  *
@@ -48,8 +49,9 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** 저장된 설정을 처음 읽기 전에는 null 이다 — 기본값으로 사용자 설정을 우회하지 않기 위해서다. */
     @Volatile
-    private var filter: NotificationFilter = NotificationFilter()
+    private var filter: NotificationFilter? = null
 
     override fun onListenerConnected() {
         super.onListenerConnected()
@@ -85,6 +87,9 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
         sbn: StatusBarNotification,
         clicked: Boolean,
     ) {
+        // 저장된 설정을 읽기 전 알림은 버린다 — 기본 키워드가 켜진 기본값으로 판정하면
+        // useDefaultKeywords 를 꺼 둔 사용자의 설정을 무시하게 된다.
+        val filter = filter ?: return
         val signals = sbn.notification.toSignals()
         val sanitized = sanitize(sbn.notification.toContent(), signals) ?: return
         val reason =
