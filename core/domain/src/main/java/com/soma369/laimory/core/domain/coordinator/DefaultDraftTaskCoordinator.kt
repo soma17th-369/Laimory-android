@@ -46,6 +46,9 @@ class DefaultDraftTaskCoordinator
         private var pollingJob: Job? = null
         private var completionRefreshJob: Job? = null
         private var pendingCompletionTaskId: String? = null
+
+        /** 소비까지 끝났지만 영속 삭제에 실패한 작업. 다음 전경 진입에서 다시 지운다. */
+        private var staleActiveTaskId: String? = null
         private var isForeground = false
         private var hasRestored = false
         private var pauseAtLongRunning = true
@@ -57,6 +60,17 @@ class DefaultDraftTaskCoordinator
         override suspend fun consumeCompletion(taskId: String): Boolean =
             mutex.withLock {
                 if (mutablePendingCompletion.value?.taskId != taskId) return@withLock false
+                // 처리한 완료는 되살아나면 안 된다. 영속된 활성 작업을 남기면 다음 프로세스가 그것을
+                // 복원해 다시 폴링하고, 이미 저장한 결과를 또 저장하고, 완료를 또 알린다 —
+                // 앱에 들어갈 때마다 `초안이 완성됐어요` 가 뜬다. 작업당 한 번인 completedTaskId 는
+                // 메모리에만 있어 프로세스를 넘기지 못하므로 영속 쪽을 지워야 한다.
+                //
+                // 메모리의 activeTask 는 남긴다. 같은 프로세스에서는 state 의 Success 가 유지돼
+                // 홈의 `초안 보기` 가 계속 열려야 한다.
+                clearActiveTaskLocked(taskId)
+                // 영속 삭제가 실패해도 소비는 성립시킨다. 여기서 false 를 돌려주면 로딩 화면을 띄운
+                // 쪽이 이동을 포기해 사용자가 완료된 화면에 갇힌다 — 저장소 오류가 화면을 막는 쪽이
+                // 알림이 한 번 더 뜨는 쪽보다 나쁘다. 실패분은 다음 전경 진입에서 다시 지운다.
                 mutablePendingCompletion.value = null
                 true
             }
@@ -74,6 +88,7 @@ class DefaultDraftTaskCoordinator
                 pendingCompletionTaskId = null
                 completedTaskId = null
                 mutablePendingCompletion.value = null
+                staleActiveTaskId = null
                 activeTaskRepository.save(task)
                 activeTask = task
                 hasRestored = true
@@ -87,6 +102,9 @@ class DefaultDraftTaskCoordinator
             val completionTaskId =
                 mutex.withLock {
                     isForeground = true
+                    // 지난번에 지우지 못한 작업이 있으면 먼저 치운다. 남겨두면 다음 프로세스가
+                    // 복원해 재폴링·재알림이 되살아난다.
+                    staleActiveTaskId?.let { clearActiveTaskLocked(it) }
                     if (!hasRestored) {
                         activeTask = activeTaskRepository.get()
                         hasRestored = true
@@ -220,11 +238,29 @@ class DefaultDraftTaskCoordinator
                 pendingCompletionTaskId = null
                 completedTaskId = null
                 mutablePendingCompletion.value = null
+                staleActiveTaskId = null
                 activeTask = null
                 hasRestored = true
                 pauseAtLongRunning = true
                 activeTaskRepository.clear()
                 mutableState.value = DraftTaskTrackingState.Idle
+            }
+        }
+
+        /**
+         * 영속된 활성 작업을 지운다. 실패하면 [staleActiveTaskId] 에 남겨 다음 기회에 다시 시도한다.
+         *
+         * DataStore 쓰기는 디스크 상황에 따라 실패할 수 있는데, 이 경로는 화면의 LaunchedEffect 나
+         * lifecycleScope 안에서 호출되므로 예외를 밖으로 흘리면 내비게이션 수집이 끊기거나 앱이 죽는다.
+         */
+        private suspend fun clearActiveTaskLocked(taskId: String) {
+            try {
+                activeTaskRepository.clear()
+                staleActiveTaskId = null
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                staleActiveTaskId = taskId
             }
         }
 
