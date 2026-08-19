@@ -56,13 +56,26 @@ private fun containsAuthenticationSecret(text: String): Boolean =
         containsPasswordDelivery(text)
 
 /**
- * 비밀번호 문맥 바로 뒤에 숫자를 포함한 값이 따라오면 비밀값 전달로 본다.
+ * 비밀번호 문맥 바로 뒤에 비밀값으로 보이는 토큰이 오면 값 전달로 본다.
  *
- * "비밀번호가 변경되었습니다", "비밀번호를 재설정하세요" 처럼 조사와 한글이 이어지는 상태
- * 알림은 값 패턴에 걸리지 않아 유지된다.
+ * 문맥과 값 사이에는 조사·구분자·짧은 연결어만 허용한다 — "비밀번호 변경 완료 2026-08-19"
+ * 처럼 상태 문구를 사이에 두고 숫자가 나오는 알림은 값 전달이 아니다.
  */
 private fun containsPasswordDelivery(text: String): Boolean =
-    PASSWORD_DELIVERY.findAll(text).any { match -> match.groupValues[1].any(Char::isDigit) }
+    PASSWORD_DELIVERY.findAll(text).any { match -> match.groupValues[1].looksLikeSecretValue() }
+
+/**
+ * 비밀값으로 보이는 토큰인지 본다. 숫자, 비밀번호용 기호, 낱말 중간의 대문자 중 하나라도
+ * 있으면 값으로 판정한다.
+ *
+ * "password reset", "Your password has been changed" 처럼 상태를 알리는 영어 단어를 값으로
+ * 오인하지 않기 위한 기준이다. 모두 소문자이고 숫자·기호가 없는 단순 비밀번호는 이 기준으로
+ * 잡지 못하는 알려진 한계가 있다.
+ */
+private fun String.looksLikeSecretValue(): Boolean =
+    any(Char::isDigit) ||
+        any { it in PASSWORD_VALUE_SYMBOLS } ||
+        (1 until length).any { this[it].isUpperCase() && this[it - 1].isLowerCase() }
 
 /**
  * 고유식별정보. 주민·외국인등록번호는 형식만으로 판정하고, 여권·운전면허번호는 형식이
@@ -160,9 +173,15 @@ private val ACCOUNT_SECRET =
         RegexOption.IGNORE_CASE,
     )
 
-/** `비밀번호: 123456`, `새 비밀번호 abcD!23` 처럼 문맥 뒤에 값이 바로 붙는 형태. */
+/** `비밀번호: passWORD!`, `비밀번호가 123456으로`, `password is SecretWord!` 처럼 문맥 뒤에 값이 바로 붙는 형태. */
 private val PASSWORD_DELIVERY =
-    Regex("""(?:비밀번호|password)\s*(?:는|은|:|：|=|is)?\s*([A-Za-z0-9!@#%&*_+.\-]{4,20})""", RegexOption.IGNORE_CASE)
+    Regex(
+        """(?:비밀번호|password)\s*(?:는|은|이|가|를|을|:|：|=|is|to)?\s*([A-Za-z0-9!@#%^&*_+=?~-]{4,20})""",
+        RegexOption.IGNORE_CASE,
+    )
+
+/** 비밀번호에 흔한 기호. 문장에서 자주 쓰이는 `.` `,` `-` 는 값 신호로 보지 않는다. */
+private const val PASSWORD_VALUE_SYMBOLS = "!@#%^&*_+=?~"
 
 private val RESIDENT_REGISTRATION_NUMBER = Regex("""(?<!\d)\d{6}-[1-4]\d{6}(?!\d)""")
 private val FOREIGNER_REGISTRATION_NUMBER = Regex("""(?<!\d)\d{6}-[5-8]\d{6}(?!\d)""")

@@ -210,10 +210,33 @@ class NotificationPrivacyPolicyTest {
     }
 
     @Test
+    fun `숫자가 없는 비밀번호 값도 저장하지 않는다`() {
+        // 기호나 낱말 중간의 대문자만으로도 값 전달로 본다.
+        assertNull(sanitize(text = "비밀번호: passWORD!"))
+        assertNull(sanitize(text = "Your password is SecretWord!"))
+    }
+
+    @Test
+    fun `조사 뒤에 값이 오는 비밀번호 설정 알림도 저장하지 않는다`() {
+        assertNull(sanitize(text = "비밀번호가 123456으로 설정되었습니다"))
+        assertNull(sanitize(text = "비밀번호를 Temp!Pass 로 변경했습니다"))
+    }
+
+    @Test
     fun `값이 없는 비밀번호 상태 알림은 유지한다`() {
         assertEquals("비밀번호가 변경되었습니다", sanitize(text = "비밀번호가 변경되었습니다")?.text)
         assertEquals("비밀번호를 재설정하세요", sanitize(text = "비밀번호를 재설정하세요")?.text)
         assertEquals("비밀번호 변경 안내", sanitize(text = "비밀번호 변경 안내")?.text)
+    }
+
+    @Test
+    fun `상태 문구를 사이에 둔 숫자는 비밀번호 값으로 보지 않는다`() {
+        val korean = "비밀번호 변경 완료 2026-08-19"
+        val english = "Your password has been changed"
+
+        assertEquals(korean, sanitize(text = korean)?.text)
+        assertEquals(english, sanitize(text = english)?.text)
+        assertEquals("password reset link", sanitize(text = "password reset link")?.text)
     }
 
     // --- 도로명 주소 종단 (PR #262 리뷰) ---
