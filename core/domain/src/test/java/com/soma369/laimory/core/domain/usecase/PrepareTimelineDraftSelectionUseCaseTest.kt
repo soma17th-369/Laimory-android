@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.domain.usecase
 
+import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
+import com.soma369.laimory.core.domain.model.collection.NotificationPrivacyPolicy
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
@@ -26,7 +28,8 @@ class PrepareTimelineDraftSelectionUseCaseTest {
     private fun useCase(
         selectionPolicy: DraftSourceItemSelectionPolicy = DraftSourceItemSelectionPolicy(),
         selectionReporter: DraftSourceItemSelectionReporter = DraftSourceItemSelectionReporter.NONE,
-    ): PrepareTimelineDraftSelectionUseCase = PrepareTimelineDraftSelectionUseCase(selectionPolicy, selectionReporter)
+    ): PrepareTimelineDraftSelectionUseCase =
+        PrepareTimelineDraftSelectionUseCase(selectionPolicy, NotificationPrivacyPolicy(), selectionReporter)
 
     private fun at(
         hour: Int,
@@ -189,5 +192,57 @@ class PrepareTimelineDraftSelectionUseCaseTest {
         val result = useCase(RecordDateWindow.ofDate(date, zone), listOf(item(at(9))))
 
         assertEquals(reporterFailure, result.exceptionOrNull())
+    }
+
+    @Test
+    fun `정책 도입 전에 저장된 인증정보 알림은 선택에서 빠진다`() {
+        val secret =
+            item(
+                at(9),
+                NotificationPayload("은행", "com.bank", "인증번호 안내", "인증번호 123456", NotificationPayload.CollectReason.ALL),
+                rawId = "secret",
+            )
+        val delivery =
+            item(
+                at(10),
+                NotificationPayload("택배", "com.post", "배송 출발", "오늘 도착 예정", NotificationPayload.CollectReason.ALL),
+                rawId = "delivery",
+            )
+
+        val selection = useCase()(RecordDateWindow.ofDate(date, zone), listOf(secret, delivery)).getOrThrow()
+
+        assertEquals(listOf("delivery"), selection.items.map { it.rawId })
+        // 상한·우선순위보다 먼저 걸러 동의 화면 표시 건수와 전송 건수를 일치시킨다.
+        assertEquals(1, selection.report.originalCounts.getValue(ItemType.NOTIFICATION))
+    }
+
+    @Test
+    fun `정책 도입 전에 저장된 알림의 개인 식별정보는 마스킹된 채 선택된다`() {
+        val stored =
+            item(
+                at(9),
+                NotificationPayload("배달", "com.food", "배달 완료", "기사님 010-1234-5678", NotificationPayload.CollectReason.ALL),
+                rawId = "delivered",
+            )
+
+        val selection = useCase()(RecordDateWindow.ofDate(date, zone), listOf(stored)).getOrThrow()
+
+        val payload = selection.items.single().payload as NotificationPayload
+        assertEquals("기사님 [전화번호]", payload.text)
+        assertEquals("배달 완료", payload.title)
+    }
+
+    @Test
+    fun `알림이 아닌 타입은 개인정보 재적용의 영향을 받지 않는다`() {
+        val photo =
+            item(
+                at(9),
+                PhotoPayload("1.jpg", "content://photo/1", null, null, null),
+                rawId = "photo",
+            )
+
+        val selection = useCase()(RecordDateWindow.ofDate(date, zone), listOf(photo)).getOrThrow()
+
+        assertEquals(listOf("photo"), selection.items.map { it.rawId })
     }
 }
