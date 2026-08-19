@@ -15,9 +15,12 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
+import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
@@ -57,6 +60,9 @@ class MainActivity : ComponentActivity() {
     lateinit var draftCompletionPushHandler: DraftCompletionPushHandler
 
     @Inject
+    lateinit var draftTaskCoordinator: DraftTaskCoordinator
+
+    @Inject
     lateinit var draftConsentSessionStore: DraftConsentSessionStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,6 +85,7 @@ class MainActivity : ComponentActivity() {
                             messages = messageHelper.messages,
                             navigationFlow = navigationHelper.navigationFlow,
                             authSessionStates = authSessionStates,
+                            draftCompletions = draftTaskCoordinator.completions,
                             onAuthRootReplaced = {
                                 // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
                                 messageHelper.clearDialogs()
@@ -119,7 +126,14 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         lifecycleScope.launch {
             if (!draftCompletionPushHandler.onNotificationOpened(taskId, status)) return@launch
+            // 알림 처리 화면으로 뒤로 돌아오지 않도록 홈을 루트로 세운다.
             navigationHelper.replaceRoot(HomePage)
+            // 추적 중인 작업이 있으면 상태를 확인하는 동안 로딩 화면을 보여준다. 완료가 확인되면
+            // 내비게이션 호스트가 서버 결과의 날짜로 타임라인을 연다.
+            // 활성 작업이 없으면 날짜를 추측하지 않고 홈에 머문다.
+            if (draftTaskCoordinator.state.value is DraftTaskTrackingState.WithTask) {
+                navigationHelper.navigateTo(DraftLoadingPage)
+            }
         }
     }
 
