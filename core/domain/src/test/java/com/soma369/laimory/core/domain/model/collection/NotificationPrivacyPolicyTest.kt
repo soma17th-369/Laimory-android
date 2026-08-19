@@ -178,4 +178,60 @@ class NotificationPrivacyPolicyTest {
         assertEquals("배송 출발", sanitize(title = "배송 출발")?.title)
         assertNull(sanitize(title = "배송 출발")?.text)
     }
+
+    // --- 한글 조사 결합 (PR #262 리뷰) ---
+
+    @Test
+    fun `번호 뒤에 조사가 붙어도 전체 제외와 마스킹이 동작한다`() {
+        // Java 정규식의 \b 는 한글을 단어 문자로 취급해 숫자와 조사 사이에 경계가 생기지 않는다.
+        assertNull(sanitize(text = "인증번호 123456입니다"))
+        assertNull(sanitize(text = "주민등록번호 900101-1234567입니다"))
+        assertNull(sanitize(text = "외국인등록번호 900101-5234567로 확인됨"))
+        assertNull(sanitize(text = "여권번호 M12345678입니다"))
+        assertNull(sanitize(text = "운전면허번호 11-22-334455-66으로 등록"))
+        assertEquals("기사님 [전화번호]로 연락주세요", sanitize(text = "기사님 010-1234-5678로 연락주세요")?.text)
+        assertEquals("입금 계좌 [계좌번호]로 송금", sanitize(text = "입금 계좌 110-123-456789로 송금")?.text)
+    }
+
+    @Test
+    fun `조사가 붙어도 더 긴 숫자열은 인증번호로 보지 않는다`() {
+        val original = "인증번호 안내 주문 1234567890123입니다"
+
+        assertEquals(original, sanitize(text = original)?.text)
+    }
+
+    // --- 비밀번호 값 전달 (PR #262 리뷰) ---
+
+    @Test
+    fun `비밀번호 문맥 뒤에 값이 따라오면 저장하지 않는다`() {
+        assertNull(sanitize(text = "비밀번호: 123456"))
+        assertNull(sanitize(text = "새 비밀번호 abcD!23 으로 로그인하세요"))
+        assertNull(sanitize(text = "Your password is Abc12345"))
+    }
+
+    @Test
+    fun `값이 없는 비밀번호 상태 알림은 유지한다`() {
+        assertEquals("비밀번호가 변경되었습니다", sanitize(text = "비밀번호가 변경되었습니다")?.text)
+        assertEquals("비밀번호를 재설정하세요", sanitize(text = "비밀번호를 재설정하세요")?.text)
+        assertEquals("비밀번호 변경 안내", sanitize(text = "비밀번호 변경 안내")?.text)
+    }
+
+    // --- 도로명 주소 종단 (PR #262 리뷰) ---
+
+    @Test
+    fun `건물번호에 조사가 붙거나 한 자리여도 주소로 본다`() {
+        // 조사는 lookahead 라 치환 대상에서 빠진다 — 토큰 뒤에 남아 문장 형태가 유지된다.
+        assertEquals("[상세주소]에 도착 예정", sanitize(text = "테헤란로 152에 도착 예정")?.text)
+        assertEquals("[상세주소]으로 이동", sanitize(text = "세종대로 110으로 이동")?.text)
+        assertEquals("[상세주소]", sanitize(text = "테헤란로 5")?.text)
+    }
+
+    @Test
+    fun `수량과 기간 백분율 금액 표현은 주소로 보지 않는다`() {
+        assertEquals("그대로 30분 대기", sanitize(text = "그대로 30분 대기")?.text)
+        assertEquals("차례로 12건 처리", sanitize(text = "차례로 12건 처리")?.text)
+        assertEquals("임의로 50,000원 청구", sanitize(text = "임의로 50,000원 청구")?.text)
+        assertEquals("정기적으로 20% 적립", sanitize(text = "정기적으로 20% 적립")?.text)
+        assertEquals("별도로 3 건이 추가됩니다", sanitize(text = "별도로 3 건이 추가됩니다")?.text)
+    }
 }

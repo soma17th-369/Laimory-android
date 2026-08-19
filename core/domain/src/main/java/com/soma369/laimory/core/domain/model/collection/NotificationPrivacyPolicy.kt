@@ -52,7 +52,17 @@ private fun isFullyExcluded(text: String): Boolean =
  */
 private fun containsAuthenticationSecret(text: String): Boolean =
     (AUTH_CODE_CONTEXT.containsMatchIn(text) && AUTH_CODE_VALUE.containsMatchIn(text)) ||
-        ACCOUNT_SECRET.containsMatchIn(text)
+        ACCOUNT_SECRET.containsMatchIn(text) ||
+        containsPasswordDelivery(text)
+
+/**
+ * 비밀번호 문맥 바로 뒤에 숫자를 포함한 값이 따라오면 비밀값 전달로 본다.
+ *
+ * "비밀번호가 변경되었습니다", "비밀번호를 재설정하세요" 처럼 조사와 한글이 이어지는 상태
+ * 알림은 값 패턴에 걸리지 않아 유지된다.
+ */
+private fun containsPasswordDelivery(text: String): Boolean =
+    PASSWORD_DELIVERY.findAll(text).any { match -> match.groupValues[1].any(Char::isDigit) }
 
 /**
  * 고유식별정보. 주민·외국인등록번호는 형식만으로 판정하고, 여권·운전면허번호는 형식이
@@ -143,35 +153,50 @@ private const val ADDRESS_TOKEN = "[상세주소]"
 
 private val AUTH_CODE_CONTEXT =
     Regex("""인증\s*번호|인증\s*코드|보안\s*코드|OTP|verification\s+code""", RegexOption.IGNORE_CASE)
-private val AUTH_CODE_VALUE = Regex("""\b\d{4,8}\b""")
+private val AUTH_CODE_VALUE = Regex("""(?<!\d)\d{4,8}(?!\d)""")
 private val ACCOUNT_SECRET =
     Regex(
         """임시\s*비밀번호|초기\s*비밀번호|temporary\s+password|계정\s*복구\s*코드|복구\s*코드|recovery\s+code""",
         RegexOption.IGNORE_CASE,
     )
 
-private val RESIDENT_REGISTRATION_NUMBER = Regex("""\b\d{6}-[1-4]\d{6}\b""")
-private val FOREIGNER_REGISTRATION_NUMBER = Regex("""\b\d{6}-[5-8]\d{6}\b""")
+/** `비밀번호: 123456`, `새 비밀번호 abcD!23` 처럼 문맥 뒤에 값이 바로 붙는 형태. */
+private val PASSWORD_DELIVERY =
+    Regex("""(?:비밀번호|password)\s*(?:는|은|:|：|=|is)?\s*([A-Za-z0-9!@#%&*_+.\-]{4,20})""", RegexOption.IGNORE_CASE)
+
+private val RESIDENT_REGISTRATION_NUMBER = Regex("""(?<!\d)\d{6}-[1-4]\d{6}(?!\d)""")
+private val FOREIGNER_REGISTRATION_NUMBER = Regex("""(?<!\d)\d{6}-[5-8]\d{6}(?!\d)""")
 private val PASSPORT_CONTEXT = Regex("""여권\s*번호|passport\s+number""", RegexOption.IGNORE_CASE)
-private val PASSPORT_NUMBER = Regex("""\b[A-Z]{1,2}\d{7,8}\b""")
+private val PASSPORT_NUMBER = Regex("""(?<![A-Za-z\d])[A-Z]{1,2}\d{7,8}(?![A-Za-z\d])""")
 private val DRIVER_LICENSE_CONTEXT = Regex("""운전\s*면허\s*번호|면허\s*번호""")
-private val DRIVER_LICENSE_NUMBER = Regex("""\b\d{2}-\d{2}-\d{6}-\d{2}\b""")
+private val DRIVER_LICENSE_NUMBER = Regex("""(?<!\d)\d{2}-\d{2}-\d{6}-\d{2}(?!\d)""")
 
 private val MEDICAL_EXAM_CONTEXT = Regex("""진단|검사|검진|판독|소견""")
 private val MEDICAL_RESULT_VALUE = Regex("""양성|음성|정상\s*범위|이상\s*소견|수치""")
 
 private val EMAIL = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
-private val CARD_NUMBER = Regex("""\b(?:\d{4}[- ]?){3}\d{4}\b""")
-private val PHONE_NUMBER = Regex("""\b01[016789]-?\d{3,4}-?\d{4}\b""")
+private val CARD_NUMBER = Regex("""(?<!\d)(?:\d{4}[- ]?){3}\d{4}(?!\d)""")
+private val PHONE_NUMBER = Regex("""(?<!\d)01[016789]-?\d{3,4}-?\d{4}(?!\d)""")
 private val BANK_ACCOUNT_CONTEXT = Regex("""계좌|입금|출금|이체""")
-private val BANK_ACCOUNT_NUMBER = Regex("""\b\d{2,6}-\d{2,6}-\d{2,8}\b|\b\d{10,14}\b""")
+private val BANK_ACCOUNT_NUMBER =
+    Regex("""(?<!\d)\d{2,6}-\d{2,6}-\d{2,8}(?!\d)|(?<!\d)\d{10,14}(?!\d)""")
 
 /** 국내 계좌번호 자릿수 하한. 이보다 짧은 구분자 숫자열은 날짜·주문번호로 본다. */
 private const val BANK_ACCOUNT_MIN_DIGITS = 10
 
-/** 건물번호는 2자리 이상만 본다 — `새로 5개` 같은 한 자리 숫자 오탐을 줄인다. */
-private val ROAD_ADDRESS = Regex("""([가-힣]{2,10})(?:대로|로|길)\s?(\d{2,5}(?:-\d{1,5})?)(?![가-힣\d])""")
-private val LOT_ADDRESS = Regex("""\b\d{1,5}(?:-\d{1,5})?번지""")
+/**
+ * 도로명 + 건물번호. 건물번호 뒤에는 주소에 붙는 조사만 허용해 수량·기간 표현과 가른다.
+ *
+ * - `테헤란로 152에 도착`, `테헤란로 5` → 주소로 본다.
+ * - `그대로 30분`, `추가로 20%`, `별도로 30,000원` → 단위·천 단위 구분이라 주소로 보지 않는다.
+ */
+private val ROAD_ADDRESS =
+    Regex(
+        """([가-힣]{2,10})(?:대로|로|길)\s?\d{1,5}(?:-\d{1,5})?(?!,\d{3})""" +
+            """(?:(?![가-힣\d%])|(?=에서|에|으로|로|까지|앞|인근|근처))""",
+    )
+private val LOT_ADDRESS = Regex("""(?<!\d)\d{1,5}(?:-\d{1,5})?번지""")
 
 /** 도로명으로 오인되는 부사의 어간. 새 사례가 나오면 여기에 추가한다. */
-private val ADVERB_LOOKALIKE = Regex("""별도|참고|실제|추가|무료|자동으|수동으|대체|의도적으|상대적으""")
+private val ADVERB_LOOKALIKE =
+    Regex("""별도|참고|실제|추가|무료|자동으|수동으|대체|그대|이대|임의|차례|의도적으|상대적으|정기적으|일시적으""")
