@@ -15,7 +15,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -51,7 +50,10 @@ class DraftTaskProcessLifecycleObserverTest {
     private class DelayedBackgroundCoordinator : DraftTaskCoordinator {
         override val state: StateFlow<DraftTaskTrackingState> =
             MutableStateFlow(DraftTaskTrackingState.Idle)
-        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         val allowBackground = CompletableDeferred<Unit>()
         var foregroundCount = 0
         var backgroundCount = 0

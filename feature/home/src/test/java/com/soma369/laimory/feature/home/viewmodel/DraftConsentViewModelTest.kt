@@ -28,10 +28,8 @@ import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -546,7 +544,10 @@ class DraftConsentViewModelTest {
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
-        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         val startedTaskIds = mutableListOf<String>()
         var discardCount = 0
 

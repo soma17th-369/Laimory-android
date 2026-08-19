@@ -31,10 +31,8 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -1154,7 +1152,10 @@ class TimelineRecordViewModelTest {
                 successState(LocalDate.of(2026, 5, 8)),
             )
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
-        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         var discardCount = 0
         var discardFailure: Throwable? = null
 

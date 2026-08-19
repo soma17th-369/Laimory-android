@@ -22,6 +22,7 @@ import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.HomePage
+import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
@@ -30,6 +31,7 @@ import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
 import com.soma369.laimory.ui.GlobalUiHost
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -86,7 +88,8 @@ class MainActivity : ComponentActivity() {
                             messages = messageHelper.messages,
                             navigationFlow = navigationHelper.navigationFlow,
                             authSessionStates = authSessionStates,
-                            draftCompletions = draftTaskCoordinator.completions,
+                            pendingDraftCompletions = draftTaskCoordinator.pendingCompletion,
+                            onDraftCompletionConsumed = draftTaskCoordinator::consumeCompletion,
                             onAuthRootReplaced = {
                                 // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
                                 messageHelper.clearDialogs()
@@ -130,15 +133,29 @@ class MainActivity : ComponentActivity() {
             // 알림 처리 화면으로 뒤로 돌아오지 않도록 홈을 루트로 세운다.
             navigationHelper.replaceRoot(HomePage)
             // 종료 상태에서 눌렀다면 활성 작업 복원이 아직 끝나지 않았을 수 있다. 바로 확인하면
-            // 늘 Idle 이라 로딩 화면을 열지 못하고, 완료 신호가 와도 홈에 있어 스낵바로 새어 나간다.
-            // 복원될 때까지 잠깐 기다린 뒤 로딩 화면을 얹어, 완료가 확인되면 내비게이션 호스트가
-            // 서버 결과의 날짜로 타임라인을 열게 한다.
-            val tracked =
+            // 늘 Idle 이라 목적지를 정할 수 없으므로, 복원 결과나 완료 중 먼저 오는 쪽을 기다린다.
+            val settled =
                 withTimeoutOrNull(ACTIVE_TASK_RESTORE_TIMEOUT_MILLIS) {
-                    draftTaskCoordinator.state.first { it is DraftTaskTrackingState.WithTask }
+                    combine(
+                        draftTaskCoordinator.state,
+                        draftTaskCoordinator.pendingCompletion,
+                        ::Pair,
+                    ).first { (state, completion) -> completion != null || state is DraftTaskTrackingState.WithTask }
                 }
             // 끝내 복원되지 않으면 날짜를 추측하지 않고 홈에 머문다.
-            if (tracked != null) navigationHelper.navigateTo(DraftLoadingPage)
+            val (trackingState, completion) = settled ?: return@launch
+            // 완료를 우리가 집었으면 로딩 화면을 건너뛰고 서버 결과의 날짜로 바로 연다.
+            if (completion != null && draftTaskCoordinator.consumeCompletion(completion.taskId)) {
+                navigationHelper.navigateTo(TimelinePage(completion.recordDate))
+                return@launch
+            }
+            // 내비게이션 호스트가 먼저 집었더라도 이미 끝난 작업 위에 로딩 화면을 얹지는 않는다.
+            // 얹으면 완료가 사라진 뒤라 아무도 화면을 옮겨주지 않아 그대로 멈춘다.
+            if (trackingState is DraftTaskTrackingState.Success) {
+                navigationHelper.navigateTo(TimelinePage(trackingState.task.recordDate))
+                return@launch
+            }
+            navigationHelper.navigateTo(DraftLoadingPage)
         }
     }
 

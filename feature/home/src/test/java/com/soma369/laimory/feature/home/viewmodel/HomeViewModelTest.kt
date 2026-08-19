@@ -50,7 +50,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -985,7 +984,10 @@ class HomeViewModelTest {
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
-        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         var retryCount = 0
         var discardCount = 0
 

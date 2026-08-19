@@ -14,7 +14,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -174,7 +173,10 @@ class DraftCompletionPushHandlerTest {
 
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
         override val state: StateFlow<DraftTaskTrackingState> = MutableStateFlow(DraftTaskTrackingState.Idle)
-        override val completions: Flow<DraftTaskCompletion> = emptyFlow()
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         val refreshedTaskIds = mutableListOf<String>()
 
         override suspend fun start(

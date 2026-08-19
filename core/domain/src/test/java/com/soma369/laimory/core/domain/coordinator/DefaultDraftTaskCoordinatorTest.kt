@@ -29,6 +29,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -343,30 +344,27 @@ class DefaultDraftTaskCoordinatorTest {
             val sessionRepository = FakeTimelineRecordSessionRepository()
             val coordinator =
                 coordinator(draftRepository, activeRepository, sessionRepository, backgroundScope)
-            val completions = mutableListOf<DraftTaskCompletion>()
-            val collectJob = backgroundScope.launch { coordinator.completions.toList(completions) }
 
             coordinator.onForeground()
             coordinator.start("task-1", date)
             advanceTimeBy(DraftPollingPolicy.DEFAULT_INTERVAL_MILLIS)
             runCurrent()
 
-            assertEquals(1, completions.size)
-            assertEquals("task-1", completions.single().taskId)
+            assertEquals("task-1", coordinator.pendingCompletion.value?.taskId)
             // 이동 날짜는 활성 작업이 아니라 서버 결과에서 온다.
-            assertEquals(date, completions.single().recordDate)
+            assertEquals(date, coordinator.pendingCompletion.value?.recordDate)
 
-            // 같은 FCM이 재전달돼도 신호와 저장은 늘어나지 않는다.
+            // 소비한 뒤 같은 FCM이 재전달돼도 완료가 되살아나거나 저장이 늘지 않는다.
+            assertTrue(coordinator.consumeCompletion("task-1"))
             coordinator.refreshFromCompletionSignal("task-1")
             runCurrent()
 
-            assertEquals(1, completions.size)
+            assertNull(coordinator.pendingCompletion.value)
             assertEquals(1, sessionRepository.saveCount)
-            collectJob.cancel()
         }
 
     @Test
-    fun `완료 신호는 재생하지 않아 나중에 구독해도 다시 오지 않는다`() =
+    fun `완료 뒤에 붙은 구독자도 처리하지 않은 완료를 본다`() =
         runTest(UnconfinedTestDispatcher()) {
             val draftRepository = QueueDraftRepository(success())
             val coordinator =
@@ -381,14 +379,80 @@ class DefaultDraftTaskCoordinatorTest {
             coordinator.start("task-1", date)
             runCurrent()
 
-            // 완료 뒤에 구독한 화면은 지난 완료를 받지 않는다 — 자동 이동이 되풀이되면 안 된다.
-            val late = mutableListOf<DraftTaskCompletion>()
-            val collectJob = backgroundScope.launch { coordinator.completions.toList(late) }
+            // 콜드 스타트처럼 화면이 늦게 붙어도 완료가 사라지면 안 된다 — 아무도 이동시키지
+            // 못해 완료된 로딩 화면에 그대로 멈춘다.
+            val late = mutableListOf<DraftTaskCompletion?>()
+            val collectJob = backgroundScope.launch { coordinator.pendingCompletion.toList(late) }
             runCurrent()
 
             assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
-            assertTrue(late.isEmpty())
+            assertEquals("task-1", late.last()?.taskId)
             collectJob.cancel()
+        }
+
+    @Test
+    fun `완료는 한 번만 소비되고 소비한 쪽만 참을 받는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(success()),
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+
+            // 로딩 화면과 내비게이션 호스트가 같은 완료를 집어도 옮기는 쪽은 하나여야 한다.
+            assertTrue(coordinator.consumeCompletion("task-1"))
+            assertFalse(coordinator.consumeCompletion("task-1"))
+            assertNull(coordinator.pendingCompletion.value)
+            // 소비해도 상태의 Success 는 남아 홈의 상시 UI가 계속 읽는다.
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
+        }
+
+    @Test
+    fun `다른 작업의 완료는 소비되지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(success()),
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+
+            assertFalse(coordinator.consumeCompletion("task-2"))
+            assertEquals("task-1", coordinator.pendingCompletion.value?.taskId)
+        }
+
+    @Test
+    fun `새 작업을 시작하면 처리하지 않은 이전 완료는 버린다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(success(), processing()),
+                    FakeActiveDraftTaskRepository(),
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+            assertEquals("task-1", coordinator.pendingCompletion.value?.taskId)
+
+            // 지난 완료가 남으면 새 작업의 로딩 화면이 곧바로 옛 타임라인으로 튄다.
+            coordinator.start("task-2", date)
+            runCurrent()
+
+            assertNull(coordinator.pendingCompletion.value)
         }
 
     private fun coordinator(

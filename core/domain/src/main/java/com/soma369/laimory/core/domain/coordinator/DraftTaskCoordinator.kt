@@ -2,7 +2,6 @@ package com.soma369.laimory.core.domain.coordinator
 
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
 
@@ -12,13 +11,25 @@ interface DraftTaskCoordinator {
     val state: StateFlow<DraftTaskTrackingState>
 
     /**
-     * 같은 작업이 처음 완료될 때 한 번만 발행되는 신호.
+     * 아직 화면이 처리하지 않은 완료. 처리한 쪽이 [consumeCompletion]으로 비운다.
      *
-     * [state]는 지속 상태라 `Success`가 계속 남는다. 화면이 그것을 구독해 자동 이동이나 스낵바를
-     * 띄우면 회전·프로세스 복원·백스택 복귀마다 되풀이된다. 화면 효과는 이 흐름으로만 트리거한다.
-     * 재생하지 않으므로(`replay = 0`) 지난 완료는 다시 오지 않는다.
+     * 일회성 이벤트가 아니라 지속 상태다. 이벤트로 두면 발행 시점에 구독 중이던 쪽만 받으므로,
+     * 콜드 스타트처럼 구독이 늦으면 완료가 사라지고 어느 화면이 받을지가 경합으로 정해진다.
+     * 상태로 두면 늦게 붙은 구독자도 보고, 목적지 판단을 백스택이 정해진 뒤로 미룰 수 있다.
+     *
+     * [state]와 역할이 다르다. [state]의 `Success`는 계속 남아 홈의 `초안 보기` 같은 상시 UI가
+     * 읽고, 이 값은 자동 이동·스낵바처럼 한 번만 해야 하는 처리를 위해 소비되면 사라진다.
      */
-    val completions: Flow<DraftTaskCompletion>
+    val pendingCompletion: StateFlow<DraftTaskCompletion?>
+
+    /**
+     * [taskId]의 완료를 처리했다고 표시하고, 처리 권한을 얻었는지 돌려준다.
+     *
+     * 로딩 화면과 내비게이션 호스트가 같은 완료를 동시에 집을 수 있지만 실제로 화면을 옮기는 쪽은
+     * 하나여야 한다. 원자적으로 비우고 비운 호출에만 `true`를 준다. 이미 소비됐거나 다른 작업의
+     * 완료면 `false`다.
+     */
+    suspend fun consumeCompletion(taskId: String): Boolean
 
     /**
      * 새 초안 생성 작업을 추적하고 활성 작업으로 영속화한다.

@@ -15,12 +15,8 @@ import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -42,12 +38,7 @@ class DefaultDraftTaskCoordinator
     ) : DraftTaskCoordinator {
         private val mutex = Mutex()
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
-        private val mutableCompletions =
-            MutableSharedFlow<DraftTaskCompletion>(
-                replay = 0,
-                extraBufferCapacity = 1,
-                onBufferOverflow = BufferOverflow.DROP_OLDEST,
-            )
+        private val mutablePendingCompletion = MutableStateFlow<DraftTaskCompletion?>(null)
 
         /** 결과 저장과 완료 신호를 작업당 한 번으로 묶는 기준. */
         private var completedTaskId: String? = null
@@ -61,7 +52,14 @@ class DefaultDraftTaskCoordinator
 
         override val state: StateFlow<DraftTaskTrackingState> = mutableState.asStateFlow()
 
-        override val completions: Flow<DraftTaskCompletion> = mutableCompletions.asSharedFlow()
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = mutablePendingCompletion.asStateFlow()
+
+        override suspend fun consumeCompletion(taskId: String): Boolean =
+            mutex.withLock {
+                if (mutablePendingCompletion.value?.taskId != taskId) return@withLock false
+                mutablePendingCompletion.value = null
+                true
+            }
 
         override suspend fun start(
             taskId: String,
@@ -75,6 +73,7 @@ class DefaultDraftTaskCoordinator
                 completionRefreshJob = null
                 pendingCompletionTaskId = null
                 completedTaskId = null
+                mutablePendingCompletion.value = null
                 activeTaskRepository.save(task)
                 activeTask = task
                 hasRestored = true
@@ -220,6 +219,7 @@ class DefaultDraftTaskCoordinator
                 completionRefreshJob = null
                 pendingCompletionTaskId = null
                 completedTaskId = null
+                mutablePendingCompletion.value = null
                 activeTask = null
                 hasRestored = true
                 pauseAtLongRunning = true
@@ -296,15 +296,16 @@ class DefaultDraftTaskCoordinator
                                 saveTimelineRecordUseCase(timeline)
                                 completedTaskId = task.taskId
                             }
-                            mutableState.value = DraftTaskTrackingState.Success(task)
+                            // 상태보다 먼저 채운다. 두 값을 함께 보는 쪽이 `Success` 인데 완료는
+                            // 비어 있는 중간 상태를 보고 로딩 화면을 얹는 일이 없어야 한다.
                             if (isFirstCompletion) {
-                                mutableCompletions.tryEmit(
+                                mutablePendingCompletion.value =
                                     DraftTaskCompletion(
                                         taskId = task.taskId,
                                         recordDate = timeline.recordDate,
-                                    ),
-                                )
+                                    )
                             }
+                            mutableState.value = DraftTaskTrackingState.Success(task)
                         }
 
                         DraftTaskStatus.FAILED ->
