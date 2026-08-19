@@ -8,6 +8,7 @@ import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.api.PushRegistrationApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
+import com.soma369.laimory.core.data.network.api.UserApi
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenAuthenticator
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenInterceptor
 import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
@@ -90,7 +91,12 @@ object NetworkModule {
             .authenticator(tokenAuthenticator)
             .build()
 
-    /** FID처럼 민감한 request body를 전송하는 Bearer 인증 API 전용 클라이언트. */
+    /**
+     * 요청이나 응답 BODY 가 민감한 Bearer 인증 API 전용 클라이언트.
+     *
+     * FID 처럼 보내는 값이 민감한 경우와 닉네임처럼 받는 값이 민감한 경우를 모두 포함한다.
+     * debug 에서도 [HttpLoggingInterceptor] 를 붙이지 않아 양쪽 BODY 가 로그에 남지 않는다.
+     */
     @Provides
     @Singleton
     @SensitiveAuthenticatedClient
@@ -193,6 +199,12 @@ object NetworkModule {
     fun provideTimelineRecordApi(
         @AuthRetrofit retrofit: Retrofit,
     ): TimelineRecordApi = retrofit.create(TimelineRecordApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideUserApi(
+        @SensitiveAuthRetrofit retrofit: Retrofit,
+    ): UserApi = retrofit.create(UserApi::class.java)
 
     @Provides
     @Singleton
