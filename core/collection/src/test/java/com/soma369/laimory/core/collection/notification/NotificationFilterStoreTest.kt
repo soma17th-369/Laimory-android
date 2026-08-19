@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.soma369.laimory.core.domain.model.collection.NotificationFilter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationFilterStoreTest {
@@ -43,6 +44,27 @@ class NotificationFilterStoreTest {
                 keywords = setOf("예약"),
                 allowedPackages = setOf("com.example.calendar"),
             ),
+            preferences.toNotificationFilter(),
+        )
+    }
+
+    @Test
+    fun `기본 키워드 설정이 없으면 켜진 상태로 복원한다`() {
+        val preferences = preferencesOf(stringSetPreferencesKey("keywords") to setOf("회의"))
+
+        assertTrue(preferences.toNotificationFilter().useDefaultKeywords)
+    }
+
+    @Test
+    fun `기본 키워드를 끈 설정은 사용자 키워드와 독립적으로 복원한다`() {
+        val preferences =
+            preferencesOf(
+                booleanPreferencesKey("use_default_keywords") to false,
+                stringSetPreferencesKey("keywords") to setOf("회의"),
+            )
+
+        assertEquals(
+            NotificationFilter(useDefaultKeywords = false, keywords = setOf("회의")),
             preferences.toNotificationFilter(),
         )
     }

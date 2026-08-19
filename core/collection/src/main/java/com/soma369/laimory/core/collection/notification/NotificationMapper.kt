@@ -54,7 +54,8 @@ internal fun Notification.toContent(): NotificationContent =
     )
 
 /**
- * 개인정보 정책이 쓰는 구조 신호만 뽑는다. 프레임워크 타입은 이 경계 밖으로 넘기지 않는다.
+ * 개인정보 정책과 수집 정책이 쓰는 구조 신호만 뽑는다. 프레임워크 타입과 상수는 이 경계 밖으로
+ * 넘기지 않고 boolean 으로만 전달한다.
  *
  * MessagingStyle 은 템플릿 이름 또는 메시지 배열 존재로 판정하며, 메시지 원문(`EXTRA_MESSAGES`)은
  * 읽지 않는다.
@@ -65,6 +66,12 @@ internal fun Notification.toSignals(): NotificationSignals =
             category == Notification.CATEGORY_MESSAGE ||
                 extras.getString(Notification.EXTRA_TEMPLATE) == MESSAGING_STYLE_TEMPLATE ||
                 extras.containsKey(Notification.EXTRA_MESSAGES),
+        isPromotion = category == Notification.CATEGORY_PROMO,
+        isOngoing = flags and Notification.FLAG_ONGOING_EVENT != 0,
+        isGroupSummary = flags and Notification.FLAG_GROUP_SUMMARY != 0,
+        hasProgress =
+            extras.containsKey(Notification.EXTRA_PROGRESS) ||
+                extras.containsKey(Notification.EXTRA_PROGRESS_INDETERMINATE),
     )
 
 /** 패키지의 표시 이름. 조회 실패 시 패키지명 그대로. */
