@@ -112,11 +112,21 @@ private fun buildDetailSections(
         DraftConsentTypeGroup.NOTIFICATION ->
             items
                 .filter { it.itemType == ItemType.NOTIFICATION }
-                .groupBy { (it.payload as NotificationPayload).appName }
-                .map { (appName, appItems) ->
+                .groupBy { (it.payload as NotificationPayload).packageName }
+                .entries
+                // 표시명이 같아도 패키지가 다르면 다른 앱이므로 섹션을 나눈다.
+                // 순서는 각 앱의 가장 최근 알림 기준 내림차순 — 같으면 패키지명으로 고정한다.
+                .sortedWith(
+                    compareByDescending<Map.Entry<String, List<SourceItem>>> { (_, appItems) ->
+                        appItems.maxOf(SourceItem::startAt)
+                    }.thenBy { (packageName, _) -> packageName },
+                )
+                .map { (packageName, appItems) ->
                     DraftConsentDetailSection(
-                        title = appName,
+                        // 앱 이름이 바뀌었을 수 있어 가장 최근 알림의 수집 당시 표시명을 쓴다.
+                        title = (appItems.maxBy(SourceItem::startAt).payload as NotificationPayload).appName,
                         items = appItems.map { it.toDetailItem(zone) },
+                        iconPackageName = packageName,
                     )
                 }
     }

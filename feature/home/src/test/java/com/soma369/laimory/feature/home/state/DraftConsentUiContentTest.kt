@@ -174,7 +174,7 @@ class DraftConsentUiContentTest {
     }
 
     @Test
-    fun `알림 상세는 앱별로 묶는다`() {
+    fun `알림 상세는 앱별로 묶고 최근 알림이 있는 앱부터 보여준다`() {
         val kakao1 =
             item("noti-1", at(10), NotificationPayload("카카오톡", "com.kakao", "민우", "미팅 시간", NotificationPayload.CollectReason.APP))
         val kakao2 =
@@ -185,9 +185,40 @@ class DraftConsentUiContentTest {
         val content = preparation(listOf(kakao1, kakao2, delivery)).toConsentContent()
 
         val notification = content.typeSummaries.first { it.group == DraftConsentTypeGroup.NOTIFICATION }
-        assertEquals(listOf("카카오톡", "배달의민족"), notification.sections.map { it.title })
-        assertEquals(2, notification.sections[0].items.size)
-        assertEquals("(제목 없음)", notification.sections[1].items.single().title)
+        assertEquals(listOf("배달의민족", "카카오톡"), notification.sections.map { it.title })
+        assertEquals(listOf("com.baemin", "com.kakao"), notification.sections.map { it.iconPackageName })
+        assertEquals("(제목 없음)", notification.sections[0].items.single().title)
+        assertEquals(2, notification.sections[1].items.size)
+    }
+
+    @Test
+    fun `표시명이 같아도 패키지가 다르면 알림 섹션을 분리한다`() {
+        val official =
+            item("noti-1", at(10), NotificationPayload("알림", "com.official.app", "배송 출발", null, NotificationPayload.CollectReason.APP))
+        val other =
+            item("noti-2", at(11), NotificationPayload("알림", "com.another.app", "결제 완료", null, NotificationPayload.CollectReason.APP))
+
+        val content = preparation(listOf(official, other)).toConsentContent()
+
+        val notification = content.typeSummaries.first { it.group == DraftConsentTypeGroup.NOTIFICATION }
+        assertEquals(listOf("알림", "알림"), notification.sections.map { it.title })
+        assertEquals(listOf("com.another.app", "com.official.app"), notification.sections.map { it.iconPackageName })
+        assertEquals("결제 완료", notification.sections[0].items.single().title)
+        assertEquals("배송 출발", notification.sections[1].items.single().title)
+    }
+
+    @Test
+    fun `앱 표시명이 바뀌면 가장 최근 알림의 표시명을 섹션 제목으로 쓴다`() {
+        val before =
+            item("noti-1", at(10), NotificationPayload("배달의민족", "com.baemin", "주문 접수", null, NotificationPayload.CollectReason.APP))
+        val after =
+            item("noti-2", at(11), NotificationPayload("배민", "com.baemin", "배달 완료", null, NotificationPayload.CollectReason.APP))
+
+        val content = preparation(listOf(before, after)).toConsentContent()
+
+        val notification = content.typeSummaries.first { it.group == DraftConsentTypeGroup.NOTIFICATION }
+        assertEquals("배민", notification.sections.single().title)
+        assertEquals("com.baemin", notification.sections.single().iconPackageName)
     }
 
     @Test
