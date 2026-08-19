@@ -32,6 +32,7 @@ import com.soma369.laimory.ui.GlobalUiHost
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -128,13 +129,22 @@ class MainActivity : ComponentActivity() {
             if (!draftCompletionPushHandler.onNotificationOpened(taskId, status)) return@launch
             // 알림 처리 화면으로 뒤로 돌아오지 않도록 홈을 루트로 세운다.
             navigationHelper.replaceRoot(HomePage)
-            // 추적 중인 작업이 있으면 상태를 확인하는 동안 로딩 화면을 보여준다. 완료가 확인되면
-            // 내비게이션 호스트가 서버 결과의 날짜로 타임라인을 연다.
-            // 활성 작업이 없으면 날짜를 추측하지 않고 홈에 머문다.
-            if (draftTaskCoordinator.state.value is DraftTaskTrackingState.WithTask) {
-                navigationHelper.navigateTo(DraftLoadingPage)
-            }
+            // 종료 상태에서 눌렀다면 활성 작업 복원이 아직 끝나지 않았을 수 있다. 바로 확인하면
+            // 늘 Idle 이라 로딩 화면을 열지 못하고, 완료 신호가 와도 홈에 있어 스낵바로 새어 나간다.
+            // 복원될 때까지 잠깐 기다린 뒤 로딩 화면을 얹어, 완료가 확인되면 내비게이션 호스트가
+            // 서버 결과의 날짜로 타임라인을 열게 한다.
+            val tracked =
+                withTimeoutOrNull(ACTIVE_TASK_RESTORE_TIMEOUT_MILLIS) {
+                    draftTaskCoordinator.state.first { it is DraftTaskTrackingState.WithTask }
+                }
+            // 끝내 복원되지 않으면 날짜를 추측하지 않고 홈에 머문다.
+            if (tracked != null) navigationHelper.navigateTo(DraftLoadingPage)
         }
+    }
+
+    private companion object {
+        /** 알림을 눌러 앱이 처음 뜰 때 활성 작업 복원을 기다리는 한도. */
+        const val ACTIVE_TASK_RESTORE_TIMEOUT_MILLIS = 3_000L
     }
 
     private fun requestNotificationPermissionIfNeeded() {

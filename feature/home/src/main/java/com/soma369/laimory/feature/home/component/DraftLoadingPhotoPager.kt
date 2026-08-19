@@ -11,10 +11,12 @@ import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -22,7 +24,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlin.math.absoluteValue
@@ -143,12 +145,26 @@ private fun DraftPhotoPage(
         Box(modifier = pageModifier.background(MaterialTheme.colorScheme.surfaceVariant))
         return
     }
-    AsyncImage(
+    SubcomposeAsyncImage(
         model = uri,
         contentDescription = null,
         modifier = pageModifier,
         contentScale = ContentScale.Crop,
+        // 사진이 삭제되거나 권한이 사라져 읽지 못해도 자리를 비우지 않는다. 생성은 계속 진행되므로
+        // 같은 크기의 로딩 표시로 대체해 페이지 크기와 넘김이 흐트러지지 않게 한다.
+        loading = { PhotoPagePlaceholder() },
+        error = { PhotoPagePlaceholder() },
     )
+}
+
+@Composable
+private fun PhotoPagePlaceholder() {
+    Box(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+    }
 }
 
 /** 넘기는 간격. 사용자가 손으로 넘긴 뒤에도 같은 만큼 기다렸다가 이어간다. */

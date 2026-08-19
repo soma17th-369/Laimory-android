@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -47,13 +49,26 @@ fun DraftLoadingRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    DraftLoadingContent(
+        innerPadding = innerPadding,
+        state = state,
+        onIntent = viewModel::sendIntent,
+    )
+}
+
+@Composable
+private fun DraftLoadingContent(
+    innerPadding: PaddingValues,
+    state: DraftLoadingUiState,
+    onIntent: (DraftLoadingUiIntent) -> Unit,
+) {
     // 뒤로가기는 작업을 취소하지 않는다. 추적은 그대로 두고 홈으로만 돌아간다.
-    BackHandler { viewModel.sendIntent(DraftLoadingUiIntent.NavigateBack) }
+    BackHandler { onIntent(DraftLoadingUiIntent.NavigateBack) }
 
     DraftLoadingScreen(
         innerPadding = innerPadding,
         state = state,
-        onIntent = viewModel::sendIntent,
+        onIntent = onIntent,
     )
 }
 
@@ -79,6 +94,8 @@ private fun DraftLoadingScreen(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    // 작은 화면이나 큰 글꼴에서 안내와 재시도 버튼이 잘리면 손쓸 방법이 없다.
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = Spacing.extraLarge2)
                     .padding(top = Spacing.medium, bottom = Spacing.extraLarge),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2),

@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.base.UiSideEffect
@@ -20,6 +21,7 @@ import java.time.Clock
 import java.time.Duration
 import javax.inject.Inject
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toKotlinDuration
 
 /**
@@ -65,11 +67,14 @@ class DraftLoadingViewModel
                     val isCompleted = tracking is DraftTaskTrackingState.Success
                     updateState {
                         copy(
-                            recordDate = task?.recordDate ?: matched?.recordDate,
-                            photoUris = matched?.photoUris.orEmpty(),
-                            photoCount = matched?.photoCount ?: 0,
-                            calendarCount = matched?.calendarCount ?: 0,
-                            stayCount = matched?.stayCount ?: 0,
+                            recordDate = task?.recordDate ?: matched?.recordDate ?: recordDate,
+                            // 스냅샷이 없어져도 화면은 마지막 값을 유지한다. terminal 에서 스냅샷을
+                            // 지우는데, 그때 빈 값으로 덮으면 완료를 보여주는 동안 사진이 사라지고
+                            // `0장 완료`가 뜬다.
+                            photoUris = matched?.photoUris ?: photoUris,
+                            photoCount = matched?.photoCount ?: photoCount,
+                            calendarCount = matched?.calendarCount ?: calendarCount,
+                            stayCount = matched?.stayCount ?: stayCount,
                             // 완료는 다음 연출 틱을 기다리지 않고 바로 보여준다. 화면이 넘어가기 전에
                             // 마지막 줄이 완료로 바뀌는 것을 알아볼 수 있어야 한다.
                             stageStates = if (isCompleted) ALL_STAGES_DONE else stageStates,
@@ -94,12 +99,7 @@ class DraftLoadingViewModel
                 while (true) {
                     val tracking = coordinator.state.value
                     val task = (tracking as? DraftTaskTrackingState.WithTask)?.task
-                    val elapsed =
-                        task
-                            ?.let { Duration.between(it.requestedAt, clock.instant()) }
-                            ?.toKotlinDuration()
-                            ?.coerceAtLeast(kotlin.time.Duration.ZERO)
-                            ?: kotlin.time.Duration.ZERO
+                    val elapsed = elapsedOf(tracking, task)
                     val isCompleted = tracking is DraftTaskTrackingState.Success
                     updateState {
                         copy(
@@ -109,9 +109,40 @@ class DraftLoadingViewModel
                                 },
                         )
                     }
+                    // 끝난 작업에는 더 움직일 연출이 없다.
+                    if (tracking.isTerminal()) return@safeLaunch
                     delay(STAGE_TICK)
                 }
             }
+        }
+
+        private fun DraftTaskTrackingState.isTerminal(): Boolean =
+            this is DraftTaskTrackingState.Success ||
+                this is DraftTaskTrackingState.Failed ||
+                this is DraftTaskTrackingState.Unavailable
+
+        /**
+         * 연출에 쓸 경과 시간.
+         *
+         * 기기 시각만 쓰면 시각이 바뀌거나 어긋났을 때 단계가 뒤로 간다. 서버가 알려준 경과 시간을
+         * 하한으로 두어, 복원 뒤에도 이미 지나간 단계가 되돌아오지 않게 한다.
+         */
+        private fun elapsedOf(
+            tracking: DraftTaskTrackingState,
+            task: ActiveDraftTask?,
+        ): kotlin.time.Duration {
+            val local =
+                task
+                    ?.let { Duration.between(it.requestedAt, clock.instant()) }
+                    ?.toKotlinDuration()
+                    ?: kotlin.time.Duration.ZERO
+            val server =
+                when (tracking) {
+                    is DraftTaskTrackingState.Processing -> tracking.elapsedSeconds
+                    is DraftTaskTrackingState.LongRunning -> tracking.elapsedSeconds
+                    else -> null
+                }?.seconds ?: kotlin.time.Duration.ZERO
+            return maxOf(local, server).coerceAtLeast(kotlin.time.Duration.ZERO)
         }
 
         private fun DraftTaskTrackingState.toNotice(): DraftLoadingNotice? =
