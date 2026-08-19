@@ -30,6 +30,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -503,6 +504,57 @@ class DefaultDraftTaskCoordinatorTest {
             assertEquals(1, sessionRepository.saveCount)
         }
 
+    @Test
+    fun `영속 삭제가 실패해도 완료 소비는 성립해 화면이 넘어간다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val activeRepository = FakeActiveDraftTaskRepository(clearFailure = IOException("disk full"))
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(success()),
+                    activeRepository,
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+
+            // 여기서 false 를 주면 로딩 화면이 이동을 포기해 사용자가 완료된 화면에 갇힌다.
+            // 예외를 흘려도 안 된다 — 호출부가 LaunchedEffect·lifecycleScope 안이다.
+            assertTrue(coordinator.consumeCompletion("task-1"))
+            assertNull(coordinator.pendingCompletion.value)
+            // 지우지 못한 작업은 남아 있다. 다음 전경 진입에서 다시 지운다.
+            assertNotNull(activeRepository.current)
+        }
+
+    @Test
+    fun `지우지 못한 활성 작업은 다음 전경 진입에서 다시 지운다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val activeRepository =
+                FakeActiveDraftTaskRepository(clearFailure = IOException("disk full"), clearFailureCount = 1)
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(success()),
+                    activeRepository,
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+            coordinator.consumeCompletion("task-1")
+            assertNotNull(activeRepository.current)
+
+            coordinator.onBackground()
+            coordinator.onForeground()
+            runCurrent()
+
+            // 남겨두면 다음 프로세스가 복원해 재폴링·재알림이 되살아난다.
+            assertNull(activeRepository.current)
+        }
+
     private fun coordinator(
         draftRepository: TimelineDraftRepository,
         activeRepository: ActiveDraftTaskRepository,
@@ -534,6 +586,7 @@ class DefaultDraftTaskCoordinatorTest {
     private class FakeActiveDraftTaskRepository(
         initial: ActiveDraftTask? = null,
         private val clearFailure: Throwable? = null,
+        private var clearFailureCount: Int = Int.MAX_VALUE,
     ) : ActiveDraftTaskRepository {
         private val state = MutableStateFlow(initial)
         val current: ActiveDraftTask? get() = state.value
@@ -547,7 +600,12 @@ class DefaultDraftTaskCoordinatorTest {
         }
 
         override suspend fun clear() {
-            clearFailure?.let { throw it }
+            clearFailure?.let {
+                if (clearFailureCount > 0) {
+                    clearFailureCount--
+                    throw it
+                }
+            }
             state.value = null
         }
     }
