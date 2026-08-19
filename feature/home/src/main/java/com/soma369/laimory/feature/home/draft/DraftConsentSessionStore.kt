@@ -27,7 +27,6 @@ class DraftConsentSessionStore
         val preparation: StateFlow<DraftConsentPreparation?> = mutablePreparation.asStateFlow()
 
         private var nextAttemptId = 1L
-        private var hasSubmittedResult = false
         private var needsPhotoReselection = false
 
         /** 새 생성 시도를 시작한다. 같은 데이터라도 항상 새 attemptId 를 받아 이전 시도와 구분된다. */
@@ -54,18 +53,6 @@ class DraftConsentSessionStore
             mutablePreparation.value = null
         }
 
-        /** 제출 성공을 기록한다. 홈이 복귀 시 [consumeSubmittedResult]로 한 번만 소비한다. */
-        fun markSubmitted() {
-            hasSubmittedResult = true
-        }
-
-        /** 제출 성공 결과를 일회성으로 소비한다. 소비 후에는 false 를 반환한다. */
-        fun consumeSubmittedResult(): Boolean {
-            val result = hasSubmittedResult
-            hasSubmittedResult = false
-            return result
-        }
-
         /** 제출 시점 사진 접근 실패를 기록한다. 홈이 복귀 시 [consumePhotoReselectionNeeded]로 한 번만 소비한다. */
         fun markPhotoReselectionNeeded() {
             needsPhotoReselection = true
@@ -84,7 +71,6 @@ class DraftConsentSessionStore
          */
         fun clearAll() {
             mutablePreparation.value = null
-            hasSubmittedResult = false
             needsPhotoReselection = false
         }
     }

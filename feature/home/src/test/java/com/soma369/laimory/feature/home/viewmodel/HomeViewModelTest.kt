@@ -172,25 +172,6 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `동의 제출 완료 복귀는 시트를 닫고 시작을 알린다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            sourceRepository.items.value = listOf(todayItem("first"))
-            val viewModel = createViewModel()
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
-            runCurrent()
-            sessionStore.markSubmitted()
-            val effect = async { viewModel.sideEffect.first() }
-            runCurrent()
-
-            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
-            runCurrent()
-
-            assertFalse(viewModel.state.value.isDraftSheetVisible)
-            assertEquals(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."), effect.await())
-        }
-
-    @Test
     fun `제출 결과가 없는 복귀는 시트 상태를 바꾸지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
@@ -239,7 +220,6 @@ class HomeViewModelTest {
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
-            sessionStore.markSubmitted()
             sessionStore.markPhotoReselectionNeeded()
 
             // 세션 만료·로그아웃으로 인증 root 가 교체되는 순간(MainActivity onAuthRootReplaced 경로)

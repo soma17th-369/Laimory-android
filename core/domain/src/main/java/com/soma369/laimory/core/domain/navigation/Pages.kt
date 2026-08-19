@@ -73,6 +73,13 @@ data object DraftConsentPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/** 초안 생성 로딩. 표시 대상은 인자가 아니라 현재 활성 작업이 정본이라 인자를 받지 않는다. */
+data object DraftLoadingPage : Page {
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+
+    const val PATH = "/draft-loading"
+}
+
 /**
  * 동의 화면에서 데이터 유형 1개의 실제 전송 항목을 확인하는 상세 화면.
  *

@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
+import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
@@ -133,9 +134,10 @@ class DraftConsentViewModel
                 // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
                 loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
                 sessionStore.clearPreparation()
-                sessionStore.markSubmitted()
                 activePreparation = null
+                // 동의 화면을 백스택에서 빼고 로딩 화면을 올린다 — 로딩에서 뒤로가면 홈이다.
                 navigationHelper.navigateToBack()
+                navigationHelper.navigateTo(DraftLoadingPage)
             }
         }
 

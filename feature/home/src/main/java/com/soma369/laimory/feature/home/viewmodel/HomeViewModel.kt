@@ -11,6 +11,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
+import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
@@ -106,6 +107,7 @@ class HomeViewModel
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
                 HomeUiIntent.ViewDraft -> viewDraft()
+                HomeUiIntent.OpenDraftLoading -> navigationHelper.navigateTo(DraftLoadingPage)
                 HomeUiIntent.SyncPastRecords -> syncPastRecords()
                 is HomeUiIntent.SelectPastRecord ->
                     navigationHelper.navigateTo(TimelinePage(intent.recordDate))
@@ -393,11 +395,7 @@ class HomeViewModel
                 }
                 sendEffect(HomeUiSideEffect.ShowSnackbar(message))
                 sendEffect(HomeUiSideEffect.RequestPhotoAccess())
-                return
             }
-            if (!draftConsentSessionStore.consumeSubmittedResult()) return
-            updateState { copy(isDraftSheetVisible = false) }
-            sendEffect(HomeUiSideEffect.ShowSnackbar("초안 생성을 시작했어요."))
         }
 
         private suspend fun prepareSelectedPhotos(current: HomeUiState): List<SourceItem>? {

@@ -126,7 +126,6 @@ class DraftConsentViewModelTest {
             assertEquals(listOf("content://photo/7"), draftRepository.uploadedUris)
             assertEquals(listOf("task-1"), draftTaskCoordinator.startedTaskIds)
             assertNull(sessionStore.preparation.value)
-            assertTrue(sessionStore.consumeSubmittedResult())
             assertEquals(1, navigationHelper.backCount)
         }
 
@@ -170,7 +169,6 @@ class DraftConsentViewModelTest {
             assertFalse(viewModel.state.value.isSubmitting)
             assertEquals(0, navigationHelper.backCount)
             assertNotNull(sessionStore.preparation.value)
-            assertFalse(sessionStore.consumeSubmittedResult())
 
             draftRepository.createFailure = null
             viewModel.sendIntent(DraftConsentUiIntent.Submit)
@@ -426,7 +424,6 @@ class DraftConsentViewModelTest {
 
             assertNull(sessionStore.preparation.value)
             assertTrue(sessionStore.consumePhotoReselectionNeeded())
-            assertFalse(sessionStore.consumeSubmittedResult())
             assertEquals(1, navigationHelper.backCount)
             assertEquals(0, draftRepository.createCount)
             // 폐기와 함께 민감 표시 모델도 남지 않는다.

@@ -234,10 +234,13 @@ private fun HomeScreen(
                 onClick = { onIntent(HomeUiIntent.ShowDatePicker) },
                 onActionClick = {
                     onIntent(
-                        if (state.draftStatus == DraftCreationStatus.SUCCESS) {
-                            HomeUiIntent.ViewDraft
-                        } else {
-                            HomeUiIntent.OpenDraftSheet
+                        when (state.draftStatus) {
+                            DraftCreationStatus.SUCCESS -> HomeUiIntent.ViewDraft
+                            // 생성 중에는 같은 작업의 로딩 화면으로 다시 들어간다.
+                            DraftCreationStatus.PROCESSING,
+                            DraftCreationStatus.LONG_RUNNING,
+                            -> HomeUiIntent.OpenDraftLoading
+                            DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.OpenDraftSheet
                         },
                     )
                 },
