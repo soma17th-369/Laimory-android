@@ -135,7 +135,7 @@ private fun DraftLoadingScreen(
                     }
                 }
             }
-            FooterNote()
+            FooterNote(retentionDays = state.retentionDays)
         }
     }
 }
@@ -152,7 +152,7 @@ private fun DraftLoadingPlaceholder() {
 }
 
 @Composable
-private fun FooterNote() {
+private fun FooterNote(retentionDays: Int) {
     Box(
         modifier =
             Modifier
@@ -162,7 +162,8 @@ private fun FooterNote() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "모든 정보는 기기에만 저장되며,\n기록 작성 후 자동으로 정리돼요.",
+            // 보존 일수는 빌드마다 다르므로 숫자를 문구에 박지 않는다.
+            text = "모든 정보는 기기에만 저장되며,\n${retentionDays}일이 지난 데이터는 자동으로 정리돼요.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -231,6 +232,7 @@ private fun DraftLoadingScreenPreview() {
             state =
                 DraftLoadingUiState(
                     recordDate = LocalDate.now(),
+                    retentionDays = 30,
                     photoUris = List(5) { "content://photo/$it" },
                     photoCount = 13,
                     calendarCount = 4,

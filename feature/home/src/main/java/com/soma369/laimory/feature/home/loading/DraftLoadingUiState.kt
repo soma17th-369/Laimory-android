@@ -17,6 +17,8 @@ data class DraftLoadingUiState(
     val photoCount: Int = 0,
     val calendarCount: Int = 0,
     val stayCount: Int = 0,
+    /** 기기에 모인 수집 데이터의 보존 일수. 빌드마다 달라 안내 문구에 숫자를 박지 않는다. */
+    val retentionDays: Int = 0,
     val stageStates: Map<DraftLoadingStage, DraftLoadingStageState> =
         DraftLoadingStage.entries.associateWith { DraftLoadingStageState.PENDING },
     val notice: DraftLoadingNotice? = null,

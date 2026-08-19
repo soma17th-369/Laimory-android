@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -39,7 +40,10 @@ class DraftLoadingViewModel
         private val loadingSessionStore: DraftLoadingSessionStore,
         private val navigationHelper: NavigationHelper,
         private val clock: Clock,
-    ) : BaseMviViewModel<DraftLoadingUiState, DraftLoadingUiIntent, UiSideEffect>(DraftLoadingUiState()) {
+        retentionConfig: SourceItemRetentionConfig,
+    ) : BaseMviViewModel<DraftLoadingUiState, DraftLoadingUiIntent, UiSideEffect>(
+            DraftLoadingUiState(retentionDays = retentionConfig.retentionDays),
+        ) {
         init {
             observeTask()
             tickStages()

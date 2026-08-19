@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.home.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -113,12 +114,23 @@ class DraftLoadingViewModelTest {
             assertEquals(DraftLoadingStageState.IN_PROGRESS, states[DraftLoadingStage.STAY])
         }
 
+    @Test
+    fun `안내 문구에 쓸 보존 일수는 설정값을 그대로 따른다`() =
+        loadingTest {
+            // 빌드마다 값이 달라 문구에 숫자를 박을 수 없다 — 설정값이 화면까지 와야 한다.
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(RETENTION_DAYS, viewModel.state.value.retentionDays)
+        }
+
     private fun createViewModel() =
         DraftLoadingViewModel(
             coordinator = coordinator,
             loadingSessionStore = loadingSessionStore,
             navigationHelper = RecordingNavigationHelper(),
             clock = clock,
+            retentionConfig = SourceItemRetentionConfig(RETENTION_DAYS),
         ).also { created = it }
 
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
@@ -146,6 +158,10 @@ class DraftLoadingViewModelTest {
         override fun continueWaiting() = Unit
 
         override suspend fun discard() = Unit
+    }
+
+    private companion object {
+        const val RETENTION_DAYS = 30
     }
 
     private class RecordingNavigationHelper : NavigationHelper {
