@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -154,7 +155,14 @@ private fun TimelineRecordScreen(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding),
+                .padding(innerPadding)
+                // 여백으로 이미 반영한 시스템 바 inset 을 소비 표시한 뒤 남은 만큼만 IME 여백으로 준다.
+                // 소비하지 않으면 IME inset 이 내비게이션 바 영역을 포함하고 있어 같은 영역이 두 번 더해진다.
+                //
+                // IME 여백은 목록이 아니라 화면 전체가 진다 — 목록만 밀면 그 아래 저장 버튼 자리가
+                // 키보드 뒤에 그대로 남아, 목록 끝과 키보드 사이에 버튼 높이만큼 빈칸이 생긴다.
+                .consumeWindowInsets(innerPadding)
+                .imePadding(),
     ) {
         LaimoryTopAppBar(
             title = {
@@ -228,13 +236,14 @@ private fun TimelineRecordScreen(
                         },
                         modifier = Modifier.weight(1f),
                     )
-                    if (content.value.isEditable) {
+                    // 메모 편집 중에는 어차피 누를 수 없는 버튼이라 감춘다 — 키보드 위 좁은 자리를
+                    // 비활성 버튼이 차지하지 않게 한다.
+                    if (content.value.isEditable && state.memoEditor == null) {
                         SaveRecordButton(
                             enabled =
                                 !state.isSavingRecord &&
                                     state.emotionSheet == null &&
-                                    state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                                    state.memoEditor == null,
+                                    state.deleteDialogState == TimelineDeleteDialogState.Hidden,
                             isLoading = state.isSavingRecord,
                             onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
                         )
@@ -344,10 +353,7 @@ private fun TimelineRecordBody(
     }
 
     LazyColumn(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .imePadding(),
+        modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = Spacing.large, vertical = Spacing.small),
         verticalArrangement = Arrangement.spacedBy(Spacing.large),
     ) {
