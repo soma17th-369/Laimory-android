@@ -162,8 +162,11 @@ private fun FooterNote(retentionDays: Int) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            // 보존 일수는 빌드마다 다르므로 숫자를 문구에 박지 않는다.
-            text = "모든 정보는 기기에만 저장되며,\n${retentionDays}일이 지난 데이터는 자동으로 정리돼요.",
+            // 고른 것만 서버로 나가므로 "기기에만 저장"이라 쓰지 않는다. 정리 대상은 저장한 기록이
+            // 아니라 수집한 데이터이고, 보존 일수는 빌드마다 달라 문구에 숫자를 박지 않는다.
+            text =
+                "고르지 않은 정보는 기기 밖으로 나가지 않아요.\n" +
+                    "기기에 모인 데이터는 ${retentionDays}일 뒤 자동으로 정리돼요.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
