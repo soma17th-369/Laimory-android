@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.screen
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -172,9 +174,14 @@ private fun LazyListScope.sectionItems(
     onToggleItem: (String) -> Unit,
 ) {
     section.title?.let { sectionTitle ->
-        item(key = "${group.name}-section-$sectionTitle") {
+        // 알림은 표시명이 같은 서로 다른 앱이 있을 수 있어 패키지명을 key 로 쓴다.
+        item(key = "${group.name}-section-${section.iconPackageName ?: sectionTitle}") {
             if (group == DraftConsentTypeGroup.NOTIFICATION) {
-                NotificationSectionHeader(appName = sectionTitle, count = section.items.size)
+                NotificationSectionHeader(
+                    appName = sectionTitle,
+                    packageName = section.iconPackageName,
+                    count = section.items.size,
+                )
             } else {
                 SectionHeader(title = sectionTitle, count = section.items.size.takeIf { group == DraftConsentTypeGroup.LOCATION })
             }
@@ -253,6 +260,7 @@ private fun SectionHeader(
 @Composable
 private fun NotificationSectionHeader(
     appName: String,
+    packageName: String?,
     count: Int,
 ) {
     Row(
@@ -263,19 +271,7 @@ private fun NotificationSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(Spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(24.dp)
-                    .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = appName.take(1),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-        }
+        NotificationAppIcon(appName = appName, packageName = packageName)
         Text(
             text = appName,
             style = MaterialTheme.typography.bodyMedium,
@@ -286,6 +282,59 @@ private fun NotificationSectionHeader(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * 알림 섹션의 출처 표시. 설치된 앱의 아이콘을 쓰고, 앱 삭제나 패키지 visibility 로 조회에
+ * 실패하면 앱 이름 첫 글자로 폴백한다.
+ *
+ * 수집 당시 표시명을 얻지 못한 알림은 [appName] 이 패키지명으로 채워져 있어(수집기 폴백)
+ * 첫 글자가 "c" 처럼 뜻 없는 글자가 된다 — 이 경우에만 공통 알림 아이콘을 쓴다.
+ */
+@Composable
+private fun NotificationAppIcon(
+    appName: String,
+    packageName: String?,
+) {
+    val icon = packageName?.let { rememberAppIcon(packageName = it, size = NOTIFICATION_APP_ICON_SIZE) }
+    Box(
+        modifier =
+            Modifier
+                .size(NOTIFICATION_APP_ICON_SIZE)
+                .clip(RoundedCornerShape(6.dp))
+                .then(
+                    if (icon == null) {
+                        Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
+                    } else {
+                        Modifier
+                    },
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            icon != null ->
+                Image(
+                    bitmap = icon,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+            appName == packageName ->
+                Icon(
+                    painter = painterResource(DraftConsentTypeGroup.NOTIFICATION.iconRes()),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+
+            else ->
+                Text(
+                    text = appName.take(1),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+        }
     }
 }
 
@@ -630,6 +679,8 @@ private fun DetailUnavailableContent(onBack: () -> Unit) {
     }
 }
 
+private val NOTIFICATION_APP_ICON_SIZE = 24.dp
+
 private const val PHOTO_GRID_COLUMNS = 3
 private val PHOTO_GRID_GAP = 6.dp
 
@@ -712,6 +763,7 @@ private fun DraftConsentDetailNotificationDarkPreview() {
                         listOf(
                             DraftConsentDetailSection(
                                 title = "카카오톡",
+                                iconPackageName = "com.kakao.talk",
                                 items =
                                     listOf(
                                         DraftConsentDetailItem(
