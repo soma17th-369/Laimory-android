@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -154,7 +155,11 @@ private fun TimelineRecordScreen(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding),
+                .padding(innerPadding)
+                // 여백으로 이미 반영한 시스템 바 inset 을 소비 표시한다. 표시만 하고 소비하지 않으면
+                // 아래 목록의 imePadding 이 같은 영역을 한 번 더 더해(IME inset 은 내비게이션 바 영역을
+                // 포함한다) 키보드 위에 내비게이션 바 높이만큼 빈 공간이 남는다.
+                .consumeWindowInsets(innerPadding),
     ) {
         LaimoryTopAppBar(
             title = {
