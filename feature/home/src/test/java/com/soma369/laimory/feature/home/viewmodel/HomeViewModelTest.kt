@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.collection.NotificationPrivacyPolicy
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
@@ -846,6 +847,7 @@ class HomeViewModelTest {
             prepareTimelineDraftSelectionUseCase =
                 PrepareTimelineDraftSelectionUseCase(
                     selectionPolicy = DraftSourceItemSelectionPolicy(),
+                    privacyPolicy = NotificationPrivacyPolicy(),
                     selectionReporter = DraftSourceItemSelectionReporter.NONE,
                 ),
             getDailyRecordsUseCase =
