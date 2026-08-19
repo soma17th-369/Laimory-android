@@ -6,6 +6,7 @@ import androidx.lifecycle.LifecycleRegistry
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
@@ -49,6 +50,10 @@ class DraftTaskProcessLifecycleObserverTest {
     private class DelayedBackgroundCoordinator : DraftTaskCoordinator {
         override val state: StateFlow<DraftTaskTrackingState> =
             MutableStateFlow(DraftTaskTrackingState.Idle)
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         val allowBackground = CompletableDeferred<Unit>()
         var foregroundCount = 0
         var backgroundCount = 0

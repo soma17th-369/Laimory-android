@@ -2,6 +2,7 @@ package com.soma369.laimory.core.domain.coordinator
 
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskPollingEvent
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatusOutcome
@@ -37,6 +38,10 @@ class DefaultDraftTaskCoordinator
     ) : DraftTaskCoordinator {
         private val mutex = Mutex()
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
+        private val mutablePendingCompletion = MutableStateFlow<DraftTaskCompletion?>(null)
+
+        /** 결과 저장과 완료 신호를 작업당 한 번으로 묶는 기준. */
+        private var completedTaskId: String? = null
         private var activeTask: ActiveDraftTask? = null
         private var pollingJob: Job? = null
         private var completionRefreshJob: Job? = null
@@ -46,6 +51,15 @@ class DefaultDraftTaskCoordinator
         private var pauseAtLongRunning = true
 
         override val state: StateFlow<DraftTaskTrackingState> = mutableState.asStateFlow()
+
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = mutablePendingCompletion.asStateFlow()
+
+        override suspend fun consumeCompletion(taskId: String): Boolean =
+            mutex.withLock {
+                if (mutablePendingCompletion.value?.taskId != taskId) return@withLock false
+                mutablePendingCompletion.value = null
+                true
+            }
 
         override suspend fun start(
             taskId: String,
@@ -58,6 +72,8 @@ class DefaultDraftTaskCoordinator
                 completionRefreshJob?.cancel()
                 completionRefreshJob = null
                 pendingCompletionTaskId = null
+                completedTaskId = null
+                mutablePendingCompletion.value = null
                 activeTaskRepository.save(task)
                 activeTask = task
                 hasRestored = true
@@ -202,6 +218,8 @@ class DefaultDraftTaskCoordinator
                 completionRefreshJob?.cancel()
                 completionRefreshJob = null
                 pendingCompletionTaskId = null
+                completedTaskId = null
+                mutablePendingCompletion.value = null
                 activeTask = null
                 hasRestored = true
                 pauseAtLongRunning = true
@@ -271,8 +289,21 @@ class DefaultDraftTaskCoordinator
                             val timeline =
                                 snapshot.result
                                     ?: return markRetryableErrorLocked(task)
-                            if (mutableState.value !is DraftTaskTrackingState.Success) {
+                            // FCM과 폴링이 같은 완료를 함께 감지하거나 같은 FCM이 재전달돼도
+                            // 저장과 완료 신호는 작업당 한 번이다.
+                            val isFirstCompletion = completedTaskId != task.taskId
+                            if (isFirstCompletion) {
                                 saveTimelineRecordUseCase(timeline)
+                                completedTaskId = task.taskId
+                            }
+                            // 상태보다 먼저 채운다. 두 값을 함께 보는 쪽이 `Success` 인데 완료는
+                            // 비어 있는 중간 상태를 보고 로딩 화면을 얹는 일이 없어야 한다.
+                            if (isFirstCompletion) {
+                                mutablePendingCompletion.value =
+                                    DraftTaskCompletion(
+                                        taskId = task.taskId,
+                                        recordDate = timeline.recordDate,
+                                    )
                             }
                             mutableState.value = DraftTaskTrackingState.Success(task)
                         }

@@ -34,6 +34,8 @@ internal val LaimoryLightColorScheme =
         scrim = Neutral900,
         inverseSurface = Neutral800,
         inverseOnSurface = Neutral50,
+        // 스낵바 액션처럼 뒤집힌 배경 위에 놓이는 강조색. 비워 두면 M3 기본 보라색이 나온다.
+        inversePrimary = Primary300,
     )
 
 internal val LaimoryDarkColorScheme =
@@ -63,4 +65,6 @@ internal val LaimoryDarkColorScheme =
         scrim = Neutral950,
         inverseSurface = Neutral100,
         inverseOnSurface = Neutral800,
+        // 어두운 테마의 뒤집힌 배경은 밝으므로 더 진한 단계를 쓴다.
+        inversePrimary = Primary600,
     )

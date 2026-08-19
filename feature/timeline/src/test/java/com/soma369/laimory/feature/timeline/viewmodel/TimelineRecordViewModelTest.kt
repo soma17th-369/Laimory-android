@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -1151,6 +1152,10 @@ class TimelineRecordViewModelTest {
                 successState(LocalDate.of(2026, 5, 8)),
             )
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         var discardCount = 0
         var discardFailure: Throwable? = null
 

@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -21,6 +22,7 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
+import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.feature.home.state.DraftConsentTerm
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
@@ -50,6 +52,7 @@ class DraftConsentViewModelTest {
     private val date: LocalDate = LocalDate.now(zone)
 
     private val sessionStore = DraftConsentSessionStore()
+    private val loadingSessionStore = DraftLoadingSessionStore()
     private val draftRepository = FakeTimelineDraftRepository()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
@@ -121,7 +124,6 @@ class DraftConsentViewModelTest {
             assertEquals(listOf("content://photo/7"), draftRepository.uploadedUris)
             assertEquals(listOf("task-1"), draftTaskCoordinator.startedTaskIds)
             assertNull(sessionStore.preparation.value)
-            assertTrue(sessionStore.consumeSubmittedResult())
             assertEquals(1, navigationHelper.backCount)
         }
 
@@ -165,7 +167,6 @@ class DraftConsentViewModelTest {
             assertFalse(viewModel.state.value.isSubmitting)
             assertEquals(0, navigationHelper.backCount)
             assertNotNull(sessionStore.preparation.value)
-            assertFalse(sessionStore.consumeSubmittedResult())
 
             draftRepository.createFailure = null
             viewModel.sendIntent(DraftConsentUiIntent.Submit)
@@ -300,6 +301,43 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `제출에 성공하면 로딩 화면이 쓸 스냅샷을 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2"), photoItem(7L)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            // 동의 준비 상태는 폐기되지만 로딩 스냅샷은 남아야 한다.
+            assertNull(sessionStore.preparation.value)
+            val session = loadingSessionStore.session.value
+            assertEquals("task-1", session?.taskId)
+            assertEquals(date, session?.recordDate)
+            assertEquals(listOf("content://photo/7"), session?.photoUris)
+            assertEquals(1, session?.photoCount)
+            assertEquals(2, session?.calendarCount)
+            assertEquals(0, session?.stayCount)
+        }
+
+    @Test
+    fun `제출 스냅샷의 건수는 사용자가 제외한 항목을 빼고 센다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertEquals(1, loadingSessionStore.session.value?.calendarCount)
+        }
+
+    @Test
     fun `모든 항목을 제외하면 제출할 수 없다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(calendarItem("cal-1")))
@@ -384,7 +422,6 @@ class DraftConsentViewModelTest {
 
             assertNull(sessionStore.preparation.value)
             assertTrue(sessionStore.consumePhotoReselectionNeeded())
-            assertFalse(sessionStore.consumeSubmittedResult())
             assertEquals(1, navigationHelper.backCount)
             assertEquals(0, draftRepository.createCount)
             // 폐기와 함께 민감 표시 모델도 남지 않는다.
@@ -408,6 +445,7 @@ class DraftConsentViewModelTest {
     private fun createViewModel(submissionAllowed: Boolean = true): DraftConsentViewModel =
         DraftConsentViewModel(
             sessionStore = sessionStore,
+            loadingSessionStore = loadingSessionStore,
             createTimelineDraftUseCase =
                 CreateTimelineDraftUseCase(
                     repository = draftRepository,
@@ -506,6 +544,10 @@ class DraftConsentViewModelTest {
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
         private val mutableState = MutableStateFlow<DraftTaskTrackingState>(DraftTaskTrackingState.Idle)
         override val state: StateFlow<DraftTaskTrackingState> = mutableState
+        override val pendingCompletion: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null)
+
+        override suspend fun consumeCompletion(taskId: String): Boolean = false
+
         val startedTaskIds = mutableListOf<String>()
         var discardCount = 0
 

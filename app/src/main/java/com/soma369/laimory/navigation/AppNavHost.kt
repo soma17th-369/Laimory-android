@@ -7,6 +7,7 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.NavRoute
 import com.soma369.laimory.core.domain.navigation.NavSignal
@@ -66,7 +67,7 @@ fun AppNavHost(
  * 동일 키(path+args)가 스택에 둘 이상 남지 않도록 기존 출현을 제거한 뒤 최상단에 추가한다
  * (Nav3 contentKey는 키별 1회만 유효). 이미 최상단이면 no-op.
  */
-private fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
+internal fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
     if (appRouteByPath[route.path] == null) {
         Logger.w(LogDomain.NAVIGATION, "Unhandled NavRoute: ${route.path}")
         return
@@ -75,6 +76,20 @@ private fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
     if (lastOrNull() == key) return
     removeAll { it == key }
     add(key)
+}
+
+/** 최상단이 초안 생성 로딩 화면인지. 완료 시 자동 이동과 스낵바를 가르는 기준이다. */
+internal fun NavBackStack<NavKey>.isShowingDraftLoading(): Boolean = (lastOrNull() as? GenericNavKey)?.path == DraftLoadingPage.PATH
+
+/**
+ * 최상단 화면을 [route]로 갈아 끼운다.
+ *
+ * 다 만들어진 뒤 back 으로 로딩 화면에 되돌아가는 것을 막는다. 루트 한 건만 남은 상태에서는
+ * 빼지 않는다 — 스택이 비면 [NavDisplay]가 크래시한다.
+ */
+internal fun NavBackStack<NavKey>.replaceTopWith(route: NavRoute) {
+    if (size > 1) removeLastOrNull()
+    navigateTo(route)
 }
 
 /** 인증 경계 전환에서 이전 화면으로 돌아갈 수 없도록 스택을 새 루트 한 건으로 교체한다. */

@@ -87,6 +87,9 @@ sealed interface HomeUiIntent : UiIntent {
 
     data object ViewDraft : HomeUiIntent
 
+    /** 생성 중인 초안의 로딩 화면으로 들어간다. */
+    data object OpenDraftLoading : HomeUiIntent
+
     /** 홈 진입·복귀·재시도 시 지난 기록 목록을 서버와 동기화한다. */
     data object SyncPastRecords : HomeUiIntent
 

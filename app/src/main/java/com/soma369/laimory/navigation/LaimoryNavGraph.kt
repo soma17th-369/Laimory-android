@@ -6,27 +6,41 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NavSignal
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.push.DraftCompletionNotificationChannel
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 
 /**
  * Navigation 3 라우트 테이블 기반 앱 내비게이션의 진입 Composable.
@@ -39,6 +53,8 @@ fun LaimoryNavGraph(
     messages: Flow<UserMessage> = emptyFlow(),
     navigationFlow: Flow<NavSignal> = emptyFlow(),
     authSessionStates: Flow<AuthSessionState> = flowOf(AuthSessionState.Authenticated),
+    pendingDraftCompletions: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null),
+    onDraftCompletionConsumed: suspend (String) -> Boolean = { false },
     onAuthRootReplaced: () -> Unit = {},
 ) {
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
@@ -50,6 +66,7 @@ fun LaimoryNavGraph(
         return
     }
 
+    val context = LocalContext.current
     val backStack = rememberNavBackStack(GenericNavKey(rootPage.toRoute().path))
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -59,6 +76,50 @@ fun LaimoryNavGraph(
     LaunchedEffect(messages) {
         messages.collect { message ->
             snackbarHostState.showSnackbar(message.toText())
+        }
+    }
+
+    // 초안 완료 분기는 여기 한 곳에서만 한다. 완료는 어느 화면에서든 올 수 있어 화면마다 구독하면
+    // 회전·복원 때 중복 실행된다.
+    //
+    // 완료와 백스택 최상단을 함께 본다. 목적지는 둘의 함수이고, 완료가 먼저 와도(알림 진입은 로딩
+    // 화면을 얹기까지 시간이 걸린다) 최상단이 바뀌면 collectLatest 가 판단을 다시 시킨다. 소비는
+    // 화면을 실제로 옮기는 순간에만 하므로, 그 전까지는 완료가 살아 있어 다시 판단할 수 있다.
+    // 메서드 참조는 리컴포지션마다 새 객체라 키로 쓰면 수집이 계속 재시작한다. 최신 람다만 따라간다.
+    val currentOnConsumed by rememberUpdatedState(onDraftCompletionConsumed)
+    LaunchedEffect(pendingDraftCompletions) {
+        combine(
+            pendingDraftCompletions,
+            snapshotFlow { backStack.isShowingDraftLoading() },
+            ::Pair,
+        ).collectLatest { (completion, isShowingLoading) ->
+            if (completion == null) return@collectLatest
+            val timelineRoute = TimelinePage(completion.recordDate).toRoute()
+            // 결과를 확인했으므로 백그라운드에서 온 알림은 더 알릴 것이 없다.
+            DraftCompletionNotificationChannel.dismissAll(context)
+            if (isShowingLoading) {
+                // 마지막 줄이 완료로 바뀌는 것을 잠깐 보여주고 넘어간다. 바로 바꾸면 `분석 중...`을
+                // 보다가 예고 없이 화면이 튄다.
+                delay(COMPLETION_REVEAL_MILLIS)
+                // 소비하면 완료가 비어 이 블록이 취소되므로, 이동까지 한 묶음으로 끝낸다.
+                withContext(NonCancellable) {
+                    // 다 만든 화면으로 되돌아갈 이유가 없어 최상단을 갈아 끼운다.
+                    if (currentOnConsumed(completion.taskId)) backStack.replaceTopWith(timelineRoute)
+                }
+                return@collectLatest
+            }
+            val result =
+                snackbarHostState.showSnackbar(
+                    message = "초안이 완성됐어요",
+                    actionLabel = "보기",
+                )
+            // 스낵바가 떠 있는 동안 로딩 화면이 올라오면 이 블록이 취소되고 위 분기로 다시 간다.
+            // 그래서 소비는 스낵바가 끝난 뒤에 한다.
+            withContext(NonCancellable) {
+                if (!currentOnConsumed(completion.taskId)) return@withContext
+                // 스낵바가 닫혀도 완료 상태는 남으므로 홈의 `초안 보기`로 나중에 열 수 있다.
+                if (result == SnackbarResult.ActionPerformed) backStack.navigateTo(timelineRoute)
+            }
         }
     }
 
@@ -87,6 +148,9 @@ fun LaimoryNavGraph(
         }
     }
 }
+
+/** 완료 표시를 보여주는 시간. 넘어가기 전에 `완료`로 바뀌는 것을 알아볼 만큼만 둔다. */
+private const val COMPLETION_REVEAL_MILLIS = 800L
 
 internal fun AuthSessionState.rootPage(): Page? =
     when (this) {
