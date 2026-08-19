@@ -18,6 +18,8 @@ import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
+import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.model.toPastRecordUiModel
@@ -55,6 +57,8 @@ class HomeViewModel
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftConsentSessionStore: DraftConsentSessionStore,
         private val draftTaskCoordinator: DraftTaskCoordinator,
+        private val observeUserProfileUseCase: ObserveUserProfileUseCase,
+        private val refreshUserProfileUseCase: RefreshUserProfileUseCase,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
             HomeUiState(selectedDate = LocalDate.now(ZoneId.systemDefault())),
@@ -74,10 +78,29 @@ class HomeViewModel
         init {
             observeSummary()
             observeDraftTask()
+            observeUserProfile()
+        }
+
+        /**
+         * 공용 회원 정보를 인사말에 반영한다.
+         *
+         * 조회 자체는 coordinator 가 세션당 한 번만 하므로 여기서 서버를 부르지 않는다.
+         * 재시도는 [HomeUiIntent.RefreshProfile] 이 맡는다.
+         */
+        private fun observeUserProfile() {
+            safeLaunch {
+                observeUserProfileUseCase().collect { profile ->
+                    updateState { copy(nickname = profile?.nickname) }
+                }
+            }
         }
 
         override suspend fun handleIntent(intent: HomeUiIntent) {
             when (intent) {
+                // 화면이 뜰 때마다 부른다. ViewModel 이 Activity 수명이라 init 에서 한 번만 부르면
+                // 첫 조회가 실패한 세션 내내 닉네임이 fallback 으로 남는다. 성공한 뒤의 중복 요청은
+                // coordinator 의 세션 캐시·single-flight 가 막는다.
+                HomeUiIntent.RefreshProfile -> refreshUserProfileUseCase()
                 HomeUiIntent.NavigateToCollection -> navigationHelper.navigateTo(CollectionPage)
                 HomeUiIntent.OpenDraftSheet -> openDraftSheet()
                 HomeUiIntent.DismissDraftSheet -> updateState { copy(isDraftSheetVisible = false) }

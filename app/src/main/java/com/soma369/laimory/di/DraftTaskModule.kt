@@ -2,7 +2,9 @@ package com.soma369.laimory.di
 
 import com.soma369.laimory.BuildConfig
 import com.soma369.laimory.core.domain.coordinator.DefaultDraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.DefaultUserProfileCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
@@ -29,6 +31,10 @@ abstract class DraftTaskBindingModule {
     @Binds
     @Singleton
     abstract fun bindDraftTaskCoordinator(impl: DefaultDraftTaskCoordinator): DraftTaskCoordinator
+
+    @Binds
+    @Singleton
+    abstract fun bindUserProfileCoordinator(impl: DefaultUserProfileCoordinator): UserProfileCoordinator
 
     @Binds
     @Singleton

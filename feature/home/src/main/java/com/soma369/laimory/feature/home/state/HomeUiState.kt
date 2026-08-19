@@ -17,6 +17,8 @@ import kotlin.math.roundToLong
 
 @Immutable
 data class HomeUiState(
+    /** 인사말에 쓸 닉네임. 조회 전·없음·실패를 구분하지 않는다 — 어느 쪽이든 문구가 같다. */
+    val nickname: String? = null,
     val selectedDate: LocalDate = LocalDate.now(),
     val startTime: LocalTime = LocalTime.MIDNIGHT,
     val endDay: DraftEndDay = DraftEndDay.NEXT_DAY,

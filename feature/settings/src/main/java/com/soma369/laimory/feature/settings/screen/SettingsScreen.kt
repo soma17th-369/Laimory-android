@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
@@ -60,6 +62,9 @@ fun SettingsRoute(
     appVersionName: String,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.sendIntent(SettingsUiIntent.RefreshProfile)
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     SettingsContent(
         innerPadding = innerPadding,
@@ -132,7 +137,7 @@ private fun SettingsScreen(
                     .padding(top = Spacing.small, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            AccountSummaryCard(provider = state.accountProvider)
+            AccountSummaryCard(provider = state.accountProvider, nickname = state.nickname)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
                 SettingsSection(title = "정보") {
                     SettingsGroup(
@@ -180,7 +185,10 @@ private fun SettingsScreen(
 }
 
 @Composable
-private fun AccountSummaryCard(provider: SocialLoginProvider?) {
+private fun AccountSummaryCard(
+    provider: SocialLoginProvider?,
+    nickname: String?,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -198,7 +206,8 @@ private fun AccountSummaryCard(provider: SocialLoginProvider?) {
                 verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
             ) {
                 Text(
-                    text = provider.accountTitle,
+                    // 닉네임을 못 받았어도 카드가 비지 않도록 제공자 문구로 돌아간다.
+                    text = nickname ?: provider.accountTitle,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )

@@ -17,7 +17,7 @@ annotation class AuthSessionRetrofit
 @Retention(AnnotationRetention.BINARY)
 annotation class AuthRetrofit
 
-/** 인증이 필요하면서 민감 BODY를 로깅하지 않는 API용 Retrofit. */
+/** 인증이 필요하면서 요청·응답 BODY 를 모두 로깅하지 않는 API용 Retrofit. */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class SensitiveAuthRetrofit
@@ -34,7 +34,11 @@ annotation class AuthSessionClient
 @Retention(AnnotationRetention.BINARY)
 annotation class AuthenticatedClient
 
-/** Bearer 인증은 적용하지만 요청·응답 BODY는 로깅하지 않는 클라이언트. */
+/**
+ * Bearer 인증은 적용하지만 요청·응답 BODY 는 로깅하지 않는 클라이언트.
+ *
+ * 보내는 값이 민감한 API(FID 등)와 받는 값이 민감한 API(닉네임 등) 모두 이 클라이언트를 쓴다.
+ */
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class SensitiveAuthenticatedClient

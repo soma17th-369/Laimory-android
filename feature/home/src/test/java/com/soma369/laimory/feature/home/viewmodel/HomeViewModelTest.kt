@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
@@ -25,6 +26,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelinePage
@@ -36,6 +38,8 @@ import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
+import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
@@ -80,6 +84,7 @@ class HomeViewModelTest {
     private val photoSource = FakePhotoSource()
     private val sessionStore = DraftConsentSessionStore()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
+    private val userProfileCoordinator = FakeUserProfileCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
 
     @Test
@@ -776,6 +781,65 @@ class HomeViewModelTest {
         sendIntent(HomeUiIntent.ConfirmTimeSheet)
     }
 
+    @Test
+    fun `닉네임을 받으면 인사말 상태에 반영한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            userProfileCoordinator.emit(UserProfile.of("김소마"))
+            runCurrent()
+
+            assertEquals("김소마", viewModel.state.value.nickname)
+        }
+
+    @Test
+    fun `닉네임이 없어도 홈은 그대로 열린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            userProfileCoordinator.emit(UserProfile.of(null))
+            runCurrent()
+
+            // 조회 실패·미조회와 같은 상태로 두고 화면이 fallback 문구를 쓴다.
+            assertNull(viewModel.state.value.nickname)
+        }
+
+    @Test
+    fun `계정이 바뀌어 공용 프로필이 비면 인사말도 이름을 뗀다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            userProfileCoordinator.emit(UserProfile.of("김소마"))
+            runCurrent()
+
+            userProfileCoordinator.emit(null)
+            runCurrent()
+
+            assertNull(viewModel.state.value.nickname)
+        }
+
+    @Test
+    fun `홈이 뜰 때마다 아직 못 받은 프로필을 다시 요청한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            // ViewModel 이 Activity 수명이라 재진입해도 같은 인스턴스다. init 에서만 부르면 첫 조회가
+            // 실패한 세션 내내 닉네임이 fallback 으로 남는다.
+            assertEquals(0, userProfileCoordinator.refreshCount)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshProfile)
+            runCurrent()
+            assertEquals(1, userProfileCoordinator.refreshCount)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshProfile)
+            runCurrent()
+
+            // 성공 뒤의 중복 요청은 coordinator 의 세션 캐시·single-flight 가 막는다.
+            assertEquals(2, userProfileCoordinator.refreshCount)
+        }
+
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             observeSourceItemsUseCase = ObserveSourceItemsUseCase(sourceRepository),
@@ -793,6 +857,8 @@ class HomeViewModelTest {
             prepareSelectedPhotosUseCase = PrepareSelectedPhotosUseCase(photoSource),
             draftConsentSessionStore = sessionStore,
             draftTaskCoordinator = draftTaskCoordinator,
+            observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
+            refreshUserProfileUseCase = RefreshUserProfileUseCase(userProfileCoordinator),
             navigationHelper = navigationHelper,
         )
 
@@ -979,6 +1045,24 @@ class HomeViewModelTest {
 
     private data object NoOpMessageHelper : MessageHelper {
         override fun send(message: UserMessage) = Unit
+    }
+
+    /** 공용 프로필 상태를 시험에서 직접 밀어 넣는 대역. */
+    private class FakeUserProfileCoordinator : UserProfileCoordinator {
+        private val mutableProfile = MutableStateFlow<UserProfile?>(null)
+
+        var refreshCount = 0
+            private set
+
+        override val profile: StateFlow<UserProfile?> = mutableProfile
+
+        override fun refresh() {
+            refreshCount++
+        }
+
+        fun emit(profile: UserProfile?) {
+            mutableProfile.value = profile
+        }
     }
 
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
