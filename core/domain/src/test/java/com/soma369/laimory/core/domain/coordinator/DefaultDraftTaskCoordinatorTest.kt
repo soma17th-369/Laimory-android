@@ -455,6 +455,54 @@ class DefaultDraftTaskCoordinatorTest {
             assertNull(coordinator.pendingCompletion.value)
         }
 
+    @Test
+    fun `완료를 처리하면 영속된 활성 작업도 지운다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val activeRepository = FakeActiveDraftTaskRepository()
+            val coordinator =
+                coordinator(
+                    QueueDraftRepository(success()),
+                    activeRepository,
+                    FakeTimelineRecordSessionRepository(),
+                    backgroundScope,
+                )
+
+            coordinator.onForeground()
+            coordinator.start("task-1", date)
+            runCurrent()
+            assertTrue(coordinator.consumeCompletion("task-1"))
+
+            assertNull(activeRepository.current)
+            // 같은 프로세스에서는 Success 가 남아 홈의 `초안 보기`가 계속 열린다.
+            assertTrue(coordinator.state.value is DraftTaskTrackingState.Success)
+        }
+
+    @Test
+    fun `처리한 완료는 새 프로세스에서 다시 알리지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val activeRepository = FakeActiveDraftTaskRepository()
+            val sessionRepository = FakeTimelineRecordSessionRepository()
+            val first =
+                coordinator(QueueDraftRepository(success()), activeRepository, sessionRepository, backgroundScope)
+            first.onForeground()
+            first.start("task-1", date)
+            runCurrent()
+            assertTrue(first.consumeCompletion("task-1"))
+            assertEquals(1, sessionRepository.saveCount)
+
+            // 앱을 껐다 켠 상황. completedTaskId 는 메모리에만 있어 새 코디네이터는 아무것도 모른다.
+            val restarted =
+                coordinator(QueueDraftRepository(success()), activeRepository, sessionRepository, backgroundScope)
+            restarted.onForeground()
+            runCurrent()
+
+            // 활성 작업이 남아 있으면 다시 폴링해 결과를 또 저장하고 완료를 또 알린다 —
+            // 앱에 들어갈 때마다 `초안이 완성됐어요` 가 뜬다.
+            assertNull(restarted.pendingCompletion.value)
+            assertEquals(DraftTaskTrackingState.Idle, restarted.state.value)
+            assertEquals(1, sessionRepository.saveCount)
+        }
+
     private fun coordinator(
         draftRepository: TimelineDraftRepository,
         activeRepository: ActiveDraftTaskRepository,

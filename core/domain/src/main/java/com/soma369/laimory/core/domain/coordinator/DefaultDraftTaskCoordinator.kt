@@ -58,6 +58,14 @@ class DefaultDraftTaskCoordinator
             mutex.withLock {
                 if (mutablePendingCompletion.value?.taskId != taskId) return@withLock false
                 mutablePendingCompletion.value = null
+                // 처리한 완료는 되살아나면 안 된다. 영속된 활성 작업을 남기면 다음 프로세스가 그것을
+                // 복원해 다시 폴링하고, 이미 저장한 결과를 또 저장하고, 완료를 또 알린다 —
+                // 앱에 들어갈 때마다 `초안이 완성됐어요` 가 뜬다. 작업당 한 번인 completedTaskId 는
+                // 메모리에만 있어 프로세스를 넘기지 못하므로 영속 쪽을 지워야 한다.
+                //
+                // 메모리의 activeTask 는 남긴다. 같은 프로세스에서는 state 의 Success 가 유지돼
+                // 홈의 `초안 보기` 가 계속 열려야 한다.
+                activeTaskRepository.clear()
                 true
             }
 
