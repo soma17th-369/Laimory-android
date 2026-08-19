@@ -1,8 +1,6 @@
 package com.soma369.laimory.core.ui.appicon
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.util.LruCache
 import androidx.compose.runtime.Composable
@@ -87,27 +85,8 @@ private class CachedAppIcon(
 /**
  * 아이콘 [Drawable] 을 [sizePx] 정사각 비트맵으로 그린다.
  *
- * 적응형 아이콘은 규격상 108dp 전체 중 런처 마스크에 보이는 영역이 가운데 72dp 뿐이라,
- * 전체를 그대로 그리면 로고가 작고 여백만 크게 보인다. 확대해 그린 뒤 가운데를 잘라낸다.
+ * 적응형 아이콘도 별도 보정 없이 그대로 그린다 — `AdaptiveIconDrawable` 은 그리는 시점에
+ * 기기의 아이콘 마스크를 이미 적용하므로, 결과가 런처에서 보이는 모양과 같다.
+ * 여기서 가운데를 잘라내면 마스크의 둥근 모서리를 잘라먹어 배경색이 모서리까지 차 버린다.
  */
-private fun Drawable.toIconBitmap(sizePx: Int): ImageBitmap {
-    if (this !is AdaptiveIconDrawable) return toBitmap(sizePx, sizePx).asImageBitmap()
-    val scaledSize = (sizePx * ADAPTIVE_ICON_SCALE).toInt()
-    val inset = (scaledSize - sizePx) / 2
-    return Bitmap
-        .createBitmap(toBitmap(scaledSize, scaledSize), inset, inset, sizePx, sizePx)
-        .asImageBitmap()
-}
-
-/** 적응형 아이콘의 전체 규격. */
-private const val ADAPTIVE_ICON_FULL_DP = 108f
-
-/**
- * 108dp 중 실제로 잘라 쓰는 영역.
- *
- * 런처 마스크 규격은 가운데 72dp 지만 그 폭으로 자르면 로고가 헤더를 꽉 채워
- * 옆 텍스트보다 무겁게 보인다. 조금 넓게 잘라 배경 여백을 남긴다.
- */
-private const val ADAPTIVE_ICON_VISIBLE_DP = 88f
-
-private const val ADAPTIVE_ICON_SCALE = ADAPTIVE_ICON_FULL_DP / ADAPTIVE_ICON_VISIBLE_DP
+private fun Drawable.toIconBitmap(sizePx: Int): ImageBitmap = toBitmap(sizePx, sizePx).asImageBitmap()
