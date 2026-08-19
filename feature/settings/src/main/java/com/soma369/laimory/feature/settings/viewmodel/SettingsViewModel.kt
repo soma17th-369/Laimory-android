@@ -56,10 +56,10 @@ class SettingsViewModel
          * 공용 회원 정보를 계정 카드에 반영한다.
          *
          * 닉네임 비우기는 coordinator 가 세션 전이에서 하므로 여기서 따로 지우지 않는다 — 로그아웃하면
-         * 공용 상태가 null 이 되어 이 흐름으로 함께 내려온다.
+         * 공용 상태가 null 이 되어 이 흐름으로 함께 내려온다. 재시도는
+         * [SettingsUiIntent.RefreshProfile] 이 맡는다.
          */
         private fun observeUserProfile() {
-            refreshUserProfileUseCase()
             viewModelScope.launch {
                 observeUserProfileUseCase().collect { profile ->
                     updateState { copy(nickname = profile?.nickname) }
@@ -69,6 +69,9 @@ class SettingsViewModel
 
         override suspend fun handleIntent(intent: SettingsUiIntent) {
             when (intent) {
+                // 화면이 뜰 때마다 부른다. ViewModel 이 Activity 수명이라 init 에서 한 번만 부르면
+                // 첫 조회가 실패한 세션 내내 제공자 문구로 남는다.
+                SettingsUiIntent.RefreshProfile -> refreshUserProfileUseCase()
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit
                 SettingsUiIntent.LogoutConfirmed -> logout()

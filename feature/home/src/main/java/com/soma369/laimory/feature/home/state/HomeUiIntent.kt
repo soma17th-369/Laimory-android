@@ -5,6 +5,9 @@ import java.time.LocalDate
 import java.time.LocalTime
 
 sealed interface HomeUiIntent : UiIntent {
+    /** 화면 진입·복귀. 아직 못 받은 닉네임을 다시 요청한다. */
+    data object RefreshProfile : HomeUiIntent
+
     data object NavigateToCollection : HomeUiIntent
 
     data object OpenDraftSheet : HomeUiIntent

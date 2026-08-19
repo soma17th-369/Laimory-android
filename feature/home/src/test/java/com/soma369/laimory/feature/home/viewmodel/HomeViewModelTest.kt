@@ -821,12 +821,23 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `홈이 뜨면 아직 못 받은 프로필을 다시 요청한다`() =
+    fun `홈이 뜰 때마다 아직 못 받은 프로필을 다시 요청한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            createViewModel()
+            val viewModel = createViewModel()
+            runCurrent()
+            // ViewModel 이 Activity 수명이라 재진입해도 같은 인스턴스다. init 에서만 부르면 첫 조회가
+            // 실패한 세션 내내 닉네임이 fallback 으로 남는다.
+            assertEquals(0, userProfileCoordinator.refreshCount)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshProfile)
+            runCurrent()
+            assertEquals(1, userProfileCoordinator.refreshCount)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshProfile)
             runCurrent()
 
-            assertEquals(1, userProfileCoordinator.refreshCount)
+            // 성공 뒤의 중복 요청은 coordinator 의 세션 캐시·single-flight 가 막는다.
+            assertEquals(2, userProfileCoordinator.refreshCount)
         }
 
     private fun createViewModel(): HomeViewModel =

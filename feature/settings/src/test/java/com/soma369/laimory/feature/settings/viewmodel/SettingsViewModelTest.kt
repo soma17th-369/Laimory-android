@@ -251,13 +251,21 @@ class SettingsViewModelTest {
         }
 
     @Test
-    fun `화면이 뜨면 아직 못 받은 프로필을 다시 요청한다`() =
+    fun `화면이 뜰 때마다 아직 못 받은 프로필을 다시 요청한다`() =
         runTest {
-            createViewModel()
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals(0, userProfileCoordinator.refreshCount)
+
+            // 재진입해도 같은 ViewModel 인스턴스라 init 트리거로는 다시 시도하지 못한다.
+            viewModel.sendIntent(SettingsUiIntent.RefreshProfile)
+            runCurrent()
+            assertEquals(1, userProfileCoordinator.refreshCount)
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshProfile)
             runCurrent()
 
-            // 앞선 조회가 실패했을 때 만회할 기회를 준다. 이미 성공한 세션이면 coordinator 가 무시한다.
-            assertEquals(1, userProfileCoordinator.refreshCount)
+            assertEquals(2, userProfileCoordinator.refreshCount)
         }
 
     /** 공용 프로필 상태를 시험에서 직접 밀어 넣는 대역. */
