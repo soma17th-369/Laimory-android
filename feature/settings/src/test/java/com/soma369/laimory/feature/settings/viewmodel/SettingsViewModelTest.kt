@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.settings.viewmodel
 
+import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
@@ -10,6 +11,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
@@ -18,6 +20,8 @@ import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
+import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,6 +49,7 @@ class SettingsViewModelTest {
     private val navigationHelper = FakeNavigationHelper()
     private val messageHelper = FakeMessageHelper()
     private val globalLoadingHelper = RecordingGlobalLoadingHelper()
+    private val userProfileCoordinator = FakeUserProfileCoordinator()
 
     @Test
     fun `저장된 로그인 제공자를 화면 상태에 반영한다`() =
@@ -202,6 +207,77 @@ class SettingsViewModelTest {
             assertEquals(ApiException.NETWORK_ERROR, snackbarMessage.await())
         }
 
+    @Test
+    fun `닉네임을 받으면 계정 카드 제목에 반영한다`() =
+        runTest {
+            repository.account.value = SignedInAccount(SocialLoginProvider.KAKAO)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            userProfileCoordinator.emit(UserProfile.of("김소마"))
+            runCurrent()
+
+            assertEquals("김소마", viewModel.state.value.nickname)
+            // 제공자 정보는 보조 문구·아이콘으로 남아야 하므로 함께 유지한다.
+            assertEquals(SocialLoginProvider.KAKAO, viewModel.state.value.accountProvider)
+        }
+
+    @Test
+    fun `닉네임이 없는 계정은 상태를 비워 제공자 문구로 돌아가게 한다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            userProfileCoordinator.emit(UserProfile.of(null))
+            runCurrent()
+
+            assertNull(viewModel.state.value.nickname)
+        }
+
+    @Test
+    fun `로그아웃으로 공용 프로필이 비면 닉네임도 사라진다`() =
+        runTest {
+            repository.account.value = SignedInAccount(SocialLoginProvider.GOOGLE)
+            val viewModel = createViewModel()
+            runCurrent()
+            userProfileCoordinator.emit(UserProfile.of("김소마"))
+            runCurrent()
+
+            userProfileCoordinator.emit(null)
+            runCurrent()
+
+            // 설정 화면에 이전 계정 정보가 남으면 안 된다.
+            assertNull(viewModel.state.value.nickname)
+        }
+
+    @Test
+    fun `화면이 뜨면 아직 못 받은 프로필을 다시 요청한다`() =
+        runTest {
+            createViewModel()
+            runCurrent()
+
+            // 앞선 조회가 실패했을 때 만회할 기회를 준다. 이미 성공한 세션이면 coordinator 가 무시한다.
+            assertEquals(1, userProfileCoordinator.refreshCount)
+        }
+
+    /** 공용 프로필 상태를 시험에서 직접 밀어 넣는 대역. */
+    private class FakeUserProfileCoordinator : UserProfileCoordinator {
+        private val mutableProfile = MutableStateFlow<UserProfile?>(null)
+
+        var refreshCount = 0
+            private set
+
+        override val profile: StateFlow<UserProfile?> = mutableProfile
+
+        override fun refresh() {
+            refreshCount++
+        }
+
+        fun emit(profile: UserProfile?) {
+            mutableProfile.value = profile
+        }
+    }
+
     private fun createViewModel(): SettingsViewModel =
         SettingsViewModel(
             logoutUseCase =
@@ -214,6 +290,8 @@ class SettingsViewModelTest {
                         ),
                 ),
             observeSignedInAccount = ObserveSignedInAccountUseCase(repository),
+            observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
+            refreshUserProfileUseCase = RefreshUserProfileUseCase(userProfileCoordinator),
             navigationHelper = navigationHelper,
             messageHelper = messageHelper,
             globalLoadingHelper = globalLoadingHelper,

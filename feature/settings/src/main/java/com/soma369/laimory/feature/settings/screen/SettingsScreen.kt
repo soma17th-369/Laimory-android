@@ -132,7 +132,7 @@ private fun SettingsScreen(
                     .padding(top = Spacing.small, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            AccountSummaryCard(provider = state.accountProvider)
+            AccountSummaryCard(provider = state.accountProvider, nickname = state.nickname)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
                 SettingsSection(title = "정보") {
                     SettingsGroup(
@@ -180,7 +180,10 @@ private fun SettingsScreen(
 }
 
 @Composable
-private fun AccountSummaryCard(provider: SocialLoginProvider?) {
+private fun AccountSummaryCard(
+    provider: SocialLoginProvider?,
+    nickname: String?,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -198,7 +201,8 @@ private fun AccountSummaryCard(provider: SocialLoginProvider?) {
                 verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
             ) {
                 Text(
-                    text = provider.accountTitle,
+                    // 닉네임을 못 받았어도 카드가 비지 않도록 제공자 문구로 돌아간다.
+                    text = nickname ?: provider.accountTitle,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )

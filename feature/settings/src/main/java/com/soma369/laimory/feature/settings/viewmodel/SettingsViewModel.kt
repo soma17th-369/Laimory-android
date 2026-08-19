@@ -9,6 +9,8 @@ import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
+import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiSideEffect
@@ -26,6 +28,8 @@ class SettingsViewModel
     constructor(
         private val logoutUseCase: LogoutUseCase,
         observeSignedInAccount: ObserveSignedInAccountUseCase,
+        private val observeUserProfileUseCase: ObserveUserProfileUseCase,
+        private val refreshUserProfileUseCase: RefreshUserProfileUseCase,
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
         private val globalLoadingHelper: GlobalLoadingHelper,
@@ -43,6 +47,22 @@ class SettingsViewModel
                             copy(accountProvider = account.provider, isLoggingOut = false)
                         }
                     }
+                }
+            }
+            observeUserProfile()
+        }
+
+        /**
+         * 공용 회원 정보를 계정 카드에 반영한다.
+         *
+         * 닉네임 비우기는 coordinator 가 세션 전이에서 하므로 여기서 따로 지우지 않는다 — 로그아웃하면
+         * 공용 상태가 null 이 되어 이 흐름으로 함께 내려온다.
+         */
+        private fun observeUserProfile() {
+            refreshUserProfileUseCase()
+            viewModelScope.launch {
+                observeUserProfileUseCase().collect { profile ->
+                    updateState { copy(nickname = profile?.nickname) }
                 }
             }
         }

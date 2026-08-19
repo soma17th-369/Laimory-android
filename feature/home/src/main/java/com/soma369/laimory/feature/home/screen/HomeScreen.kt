@@ -20,10 +20,14 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -41,6 +45,8 @@ import com.soma369.laimory.feature.home.component.DraftSettingsSheet
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
 import com.soma369.laimory.feature.home.component.PastRecordCard
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
+import com.soma369.laimory.feature.home.greeting.HomeGreetingEmphasis
+import com.soma369.laimory.feature.home.greeting.homeGreetingSegments
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
@@ -221,11 +227,7 @@ private fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(Spacing.large),
     ) {
         item(key = "greeting") {
-            Text(
-                text = "안녕하세요",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            HomeGreeting(nickname = state.nickname)
         }
 
         item(key = "todayDraftCard") {
@@ -291,6 +293,33 @@ private fun HomeScreen(
                 }
         }
     }
+}
+
+/**
+ * 홈 인사말.
+ *
+ * 닉네임 유무와 무관하게 같은 타이포(`titleLarge`)를 쓴다. 조회가 늦게 끝나도 글자 크기가 바뀌지
+ * 않아 목록 첫 줄이 튀지 않는다. 강조는 굵기가 아니라 색 대비다(Figma 규격).
+ */
+@Composable
+private fun HomeGreeting(nickname: String?) {
+    val normalColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val nicknameColor = MaterialTheme.colorScheme.onSurface
+    // 조각을 나눠 여러 Text 로 두면 접근성 서비스가 따로 읽으므로 한 문장으로 합친다.
+    val greeting =
+        remember(nickname, normalColor, nicknameColor) {
+            buildAnnotatedString {
+                homeGreetingSegments(nickname).forEach { segment ->
+                    val color =
+                        when (segment.emphasis) {
+                            HomeGreetingEmphasis.NORMAL -> normalColor
+                            HomeGreetingEmphasis.NICKNAME -> nicknameColor
+                        }
+                    withStyle(SpanStyle(color = color)) { append(segment.text) }
+                }
+            }
+        }
+    Text(text = greeting, style = MaterialTheme.typography.titleLarge)
 }
 
 @Composable

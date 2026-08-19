@@ -18,6 +18,8 @@ import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
+import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.model.toPastRecordUiModel
@@ -55,6 +57,8 @@ class HomeViewModel
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftConsentSessionStore: DraftConsentSessionStore,
         private val draftTaskCoordinator: DraftTaskCoordinator,
+        private val observeUserProfileUseCase: ObserveUserProfileUseCase,
+        private val refreshUserProfileUseCase: RefreshUserProfileUseCase,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
             HomeUiState(selectedDate = LocalDate.now(ZoneId.systemDefault())),
@@ -74,6 +78,22 @@ class HomeViewModel
         init {
             observeSummary()
             observeDraftTask()
+            observeUserProfile()
+        }
+
+        /**
+         * 공용 회원 정보를 인사말에 반영한다.
+         *
+         * 조회 자체는 coordinator 가 세션당 한 번만 하므로 여기서 서버를 부르지 않는다. 앞선 시도가
+         * 실패해 값이 비어 있을 때만 [refreshUserProfileUseCase] 가 다시 시도한다.
+         */
+        private fun observeUserProfile() {
+            refreshUserProfileUseCase()
+            safeLaunch {
+                observeUserProfileUseCase().collect { profile ->
+                    updateState { copy(nickname = profile?.nickname) }
+                }
+            }
         }
 
         override suspend fun handleIntent(intent: HomeUiIntent) {
