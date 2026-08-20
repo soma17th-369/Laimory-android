@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.domain.model.collection.NotificationFilter
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.source.InstalledApp
@@ -124,12 +126,15 @@ private fun NotificationCollectionContent(
         item {
             CollectionPolicyNotice(
                 collectOnClick = state.collectOnClick,
-                hasPostFilter = state.keywords.isNotEmpty() || state.allowedPackages.isNotEmpty(),
+                hasPostFilter =
+                    state.useDefaultKeywords || state.keywords.isNotEmpty() || state.allowedPackages.isNotEmpty(),
             )
         }
         item {
             KeywordFilter(
                 keywords = state.keywords,
+                useDefaultKeywords = state.useDefaultKeywords,
+                onToggleDefaults = { onIntent(NotificationUiIntent.ToggleDefaultKeywords) },
                 onAdd = { onIntent(NotificationUiIntent.AddKeyword(it)) },
                 onRemove = { onIntent(NotificationUiIntent.RemoveKeyword(it)) },
             )
@@ -234,12 +239,15 @@ private fun CollectionPolicyNotice(
 @Composable
 private fun KeywordFilter(
     keywords: Set<String>,
+    useDefaultKeywords: Boolean,
+    onToggleDefaults: () -> Unit,
     onAdd: (String) -> Unit,
     onRemove: (String) -> Unit,
 ) {
     var input by remember { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("키워드", style = MaterialTheme.typography.titleSmall)
+        DefaultKeywordToggle(enabled = useDefaultKeywords, onToggle = onToggleDefaults)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -274,6 +282,40 @@ private fun KeywordFilter(
                 }
             }
         }
+    }
+}
+
+/**
+ * 기본 키워드 사용 토글.
+ *
+ * 기본 사전은 DataStore 의 사용자 키워드에 병합 저장하지 않으므로, 껐다 켜도 사용자가 직접
+ * 등록한 키워드는 그대로 남는다.
+ */
+@Composable
+private fun DefaultKeywordToggle(
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("기본 키워드 사용", style = MaterialTheme.typography.bodyMedium)
+            Switch(checked = enabled, onCheckedChange = { onToggle() })
+        }
+        Text(
+            text = NotificationFilter.DEFAULT_KEYWORDS.joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // 키워드 경로에만 걸리는 제외라 사전만 보면 드러나지 않는다. 사유별 실측 때 헷갈리지 않게 적어 둔다.
+        Text(
+            text = "(광고) 표기가 붙은 알림은 키워드가 맞아도 제외합니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

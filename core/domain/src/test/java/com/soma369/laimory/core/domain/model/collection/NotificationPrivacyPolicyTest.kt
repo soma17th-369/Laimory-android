@@ -257,4 +257,91 @@ class NotificationPrivacyPolicyTest {
         assertEquals("정기적으로 20% 적립", sanitize(text = "정기적으로 20% 적립")?.text)
         assertEquals("별도로 3 건이 추가됩니다", sanitize(text = "별도로 3 건이 추가됩니다")?.text)
     }
+
+    // --- 유선전화 (#268) ---
+
+    @Test
+    fun `지역번호가 붙은 유선번호를 치환한다`() {
+        assertEquals("문의 [전화번호]", sanitize(text = "문의 02-123-4567")?.text)
+        assertEquals("문의 [전화번호]", sanitize(text = "문의 02-1234-5678")?.text)
+        assertEquals("문의 [전화번호]", sanitize(text = "문의 031-1234-5678")?.text)
+        assertEquals("문의 [전화번호]", sanitize(text = "문의 064-123-4567")?.text)
+        // 하이픈이 없어도 같은 번호다.
+        assertEquals("문의 [전화번호]", sanitize(text = "문의 0212345678")?.text)
+    }
+
+    @Test
+    fun `전국대표번호는 사업자 번호대라 유지한다`() {
+        assertEquals("고객센터 1588-0000", sanitize(text = "고객센터 1588-0000")?.text)
+        assertEquals("고객센터 1644-1234", sanitize(text = "고객센터 1644-1234")?.text)
+        assertEquals("고객센터 1877-5678", sanitize(text = "고객센터 1877-5678")?.text)
+    }
+
+    @Test
+    fun `지역번호 없는 여덟 자리는 주문번호와 구분되지 않아 유지한다`() {
+        assertEquals("주문번호 1234-5678", sanitize(text = "주문번호 1234-5678")?.text)
+    }
+
+    @Test
+    fun `범위 밖 번호 형식은 유지한다`() {
+        assertEquals("문의 070-1234-5678", sanitize(text = "문의 070-1234-5678")?.text)
+        assertEquals("문의 0503-1234-5678", sanitize(text = "문의 0503-1234-5678")?.text)
+    }
+
+    @Test
+    fun `계좌 문맥이 있어도 유선번호는 계좌번호로 보지 않는다`() {
+        // 전화 규칙이 계좌보다 먼저 돈다 — 은행 알림에 함께 실린 연락처를 지키기 위해서다.
+        val result = sanitize(title = "입금 완료", text = "5,000원 입금. 문의 02-2073-7114")
+
+        assertEquals("5,000원 입금. 문의 [전화번호]", result?.text)
+    }
+
+    @Test
+    fun `유선번호 규칙은 계좌번호 치환을 가로채지 않는다`() {
+        assertEquals("입금 계좌 [계좌번호]", sanitize(text = "입금 계좌 110-123-456789")?.text)
+        assertEquals("[계좌번호] 로 송금", sanitize(title = "계좌 이체", text = "1002-345-678901 로 송금")?.text)
+        assertEquals("입금 계좌 [계좌번호]", sanitize(text = "입금 계좌 3333-01-1234567")?.text)
+        assertEquals("입금 계좌 [계좌번호]", sanitize(text = "입금 계좌 301-0123-4567")?.text)
+        // 마디가 넷인 계좌도 통째로 치환한다 — 앞 세 마디만 잡으면 마지막 마디가 남는다.
+        assertEquals("입금 계좌 [계좌번호]", sanitize(text = "입금 계좌 301-1234-5678-91")?.text)
+    }
+
+    @Test
+    fun `할당된 지역번호 전 범위를 치환한다`() {
+        listOf("02-123-4567", "031-1234-5678", "033-123-4567", "041-123-4567", "044-123-4567")
+            .plus(listOf("051-123-4567", "055-123-4567", "061-123-4567", "064-123-4567"))
+            .forEach { number ->
+                assertEquals(number, "문의 [전화번호]", sanitize(text = "문의 $number")?.text)
+            }
+    }
+
+    @Test
+    fun `할당되지 않은 지역번호는 치환하지 않는다`() {
+        listOf("034-1234-5678", "045-123-4567", "056-123-4567", "065-123-4567").forEach { number ->
+            assertEquals(number, "문의 $number", sanitize(text = "문의 $number")?.text)
+        }
+    }
+
+    @Test
+    fun `라벨을 하이픈으로 붙인 번호는 치환한다`() {
+        // 앞 경계가 하이픈 자체를 거부하면 실제 전화번호가 통째로 남는다.
+        assertEquals("연락처-[전화번호]", sanitize(text = "연락처-010-1234-5678")?.text)
+        assertEquals("고객센터-[전화번호]", sanitize(text = "고객센터-02-1234-5678")?.text)
+        assertEquals("문의-[전화번호]", sanitize(text = "문의-031-1234-5678")?.text)
+    }
+
+    @Test
+    fun `앞뒤에 숫자 구간이 더 붙으면 전화번호로 보지 않는다`() {
+        // 부분 치환하면 남은 마디가 그대로 새어 나간다.
+        assertEquals("코드 031-1234-5678-91", sanitize(text = "코드 031-1234-5678-91")?.text)
+        assertEquals("코드 1234-031-1234-5678", sanitize(text = "코드 1234-031-1234-5678")?.text)
+        // 기업은행 계좌는 휴대전화와 접두가 같아 같은 경계 규칙이 필요하다.
+        assertEquals("코드 010-1234567-01", sanitize(text = "코드 010-1234567-01")?.text)
+    }
+
+    @Test
+    fun `유선번호 규칙을 넣어도 날짜와 금액은 원형을 유지한다`() {
+        assertEquals("2026-08-19 12,345원 결제", sanitize(text = "2026-08-19 12,345원 결제")?.text)
+        assertEquals("운송장 0123456789012 조회", sanitize(text = "운송장 0123456789012 조회")?.text)
+    }
 }

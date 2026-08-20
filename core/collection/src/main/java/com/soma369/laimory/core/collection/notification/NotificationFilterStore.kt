@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 private val KEY_COLLECT_ON_CLICK = booleanPreferencesKey("collect_on_click")
+private val KEY_USE_DEFAULT_KEYWORDS = booleanPreferencesKey("use_default_keywords")
 private val KEY_KEYWORDS = stringSetPreferencesKey("keywords")
 private val KEY_PACKAGES = stringSetPreferencesKey("allowed_packages")
 
@@ -26,6 +27,7 @@ internal class NotificationFilterStore
         override suspend fun update(filter: NotificationFilter) {
             dataStore.edit { prefs ->
                 prefs[KEY_COLLECT_ON_CLICK] = filter.collectOnClick
+                prefs[KEY_USE_DEFAULT_KEYWORDS] = filter.useDefaultKeywords
                 prefs[KEY_KEYWORDS] = filter.keywords
                 prefs[KEY_PACKAGES] = filter.allowedPackages
             }
@@ -40,6 +42,8 @@ internal class NotificationFilterStore
 internal fun Preferences.toNotificationFilter(): NotificationFilter =
     NotificationFilter(
         collectOnClick = this[KEY_COLLECT_ON_CLICK] ?: true,
+        // 기존 사용자에게도 기본 사전을 켜서 적용한다 — 저장된 값이 없으면 활성으로 읽는다.
+        useDefaultKeywords = this[KEY_USE_DEFAULT_KEYWORDS] ?: true,
         keywords = this[KEY_KEYWORDS].orEmpty(),
         allowedPackages = this[KEY_PACKAGES].orEmpty(),
     )

@@ -103,12 +103,15 @@ private fun containsMedicalResult(text: String): Boolean =
  * 경우를 놓치지 않기 위해 값과 문맥을 분리해서 받는다.
  *
  * 순서가 결과를 바꾼다 — 이메일 로컬파트와 카드번호가 전화번호·계좌번호 형식에 먼저
- * 걸리지 않도록 좁은 규칙부터 적용한다.
+ * 걸리지 않도록 좁은 규칙부터 적용한다. 전화번호는 계좌번호보다 먼저 둔다. 계좌 규칙은
+ * 자릿수만 보므로 `010-1234-5678`도 계좌 형식에 걸리는데, 은행 알림에 함께 실린 연락처를
+ * [ACCOUNT_TOKEN]으로 바꾸면 안 되기 때문이다.
  */
 private fun String.mask(context: String): String =
     replace(EMAIL, EMAIL_TOKEN)
         .maskCardNumbers()
-        .replace(PHONE_NUMBER, PHONE_TOKEN)
+        .replace(MOBILE_NUMBER, PHONE_TOKEN)
+        .replace(LANDLINE_NUMBER, PHONE_TOKEN)
         .maskBankAccounts(context)
         .maskRoadAddresses()
         .replace(LOT_ADDRESS, ADDRESS_TOKEN)
@@ -193,12 +196,63 @@ private val DRIVER_LICENSE_NUMBER = Regex("""(?<!\d)\d{2}-\d{2}-\d{6}-\d{2}(?!\d
 private val MEDICAL_EXAM_CONTEXT = Regex("""진단|검사|검진|판독|소견""")
 private val MEDICAL_RESULT_VALUE = Regex("""양성|음성|정상\s*범위|이상\s*소견|수치""")
 
+/**
+ * 전화번호 앞 경계. 앞선 숫자 마디에 이어 붙은 숫자열을 전화번호로 보지 않는다.
+ *
+ * `-` 자체를 거부하면 `연락처-010-1234-5678`, `문의-031-1234-5678` 처럼 라벨을 하이픈으로
+ * 붙인 실제 번호가 마스킹되지 않는다. 숫자 뒤에 붙은 하이픈만 거부한다.
+ *
+ * - `1234-031-1234-5678` → 앞 마디가 숫자라 전화번호로 보지 않는다.
+ * - `고객센터-02-1234-5678` → 앞이 라벨이라 치환한다.
+ */
+private const val NUMBER_SEGMENT_BOUNDARY = """(?<!\d)(?<!\d-)"""
+
 private val EMAIL = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 private val CARD_NUMBER = Regex("""(?<!\d)(?:\d{4}[- ]?){3}\d{4}(?!\d)""")
-private val PHONE_NUMBER = Regex("""(?<!\d)01[016789]-?\d{3,4}-?\d{4}(?!\d)""")
+
+/**
+ * 휴대전화번호. 앞뒤에 숫자 구간이 더 붙으면 매칭하지 않는다 —
+ * 기업은행 계좌 `010-1234567-01` 처럼 같은 접두로 시작하는 번호를 부분 치환하지 않기 위해서다.
+ *
+ * 앞 경계는 [NUMBER_SEGMENT_BOUNDARY] 를 쓴다.
+ */
+private val MOBILE_NUMBER = Regex("""${NUMBER_SEGMENT_BOUNDARY}01[016789]-?\d{3,4}-?\d{4}(?!-?\d)""")
+
+/**
+ * 지역번호가 붙은 유선번호. `02-123-4567`, `031-1234-5678`, `0212345678` 을 모두 잡는다.
+ *
+ * 지역번호는 실제 할당된 집합만 허용한다 — `0[2-6]\d?` 처럼 열어 두면 `034`, `045` 같은
+ * 미할당 번호대의 주문·상품 번호까지 전화번호로 치환한다.
+ *
+ * | 번호대 | 지역 |
+ * | --- | --- |
+ * | 02 | 서울 |
+ * | 031~033 | 경기·인천·강원 |
+ * | 041~044 | 충남·대전·충북·세종 |
+ * | 051~055 | 부산·울산·대구·경북·경남 |
+ * | 061~064 | 전남·광주·전북·제주 |
+ *
+ * 앞뒤에 숫자 구간이 더 붙으면 매칭하지 않는다([NUMBER_SEGMENT_BOUNDARY]) —
+ * `031-1234-5678-91` 을 `[전화번호]-91` 로 부분 치환하면 남은 마디가 그대로 새어 나간다.
+ *
+ * `0` 시작을 강제해 두 부류는 애초에 들어오지 않는다.
+ * - `1588-0000` 같은 `15xx`·`16xx`·`18xx` 전국대표번호는 사업자 전용 번호대라 개인을
+ *   식별하지 않고, 어디였는지를 남기는 생활 맥락이라 유지한다.
+ * - 국내 은행 계좌번호는 첫 마디가 `110-`·`301-`·`1002-`·`3333-` 로 시작해 계좌 규칙과 갈린다.
+ *
+ * 지역번호 없는 `1234-5678` 은 주문·예약번호와 형식이 같아 다루지 않는다.
+ * 070 인터넷전화, `0503` 안심번호, `+82` 국제 표기도 1차 범위 밖이다.
+ */
+private val LANDLINE_NUMBER =
+    Regex("""${NUMBER_SEGMENT_BOUNDARY}0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4])-?\d{3,4}-?\d{4}(?!-?\d)""")
 private val BANK_ACCOUNT_CONTEXT = Regex("""계좌|입금|출금|이체""")
+
+/**
+ * 계좌번호. 농협·새마을처럼 마디가 넷인 형식(`301-1234-5678-91`)까지 한 번에 잡는다 —
+ * 앞 세 마디만 치환하면 남은 마디가 `[계좌번호]-91` 로 새어 나간다.
+ */
 private val BANK_ACCOUNT_NUMBER =
-    Regex("""(?<!\d)\d{2,6}-\d{2,6}-\d{2,8}(?!\d)|(?<!\d)\d{10,14}(?!\d)""")
+    Regex("""(?<!\d)\d{2,6}-\d{2,6}-\d{2,8}(?:-\d{1,4})?(?!\d)|(?<!\d)\d{10,14}(?!\d)""")
 
 /** 국내 계좌번호 자릿수 하한. 이보다 짧은 구분자 숫자열은 날짜·주문번호로 본다. */
 private const val BANK_ACCOUNT_MIN_DIGITS = 10

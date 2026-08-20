@@ -54,7 +54,8 @@ internal fun Notification.toContent(): NotificationContent =
     )
 
 /**
- * 개인정보 정책이 쓰는 구조 신호만 뽑는다. 프레임워크 타입은 이 경계 밖으로 넘기지 않는다.
+ * 개인정보 정책과 수집 정책이 쓰는 구조 신호만 뽑는다. 프레임워크 타입과 상수는 이 경계 밖으로
+ * 넘기지 않고 boolean 으로만 전달한다.
  *
  * MessagingStyle 은 템플릿 이름 또는 메시지 배열 존재로 판정하며, 메시지 원문(`EXTRA_MESSAGES`)은
  * 읽지 않는다.
@@ -65,7 +66,29 @@ internal fun Notification.toSignals(): NotificationSignals =
             category == Notification.CATEGORY_MESSAGE ||
                 extras.getString(Notification.EXTRA_TEMPLATE) == MESSAGING_STYLE_TEMPLATE ||
                 extras.containsKey(Notification.EXTRA_MESSAGES),
+        isPromotion = category == Notification.CATEGORY_PROMO,
+        isOngoing = flags and Notification.FLAG_ONGOING_EVENT != 0,
+        isGroupSummary = flags and Notification.FLAG_GROUP_SUMMARY != 0,
+        hasProgress =
+            isProgressOngoing(
+                max = extras.getInt(Notification.EXTRA_PROGRESS_MAX),
+                progress = extras.getInt(Notification.EXTRA_PROGRESS),
+                indeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE),
+            ),
     )
+
+/**
+ * 진행률이 아직 진행 중인지 판정한다.
+ *
+ * extras 키의 존재로 판정하면 안 된다 — `setProgress(0, 0, false)` 로 진행 표시를 끈 뒤에도 키는
+ * 남고, `progress == max` 인 완료 상태에도 값이 들어 있다. 두 경우 모두 배송·작업 **완료** 알림이라
+ * 수집해야 한다. 플랫폼이 진행 바를 그리는 기준과 같게 본다.
+ */
+internal fun isProgressOngoing(
+    max: Int,
+    progress: Int,
+    indeterminate: Boolean,
+): Boolean = indeterminate || (max > 0 && progress < max)
 
 /** 패키지의 표시 이름. 조회 실패 시 패키지명 그대로. */
 internal fun PackageManager.appLabel(packageName: String): String =

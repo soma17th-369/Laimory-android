@@ -11,7 +11,9 @@ data class NotificationUiState(
     val isLoading: Boolean = true,
     /** 클릭 수집 활성화 여부. 현재 화면에서는 상태 안내에만 사용하고 설정 UI는 후속으로 분리한다. */
     val collectOnClick: Boolean = true,
-    /** 제목·본문에 일치하면 수집하는 키워드 필터. */
+    /** 앱이 내장한 기본 키워드를 함께 쓸지 여부. */
+    val useDefaultKeywords: Boolean = true,
+    /** 사용자가 직접 등록한 키워드 필터. 기본 키워드는 포함하지 않는다. */
     val keywords: Set<String> = emptySet(),
     /** 게시 알림을 수집할 앱 allowlist(패키지명). */
     val allowedPackages: Set<String> = emptySet(),
