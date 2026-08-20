@@ -17,8 +17,24 @@ class DefaultKeywordScopesTest {
                 "취소",
             )
 
-        // 어느 scope 에도 속하지 않은 키워드는 게이트 도입과 동시에 죽는다 — 침묵으로 일어나므로 고정한다.
         assertEquals(expected, NotificationFilter.DEFAULT_KEYWORDS)
+    }
+
+    @Test
+    fun `도메인 scope 만으로도 기본 키워드를 모두 덮는다`() {
+        // 문자 scope 가 키워드 전체를 걸어서 합집합만 보면 도메인 쪽 누락이 가려진다.
+        // 어느 도메인에도 없는 키워드는 그 앱들에서 침묵으로 죽으므로 따로 고정한다.
+        val covered = DOMAIN_SCOPES.flatMapTo(mutableSetOf()) { it.keywords }
+
+        assertEquals(ALL_DEFAULT_KEYWORDS, covered)
+    }
+
+    @Test
+    fun `문자 scope 는 기본 키워드 전체를 건다`() {
+        // 문자에는 도메인이 섞여 온다.
+        assertEquals(ALL_DEFAULT_KEYWORDS, MESSAGING_SCOPE.keywords)
+        assertTrue(MESSAGING_SCOPE.apps.any { it.covers("com.samsung.android.messaging") })
+        assertTrue(MESSAGING_SCOPE.apps.any { it.covers("com.google.android.apps.messaging") })
     }
 
     @Test

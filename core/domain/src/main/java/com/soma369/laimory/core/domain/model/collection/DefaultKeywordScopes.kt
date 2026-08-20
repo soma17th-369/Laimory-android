@@ -1,25 +1,40 @@
 package com.soma369.laimory.core.domain.model.collection
 
+/** 기본 키워드 전체. 도메인 scope 들이 이 집합을 모두 덮는지 테스트로 고정한다. */
+internal val ALL_DEFAULT_KEYWORDS: Set<String> =
+    setOf(
+        "결제", "승인", "환불",
+        "주문", "배송", "배달", "픽업",
+        "예약", "예매",
+        "출발", "도착", "탑승",
+        "취소",
+    )
+
 /**
- * 앱이 내장하는 기본 키워드와 그 키워드가 걸릴 앱 범위.
+ * 기본 문자 앱 scope.
  *
- * 기본 키워드를 전 앱에 걸면 게임 푸시(`보상 도착`), OTT(`새 에피소드 도착`), 뉴스 헤드라인이
- * 그대로 잡힌다. 도메인 단위로 앱을 좁혀 생활 이벤트만 남긴다.
+ * 결제 승인·택배·예약 확인은 앱 푸시가 아니라 문자로 오는 비중이 크다. 카드사 앱을 쓰지 않는
+ * 사용자는 승인 알림이 전부 문자고, 병원·미용실·식당 예약 확인은 앱 자체가 없어 문자뿐이다.
  *
- * 사용자가 직접 등록한 키워드에는 이 범위를 적용하지 않는다 — 사용자가 넣은 키워드는 의도가
- * 담긴 것이라 목록 밖 앱에서 조용히 무시되면 안 된다.
+ * 문자에는 도메인이 섞여 오므로 기본 키워드 전체를 건다. 도메인별로 나눌 근거가 없다.
  *
- * ## application ID 검증
- *
- * 아래 ID 는 아직 **검증 전 후보**다. 틀린 ID 는 예외가 아니라 침묵으로 실패한다 — 해당 앱의
- * 알림이 조용히 0건이 되고 테스트로도 잡히지 않는다. 배포 전에 두 가지로 확정한다.
- *
- * 1. 실기기 `adb shell pm list packages` — 실제 설치된 앱의 ID
- * 2. Google Play URL 의 `id` 파라미터 — 공식 application ID
- *
- * 확인되지 않은 항목은 추측으로 남기지 않고 뺀다.
+ * 대화 알림을 통과시키는 판정은 여기가 아니라 [NotificationPrivacyPolicy] 가 한다 —
+ * 기업 발송 표기가 없는 문자는 이 scope 에 닿기 전에 걸러진다.
  */
-val DEFAULT_KEYWORD_SCOPES: List<KeywordScope> =
+val MESSAGING_SCOPE: KeywordScope =
+    KeywordScope(
+        keywords = ALL_DEFAULT_KEYWORDS,
+        apps =
+            setOf(
+                // 삼성 메시지
+                AppMatch.Exact("com.samsung.android.messaging"),
+                // 구글 메시지
+                AppMatch.Exact("com.google.android.apps.messaging"),
+            ),
+    )
+
+/** 앱 종류로 나뉘는 도메인 scope. 문자 앱은 [MESSAGING_SCOPE] 로 따로 둔다. */
+internal val DOMAIN_SCOPES: List<KeywordScope> =
     listOf(
         KeywordScope(
             keywords = setOf("결제", "승인", "환불", "취소"),
@@ -116,3 +131,24 @@ val DEFAULT_KEYWORD_SCOPES: List<KeywordScope> =
                 ),
         ),
     )
+
+/**
+ * 앱이 내장하는 기본 키워드와 그 키워드가 걸릴 앱 범위.
+ *
+ * 기본 키워드를 전 앱에 걸면 게임 푸시(`보상 도착`), OTT(`새 에피소드 도착`), 뉴스 헤드라인이
+ * 그대로 잡힌다. 도메인 단위로 앱을 좁혀 생활 이벤트만 남긴다.
+ *
+ * 사용자가 직접 등록한 키워드에는 이 범위를 적용하지 않는다 — 사용자가 넣은 키워드는 의도가
+ * 담긴 것이라 목록 밖 앱에서 조용히 무시되면 안 된다.
+ *
+ * ## application ID 검증
+ *
+ * 아래 ID 는 아직 **검증 전 후보**다. 틀린 ID 는 예외가 아니라 침묵으로 실패한다 — 해당 앱의
+ * 알림이 조용히 0건이 되고 테스트로도 잡히지 않는다. 배포 전에 두 가지로 확정한다.
+ *
+ * 1. 실기기 `adb shell pm list packages` — 실제 설치된 앱의 ID
+ * 2. Google Play URL 의 `id` 파라미터 — 공식 application ID
+ *
+ * 확인되지 않은 항목은 추측으로 남기지 않고 뺀다.
+ */
+val DEFAULT_KEYWORD_SCOPES: List<KeywordScope> = DOMAIN_SCOPES + MESSAGING_SCOPE

@@ -402,6 +402,26 @@ class NotificationFilterTest {
     }
 
     @Test
+    fun `기본 문자 앱은 도메인이 섞여 오므로 기본 키워드 전체가 걸린다`() {
+        val filter = NotificationFilter()
+        val samples =
+            listOf(
+                "[Web발신] KB국민 승인 12,000원",
+                "[Web발신] CJ대한통운 배송완료",
+                "[Web발신] 서울내과 예약 확인 8/21 14:30",
+                "[Web발신] 대한항공 탑승 수속 안내",
+            )
+
+        samples.forEach { text ->
+            assertEquals(
+                text,
+                NotificationPayload.CollectReason.KEYWORD,
+                filter.collectReasonFor(packageName = MESSAGING_APP, title = null, text = text, clicked = false),
+            )
+        }
+    }
+
+    @Test
     fun `클릭은 앱 범위 게이트를 우회한다`() {
         val reason =
             NotificationFilter().collectReasonFor(
@@ -426,6 +446,9 @@ private const val DELIVERY_APP = "com.sampleapp"
 
 /** 이동·여행 scope 에 든 앱. */
 private const val TRAVEL_APP = "com.korail.talk"
+
+/** 기본 문자 앱. 도메인이 섞여 오므로 기본 키워드 전체가 걸린다. */
+private const val MESSAGING_APP = "com.samsung.android.messaging"
 
 /** 어느 scope 에도 없는 앱. 기본 키워드가 걸리면 안 된다. */
 private const val UNSCOPED_APP = "com.example.game"

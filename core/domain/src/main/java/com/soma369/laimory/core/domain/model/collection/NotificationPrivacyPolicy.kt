@@ -6,6 +6,9 @@ package com.soma369.laimory.core.domain.model.collection
  * 수집 판정([NotificationFilter])보다 먼저 실행되며 클릭·앱 allowlist·키워드로 우회할 수 없다.
  * 판정 순서는 `전체 제외(마스킹 전 원문 기준) → 부분 마스킹 → 빈 콘텐츠 제외`다.
  *
+ * 대화 알림은 원칙적으로 전체 제외지만 기업 발송 문자는 예외로 통과시킨다 — 결제 승인·택배·예약
+ * 확인이 앱 푸시가 아니라 문자로 오는 비중이 크기 때문이다.
+ *
  * 규칙은 형식과 문맥어로만 판정한다. 사람 이름·질병명처럼 사전이나 NER 없이는 정확히
  * 가릴 수 없는 값은 대상에 넣지 않는다 — 넓은 규칙은 날짜·금액·주문번호처럼 생활 기록에
  * 필요한 정보를 함께 지운다.
@@ -25,11 +28,10 @@ class NotificationPrivacyPolicy {
         content: NotificationContent,
         signals: NotificationSignals,
     ): NotificationContent? {
-        if (signals.isMessage) return null
-
         // 문맥어와 값이 제목·본문에 나뉘어 있을 수 있어 판정은 합친 텍스트로 한다.
         val joined = content.joined()
         if (joined.isBlank()) return null
+        if (signals.isMessage && !isBusinessMessage(joined)) return null
         if (isFullyExcluded(joined)) return null
 
         return NotificationContent(
@@ -40,6 +42,24 @@ class NotificationPrivacyPolicy {
 }
 
 private fun NotificationContent.joined(): String = listOfNotNull(title, text).joinToString(" ")
+
+/**
+ * 기업 발송 문자인지 본다.
+ *
+ * 결제 승인·택배·예약 확인은 앱 푸시가 아니라 문자로 오는 비중이 크다. 카드사 앱을 쓰지 않는
+ * 사용자는 승인 알림이 전부 문자고, 병원·미용실·식당 예약 확인은 앱 자체가 없다. 대화 알림을
+ * 통째로 버리면 이 생활 이벤트가 함께 사라진다.
+ *
+ * `[Web발신]` 은 통신사가 웹 기반 발송 시스템에서 나간 문자에 붙이는 표기다. 법정 표기가 아니라
+ * 100% 보장되지 않지만 **틀리는 방향이 안전하다** — 표기가 없는 기업 문자는 놓칠 뿐이고, 개인이
+ * 웹발신으로 문자를 보내는 일은 드물어 사적 대화가 통과하는 쪽은 잘 일어나지 않는다.
+ *
+ * 통과해도 이후 규칙은 그대로 적용된다 — 인증번호·고유식별정보 전체 제외, 전화·계좌 마스킹,
+ * 그리고 수집 판정의 `(광고)` 표기 제외. 여기서 푸는 것은 "대화 알림이라 무조건 버린다" 하나뿐이다.
+ *
+ * `[국제발신]`·`[국외발신]` 은 받지 않는다. 생활 이벤트보다 스팸 비중이 크다.
+ */
+private fun isBusinessMessage(text: String): Boolean = BUSINESS_MESSAGE_MARKER.containsMatchIn(text)
 
 private fun isFullyExcluded(text: String): Boolean =
     containsAuthenticationSecret(text) ||
@@ -206,6 +226,9 @@ private val MEDICAL_RESULT_VALUE = Regex("""양성|음성|정상\s*범위|이상
  * - `고객센터-02-1234-5678` → 앞이 라벨이라 치환한다.
  */
 private const val NUMBER_SEGMENT_BOUNDARY = """(?<!\d)(?<!\d-)"""
+
+/** 통신사 웹발신 표기. 대괄호 안 공백과 대소문자를 허용한다. */
+private val BUSINESS_MESSAGE_MARKER = Regex("""\[\s*web\s*발신\s*]""", RegexOption.IGNORE_CASE)
 
 private val EMAIL = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 private val CARD_NUMBER = Regex("""(?<!\d)(?:\d{4}[- ]?){3}\d{4}(?!\d)""")
