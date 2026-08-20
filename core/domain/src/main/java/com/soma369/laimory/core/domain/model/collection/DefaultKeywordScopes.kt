@@ -44,26 +44,56 @@ internal val DOMAIN_SCOPES: List<KeywordScope> =
                     AppMatch.Exact("com.kbstar.kbbank"),
                     // KB Pay
                     AppMatch.Exact("com.kbcard.cxh.appcard"),
-                    // 신한 SOL뱅크
+                    // 신한 슈퍼SOL
                     AppMatch.Exact("com.shinhan.sbanking"),
                     // 신한 SOL페이
                     AppMatch.Exact("com.shcard.smartpay"),
-                    // 우리WON뱅킹
+                    // 우리은행 우리WON뱅킹
                     AppMatch.Exact("com.wooribank.smart.npib"),
+                    // 우리카드 우리WON카드
+                    AppMatch.Exact("com.wooricard.smartapp"),
                     // 하나원큐
+                    AppMatch.Exact("com.hanabank.oqf"),
+                    // (구)하나원큐 — 종료 예정이나 전환기 사용자를 위해 남긴다
                     AppMatch.Exact("com.kebhana.hanapush"),
+                    // 하나Pay
+                    AppMatch.Exact("com.hanaskcard.paycla"),
                     // NH스마트뱅킹
                     AppMatch.Exact("nh.smart.banking"),
+                    // i-ONE Bank
+                    AppMatch.Exact("com.ibk.android.ionebank"),
+                    // iM뱅크
+                    AppMatch.Exact("kr.co.dgb.dgbm"),
+                    // BNK부산은행
+                    AppMatch.Exact("kr.co.busanbank.mbp"),
+                    // MG더뱅킹
+                    AppMatch.Exact("com.smg.spbs"),
+                    // 신협 온뱅크
+                    AppMatch.Exact("kr.co.cu.onbank"),
+                    // 우체국뱅킹
+                    AppMatch.Exact("com.epost.psf.sdsi"),
                     // 카카오뱅크
                     AppMatch.Exact("com.kakaobank.channel"),
+                    // 케이뱅크
+                    AppMatch.Exact("com.kbankwith.smartbank"),
                     // 토스
                     AppMatch.Exact("viva.republica.toss"),
-                    // 삼성월렛
+                    // 카카오페이
+                    AppMatch.Exact("com.kakaopay.app"),
+                    // 네이버페이
+                    AppMatch.Exact("com.naverfin.payapp"),
+                    // 페이코
+                    AppMatch.Exact("com.nhnent.payapp"),
+                    // 페이북/ISP
+                    AppMatch.Exact("kvp.jjy.MispAndroid320"),
+                    // 삼성 월렛
                     AppMatch.Exact("com.samsung.android.spay"),
                     // 현대카드
                     AppMatch.Exact("com.hyundaicard.appcard"),
-                    // 페이코
-                    AppMatch.Exact("com.nhnent.payapp"),
+                    // 디지로카(롯데카드)
+                    AppMatch.Exact("com.lcacApp"),
+                    // 모니모(삼성금융)
+                    AppMatch.Exact("net.ib.android.smcard"),
                 ),
         ),
         KeywordScope(
@@ -78,12 +108,42 @@ internal val DOMAIN_SCOPES: List<KeywordScope> =
                     AppMatch.Exact("com.ebay.kr.gmarket"),
                     // 옥션
                     AppMatch.Exact("com.ebay.kr.auction"),
-                    // SSG닷컴
-                    AppMatch.Exact("com.ssg.emart.app"),
-                    // 롯데온
-                    AppMatch.Exact("com.lotte.on"),
-                    // CJ대한통운
+                    // SSG.COM
+                    AppMatch.Exact("kr.co.ssg"),
+                    // 롯데ON
+                    AppMatch.Exact("com.lotte"),
+                    // 네이버
+                    AppMatch.Exact("com.nhn.android.search"),
+                    // 컬리
+                    AppMatch.Exact("com.dbs.kurly.m2"),
+                    // 올리브영
+                    AppMatch.Exact("com.oliveyoung"),
+                    // 홈플러스
+                    AppMatch.Exact("com.socialapps.homeplus"),
+                    // 이마트
+                    AppMatch.Exact("com.emart.today"),
+                    // 다이소몰
+                    AppMatch.Exact("com.uxlayer.wipoint"),
+                    // 무신사
+                    AppMatch.Exact("com.musinsa.store"),
+                    // 오늘의집
+                    AppMatch.Exact("net.bucketplace"),
+                    // 에이블리
+                    AppMatch.Exact("com.banhala.android"),
+                    // 지그재그
+                    AppMatch.Exact("com.croquis.zigzag"),
+                    // 29CM
+                    AppMatch.Exact("com.the29cm.app29cm"),
+                    // CJ대한통운 오네
                     AppMatch.Exact("com.cjkoreaexpress"),
+                    // 한진택배
+                    AppMatch.Exact("com.hanjintransportation.oneclick"),
+                    // 롯데택배
+                    AppMatch.Exact("com.glogis.lemp.malcs"),
+                    // 로젠택배
+                    AppMatch.Exact("com.ilogen.delivery"),
+                    // 우체국
+                    AppMatch.Exact("kr.go.epost.app.findZip"),
                 ),
         ),
         KeywordScope(
@@ -96,6 +156,22 @@ internal val DOMAIN_SCOPES: List<KeywordScope> =
                     AppMatch.Exact("com.fineapp.yogiyo"),
                     // 쿠팡이츠
                     AppMatch.Exact("com.coupang.mobile.eats"),
+                    // 땡겨요
+                    AppMatch.Exact("com.shinhan.o2o"),
+                    // 스타벅스
+                    AppMatch.Exact("com.starbucks.co"),
+                    // 메가MGC커피
+                    AppMatch.Exact("co.kr.waldlust.megacoffee"),
+                    // 컴포즈커피
+                    AppMatch.Exact("ci.dvn.composecoffee.app"),
+                    // 이디야멤버스
+                    AppMatch.Exact("com.ediya.coupon"),
+                    // 투썸하트
+                    AppMatch.Exact("com.cj.twosome"),
+                    // 맥도날드
+                    AppMatch.Exact("com.mcdonalds.mobileapp"),
+                    // 버거킹
+                    AppMatch.Exact("kr.co.burgerkinghybrid"),
                 ),
         ),
         KeywordScope(
@@ -103,31 +179,69 @@ internal val DOMAIN_SCOPES: List<KeywordScope> =
             apps =
                 setOf(
                     // CGV
-                    AppMatch.Exact("com.cgv.android.movieapp"),
+                    AppMatch.Exact("co.kr.cgv.cjcgv"),
                     // 메가박스
                     AppMatch.Exact("com.megabox.mop"),
-                    // 인터파크 티켓
+                    // 롯데시네마
+                    AppMatch.Exact("kr.co.lottecinema.lcm"),
+                    // NOL 티켓(구 인터파크 티켓)
                     AppMatch.Exact("com.interpark.app.ticket"),
-                    // 야놀자
-                    AppMatch.Exact("com.yanolja.repo"),
+                    // 예스24 티켓
+                    AppMatch.Exact("com.yes24.ticket"),
+                    // 멜론티켓
+                    AppMatch.Exact("com.iloen.melonticket"),
+                    // NOL(야놀자)
+                    AppMatch.Exact("com.cultsotry.yanolja.nativeapp"),
                     // 여기어때
-                    AppMatch.Exact("com.gccompany.dayuse"),
+                    AppMatch.Exact("kr.goodchoice.abouthere"),
+                    // 에어비앤비
+                    AppMatch.Exact("com.airbnb.android"),
+                    // 아고다
+                    AppMatch.Exact("com.agoda.mobile.consumer"),
+                    // Booking.com
+                    AppMatch.Exact("com.booking"),
+                    // 캐치테이블
+                    AppMatch.Exact("co.kr.catchtable.android.catchtable_app"),
+                    // 테이블링
+                    AppMatch.Exact("com.mealant.tabling"),
+                    // 똑닥
+                    AppMatch.Exact("com.bbros.sayup"),
+                    // 네이버
+                    AppMatch.Exact("com.nhn.android.search"),
                 ),
         ),
         KeywordScope(
             keywords = setOf("출발", "도착", "탑승", "예약", "환불", "취소"),
             apps =
                 setOf(
-                    // 대한항공
+                    // 대한항공 My
                     AppMatch.Exact("com.koreanair.passenger"),
                     // 아시아나항공
-                    AppMatch.Exact("com.flyasiana.mobile"),
-                    // 코레일톡
+                    AppMatch.Exact("com.ssm.asiana"),
+                    // 제주항공
+                    AppMatch.Exact("com.parksmt.jejuair.android16"),
+                    // 진에어
+                    AppMatch.Exact("com.jinair.android"),
+                    // 티웨이항공
+                    AppMatch.Exact("com.twayair.m.app"),
+                    // 에어부산
+                    AppMatch.Exact("com.airbusan.gcm"),
+                    // 코레일+
                     AppMatch.Exact("com.korail.talk"),
-                    // T맵
+                    // SRT
+                    AppMatch.Exact("kr.co.srail.newapp"),
+                    // 티맵
                     AppMatch.Exact("com.skt.tmap.ku"),
                     // 카카오 T
                     AppMatch.Exact("com.kakao.taxi"),
+                    // 쏘카
+                    AppMatch.Exact("socar.Socar"),
+                    // 롯데렌터카 G car(구 그린카)
+                    AppMatch.Exact("com.greencar"),
+                    // 마이리얼트립
+                    AppMatch.Exact("com.mrt.ducati"),
+                    // 스카이스캐너
+                    AppMatch.Exact("net.skyscanner.android.main"),
                 ),
         ),
     )
@@ -143,12 +257,13 @@ internal val DOMAIN_SCOPES: List<KeywordScope> =
  *
  * ## application ID 검증
  *
- * 아래 ID 는 아직 **검증 전 후보**다. 틀린 ID 는 예외가 아니라 침묵으로 실패한다 — 해당 앱의
- * 알림이 조용히 0건이 되고 테스트로도 잡히지 않는다. 배포 전에 두 가지로 확정한다.
+ * 아래 ID 는 두 가지로 확정했다. 틀린 ID 는 예외가 아니라 침묵으로 실패한다 — 해당 앱의 알림이
+ * 조용히 0건이 되고 테스트로도 잡히지 않는다.
  *
  * 1. 실기기 `adb shell pm list packages` — 실제 설치된 앱의 ID
- * 2. Google Play URL 의 `id` 파라미터 — 공식 application ID
+ * 2. Google Play 상세 페이지 — application ID 와 앱 이름이 함께 맞는지
  *
- * 확인되지 않은 항목은 추측으로 남기지 않고 뺀다.
+ * 항목을 더할 때도 같은 절차를 지킨다. 확인되지 않은 항목은 추측으로 남기지 않는다.
+ * 주석의 앱 이름은 Play 등재명을 따른다 — 리브랜딩된 앱을 알아보기 위해서다.
  */
 val DEFAULT_KEYWORD_SCOPES: List<KeywordScope> = DOMAIN_SCOPES + MESSAGING_SCOPE
