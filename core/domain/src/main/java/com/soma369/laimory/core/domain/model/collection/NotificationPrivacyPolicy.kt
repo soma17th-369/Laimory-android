@@ -103,12 +103,15 @@ private fun containsMedicalResult(text: String): Boolean =
  * 경우를 놓치지 않기 위해 값과 문맥을 분리해서 받는다.
  *
  * 순서가 결과를 바꾼다 — 이메일 로컬파트와 카드번호가 전화번호·계좌번호 형식에 먼저
- * 걸리지 않도록 좁은 규칙부터 적용한다.
+ * 걸리지 않도록 좁은 규칙부터 적용한다. 전화번호는 계좌번호보다 먼저 둔다. 계좌 규칙은
+ * 자릿수만 보므로 `010-1234-5678`도 계좌 형식에 걸리는데, 은행 알림에 함께 실린 연락처를
+ * [ACCOUNT_TOKEN]으로 바꾸면 안 되기 때문이다.
  */
 private fun String.mask(context: String): String =
     replace(EMAIL, EMAIL_TOKEN)
         .maskCardNumbers()
-        .replace(PHONE_NUMBER, PHONE_TOKEN)
+        .replace(MOBILE_NUMBER, PHONE_TOKEN)
+        .replace(LANDLINE_NUMBER, PHONE_TOKEN)
         .maskBankAccounts(context)
         .maskRoadAddresses()
         .replace(LOT_ADDRESS, ADDRESS_TOKEN)
@@ -195,7 +198,21 @@ private val MEDICAL_RESULT_VALUE = Regex("""양성|음성|정상\s*범위|이상
 
 private val EMAIL = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 private val CARD_NUMBER = Regex("""(?<!\d)(?:\d{4}[- ]?){3}\d{4}(?!\d)""")
-private val PHONE_NUMBER = Regex("""(?<!\d)01[016789]-?\d{3,4}-?\d{4}(?!\d)""")
+private val MOBILE_NUMBER = Regex("""(?<!\d)01[016789]-?\d{3,4}-?\d{4}(?!\d)""")
+
+/**
+ * 지역번호가 붙은 유선번호. `02-123-4567`, `031-1234-5678`, `0212345678` 을 모두 잡는다.
+ *
+ * `0` 시작을 강제해 두 부류를 함께 걸러낸다.
+ * - `1588-0000` 같은 `15xx`·`16xx`·`18xx` 전국대표번호는 사업자 전용 번호대라 개인을
+ *   식별하지 않고, 어디였는지를 남기는 생활 맥락이라 유지한다.
+ * - 국내 은행 계좌번호는 첫 마디가 `110-`·`301-`·`1002-`·`3333-` 처럼 `0[2-6]` 으로
+ *   시작하지 않아 계좌 규칙과 갈린다.
+ *
+ * 지역번호 없는 `1234-5678` 은 주문·예약번호와 형식이 같아 다루지 않는다.
+ * 070 인터넷전화, `0503` 안심번호, `+82` 국제 표기도 1차 범위 밖이다.
+ */
+private val LANDLINE_NUMBER = Regex("""(?<!\d)0[2-6]\d?-?\d{3,4}-?\d{4}(?!\d)""")
 private val BANK_ACCOUNT_CONTEXT = Regex("""계좌|입금|출금|이체""")
 private val BANK_ACCOUNT_NUMBER =
     Regex("""(?<!\d)\d{2,6}-\d{2,6}-\d{2,8}(?!\d)|(?<!\d)\d{10,14}(?!\d)""")
