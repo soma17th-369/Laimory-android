@@ -7,28 +7,22 @@ package com.soma369.laimory.core.domain.model.collection
  * 클릭 수집이 [collectOnClick]로 켜져 있으면(기본값), 사용자가 알림창에서 탭한 알림은
  * 키워드·앱 설정과 무관하게 수집한다.
  *
+ * 기본 키워드는 [DEFAULT_KEYWORD_SCOPES]가 정한 도메인별 앱에서만 걸린다. 사용자가 직접
+ * 등록한 [keywords]에는 이 범위를 적용하지 않는다.
+ *
  * 개인정보 정책([NotificationPrivacyPolicy])을 통과한 텍스트로만 판정한다 —
  * 보호 대상 정보는 이 필터의 어느 경로로도 수집되지 않는다.
  */
 data class NotificationFilter(
     /** 사용자가 알림창에서 클릭한 알림을 수집할지 여부. 기존 설정 호환을 위해 기본값은 true다. */
     val collectOnClick: Boolean = true,
-    /** 앱이 내장한 기본 키워드([DEFAULT_KEYWORDS])를 함께 쓸지 여부. */
+    /** 앱이 내장한 기본 키워드([DEFAULT_KEYWORD_SCOPES])를 함께 쓸지 여부. */
     val useDefaultKeywords: Boolean = true,
     /** 사용자가 직접 등록한 키워드. 기본 키워드는 여기에 병합 저장하지 않는다. */
     val keywords: Set<String> = emptySet(),
     /** 이 패키지들의 알림을 수집(allowlist). */
     val allowedPackages: Set<String> = emptySet(),
 ) {
-    /**
-     * 판정에 실제로 쓰는 키워드.
-     *
-     * DataStore 에는 사용자 입력만 남기고 기본 사전은 런타임에 합친다 — 병합 저장하면 사용자가
-     * 지운 기본 키워드가 되살아나고, 앱이 사전을 고쳐도 기존 사용자에게 반영되지 않는다.
-     */
-    private val effectiveKeywords: Set<String> =
-        if (useDefaultKeywords) keywords + DEFAULT_KEYWORDS else keywords
-
     /**
      * 알림의 수집 사유를 결정한다.
      *
@@ -40,6 +34,9 @@ data class NotificationFilter(
      * 앱을 고르지 않아도 걸리는 넓은 경로라 광고가 섞이지만, 클릭과 앱 allowlist 는 사용자가
      * 그 알림·그 앱을 직접 지목한 결과다. 그래서 광고 표기가 있는 allowlist 앱의 알림은
      * 키워드가 걸리더라도 [NotificationPayload.CollectReason.APP]으로 수집된다.
+     *
+     * 키워드는 사용자 입력과 기본 사전을 **합치기 전에** 나눠 판정한다. 합친 뒤 앱 범위를
+     * 걸면 사용자가 직접 등록한 `도착` 까지 목록 밖 앱에서 막힌다.
      *
      * @param signals 리스너 경계에서 얻은 구조 신호. 알 수 없는 경계에서는 기본값을 쓰며
      *   이때 비이벤트 제외는 적용되지 않는다.
@@ -57,8 +54,12 @@ data class NotificationFilter(
         if (signals.isNonEvent) return null
 
         val content = listOfNotNull(title, text).joinToString(" ")
+        val matchesUserKeyword = keywords.containsKeywordIn(content)
+        val matchesScopedDefault =
+            useDefaultKeywords && DEFAULT_KEYWORD_SCOPES.any { it.matches(packageName, content) }
+
         return when {
-            content.matchesKeyword() && !content.hasAdvertisementMarker() ->
+            (matchesUserKeyword || matchesScopedDefault) && !content.hasAdvertisementMarker() ->
                 NotificationPayload.CollectReason.KEYWORD
 
             packageName in allowedPackages -> NotificationPayload.CollectReason.APP
@@ -66,24 +67,19 @@ data class NotificationFilter(
         }
     }
 
-    private fun String.matchesKeyword(): Boolean = effectiveKeywords.any { it.isNotBlank() && contains(it, ignoreCase = true) }
-
     companion object {
         /**
-         * 앱이 내장하는 1차 기본 키워드.
+         * 앱이 내장하는 기본 키워드 전체. [DEFAULT_KEYWORD_SCOPES] 의 합집합이다.
+         *
+         * 표시용이며 판정에는 쓰지 않는다 — 판정은 도메인별 앱 범위와 함께 봐야 한다.
+         * 사전에서 파생시켜 어느 scope 에도 속하지 않은 키워드가 목록에만 남는 일을 막는다.
          *
          * 생활 이벤트의 상태 변화를 나타내는 말만 담는다. 부분 일치로 판정하므로 광고 문구에
          * 걸리는 경우가 있으며(`신상품 도착`), 구조 신호로도 광고 표기로도 잡히지 않는 광고는
          * 알려진 한계로 둔다.
          */
         val DEFAULT_KEYWORDS: Set<String> =
-            setOf(
-                "결제", "승인", "환불",
-                "주문", "배송", "배달", "픽업",
-                "예약", "예매",
-                "출발", "도착", "탑승",
-                "취소",
-            )
+            DEFAULT_KEYWORD_SCOPES.flatMapTo(linkedSetOf()) { it.keywords }
     }
 }
 

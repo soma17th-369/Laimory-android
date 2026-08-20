@@ -127,7 +127,7 @@ class NotificationFilterTest {
     fun `기본 키워드로 사용자 설정 없이도 생활 이벤트를 수집한다`() {
         val reason =
             NotificationFilter().collectReasonFor(
-                packageName = "com.example",
+                packageName = COMMERCE_APP,
                 title = "주문 배송 시작",
                 text = null,
                 clicked = false,
@@ -141,9 +141,9 @@ class NotificationFilterTest {
         val filter = NotificationFilter(useDefaultKeywords = false, keywords = setOf("회의"))
 
         val defaultKeyword =
-            filter.collectReasonFor(packageName = "com.example", title = "주문 배송 시작", text = null, clicked = false)
+            filter.collectReasonFor(packageName = COMMERCE_APP, title = "주문 배송 시작", text = null, clicked = false)
         val userKeyword =
-            filter.collectReasonFor(packageName = "com.example", title = "회의 시작", text = null, clicked = false)
+            filter.collectReasonFor(packageName = UNSCOPED_APP, title = "회의 시작", text = null, clicked = false)
 
         assertNull(defaultKeyword)
         assertEquals(NotificationPayload.CollectReason.KEYWORD, userKeyword)
@@ -154,9 +154,9 @@ class NotificationFilterTest {
         val filter = NotificationFilter(keywords = setOf("회의"))
 
         val userKeyword =
-            filter.collectReasonFor(packageName = "com.example", title = "회의 시작", text = null, clicked = false)
+            filter.collectReasonFor(packageName = UNSCOPED_APP, title = "회의 시작", text = null, clicked = false)
         val defaultKeyword =
-            filter.collectReasonFor(packageName = "com.example", title = "결제 승인", text = null, clicked = false)
+            filter.collectReasonFor(packageName = FINANCE_APP, title = "결제 승인", text = null, clicked = false)
 
         assertEquals(NotificationPayload.CollectReason.KEYWORD, userKeyword)
         assertEquals(NotificationPayload.CollectReason.KEYWORD, defaultKeyword)
@@ -206,7 +206,7 @@ class NotificationFilterTest {
     fun `구조 신호를 알 수 없으면 비이벤트 제외를 적용하지 않는다`() {
         val reason =
             NotificationFilter().collectReasonFor(
-                packageName = "com.example",
+                packageName = FINANCE_APP,
                 title = "결제 승인",
                 text = null,
                 clicked = false,
@@ -232,7 +232,7 @@ class NotificationFilterTest {
         advertisements.forEach { title ->
             assertNull(
                 title,
-                filter.collectReasonFor(packageName = "com.example", title = title, text = null, clicked = false),
+                filter.collectReasonFor(packageName = COMMERCE_APP, title = title, text = null, clicked = false),
             )
         }
     }
@@ -271,7 +271,7 @@ class NotificationFilterTest {
         val titles =
             listOf(
                 "[CJ대한통운] 고객님의 상품이 배송 완료되었습니다",
-                "[Web발신] 결제 승인 12,000원",
+                "[Web발신] 주문 취소 환불 12,000원",
                 "[상세주소]로 배송이 시작되었습니다",
                 "[전화번호] 기사님이 픽업했습니다",
             )
@@ -280,7 +280,7 @@ class NotificationFilterTest {
             assertEquals(
                 title,
                 NotificationPayload.CollectReason.KEYWORD,
-                filter.collectReasonFor(packageName = "com.example", title = title, text = null, clicked = false),
+                filter.collectReasonFor(packageName = COMMERCE_APP, title = title, text = null, clicked = false),
             )
         }
     }
@@ -293,14 +293,14 @@ class NotificationFilterTest {
                 "(비광고) 결제 승인",
                 "(광고 없음) 결제 승인",
                 "결제 승인 (광고 차단)",
-                "(광고 제거) 주문 완료",
+                "(광고 제거) 결제 취소",
             )
 
         titles.forEach { title ->
             assertEquals(
                 title,
                 NotificationPayload.CollectReason.KEYWORD,
-                filter.collectReasonFor(packageName = "com.example", title = title, text = null, clicked = false),
+                filter.collectReasonFor(packageName = FINANCE_APP, title = title, text = null, clicked = false),
             )
         }
     }
@@ -309,7 +309,7 @@ class NotificationFilterTest {
     fun `괄호 밖의 광고라는 낱말만으로는 제외하지 않는다`() {
         val reason =
             NotificationFilter().collectReasonFor(
-                packageName = "com.example",
+                packageName = FINANCE_APP,
                 title = "광고 없는 요금제 결제가 승인되었습니다",
                 text = null,
                 clicked = false,
@@ -317,4 +317,115 @@ class NotificationFilterTest {
 
         assertEquals(NotificationPayload.CollectReason.KEYWORD, reason)
     }
+
+    // --- 기본 키워드 앱 범위 (#270) ---
+
+    @Test
+    fun `기본 키워드는 도메인 scope 안의 앱에서만 걸린다`() {
+        val filter = NotificationFilter()
+
+        val scoped =
+            filter.collectReasonFor(packageName = COMMERCE_APP, title = "상품이 도착했습니다", text = null, clicked = false)
+        val unscoped =
+            filter.collectReasonFor(packageName = UNSCOPED_APP, title = "보상이 도착했습니다", text = null, clicked = false)
+
+        assertEquals(NotificationPayload.CollectReason.KEYWORD, scoped)
+        assertNull(unscoped)
+    }
+
+    @Test
+    fun `다른 도메인의 키워드는 그 도메인 앱에서만 걸린다`() {
+        val filter = NotificationFilter()
+
+        // `배송`은 커머스에만 있고 금융에는 없다.
+        val commerce =
+            filter.collectReasonFor(packageName = COMMERCE_APP, title = "배송 시작", text = null, clicked = false)
+        val finance =
+            filter.collectReasonFor(packageName = FINANCE_APP, title = "배송 시작", text = null, clicked = false)
+
+        assertEquals(NotificationPayload.CollectReason.KEYWORD, commerce)
+        assertNull(finance)
+    }
+
+    @Test
+    fun `사용자가 기본 키워드와 같은 단어를 등록하면 목록 밖 앱에서도 수집한다`() {
+        val filter = NotificationFilter(keywords = setOf("도착"))
+
+        val reason =
+            filter.collectReasonFor(packageName = UNSCOPED_APP, title = "보상이 도착했습니다", text = null, clicked = false)
+
+        assertEquals(NotificationPayload.CollectReason.KEYWORD, reason)
+    }
+
+    @Test
+    fun `기본 키워드를 끄면 scope 안에서도 기본 키워드로 수집하지 않는다`() {
+        val filter = NotificationFilter(useDefaultKeywords = false)
+
+        val reason =
+            filter.collectReasonFor(packageName = COMMERCE_APP, title = "주문 배송 시작", text = null, clicked = false)
+
+        assertNull(reason)
+    }
+
+    @Test
+    fun `목록 밖 앱이라도 allowlist 에 있으면 APP 으로 수집한다`() {
+        val filter = NotificationFilter(allowedPackages = setOf(UNSCOPED_APP))
+
+        val reason =
+            filter.collectReasonFor(packageName = UNSCOPED_APP, title = "보상이 도착했습니다", text = null, clicked = false)
+
+        assertEquals(NotificationPayload.CollectReason.APP, reason)
+    }
+
+    @Test
+    fun `광고 표기와 scope 키워드가 함께 맞아도 allowlist 앱이면 APP 으로 수집한다`() {
+        val filter = NotificationFilter(allowedPackages = setOf(COMMERCE_APP))
+
+        val reason =
+            filter.collectReasonFor(packageName = COMMERCE_APP, title = "(광고) 배송비 무료", text = null, clicked = false)
+
+        assertEquals(NotificationPayload.CollectReason.APP, reason)
+    }
+
+    @Test
+    fun `여러 scope 에 걸친 키워드는 한 scope 만 통과해도 수집한다`() {
+        val filter = NotificationFilter()
+
+        // `도착`은 커머스·배달·이동 세 도메인에 있다. 앱은 그중 하나에만 속한다.
+        val delivery =
+            filter.collectReasonFor(packageName = DELIVERY_APP, title = "도착 예정", text = null, clicked = false)
+        val travel =
+            filter.collectReasonFor(packageName = TRAVEL_APP, title = "도착 예정", text = null, clicked = false)
+
+        assertEquals(NotificationPayload.CollectReason.KEYWORD, delivery)
+        assertEquals(NotificationPayload.CollectReason.KEYWORD, travel)
+    }
+
+    @Test
+    fun `클릭은 앱 범위 게이트를 우회한다`() {
+        val reason =
+            NotificationFilter().collectReasonFor(
+                packageName = UNSCOPED_APP,
+                title = "보상이 도착했습니다",
+                text = null,
+                clicked = true,
+            )
+
+        assertEquals(NotificationPayload.CollectReason.CLICK, reason)
+    }
 }
+
+/** 금융·결제 scope 에 든 앱. */
+private const val FINANCE_APP = "com.kakaobank.channel"
+
+/** 커머스·택배 scope 에 든 앱. */
+private const val COMMERCE_APP = "com.coupang.mobile"
+
+/** 배달 scope 에 든 앱. */
+private const val DELIVERY_APP = "com.sampleapp"
+
+/** 이동·여행 scope 에 든 앱. */
+private const val TRAVEL_APP = "com.korail.talk"
+
+/** 어느 scope 에도 없는 앱. 기본 키워드가 걸리면 안 된다. */
+private const val UNSCOPED_APP = "com.example.game"
