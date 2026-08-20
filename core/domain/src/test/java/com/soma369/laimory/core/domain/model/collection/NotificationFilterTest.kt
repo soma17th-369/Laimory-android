@@ -215,4 +215,86 @@ class NotificationFilterTest {
 
         assertEquals(NotificationPayload.CollectReason.KEYWORD, reason)
     }
+
+    // --- 광고 표기 제외 ---
+
+    @Test
+    fun `괄호로 감싼 광고 표기가 있으면 키워드가 일치해도 수집하지 않는다`() {
+        val filter = NotificationFilter()
+        val advertisements =
+            listOf(
+                "(광고) 오늘만 배송비 무료",
+                "[광고] 주문하면 사은품 증정",
+                "(동영상 광고) 지금 예약하면 할인",
+                "(광고성 정보) 신상품 도착",
+            )
+
+        advertisements.forEach { title ->
+            assertNull(
+                title,
+                filter.collectReasonFor(packageName = "com.example", title = title, text = null, clicked = false),
+            )
+        }
+    }
+
+    @Test
+    fun `광고 표기가 있어도 사용자가 클릭한 알림은 수집한다`() {
+        val reason =
+            NotificationFilter().collectReasonFor(
+                packageName = "com.example",
+                title = "(광고) 오늘만 배송비 무료",
+                text = null,
+                clicked = true,
+            )
+
+        assertEquals(NotificationPayload.CollectReason.CLICK, reason)
+    }
+
+    @Test
+    fun `광고 표기가 있어도 사용자가 고른 앱의 알림은 수집한다`() {
+        val reason =
+            NotificationFilter(
+                allowedPackages = setOf("com.example.allowed"),
+            ).collectReasonFor(
+                packageName = "com.example.allowed",
+                title = "(광고) 오늘만 배송비 무료",
+                text = null,
+                clicked = false,
+            )
+
+        assertEquals(NotificationPayload.CollectReason.APP, reason)
+    }
+
+    @Test
+    fun `정상 대괄호 접두와 개인정보 마스킹 토큰은 광고 표기로 보지 않는다`() {
+        val filter = NotificationFilter()
+        val titles =
+            listOf(
+                "[CJ대한통운] 고객님의 상품이 배송 완료되었습니다",
+                "[Web발신] 결제 승인 12,000원",
+                "[상세주소]로 배송이 시작되었습니다",
+                "[전화번호] 기사님이 픽업했습니다",
+            )
+
+        titles.forEach { title ->
+            assertEquals(
+                title,
+                NotificationPayload.CollectReason.KEYWORD,
+                filter.collectReasonFor(packageName = "com.example", title = title, text = null, clicked = false),
+            )
+        }
+    }
+
+    @Test
+    fun `괄호 밖의 광고라는 낱말만으로는 제외하지 않는다`() {
+        val reason =
+            NotificationFilter().collectReasonFor(
+                packageName = "com.example",
+                title = "광고 없는 요금제 결제가 승인되었습니다",
+                text = null,
+                clicked = false,
+            )
+
+        assertEquals(NotificationPayload.CollectReason.KEYWORD, reason)
+    }
 }

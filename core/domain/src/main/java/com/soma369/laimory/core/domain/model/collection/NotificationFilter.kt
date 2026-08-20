@@ -36,6 +36,11 @@ data class NotificationFilter(
      * 비이벤트 제외를 적용하지 않고, 앱 allowlist 와 키워드 경로에만 적용한다.
      * 빈 키워드는 설정에 남아 있더라도 일치 조건에서 제외한다.
      *
+     * 광고 표기([hasAdvertisementMarker])는 키워드 경로에만 적용한다 — 키워드는 사용자가
+     * 앱을 고르지 않아도 걸리는 넓은 경로라 광고가 섞이지만, 클릭과 앱 allowlist 는 사용자가
+     * 그 알림·그 앱을 직접 지목한 결과다. 그래서 광고 표기가 있는 allowlist 앱의 알림은
+     * 키워드가 걸리더라도 [NotificationPayload.CollectReason.APP]으로 수집된다.
+     *
      * @param signals 리스너 경계에서 얻은 구조 신호. 알 수 없는 경계에서는 기본값을 쓰며
      *   이때 비이벤트 제외는 적용되지 않는다.
      */
@@ -53,7 +58,7 @@ data class NotificationFilter(
 
         val content = listOfNotNull(title, text).joinToString(" ")
         return when {
-            effectiveKeywords.any { it.isNotBlank() && content.contains(it, ignoreCase = true) } ->
+            content.matchesKeyword() && !content.hasAdvertisementMarker() ->
                 NotificationPayload.CollectReason.KEYWORD
 
             packageName in allowedPackages -> NotificationPayload.CollectReason.APP
@@ -61,12 +66,15 @@ data class NotificationFilter(
         }
     }
 
+    private fun String.matchesKeyword(): Boolean = effectiveKeywords.any { it.isNotBlank() && contains(it, ignoreCase = true) }
+
     companion object {
         /**
          * 앱이 내장하는 1차 기본 키워드.
          *
          * 생활 이벤트의 상태 변화를 나타내는 말만 담는다. 부분 일치로 판정하므로 광고 문구에
-         * 걸리는 경우가 있으며(`신상품 도착`), 구조 신호로 잡히지 않는 광고는 알려진 한계로 둔다.
+         * 걸리는 경우가 있으며(`신상품 도착`), 구조 신호로도 광고 표기로도 잡히지 않는 광고는
+         * 알려진 한계로 둔다.
          */
         val DEFAULT_KEYWORDS: Set<String> =
             setOf(
@@ -78,3 +86,25 @@ data class NotificationFilter(
             )
     }
 }
+
+/**
+ * 정보통신망법이 광고성 정보에 강제하는 제목 표기가 있는지 본다.
+ *
+ * `무료`·`특가` 같은 광고 문구 사전은 정상 이벤트와 같은 단어를 써서 오탐이 크지만, 괄호로
+ * 감싼 광고 표기는 법이 정한 형식이라 배송·결제 알림이 쓸 수 없다. 텍스트로 드러난 구조
+ * 신호로 보고, 앱이 `CATEGORY_PROMO`를 선언하지 않는 광고를 [NotificationSignals] 대신 잡는다.
+ *
+ * 괄호 **안**의 광고 표기만 본다 — `[CJ대한통운] 배송완료`, `[Web발신]` 같은 정상 접두와
+ * [NotificationPrivacyPolicy]가 넣는 `[전화번호]`·`[상세주소]` 마스킹 토큰을 함께 날리지
+ * 않기 위해서다. 수집 판정은 마스킹을 거친 텍스트로 하므로 후자가 특히 중요하다.
+ */
+private fun String.hasAdvertisementMarker(): Boolean = ADVERTISEMENT_MARKER.containsMatchIn(this)
+
+/**
+ * 괄호로 감싼 광고 표기. `(광고)`, `[광고]`, `(동영상 광고)`, `(광고성 정보)`를 잡는다.
+ *
+ * 괄호 안 길이를 제한해 `(광고 없이 보려면 프리미엄을 결제하세요)`처럼 광고 표기가 아니라
+ * 문장인 괄호까지 번지지 않게 한다.
+ */
+private val ADVERTISEMENT_MARKER =
+    Regex("""[(\[【（]\s*[^()\[\]【】（）]{0,6}광고[^()\[\]【】（）]{0,6}\s*[)\]】）]""")

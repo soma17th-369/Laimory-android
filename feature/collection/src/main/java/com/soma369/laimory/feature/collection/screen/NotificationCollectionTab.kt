@@ -310,6 +310,12 @@ private fun DefaultKeywordToggle(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // 키워드 경로에만 걸리는 제외라 사전만 보면 드러나지 않는다. 사유별 실측 때 헷갈리지 않게 적어 둔다.
+        Text(
+            text = "(광고) 표기가 붙은 알림은 키워드가 맞아도 제외합니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
