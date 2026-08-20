@@ -323,6 +323,14 @@ class NotificationPrivacyPolicyTest {
     }
 
     @Test
+    fun `라벨을 하이픈으로 붙인 번호는 치환한다`() {
+        // 앞 경계가 하이픈 자체를 거부하면 실제 전화번호가 통째로 남는다.
+        assertEquals("연락처-[전화번호]", sanitize(text = "연락처-010-1234-5678")?.text)
+        assertEquals("고객센터-[전화번호]", sanitize(text = "고객센터-02-1234-5678")?.text)
+        assertEquals("문의-[전화번호]", sanitize(text = "문의-031-1234-5678")?.text)
+    }
+
+    @Test
     fun `앞뒤에 숫자 구간이 더 붙으면 전화번호로 보지 않는다`() {
         // 부분 치환하면 남은 마디가 그대로 새어 나간다.
         assertEquals("코드 031-1234-5678-91", sanitize(text = "코드 031-1234-5678-91")?.text)
