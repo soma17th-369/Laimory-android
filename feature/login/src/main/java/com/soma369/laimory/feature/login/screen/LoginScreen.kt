@@ -1,16 +1,18 @@
 package com.soma369.laimory.feature.login.screen
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,12 +26,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,7 +46,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
+import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
+import com.soma369.laimory.feature.login.R
 import com.soma369.laimory.feature.login.state.LoginPhase
 import com.soma369.laimory.feature.login.state.LoginUiIntent
 import com.soma369.laimory.feature.login.state.LoginUiSideEffect
@@ -127,11 +135,13 @@ private fun LoginScreen(
         Column(
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-                    .padding(top = 120.dp, bottom = 60.dp),
+                    .fillMaxSize()
+                    // 작은 화면이나 글자 확대에서 브랜드·버튼·약관이 잘리지 않도록 세로로 흘려 보낸다.
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = Spacing.extraLarge3)
+                    .padding(top = BrandTopPadding, bottom = ContentBottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2),
         ) {
             LoginHeader()
             LoginActions(state = state, onProviderClick = onProviderClick)
@@ -146,35 +156,58 @@ private fun LoginHeader() {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 40.dp),
+                .padding(top = Spacing.extraLarge, bottom = BrandBottomPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
-        Text(
-            text = "Laimory",
-            style =
-                MaterialTheme.laimorySignature.large.copy(
-                    fontSize = 42.sp,
-                    lineHeight = 61.sp,
-                ),
-            color = MaterialTheme.colorScheme.onBackground,
+        Image(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = WordmarkMaxHeight),
+            painter = painterResource(R.drawable.img_laimory_wordmark),
+            // 워드마크가 곧 앱 이름이라 스크린 리더에는 이름으로 읽힌다.
+            contentDescription = "Laimory",
+            contentScale = ContentScale.Fit,
         )
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
         ) {
             Text(
                 text = "일상을 기록하고, 기억으로 남겨요",
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, fontWeight = FontWeight.Medium),
+                style = MaterialTheme.laimorySignature.small,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
             )
-            Text(
-                text = "Life · AI · Memory",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            )
+            Tagline()
         }
     }
+}
+
+/**
+ * `Life · AI · Memory` 태그라인.
+ *
+ * Figma 는 머리글자(L·AI·M)만 본문 색으로 올려 대비를 준다 — 한 문장으로 읽히도록 여러 Text 로
+ * 쪼개지 않고 부분 스타일로 구성한다.
+ */
+@Composable
+private fun Tagline() {
+    val emphasisColor = MaterialTheme.colorScheme.onSurface
+    Text(
+        text =
+            buildAnnotatedString {
+                withStyle(SpanStyle(color = emphasisColor)) { append("L") }
+                append("ife · ")
+                withStyle(SpanStyle(color = emphasisColor)) { append("AI") }
+                append(" · ")
+                withStyle(SpanStyle(color = emphasisColor)) { append("M") }
+                append("emory")
+            },
+        style = MaterialTheme.laimorySignature.note.copy(fontWeight = FontWeight.Bold, fontSize = TaglineFontSize),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SUBTLE_TEXT_ALPHA),
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable
@@ -184,7 +217,7 @@ private fun LoginActions(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.medium),
     ) {
         SocialLoginButton(
             text = "구글로 시작하기",
@@ -200,25 +233,24 @@ private fun LoginActions(
             state = state,
             onClick = onProviderClick,
         )
-        Text(
+        // 버튼 아래 자리는 비워 두었다가 실패 시 사유가 들어간다. 높이를 미리 잡아 두면 오류가
+        // 떠도 버튼과 약관 안내가 밀리지 않는다.
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-            text = "둘러보기",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            textDecoration = TextDecoration.Underline,
-        )
-        state.errorMessage?.let { message ->
-            Text(
-                modifier = Modifier.fillMaxWidth(),
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center,
-            )
+                    .heightIn(min = ErrorSlotMinHeight),
+            contentAlignment = Alignment.Center,
+        ) {
+            state.errorMessage?.let { message ->
+                Text(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
@@ -231,14 +263,17 @@ private fun SocialLoginButton(
     state: LoginUiState,
     onClick: (SocialLoginProvider) -> Unit,
 ) {
+    val isInProgress = state.isInteractionDisabled && state.activeProvider == provider
     Surface(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(56.dp),
-        shape = RoundedCornerShape(16.dp),
+                .heightIn(min = SocialButtonMinHeight)
+                // 진행 표시는 그림이라 낭독되지 않는다. 어느 버튼이 진행 중인지 상태로 알린다.
+                .semantics { if (isInProgress) stateDescription = "로그인 진행 중" },
+        shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(SocialButtonBorderWidth, MaterialTheme.colorScheme.outlineVariant),
         enabled = !state.isInteractionDisabled,
         onClick = { onClick(provider) },
     ) {
@@ -246,13 +281,13 @@ private fun SocialLoginButton(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = Spacing.extraLarge),
         ) {
-            androidx.compose.foundation.Image(
+            Image(
                 modifier =
                     Modifier
                         .align(Alignment.CenterStart)
-                        .size(32.dp),
+                        .size(SocialIconSize),
                 painter = painterResource(iconRes),
                 contentDescription = null,
             )
@@ -263,13 +298,13 @@ private fun SocialLoginButton(
                 color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center,
             )
-            if (state.isInteractionDisabled && state.activeProvider == provider) {
+            if (isInProgress) {
                 CircularProgressIndicator(
                     modifier =
                         Modifier
                             .align(Alignment.CenterEnd)
-                            .size(20.dp),
-                    strokeWidth = 2.dp,
+                            .size(ProgressIndicatorSize),
+                    strokeWidth = ProgressStrokeWidth,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -279,7 +314,11 @@ private fun SocialLoginButton(
 
 @Composable
 private fun LegalNotice() {
-    val linkStyle = SpanStyle(textDecoration = TextDecoration.Underline)
+    val linkStyle =
+        SpanStyle(
+            color = MaterialTheme.colorScheme.onSurface,
+            textDecoration = TextDecoration.Underline,
+        )
     Text(
         modifier = Modifier.fillMaxWidth(),
         text =
@@ -294,11 +333,32 @@ private fun LegalNotice() {
                 pop()
                 append("에\n동의하는 것으로 간주합니다.")
             },
-        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = LegalFontSize, lineHeight = LegalLineHeight),
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SUBTLE_TEXT_ALPHA),
         textAlign = TextAlign.Center,
     )
 }
+
+/** Figma 상단 여백. spacing 토큰 밖의 화면 전용 값이라 이름을 붙여 둔다. */
+private val BrandTopPadding = 120.dp
+private val BrandBottomPadding = 40.dp
+private val ContentBottomPadding = 60.dp
+private val WordmarkMaxHeight = 120.dp
+private val SocialButtonMinHeight = 56.dp
+private val SocialIconSize = 32.dp
+private val ProgressIndicatorSize = 20.dp
+private val ProgressStrokeWidth = 2.dp
+private val SocialButtonBorderWidth = 1.5.dp
+
+/** 로그인 실패 문구가 들어갈 자리. 비어 있어도 높이를 잡아 레이아웃이 밀리지 않게 한다. */
+private val ErrorSlotMinHeight = 41.dp
+
+private val TaglineFontSize = 14.sp
+private val LegalFontSize = 12.sp
+private val LegalLineHeight = 18.sp
+
+/** Figma 의 보조 문구 투명도(60%). */
+private const val SUBTLE_TEXT_ALPHA = 0.6f
 
 @Preview(name = "Login Light", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
@@ -331,6 +391,30 @@ private fun LoginProgressLightPreview() {
 @Preview(name = "Login Failure Light", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun LoginFailureLightPreview() {
+    LaimoryTheme {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            LoginScreen(
+                innerPadding = PaddingValues(),
+                state = LoginUiState(errorMessage = "소셜 로그인을 완료하지 못했습니다. 다시 시도해 주세요."),
+                onProviderClick = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Login 작은 화면", showBackground = true, widthDp = 320, heightDp = 600)
+@Composable
+private fun LoginCompactPreview() {
+    LaimoryTheme {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            LoginScreen(PaddingValues(), LoginUiState(), {})
+        }
+    }
+}
+
+@Preview(name = "Login 큰 글자", showBackground = true, widthDp = 360, heightDp = 800, fontScale = 1.5f)
+@Composable
+private fun LoginLargeFontPreview() {
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             LoginScreen(
