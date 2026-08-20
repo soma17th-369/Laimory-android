@@ -286,6 +286,26 @@ class NotificationFilterTest {
     }
 
     @Test
+    fun `광고를 부정하는 괄호 표기는 제외하지 않는다`() {
+        val filter = NotificationFilter()
+        val titles =
+            listOf(
+                "(비광고) 결제 승인",
+                "(광고 없음) 결제 승인",
+                "결제 승인 (광고 차단)",
+                "(광고 제거) 주문 완료",
+            )
+
+        titles.forEach { title ->
+            assertEquals(
+                title,
+                NotificationPayload.CollectReason.KEYWORD,
+                filter.collectReasonFor(packageName = "com.example", title = title, text = null, clicked = false),
+            )
+        }
+    }
+
+    @Test
     fun `괄호 밖의 광고라는 낱말만으로는 제외하지 않는다`() {
         val reason =
             NotificationFilter().collectReasonFor(

@@ -302,6 +302,33 @@ class NotificationPrivacyPolicyTest {
         assertEquals("[계좌번호] 로 송금", sanitize(title = "계좌 이체", text = "1002-345-678901 로 송금")?.text)
         assertEquals("입금 계좌 [계좌번호]", sanitize(text = "입금 계좌 3333-01-1234567")?.text)
         assertEquals("입금 계좌 [계좌번호]", sanitize(text = "입금 계좌 301-0123-4567")?.text)
+        // 마디가 넷인 계좌도 통째로 치환한다 — 앞 세 마디만 잡으면 마지막 마디가 남는다.
+        assertEquals("입금 계좌 [계좌번호]", sanitize(text = "입금 계좌 301-1234-5678-91")?.text)
+    }
+
+    @Test
+    fun `할당된 지역번호 전 범위를 치환한다`() {
+        listOf("02-123-4567", "031-1234-5678", "033-123-4567", "041-123-4567", "044-123-4567")
+            .plus(listOf("051-123-4567", "055-123-4567", "061-123-4567", "064-123-4567"))
+            .forEach { number ->
+                assertEquals(number, "문의 [전화번호]", sanitize(text = "문의 $number")?.text)
+            }
+    }
+
+    @Test
+    fun `할당되지 않은 지역번호는 치환하지 않는다`() {
+        listOf("034-1234-5678", "045-123-4567", "056-123-4567", "065-123-4567").forEach { number ->
+            assertEquals(number, "문의 $number", sanitize(text = "문의 $number")?.text)
+        }
+    }
+
+    @Test
+    fun `앞뒤에 숫자 구간이 더 붙으면 전화번호로 보지 않는다`() {
+        // 부분 치환하면 남은 마디가 그대로 새어 나간다.
+        assertEquals("코드 031-1234-5678-91", sanitize(text = "코드 031-1234-5678-91")?.text)
+        assertEquals("코드 1234-031-1234-5678", sanitize(text = "코드 1234-031-1234-5678")?.text)
+        // 기업은행 계좌는 휴대전화와 접두가 같아 같은 경계 규칙이 필요하다.
+        assertEquals("코드 010-1234567-01", sanitize(text = "코드 010-1234567-01")?.text)
     }
 
     @Test
