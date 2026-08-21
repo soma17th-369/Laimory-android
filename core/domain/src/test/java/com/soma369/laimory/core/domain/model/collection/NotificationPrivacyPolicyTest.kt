@@ -111,6 +111,13 @@ class NotificationPrivacyPolicyTest {
     }
 
     @Test
+    fun `국제발신과 웹발신이 함께 붙어도 기업 문자로 보지 않는다`() {
+        // 웹발신 표기만 보면 발신번호를 위조한 스팸이 그대로 통과한다.
+        assertNull(sanitize(title = "0012345", text = "[국제발신] [Web발신] 결제 승인 12,000원", isMessage = true))
+        assertNull(sanitize(title = "0012345", text = "[Web발신] [국외발신] 배송 출발", isMessage = true))
+    }
+
+    @Test
     fun `기업 문자여도 전체 제외와 마스킹은 그대로 적용한다`() {
         // 대화 알림 제외 하나만 푸는 것이지 다른 규칙이 느슨해지지 않는다.
         assertNull(sanitize(text = "[Web발신] 인증번호 123456 입니다", isMessage = true))

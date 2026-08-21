@@ -312,7 +312,12 @@ private fun DefaultKeywordToggle(
         )
         // 판정에만 있고 사전에는 드러나지 않는 두 조건이라, 목록 밖 앱에서 왜 안 걸리는지 알 수 있게 적어 둔다.
         Text(
-            text = "기본 키워드는 지원되는 금융·주문·배송·예약 앱에서만 적용됩니다.",
+            text = "기본 키워드는 지원되는 금융·주문·배송·예약·교통 앱에서만 적용됩니다.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "문자는 [Web발신] 표기가 붙은 기업 발송만 수집하며, 개인 대화는 수집하지 않습니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -57,9 +57,11 @@ private fun NotificationContent.joined(): String = listOfNotNull(title, text).jo
  * 통과해도 이후 규칙은 그대로 적용된다 — 인증번호·고유식별정보 전체 제외, 전화·계좌 마스킹,
  * 그리고 수집 판정의 `(광고)` 표기 제외. 여기서 푸는 것은 "대화 알림이라 무조건 버린다" 하나뿐이다.
  *
- * `[국제발신]`·`[국외발신]` 은 받지 않는다. 생활 이벤트보다 스팸 비중이 크다.
+ * `[국제발신]`·`[국외발신]` 은 받지 않는다. 생활 이벤트보다 스팸 비중이 크다. 두 표기가 함께 붙은
+ * `[국제발신] [Web발신]` 도 거부한다 — 웹발신 표기만 보면 발신번호를 위조한 스팸이 그대로 통과한다.
  */
-private fun isBusinessMessage(text: String): Boolean = BUSINESS_MESSAGE_MARKER.containsMatchIn(text)
+private fun isBusinessMessage(text: String): Boolean =
+    !OVERSEAS_MESSAGE_MARKER.containsMatchIn(text) && BUSINESS_MESSAGE_MARKER.containsMatchIn(text)
 
 private fun isFullyExcluded(text: String): Boolean =
     containsAuthenticationSecret(text) ||
@@ -229,6 +231,9 @@ private const val NUMBER_SEGMENT_BOUNDARY = """(?<!\d)(?<!\d-)"""
 
 /** 통신사 웹발신 표기. 대괄호 안 공백과 대소문자를 허용한다. */
 private val BUSINESS_MESSAGE_MARKER = Regex("""\[\s*web\s*발신\s*]""", RegexOption.IGNORE_CASE)
+
+/** 해외 발신 표기. 웹발신 표기보다 먼저 보고 거부한다. */
+private val OVERSEAS_MESSAGE_MARKER = Regex("""\[\s*국\s*[제외]\s*발\s*신\s*]""")
 
 private val EMAIL = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 private val CARD_NUMBER = Regex("""(?<!\d)(?:\d{4}[- ]?){3}\d{4}(?!\d)""")
