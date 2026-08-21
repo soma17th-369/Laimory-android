@@ -2,6 +2,7 @@ package com.soma369.laimory.draft
 
 import com.soma369.laimory.BuildConfig
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReport
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -26,6 +27,14 @@ class LogcatDraftSourceItemSelectionReporter
                 LogDomain.DRAFT_TASK,
                 "draft source selection original=${report.originalTotal} selected=${report.selectedTotal} [$typeCounts]",
             )
+            // 타입 건수만으로는 클릭 알림이 통째로 잘려도 드러나지 않는다.
+            val reasonCounts =
+                NotificationPayload.CollectReason.entries.joinToString(separator = ", ") { reason ->
+                    val original = report.notificationOriginalCountsByReason.getOrDefault(reason, 0)
+                    val selected = report.notificationSelectedCountsByReason.getOrDefault(reason, 0)
+                    "$reason=$original/$selected(-${original - selected})"
+                }
+            Logger.d(LogDomain.DRAFT_TASK, "draft notification by reason [$reasonCounts]")
         }
 
         override fun reportRequestSize(

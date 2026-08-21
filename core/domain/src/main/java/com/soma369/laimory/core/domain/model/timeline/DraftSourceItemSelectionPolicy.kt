@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.domain.model.timeline
 
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 
 /**
@@ -54,10 +55,17 @@ class DraftPhotoLimitExceededException(
     val maxCount: Int,
 ) : Exception("사진은 최대 ${maxCount}장까지 선택할 수 있습니다. (현재 ${selectedCount}장)")
 
-/** payload 원문 없이 선택 전후 건수만 전달하는 측정 모델. */
+/**
+ * payload 원문 없이 선택 전후 건수만 전달하는 측정 모델.
+ *
+ * NOTIFICATION 은 사유별 건수를 따로 남긴다. 타입 건수만으로는 `NOTIFICATION 300 → 100` 으로만
+ * 보여서, 클릭 알림이 통째로 잘려도 드러나지 않는다.
+ */
 data class DraftSourceItemSelectionReport(
     val originalCounts: Map<ItemType, Int>,
     val selectedCounts: Map<ItemType, Int>,
+    val notificationOriginalCountsByReason: Map<NotificationPayload.CollectReason, Int>,
+    val notificationSelectedCountsByReason: Map<NotificationPayload.CollectReason, Int>,
 ) {
     val originalTotal: Int = originalCounts.values.sum()
     val selectedTotal: Int = selectedCounts.values.sum()
@@ -89,6 +97,8 @@ data class DraftSourceItemSelection(
                 DraftSourceItemSelectionReport(
                     originalCounts = report.originalCounts,
                     selectedCounts = remaining.countsByType(),
+                    notificationOriginalCountsByReason = report.notificationOriginalCountsByReason,
+                    notificationSelectedCountsByReason = remaining.notificationCountsByReason(),
                 ),
         )
     }
@@ -98,6 +108,7 @@ data class DraftSourceItemSelection(
  * 기록 창 필터 → 타입별 상한 → 최종 시간순 정렬을 수행하는 순수 정책.
  *
  * 타입별 선택은 `(startAt 내림차순, rawId 오름차순)`으로 최신 항목을 우선한다.
+ * NOTIFICATION 만 예외로 상한을 넘을 때 수집 사유 우선순위를 함께 본다([selectNotifications]).
  * 사용자 선택 PHOTO는 자동 절삭하지 않으며, 상한 초과 시 명시적으로 실패한다.
  * 최종 전송 목록은 `(startAt 오름차순, rawId 오름차순)`으로 안정 정렬한다.
  */
@@ -122,12 +133,13 @@ class DraftSourceItemSelectionPolicy(
 
         val typeLimited =
             ItemType.entries.flatMap { itemType ->
-                inWindow
-                    .asSequence()
-                    .filter { it.itemType == itemType }
-                    .sortedWith(NEWEST_FIRST)
-                    .take(limits.limitFor(itemType))
-                    .toList()
+                val candidates = inWindow.filter { it.itemType == itemType }
+                val limit = limits.limitFor(itemType)
+                if (itemType == ItemType.NOTIFICATION) {
+                    selectNotifications(candidates, limit)
+                } else {
+                    candidates.sortedWith(NEWEST_FIRST).take(limit)
+                }
             }
         val ordered = typeLimited.sortedWith(OLDEST_FIRST)
         return Result.success(
@@ -137,20 +149,91 @@ class DraftSourceItemSelectionPolicy(
                     DraftSourceItemSelectionReport(
                         originalCounts = originalCounts,
                         selectedCounts = ordered.countsByType(),
+                        notificationOriginalCountsByReason = inWindow.notificationCountsByReason(),
+                        notificationSelectedCountsByReason = ordered.notificationCountsByReason(),
                     ),
             ),
         )
     }
 
-    private companion object {
-        val NEWEST_FIRST =
+    /**
+     * 알림을 상한만큼 고른다.
+     *
+     * 상한 이하이면 사유를 보지 않고 기존과 같은 결과를 낸다 — 절삭이 없으면 우선순위는 의미가 없다.
+     *
+     * 초과하면 먼저 클릭 알림에 [CLICK_MIN_QUOTA] 만큼 자리를 떼어 준다. 사용자가 직접 누른 알림은
+     * 사유 우선순위만으로는 키워드 물량에 밀려 통째로 사라질 수 있기 때문이다. 클릭이 쿼터보다 적으면
+     * 남는 자리는 반환하고, 쿼터에 들지 못한 클릭 알림도 뒤 경쟁에 그대로 남는다.
+     *
+     * 남은 자리는 `(사유 우선순위, startAt 내림차순, rawId 오름차순)`으로 채운다.
+     */
+    private fun selectNotifications(
+        candidates: List<SourceItem>,
+        limit: Int,
+    ): List<SourceItem> {
+        val newestFirst = candidates.sortedWith(NEWEST_FIRST)
+        if (newestFirst.size <= limit) return newestFirst
+
+        val guaranteedClicks =
+            newestFirst
+                .asSequence()
+                .filter { it.collectReason == NotificationPayload.CollectReason.CLICK }
+                .take(minOf(CLICK_MIN_QUOTA, limit))
+                .toList()
+        val guaranteedIds = guaranteedClicks.mapTo(mutableSetOf(), SourceItem::rawId)
+        val filled =
+            newestFirst
+                .asSequence()
+                .filterNot { it.rawId in guaranteedIds }
+                .sortedWith(REASON_PRIORITY_FIRST)
+                .take(limit - guaranteedClicks.size)
+                .toList()
+        return guaranteedClicks + filled
+    }
+
+    companion object {
+        /**
+         * NOTIFICATION 이 상한을 넘을 때 클릭 알림에 보장하는 자리.
+         *
+         * 사유 우선순위에서 `CLICK` 은 `KEYWORD` 뒤라, 쿼터가 없으면 키워드 물량이 많은 날 클릭 알림이
+         * 한 건도 남지 않는다. 사용자가 직접 누른 기록은 최소한 남긴다.
+         */
+        const val CLICK_MIN_QUOTA = 20
+
+        private val NEWEST_FIRST =
             compareByDescending<SourceItem>(SourceItem::startAt)
                 .thenBy(SourceItem::rawId)
-        val OLDEST_FIRST =
+        private val OLDEST_FIRST =
             compareBy<SourceItem>(SourceItem::startAt)
                 .thenBy(SourceItem::rawId)
+        private val REASON_PRIORITY_FIRST =
+            compareBy<SourceItem> { it.collectReason.priority() }.then(NEWEST_FIRST)
     }
 }
 
 private fun List<SourceItem>.countsByType(): Map<ItemType, Int> =
     ItemType.entries.associateWith { itemType -> count { it.itemType == itemType } }
+
+private fun List<SourceItem>.notificationCountsByReason(): Map<NotificationPayload.CollectReason, Int> {
+    val reasons = mapNotNull { it.collectReason }
+    return NotificationPayload.CollectReason.entries.associateWith { reason -> reasons.count { it == reason } }
+}
+
+/** 알림이 아니거나 payload 를 읽을 수 없으면 null. 사유 정렬에서 최하위로 둔다. */
+private val SourceItem.collectReason: NotificationPayload.CollectReason?
+    get() = (payload as? NotificationPayload)?.collectReason
+
+/**
+ * 수집 사유 우선순위. 작을수록 먼저 남는다.
+ *
+ * `KEYWORD` 가 가장 앞이다 — 정해진 키워드에 걸린 생활 이벤트가 이번 정책의 정본이다.
+ * `APP` 은 앱 선택 기능 확장이 보류돼 앞세우지 않고, `ALL` 은 과거 "모든 알림 수집" legacy 데이터다.
+ */
+private fun NotificationPayload.CollectReason?.priority(): Int =
+    when (this) {
+        NotificationPayload.CollectReason.KEYWORD -> 0
+        NotificationPayload.CollectReason.CLICK -> 1
+        NotificationPayload.CollectReason.APP -> 2
+        NotificationPayload.CollectReason.ALL -> 3
+        null -> 4
+    }
