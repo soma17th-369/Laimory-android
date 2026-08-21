@@ -91,6 +91,44 @@ class NotificationPrivacyPolicyTest {
     }
 
     @Test
+    fun `웹발신 표기가 있는 기업 문자는 저장한다`() {
+        // 결제 승인·택배·예약 확인은 앱 푸시가 아니라 문자로 오는 비중이 크다.
+        val result = sanitize(title = "1588-0000", text = "[Web발신] KB국민 승인 12,000원 스타벅스", isMessage = true)
+
+        assertEquals("[Web발신] KB국민 승인 12,000원 스타벅스", result?.text)
+    }
+
+    @Test
+    fun `웹발신 표기가 없는 대화는 여전히 저장하지 않는다`() {
+        assertNull(sanitize(title = "민우", text = "내일 예약했어 7시", isMessage = true))
+        assertNull(sanitize(title = "엄마", text = "택배 도착했더라", isMessage = true))
+    }
+
+    @Test
+    fun `국제발신 표기는 기업 문자로 보지 않는다`() {
+        assertNull(sanitize(title = "0012345", text = "[국제발신] 결제 승인 안내", isMessage = true))
+        assertNull(sanitize(title = "0012345", text = "[국외발신] 배송 안내", isMessage = true))
+    }
+
+    @Test
+    fun `국제발신과 웹발신이 함께 붙어도 기업 문자로 보지 않는다`() {
+        // 웹발신 표기만 보면 발신번호를 위조한 스팸이 그대로 통과한다.
+        assertNull(sanitize(title = "0012345", text = "[국제발신] [Web발신] 결제 승인 12,000원", isMessage = true))
+        assertNull(sanitize(title = "0012345", text = "[Web발신] [국외발신] 배송 출발", isMessage = true))
+    }
+
+    @Test
+    fun `기업 문자여도 전체 제외와 마스킹은 그대로 적용한다`() {
+        // 대화 알림 제외 하나만 푸는 것이지 다른 규칙이 느슨해지지 않는다.
+        assertNull(sanitize(text = "[Web발신] 인증번호 123456 입니다", isMessage = true))
+        assertNull(sanitize(text = "[Web발신] 주민등록번호 900101-1234567 확인", isMessage = true))
+        assertEquals(
+            "[Web발신] 기사님 [전화번호] 배송 출발",
+            sanitize(text = "[Web발신] 기사님 010-1234-5678 배송 출발", isMessage = true)?.text,
+        )
+    }
+
+    @Test
     fun `구조 신호를 알 수 없는 경계에서는 텍스트 규칙만 적용한다`() {
         val message = NotificationContent(title = "민우", text = "내일 7시에 보자")
 
