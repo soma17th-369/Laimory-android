@@ -21,7 +21,6 @@ import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
-import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
@@ -854,6 +853,18 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `DRAFT 는 읽기 모드로 나가지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ExitEditMode)
+            runCurrent()
+
+            // 편집이 기본이라 나갈 곳이 없다. 화면에도 닫기 버튼을 띄우지 않는다.
+            assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
+        }
+
+    @Test
     fun `메모 편집 중에는 모드를 닫지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel(record = timeline(events = listOf(event(memo = "메모"))))
@@ -884,59 +895,6 @@ class TimelineRecordViewModelTest {
 
             // 메모 저장마다 세션이 다시 방출되는데 그때마다 기록 상태로 모드를 되돌리면 안 된다.
             assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
-        }
-
-    // --- 이벤트 삭제 (#275) ---
-
-    @Test
-    fun `편집 모드에서 카드 삭제는 확인 뒤 이벤트를 지운다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel =
-                createLoadedViewModel(
-                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
-                )
-            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
-            runCurrent()
-
-            viewModel.sendIntent(TimelineRecordUiIntent.RequestDeleteEvent(timelineEventId = 1L))
-            runCurrent()
-            assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.eventDeleteDialogState)
-            assertEquals(1L, viewModel.state.value.eventDeleteTarget?.timelineEventId)
-
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDeleteEvent)
-            advanceUntilIdle()
-
-            assertEquals(listOf(1L), recordRepository.deletedEvents)
-            // 성공 다이얼로그 없이 닫는다 — 세션 갱신으로 카드가 사라지는 걸 그대로 보여준다.
-            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
-            assertEquals(null, viewModel.state.value.eventDeleteTarget)
-        }
-
-    @Test
-    fun `읽기 모드에서는 카드 삭제를 열지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel =
-                createLoadedViewModel(
-                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
-                )
-
-            viewModel.sendIntent(TimelineRecordUiIntent.RequestDeleteEvent(timelineEventId = 1L))
-            runCurrent()
-
-            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
-        }
-
-    @Test
-    fun `이벤트 삭제와 하루 기록 삭제는 상태를 나눠 쓴다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event())))
-
-            viewModel.sendIntent(TimelineRecordUiIntent.RequestDeleteEvent(timelineEventId = 1L))
-            runCurrent()
-
-            assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.eventDeleteDialogState)
-            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
-            assertEquals(null, viewModel.state.value.deleteTarget)
         }
 
     @Test
@@ -1139,12 +1097,6 @@ class TimelineRecordViewModelTest {
                     sessionRepository = repository,
                     messageHelper = NoOpMessageHelper,
                 ),
-            deleteTimelineEventUseCase =
-                DeleteTimelineEventUseCase(
-                    repository = recordRepository,
-                    sessionRepository = repository,
-                    messageHelper = NoOpMessageHelper,
-                ),
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
             messageHelper = messageHelper,
@@ -1219,7 +1171,6 @@ class TimelineRecordViewModelTest {
     private class RecordingTimelineRecordRepository : TimelineRecordRepository {
         val requestedRecordDates = mutableListOf<LocalDate>()
         val deletedRecordDates = mutableListOf<LocalDate>()
-        val deletedEvents = mutableListOf<Long>()
         val savedRecordDates = mutableListOf<LocalDate>()
         val savedEmotions = mutableListOf<TimelineEmotion>()
         var saveGate: CompletableDeferred<Unit>? = null
@@ -1267,10 +1218,7 @@ class TimelineRecordViewModelTest {
             )
         }
 
-        override suspend fun deleteEvent(timelineEventId: Long) {
-            failure?.let { throw it }
-            deletedEvents += timelineEventId
-        }
+        override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
 
         override suspend fun deleteEventPhoto(
             timelineEventId: Long,

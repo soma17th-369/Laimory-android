@@ -25,7 +25,7 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object DismissEmotionSheet : TimelineRecordUiIntent
 
-    /** 읽기 모드 상단 `편집`. 서버 상태는 바꾸지 않는다. */
+    /** 읽기 모드 `⋮` 메뉴의 `편집하기`. 서버 상태는 바꾸지 않는다. */
     data object EnterEditMode : TimelineRecordUiIntent
 
     /** 편집 모드 상단 `X`. 저장이 아니라 화면 모드만 닫는다. */
@@ -42,15 +42,6 @@ sealed interface TimelineRecordUiIntent : UiIntent {
     data class SelectEvent(
         val timelineEventId: Long,
     ) : TimelineRecordUiIntent
-
-    /** 카드 `⋮` 의 `삭제하기`. */
-    data class RequestDeleteEvent(
-        val timelineEventId: Long,
-    ) : TimelineRecordUiIntent
-
-    data object ConfirmDeleteEvent : TimelineRecordUiIntent
-
-    data object DismissDeleteEvent : TimelineRecordUiIntent
 
     data class EditMemo(
         val timelineEventId: Long,

@@ -23,10 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,9 +40,6 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
-import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
-import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
-import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItemStyle
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
@@ -61,7 +54,6 @@ internal fun TimelineEventCard(
     event: TimelineEventUiModel,
     onEditClick: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
-    onDeleteClick: () -> Unit = {},
     isEditable: Boolean = true,
     memoEditor: TimelineMemoEditorState? = null,
     onMemoClick: () -> Unit = {},
@@ -115,7 +107,6 @@ internal fun TimelineEventCard(
                         event = event,
                         photoSlots = photoSlots,
                         onEditClick = onEditClick,
-                        onDeleteClick = onDeleteClick,
                         onPhotoClick = onPhotoClick,
                         isEditable = isEditable,
                         memoEditor = memoEditor,
@@ -125,12 +116,7 @@ internal fun TimelineEventCard(
                         onMemoConfirm = onMemoConfirm,
                     )
                 } else {
-                    EventMainCard(
-                        event = event,
-                        onEditClick = onEditClick,
-                        onDeleteClick = onDeleteClick,
-                        isEditable = isEditable,
-                    )
+                    EventMainCard(event = event, onEditClick = onEditClick, isEditable = isEditable)
                     if (photoSlots.isNotEmpty()) {
                         PhotoThumbnailRow(
                             photoSlots = photoSlots,
@@ -170,7 +156,6 @@ internal fun TimelineEventCard(
 private fun EventMainCard(
     event: TimelineEventUiModel,
     onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit,
     isEditable: Boolean,
 ) {
     Surface(
@@ -206,7 +191,9 @@ private fun EventMainCard(
                     )
                 }
             }
-            if (isEditable) TimelineEventMenu(onEditClick = onEditClick, onDeleteClick = onDeleteClick)
+            // 읽기 모드에서도 자리를 비워 둔다 — 버튼 유무로 제목·부제목의 줄 수가 바뀌면
+            // 모드를 오갈 때 카드 높이가 변해 목록 전체가 밀린다.
+            TimelineEditSlot(isEditable = isEditable, onEditClick = onEditClick)
         }
     }
 }
@@ -217,7 +204,6 @@ private fun PhotoMainEvent(
     photoSlots: List<String?>,
     onEditClick: () -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
-    onDeleteClick: () -> Unit,
     isEditable: Boolean,
     memoEditor: TimelineMemoEditorState?,
     onMemoClick: () -> Unit,
@@ -254,7 +240,7 @@ private fun PhotoMainEvent(
                 label = event.photoLocationLabel(),
                 modifier = Modifier.weight(1f, fill = false),
             )
-            if (isEditable) TimelineEventMenu(onEditClick = onEditClick, onDeleteClick = onDeleteClick)
+            TimelineEditSlot(isEditable = isEditable, onEditClick = onEditClick)
         }
         TimelineMemo(
             memo = event.memo,
@@ -360,57 +346,43 @@ private fun PhotoLocationChip(
 }
 
 /**
- * 이벤트 카드의 `⋮` 메뉴.
+ * 편집 버튼 자리.
  *
- * 편집 모드에서만 그린다. `편집하기` 는 기존 Event 에디터 화면으로 가고, `삭제하기` 는 기록 화면의
- * 이벤트 전용 확인 다이얼로그를 연다.
+ * 읽기 모드에서는 버튼을 그리지 않되 같은 크기를 차지한다. 자리를 비우면 제목·부제목이 쓸 수 있는
+ * 폭이 달라져 한 줄이던 텍스트가 두 줄이 되고, 모드를 오갈 때마다 카드 높이가 튄다.
  */
 @Composable
-private fun TimelineEventMenu(
+private fun TimelineEditSlot(
+    isEditable: Boolean,
     onEditClick: () -> Unit,
-    onDeleteClick: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        Surface(
-            onClick = { expanded = true },
-            modifier = Modifier.size(28.dp),
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(UiR.drawable.ico_default_more),
-                    contentDescription = "이벤트 메뉴",
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        LaimoryDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            LaimoryDropdownMenuItem(
-                label = "편집하기",
-                leadingIcon = painterResource(UiR.drawable.ico_timeline_tool_edit),
-                onClick = {
-                    expanded = false
-                    onEditClick()
-                },
-            )
-            LaimoryDropdownMenuItem(
-                label = "삭제하기",
-                leadingIcon = painterResource(UiR.drawable.ico_setting_trash),
-                style = LaimoryDropdownMenuItemStyle.Destructive,
-                onClick = {
-                    expanded = false
-                    onDeleteClick()
-                },
+    if (isEditable) {
+        TimelineEditButton(onClick = onEditClick)
+        return
+    }
+    Spacer(modifier = Modifier.size(TimelineEditButtonSize))
+}
+
+@Composable
+private fun TimelineEditButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(TimelineEditButtonSize),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(UiR.drawable.ico_timeline_tool_edit),
+                contentDescription = "이벤트 편집",
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
+
+private val TimelineEditButtonSize = 28.dp
 
 private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 

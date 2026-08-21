@@ -14,7 +14,6 @@ import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
-import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
@@ -25,7 +24,6 @@ import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
-import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteTarget
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordDeleteTarget
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
@@ -51,7 +49,6 @@ class TimelineRecordViewModel
         private val completeDailyRecordUseCase: CompleteDailyRecordUseCase,
         private val updateTimelineEventMemoUseCase: UpdateTimelineEventMemoUseCase,
         private val deleteDailyRecordUseCase: DeleteDailyRecordUseCase,
-        private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
@@ -120,9 +117,6 @@ class TimelineRecordViewModel
                     if (state.value.mode.isEditing && state.value.isModeSwitchable) {
                         navigationHelper.navigateTo(TimelineEventEditorPage(intent.timelineEventId))
                     }
-                is TimelineRecordUiIntent.RequestDeleteEvent -> requestDeleteEvent(intent.timelineEventId)
-                TimelineRecordUiIntent.ConfirmDeleteEvent -> deleteEvent()
-                TimelineRecordUiIntent.DismissDeleteEvent -> dismissDeleteEvent()
                 is TimelineRecordUiIntent.EditMemo -> editMemo(intent.timelineEventId)
                 is TimelineRecordUiIntent.ChangeMemo -> changeMemo(intent.value)
                 TimelineRecordUiIntent.CancelMemoEdit -> cancelMemoEdit()
@@ -210,8 +204,10 @@ class TimelineRecordViewModel
          */
         private fun switchMode(mode: TimelineRecordMode) {
             val current = state.value
-            if (current.content !is TimelineRecordUiContent.Record) return
+            val record = current.record() ?: return
             if (current.mode == mode || !current.isModeSwitchable) return
+            // DRAFT 는 편집이 기본이라 읽기 모드로 나가지 않는다 — 화면에도 닫기 버튼이 없다.
+            if (mode == TimelineRecordMode.READ && !record.isSaved) return
             updateState { copy(mode = mode) }
         }
 
@@ -385,72 +381,6 @@ class TimelineRecordViewModel
                 )
             }
             navigationHelper.navigateToBack()
-        }
-
-        private fun requestDeleteEvent(timelineEventId: Long) {
-            val current = state.value
-            // 카드 `⋮` 는 편집 모드에서만 보이지만 Intent 경로도 막는다.
-            if (!current.mode.isEditing || !current.isModeSwitchable) return
-            val event =
-                current
-                    .record()
-                    ?.events
-                    ?.firstOrNull { it.timelineEventId == timelineEventId }
-                    ?: return
-            updateState {
-                copy(
-                    eventDeleteTarget =
-                        TimelineEventDeleteTarget(
-                            timelineEventId = event.timelineEventId,
-                            title = event.title,
-                        ),
-                    eventDeleteDialogState = TimelineDeleteDialogState.Confirmation,
-                )
-            }
-        }
-
-        /**
-         * Event 하나를 지운다.
-         *
-         * 하루 기록 삭제와 달리 성공 다이얼로그를 띄우지 않는다 — 화면에 남아 세션 갱신으로 카드가
-         * 사라지는 걸 그대로 보여주는 편이 자연스럽다.
-         */
-        private suspend fun deleteEvent() {
-            val current = state.value
-            val target = current.eventDeleteTarget ?: return
-            if (current.isDeletingEvent) return
-
-            updateState { copy(eventDeleteDialogState = TimelineDeleteDialogState.Deleting) }
-            deleteTimelineEventUseCase(target.timelineEventId)
-                .onSuccess { clearEventDeleteDialog() }
-                .onFailure { error ->
-                    if (error is HandledException) {
-                        clearEventDeleteDialog()
-                        return@onFailure
-                    }
-                    updateState {
-                        copy(
-                            eventDeleteDialogState =
-                                TimelineDeleteDialogState.RetryableError(
-                                    message = "삭제하지 못했어요. 잠시 후 다시 시도해주세요.",
-                                ),
-                        )
-                    }
-                }
-        }
-
-        private fun dismissDeleteEvent() {
-            if (state.value.isDeletingEvent) return
-            clearEventDeleteDialog()
-        }
-
-        private fun clearEventDeleteDialog() {
-            updateState {
-                copy(
-                    eventDeleteTarget = null,
-                    eventDeleteDialogState = TimelineDeleteDialogState.Hidden,
-                )
-            }
         }
 
         private fun handleDeleteFailure(error: Throwable) {

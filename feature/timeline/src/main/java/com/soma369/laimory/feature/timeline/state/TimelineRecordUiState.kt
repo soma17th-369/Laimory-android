@@ -14,16 +14,11 @@ data class TimelineRecordUiState(
     val memoEditor: TimelineMemoEditorState? = null,
     val deleteTarget: TimelineRecordDeleteTarget? = null,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
-    val eventDeleteTarget: TimelineEventDeleteTarget? = null,
-    val eventDeleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
     val emotionSheet: TimelineEmotionSheetState? = null,
     val isSavingRecord: Boolean = false,
 ) : UiState {
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
-
-    val isDeletingEvent: Boolean
-        get() = eventDeleteDialogState == TimelineDeleteDialogState.Deleting
 
     /**
      * 진행 중인 작업이 없어 화면 모드를 바꿔도 되는 상태인지.
@@ -35,8 +30,7 @@ data class TimelineRecordUiState(
         get() =
             memoEditor == null &&
                 !isSavingRecord &&
-                deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                eventDeleteDialogState == TimelineDeleteDialogState.Hidden
+                deleteDialogState == TimelineDeleteDialogState.Hidden
 }
 
 @Immutable
