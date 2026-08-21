@@ -27,19 +27,19 @@ internal sealed interface TimelineMemoDisplay {
 }
 
 /**
- * 메모 영역 표시 내용을 고른다. `null` 이면 영역을 그리지 않는다.
+ * 메모 영역 표시 내용을 고른다.
  *
- * 읽기 모드([isEditable] = false)에서 메모와 질문이 모두 없으면 기본 문구를 띄우지 않고 감춘다 —
- * 누를 수 없는 빈 입력칸을 남기지 않기 위해서다.
+ * 읽기·편집 모드가 같은 결과를 낸다. 모드에 따라 영역을 감추면 카드 높이가 달라져 모드를 오갈 때
+ * 목록이 밀리고, 메모를 남길 수 있다는 사실도 읽기 모드에서 드러나지 않는다.
+ * 편집 가능 여부는 표시가 아니라 클릭에서만 가른다.
  */
 internal fun timelineMemoDisplay(
     memo: String?,
     question: String?,
-    isEditable: Boolean,
-): TimelineMemoDisplay? =
+): TimelineMemoDisplay =
     memo?.takeIf(String::isNotBlank)?.let(TimelineMemoDisplay::Memo)
         ?: question?.takeIf(String::isNotBlank)?.let(TimelineMemoDisplay::Question)
-        ?: TimelineMemoDisplay.Prompt(DEFAULT_MEMO_PROMPT).takeIf { isEditable }
+        ?: TimelineMemoDisplay.Prompt(DEFAULT_MEMO_PROMPT)
 
 /** 질문이 없을 때 쓰는 기본 안내 문구. 인라인 편집기의 입력 placeholder 로도 쓴다. */
 internal const val DEFAULT_MEMO_PROMPT = "이 순간에 대한 메모…"

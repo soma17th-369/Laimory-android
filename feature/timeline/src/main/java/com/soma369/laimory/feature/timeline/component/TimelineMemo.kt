@@ -68,7 +68,7 @@ internal fun TimelineMemo(
     onConfirm: () -> Unit,
 ) {
     if (editor == null) {
-        val display = timelineMemoDisplay(memo = memo, question = question, isEditable = isEditable) ?: return
+        val display = timelineMemoDisplay(memo = memo, question = question)
         Text(
             text = display.text,
             modifier =
