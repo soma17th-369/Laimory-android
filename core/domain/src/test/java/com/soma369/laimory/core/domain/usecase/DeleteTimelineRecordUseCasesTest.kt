@@ -210,6 +210,7 @@ class DeleteTimelineRecordUseCasesTest {
             title = "업무",
             subtitle = null,
             memo = null,
+            question = null,
             items = emptyList(),
         )
 

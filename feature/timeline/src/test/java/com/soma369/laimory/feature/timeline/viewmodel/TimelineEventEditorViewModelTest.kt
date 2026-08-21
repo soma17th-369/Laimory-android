@@ -891,6 +891,7 @@ class TimelineEventEditorViewModelTest {
         title = title,
         subtitle = "강남역 → 성수역",
         memo = memo,
+        question = null,
         items =
             listOf(
                 TimelineItem(

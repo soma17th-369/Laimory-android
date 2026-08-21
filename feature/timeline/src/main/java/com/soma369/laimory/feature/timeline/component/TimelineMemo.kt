@@ -51,11 +51,15 @@ import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
+import com.soma369.laimory.feature.timeline.model.DEFAULT_MEMO_PROMPT
+import com.soma369.laimory.feature.timeline.model.TimelineMemoDisplay
+import com.soma369.laimory.feature.timeline.model.timelineMemoDisplay
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 
 @Composable
 internal fun TimelineMemo(
     memo: String?,
+    question: String?,
     editor: TimelineMemoEditorState?,
     isEditable: Boolean,
     onClick: () -> Unit,
@@ -64,8 +68,9 @@ internal fun TimelineMemo(
     onConfirm: () -> Unit,
 ) {
     if (editor == null) {
+        val display = timelineMemoDisplay(memo = memo, question = question, isEditable = isEditable) ?: return
         Text(
-            text = memo?.takeIf(String::isNotBlank) ?: "이 순간에 대한 메모…",
+            text = display.text,
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -76,12 +81,12 @@ internal fun TimelineMemo(
                     .padding(horizontal = Spacing.medium, vertical = 10.dp),
             style = MaterialTheme.laimorySignature.note,
             color =
-                if (memo.isNullOrBlank()) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
+                if (display is TimelineMemoDisplay.Memo) {
                     MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
                 },
-            maxLines = 3,
+            maxLines = if (display is TimelineMemoDisplay.Question) QUESTION_MAX_LINES else MEMO_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
         )
         return
@@ -89,15 +94,22 @@ internal fun TimelineMemo(
 
     TimelineMemoEditor(
         editor = editor,
+        placeholder = question?.takeIf(String::isNotBlank) ?: DEFAULT_MEMO_PROMPT,
         onValueChange = onValueChange,
         onCancel = onCancel,
         onConfirm = onConfirm,
     )
 }
 
+private const val MEMO_MAX_LINES = 3
+
+/** question 은 서버 기준 255자까지 온다. 기본 안내 문구보다 여유를 둔다. */
+private const val QUESTION_MAX_LINES = 5
+
 @Composable
 private fun TimelineMemoEditor(
     editor: TimelineMemoEditorState,
+    placeholder: String,
     onValueChange: (String) -> Unit,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
@@ -164,7 +176,7 @@ private fun TimelineMemoEditor(
                     Box {
                         if (textFieldValue.text.isEmpty()) {
                             Text(
-                                text = "이 순간에 대한 메모…",
+                                text = placeholder,
                                 style = MaterialTheme.laimorySignature.note,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

@@ -94,6 +94,7 @@ class TimelineRecordSessionRepositoryImplTest {
         title = title,
         subtitle = null,
         memo = null,
+        question = null,
         items = emptyList(),
     )
 

@@ -15,6 +15,8 @@ data class TimelineEventResponse(
     val title: String,
     val subtitle: String? = null,
     val memo: String? = null,
+    /** AI 가 Event 마다 생성해 되묻는 문장. 서버 편집 API 로 바꿀 수 없는 읽기 전용 값이다. */
+    val question: String? = null,
     val items: List<TimelineItemResponse>,
 )
 
@@ -27,6 +29,7 @@ internal fun TimelineEventResponse.toDomain(): TimelineEvent =
         title = title,
         subtitle = subtitle,
         memo = memo,
+        question = question,
         items = items.map(TimelineItemResponse::toDomain),
     )
 

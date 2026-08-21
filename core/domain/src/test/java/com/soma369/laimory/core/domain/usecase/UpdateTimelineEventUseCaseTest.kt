@@ -159,6 +159,7 @@ class UpdateTimelineEventUseCaseTest {
             title = title,
             subtitle = null,
             memo = null,
+            question = null,
             items = emptyList(),
         )
 }

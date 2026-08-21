@@ -1025,6 +1025,7 @@ class TimelineRecordViewModelTest {
             title = "업무",
             subtitle = null,
             memo = memo,
+            question = null,
             items = emptyList(),
         )
 
@@ -1106,6 +1107,7 @@ class TimelineRecordViewModelTest {
                 title = "업무",
                 subtitle = null,
                 memo = memo,
+                question = null,
                 items = emptyList(),
             )
         }

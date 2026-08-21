@@ -225,6 +225,7 @@ class DeleteTimelineEventPhotoUseCaseTest {
                         title = "사진",
                         subtitle = null,
                         memo = null,
+                        question = null,
                         items = items,
                     ),
                 ),

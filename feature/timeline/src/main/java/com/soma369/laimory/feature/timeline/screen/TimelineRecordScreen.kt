@@ -539,6 +539,7 @@ private fun previewRecord() =
                     title = "기상 · 준비",
                     subtitle = "집 · 모닝 루틴",
                     memo = null,
+                    question = null,
                     itemCounts = emptyList(),
                 ),
                 TimelineEventUiModel(
@@ -549,6 +550,7 @@ private fun previewRecord() =
                     title = "점심 · 파스타",
                     subtitle = "성수동 · 트러플 버섯 파스타",
                     memo = "디저트로 크로플도 시켜봤는데 맛있었다.",
+                    question = null,
                     itemCounts =
                         listOf(
                             TimelineItemCountUiModel(TimelineItemType.PHOTO, 2),
@@ -564,6 +566,7 @@ private fun previewRecord() =
                     title = "친구와 카페",
                     subtitle = "성수동 · 작은 카페",
                     memo = "오랜만에 만난 고등학교 친구와 만나서 딸기라떼 먹었다.",
+                    question = null,
                     itemCounts = listOf(TimelineItemCountUiModel(TimelineItemType.PHOTO, 2)),
                     photoUrls = listOf(null, null),
                 ),
@@ -575,6 +578,7 @@ private fun previewRecord() =
                     title = "영상 · 휴식",
                     subtitle = "집 · 넷플릭스",
                     memo = null,
+                    question = null,
                     itemCounts = emptyList(),
                 ),
             ),

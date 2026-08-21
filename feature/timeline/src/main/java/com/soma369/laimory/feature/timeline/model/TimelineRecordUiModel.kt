@@ -27,6 +27,8 @@ data class TimelineEventUiModel(
     val title: String,
     val subtitle: String?,
     val memo: String?,
+    /** AI 가 되묻는 문장. 메모가 비어 있을 때 안내 문구를 대신하는 prompt 로 쓴다. */
+    val question: String?,
     val itemCounts: List<TimelineItemCountUiModel>,
     val photoUrls: List<String?> = emptyList(),
 )
@@ -55,6 +57,7 @@ private fun TimelineEvent.toUiModel() =
         title = title,
         subtitle = subtitle,
         memo = memo,
+        question = question,
         itemCounts =
             TimelineItemType.entries.mapNotNull { type ->
                 items.count { it.itemType == type }
