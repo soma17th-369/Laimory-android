@@ -39,7 +39,6 @@ class UpdateTimelineEventUseCase
                 INVALID_REQUEST_ERROR_CODE -> TimelineEventUpdateException.Reason.INVALID_REQUEST
                 PHOTO_LIMIT_ERROR_CODE -> TimelineEventUpdateException.Reason.PHOTO_LIMIT_EXCEEDED
                 EVENT_UNAVAILABLE_ERROR_CODE -> TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE
-                RECORD_SAVED_ERROR_CODE -> TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED
                 DATE_OPERATION_ERROR_CODE -> TimelineEventUpdateException.Reason.DATE_OPERATION_IN_PROGRESS
                 else -> null
             }
@@ -48,7 +47,6 @@ class UpdateTimelineEventUseCase
             const val INVALID_REQUEST_ERROR_CODE = -400
             const val PHOTO_LIMIT_ERROR_CODE = -1004
             const val EVENT_UNAVAILABLE_ERROR_CODE = -404
-            const val RECORD_SAVED_ERROR_CODE = -1003
             const val DATE_OPERATION_ERROR_CODE = -1016
         }
     }

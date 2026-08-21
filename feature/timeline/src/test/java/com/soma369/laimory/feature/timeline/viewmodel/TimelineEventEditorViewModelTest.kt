@@ -142,7 +142,7 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
-    fun `작성 완료된 기록의 사진 삭제는 읽기 전용으로 전환한다`() =
+    fun `사진 삭제에 SAVED 충돌이 와도 읽기 전용으로 전환하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.photoDeleteFailure = ApiException.ConflictException(errorCode = -1003, rawCode = 409)
             val viewModel = initializedViewModel()
@@ -151,13 +151,9 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
             advanceUntilIdle()
 
-            assertTrue(viewModel.state.value.isReadOnly)
-            assertEquals(TimelineEventPhotoDeleteDialogState.Hidden, viewModel.state.value.photoDeleteDialogState)
+            // 서버가 SAVED 에서도 사진 연결 해제를 허용하므로 -1003 전용 분기를 두지 않는다.
             assertEquals(listOf(1L, 2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
-            assertEquals(
-                TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."),
-                viewModel.sideEffect.first(),
-            )
+            assertTrue(viewModel.state.value.photoDeleteDialogState is TimelineEventPhotoDeleteDialogState.RetryableError)
         }
 
     @Test
@@ -644,7 +640,7 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
-    fun `작성 완료 오류는 읽기 전용으로 전환하고 이후 편집을 차단한다`() =
+    fun `저장에 SAVED 충돌이 와도 읽기 전용으로 전환하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure = ApiException.ConflictException(errorCode = -1003)
             val viewModel = initializedViewModel()
@@ -653,17 +649,14 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
-            assertTrue(viewModel.state.value.isReadOnly)
-            assertFalse(viewModel.state.value.isSaveEnabled)
-            assertEquals(
-                TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."),
-                viewModel.sideEffect.first(),
-            )
+            // 서버가 SAVED 에서도 Event 수정을 허용하므로 -1003 전용 분기를 두지 않는다.
+            assertTrue(viewModel.state.value.isSaveEnabled)
 
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("차단되어야 할 수정"))
+            // 읽기 전용으로 잠기지 않으므로 이후 편집도 계속된다.
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("이어서 수정"))
             runCurrent()
 
-            assertEquals("저장 시도", viewModel.state.value.form?.title)
+            assertEquals("이어서 수정", viewModel.state.value.form?.title)
         }
 
     @Test
@@ -802,7 +795,7 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
-    fun `작성 완료된 기록의 Event 삭제는 읽기 전용으로 전환하고 안내한다`() =
+    fun `Event 삭제에 SAVED 충돌이 와도 읽기 전용으로 전환하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
                 ApiException.ConflictException(
@@ -815,12 +808,8 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
             advanceUntilIdle()
 
-            assertTrue(viewModel.state.value.isReadOnly)
-            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
-            assertEquals(
-                TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."),
-                viewModel.sideEffect.first(),
-            )
+            // 서버가 SAVED 에서도 Event 삭제를 허용하므로 -1003 전용 분기를 두지 않는다.
+            assertTrue(viewModel.state.value.deleteDialogState is TimelineDeleteDialogState.RetryableError)
         }
 
     @Test
@@ -891,6 +880,7 @@ class TimelineEventEditorViewModelTest {
         title = title,
         subtitle = "강남역 → 성수역",
         memo = memo,
+        question = null,
         items =
             listOf(
                 TimelineItem(

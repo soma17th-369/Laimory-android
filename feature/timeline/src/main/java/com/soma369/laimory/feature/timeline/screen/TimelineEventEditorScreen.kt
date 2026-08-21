@@ -308,7 +308,6 @@ private fun TimelineEventEditorBody(
 ) {
     val enabled =
         !state.isSaving &&
-            !state.isReadOnly &&
             state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
             state.photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
     Column(modifier = Modifier.fillMaxSize()) {

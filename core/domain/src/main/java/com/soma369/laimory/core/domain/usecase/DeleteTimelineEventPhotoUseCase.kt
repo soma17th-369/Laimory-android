@@ -42,11 +42,6 @@ class DeleteTimelineEventPhotoUseCase
                     } catch (exception: ApiException) {
                         when (exception.errorCode) {
                             TARGET_UNAVAILABLE_ERROR_CODE -> reconcileTimeline(timelineEventId)
-                            RECORD_SAVED_ERROR_CODE ->
-                                throw TimelineEventPhotoDeleteException(
-                                    TimelineEventPhotoDeleteException.Reason.RECORD_ALREADY_SAVED,
-                                    exception,
-                                )
                             ITEM_NOT_PHOTO_ERROR_CODE ->
                                 throw TimelineEventPhotoDeleteException(
                                     TimelineEventPhotoDeleteException.Reason.ITEM_NOT_PHOTO,
@@ -84,7 +79,6 @@ class DeleteTimelineEventPhotoUseCase
 
         private companion object {
             const val TARGET_UNAVAILABLE_ERROR_CODE = -404
-            const val RECORD_SAVED_ERROR_CODE = -1003
             const val ITEM_NOT_PHOTO_ERROR_CODE = -1018
         }
     }

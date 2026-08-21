@@ -113,7 +113,6 @@ class UpdateTimelineEventMemoUseCaseTest {
                 listOf(
                     -400 to TimelineEventUpdateException.Reason.INVALID_REQUEST,
                     -404 to TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE,
-                    -1003 to TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED,
                 )
 
             cases.forEach { (errorCode, expectedReason) ->
@@ -163,6 +162,7 @@ class UpdateTimelineEventMemoUseCaseTest {
             title = "업무",
             subtitle = null,
             memo = memo,
+            question = null,
             items = emptyList(),
         )
 

@@ -25,6 +25,12 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object DismissEmotionSheet : TimelineRecordUiIntent
 
+    /** 읽기 모드 `⋮` 메뉴의 `편집하기`. 서버 상태는 바꾸지 않는다. */
+    data object EnterEditMode : TimelineRecordUiIntent
+
+    /** 편집 모드 상단 `X`. 저장이 아니라 화면 모드만 닫는다. */
+    data object ExitEditMode : TimelineRecordUiIntent
+
     data object RequestDelete : TimelineRecordUiIntent
 
     data object ConfirmDelete : TimelineRecordUiIntent

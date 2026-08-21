@@ -20,7 +20,6 @@ data class TimelineEventEditorUiState(
     val validation: TimelineEventEditorValidation = TimelineEventEditorValidation(),
     val timeSheet: TimelineEventTimeSheetState? = null,
     val isSaving: Boolean = false,
-    val isReadOnly: Boolean = false,
     val isDiscardDialogVisible: Boolean = false,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
     val photoDeleteDialogState: TimelineEventPhotoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden,
@@ -34,7 +33,6 @@ data class TimelineEventEditorUiState(
                 form?.title?.isNotBlank() == true &&
                 hasUnsavedChanges &&
                 !isSaving &&
-                !isReadOnly &&
                 deleteDialogState == TimelineDeleteDialogState.Hidden &&
                 photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
 

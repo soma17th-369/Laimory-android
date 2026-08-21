@@ -6,7 +6,6 @@ class TimelineEventPhotoDeleteException(
     override val cause: ApiException,
 ) : Exception(cause.message, cause) {
     enum class Reason {
-        RECORD_ALREADY_SAVED,
         ITEM_NOT_PHOTO,
     }
 }

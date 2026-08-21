@@ -54,6 +54,7 @@ import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
+import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
@@ -173,34 +174,58 @@ private fun TimelineRecordScreen(
             },
             onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
             actions = {
-                if ((state.content as? TimelineRecordUiContent.Record)?.value?.isEditable == true) {
-                    Box {
+                // 상단 우측은 슬롯 하나다. 돌아갈 읽기 모드가 있을 때만 닫기(X)를 띄우고, 그 밖에는 ⋮ 메뉴다.
+                // DRAFT 는 편집이 기본이라 나갈 곳이 없으므로 ⋮ 가 계속 남는다 — 기록 삭제 진입점도 함께 유지된다.
+                val record = (state.content as? TimelineRecordUiContent.Record)?.value
+                if (record != null) {
+                    if (state.mode.isEditing && record.isSaved) {
                         IconButton(
-                            onClick = { isRecordMenuExpanded = true },
-                            enabled =
-                                state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                                    !state.isSavingRecord &&
-                                    state.memoEditor == null,
+                            onClick = { onIntent(TimelineRecordUiIntent.ExitEditMode) },
+                            enabled = state.isModeSwitchable,
                         ) {
                             Icon(
-                                painter = painterResource(UiR.drawable.ico_default_more),
-                                contentDescription = "기록 메뉴",
+                                painter = painterResource(UiR.drawable.ico_default_close),
+                                contentDescription = "편집 닫기",
                                 tint = MaterialTheme.colorScheme.onBackground,
                             )
                         }
-                        LaimoryDropdownMenu(
-                            expanded = isRecordMenuExpanded,
-                            onDismissRequest = { isRecordMenuExpanded = false },
-                        ) {
-                            LaimoryDropdownMenuItem(
-                                label = "삭제하기",
-                                leadingIcon = painterResource(UiR.drawable.ico_setting_trash),
-                                style = LaimoryDropdownMenuItemStyle.Destructive,
-                                onClick = {
-                                    isRecordMenuExpanded = false
-                                    onIntent(TimelineRecordUiIntent.RequestDelete)
-                                },
-                            )
+                    } else {
+                        Box {
+                            IconButton(
+                                onClick = { isRecordMenuExpanded = true },
+                                enabled = state.isModeSwitchable,
+                            ) {
+                                Icon(
+                                    painter = painterResource(UiR.drawable.ico_default_more),
+                                    contentDescription = "기록 메뉴",
+                                    tint = MaterialTheme.colorScheme.onBackground,
+                                )
+                            }
+                            LaimoryDropdownMenu(
+                                expanded = isRecordMenuExpanded,
+                                onDismissRequest = { isRecordMenuExpanded = false },
+                            ) {
+                                // 이미 편집 중이면 진입 항목을 띄우지 않는다(DRAFT 기본 상태).
+                                if (!state.mode.isEditing) {
+                                    LaimoryDropdownMenuItem(
+                                        label = "편집하기",
+                                        leadingIcon = painterResource(UiR.drawable.ico_timeline_tool_edit),
+                                        onClick = {
+                                            isRecordMenuExpanded = false
+                                            onIntent(TimelineRecordUiIntent.EnterEditMode)
+                                        },
+                                    )
+                                }
+                                LaimoryDropdownMenuItem(
+                                    label = "삭제하기",
+                                    leadingIcon = painterResource(UiR.drawable.ico_setting_trash),
+                                    style = LaimoryDropdownMenuItemStyle.Destructive,
+                                    onClick = {
+                                        isRecordMenuExpanded = false
+                                        onIntent(TimelineRecordUiIntent.RequestDelete)
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -222,6 +247,7 @@ private fun TimelineRecordScreen(
                     TimelineRecordBody(
                         record = content.value,
                         memoEditor = state.memoEditor,
+                        mode = state.mode,
                         onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
                         onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
                         onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
@@ -238,7 +264,8 @@ private fun TimelineRecordScreen(
                     )
                     // 메모 편집 중에는 어차피 누를 수 없는 버튼이라 감춘다 — 키보드 위 좁은 자리를
                     // 비활성 버튼이 차지하지 않게 한다.
-                    if (content.value.isEditable && state.memoEditor == null) {
+                    // 저장은 내용 변경이 아니라 상태 확정이라 모드와 무관하게 노출한다. SAVED 는 재호출하지 않는다.
+                    if (!content.value.isSaved && state.memoEditor == null) {
                         SaveRecordButton(
                             enabled =
                                 !state.isSavingRecord &&
@@ -338,6 +365,7 @@ private fun TimelineRecordLoadFailed(onRetryClick: () -> Unit) {
 @Composable
 private fun TimelineRecordBody(
     record: TimelineRecordUiModel,
+    mode: TimelineRecordMode,
     memoEditor: TimelineMemoEditorState?,
     onEventClick: (Long) -> Unit,
     onMemoClick: (Long) -> Unit,
@@ -365,7 +393,7 @@ private fun TimelineRecordBody(
                 event = event,
                 onEditClick = { onEventClick(event.timelineEventId) },
                 onPhotoClick = onPhotoClick,
-                isEditable = record.isEditable,
+                isEditable = mode.isEditing,
                 memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = onMemoChange,
@@ -455,7 +483,11 @@ private fun TimelineRecordPreview() {
     LaimoryTheme {
         TimelineRecordScreen(
             innerPadding = PaddingValues(),
-            state = TimelineRecordUiState(TimelineRecordUiContent.Record(previewRecord())),
+            state =
+                TimelineRecordUiState(
+                    content = TimelineRecordUiContent.Record(previewRecord()),
+                    mode = TimelineRecordMode.EDIT,
+                ),
             onIntent = {},
         )
     }
@@ -518,7 +550,11 @@ private fun TimelineRecordDarkPreview() {
     LaimoryTheme(darkTheme = true) {
         TimelineRecordScreen(
             innerPadding = PaddingValues(),
-            state = TimelineRecordUiState(TimelineRecordUiContent.Record(previewRecord())),
+            state =
+                TimelineRecordUiState(
+                    content = TimelineRecordUiContent.Record(previewRecord()),
+                    mode = TimelineRecordMode.EDIT,
+                ),
             onIntent = {},
         )
     }
@@ -528,7 +564,7 @@ private fun previewRecord() =
     TimelineRecordUiModel(
         dailyRecordId = 31L,
         recordDate = LocalDate.of(2026, 5, 8),
-        isEditable = true,
+        isSaved = false,
         events =
             listOf(
                 TimelineEventUiModel(
@@ -539,6 +575,7 @@ private fun previewRecord() =
                     title = "기상 · 준비",
                     subtitle = "집 · 모닝 루틴",
                     memo = null,
+                    question = null,
                     itemCounts = emptyList(),
                 ),
                 TimelineEventUiModel(
@@ -549,6 +586,7 @@ private fun previewRecord() =
                     title = "점심 · 파스타",
                     subtitle = "성수동 · 트러플 버섯 파스타",
                     memo = "디저트로 크로플도 시켜봤는데 맛있었다.",
+                    question = null,
                     itemCounts =
                         listOf(
                             TimelineItemCountUiModel(TimelineItemType.PHOTO, 2),
@@ -564,6 +602,7 @@ private fun previewRecord() =
                     title = "친구와 카페",
                     subtitle = "성수동 · 작은 카페",
                     memo = "오랜만에 만난 고등학교 친구와 만나서 딸기라떼 먹었다.",
+                    question = null,
                     itemCounts = listOf(TimelineItemCountUiModel(TimelineItemType.PHOTO, 2)),
                     photoUrls = listOf(null, null),
                 ),
@@ -575,6 +614,7 @@ private fun previewRecord() =
                     title = "영상 · 휴식",
                     subtitle = "집 · 넷플릭스",
                     memo = null,
+                    question = null,
                     itemCounts = emptyList(),
                 ),
             ),

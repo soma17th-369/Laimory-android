@@ -138,6 +138,7 @@ internal fun TimelineEventCard(
                     }
                     TimelineMemo(
                         memo = event.memo,
+                        question = event.question,
                         editor = memoEditor,
                         isEditable = isEditable,
                         onClick = onMemoClick,
@@ -190,7 +191,9 @@ private fun EventMainCard(
                     )
                 }
             }
-            if (isEditable) TimelineEditButton(onClick = onEditClick)
+            // 읽기 모드에서도 자리를 비워 둔다 — 버튼 유무로 제목·부제목의 줄 수가 바뀌면
+            // 모드를 오갈 때 카드 높이가 변해 목록 전체가 밀린다.
+            TimelineEditSlot(isEditable = isEditable, onEditClick = onEditClick)
         }
     }
 }
@@ -237,10 +240,11 @@ private fun PhotoMainEvent(
                 label = event.photoLocationLabel(),
                 modifier = Modifier.weight(1f, fill = false),
             )
-            if (isEditable) TimelineEditButton(onClick = onEditClick)
+            TimelineEditSlot(isEditable = isEditable, onEditClick = onEditClick)
         }
         TimelineMemo(
             memo = event.memo,
+            question = event.question,
             editor = memoEditor,
             isEditable = isEditable,
             onClick = onMemoClick,
@@ -341,11 +345,29 @@ private fun PhotoLocationChip(
     }
 }
 
+/**
+ * 편집 버튼 자리.
+ *
+ * 읽기 모드에서는 버튼을 그리지 않되 같은 크기를 차지한다. 자리를 비우면 제목·부제목이 쓸 수 있는
+ * 폭이 달라져 한 줄이던 텍스트가 두 줄이 되고, 모드를 오갈 때마다 카드 높이가 튄다.
+ */
+@Composable
+private fun TimelineEditSlot(
+    isEditable: Boolean,
+    onEditClick: () -> Unit,
+) {
+    if (isEditable) {
+        TimelineEditButton(onClick = onEditClick)
+        return
+    }
+    Spacer(modifier = Modifier.size(TimelineEditButtonSize))
+}
+
 @Composable
 private fun TimelineEditButton(onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.size(28.dp),
+        modifier = Modifier.size(TimelineEditButtonSize),
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
@@ -359,6 +381,8 @@ private fun TimelineEditButton(onClick: () -> Unit) {
         }
     }
 }
+
+private val TimelineEditButtonSize = 28.dp
 
 private val TimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -513,6 +537,57 @@ internal class TimelineMemoEditorPreviewParameterProvider : PreviewParameterProv
         )
 }
 
+/**
+ * 질문 표시 조합 미리보기.
+ *
+ * 메모가 있으면 메모가 질문을 가리고, 메모가 비면 질문이 안내 문구 자리를 차지한다.
+ * 읽기 모드에서 둘 다 없으면 영역째 사라진다.
+ */
+@Preview(name = "질문·메모 조합", showBackground = true, widthDp = 360)
+@Composable
+private fun QuestionPromptCardPreview() {
+    LaimoryTheme {
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Column(
+                modifier = Modifier.padding(Spacing.large),
+                verticalArrangement = Arrangement.spacedBy(Spacing.large),
+            ) {
+                TimelineEventCard(
+                    event = questionPreviewEvent(memo = null, question = "오늘 누구와 함께였나요?"),
+                    onEditClick = {},
+                    onPhotoClick = { _, _ -> },
+                )
+                TimelineEventCard(
+                    event = questionPreviewEvent(memo = "혼자 조용히 걸었다.", question = "오늘 누구와 함께였나요?"),
+                    onEditClick = {},
+                    onPhotoClick = { _, _ -> },
+                )
+                TimelineEventCard(
+                    event = questionPreviewEvent(memo = null, question = null),
+                    onEditClick = {},
+                    onPhotoClick = { _, _ -> },
+                    isEditable = false,
+                )
+            }
+        }
+    }
+}
+
+private fun questionPreviewEvent(
+    memo: String?,
+    question: String?,
+) = TimelineEventUiModel(
+    timelineEventId = 9L,
+    eventType = TimelineEventType.MOVEMENT,
+    startAt = LocalDateTime.of(2026, 5, 8, 19, 0),
+    endAt = null,
+    title = "저녁 산책",
+    subtitle = "한강공원",
+    memo = memo,
+    question = question,
+    itemCounts = emptyList(),
+)
+
 private fun defaultPreviewEvent(eventType: TimelineEventType) =
     TimelineEventUiModel(
         timelineEventId = eventType.ordinal.toLong(),
@@ -522,6 +597,7 @@ private fun defaultPreviewEvent(eventType: TimelineEventType) =
         title = eventType.label(),
         subtitle = "타입별 타임라인 이벤트",
         memo = "이벤트 타입에 맞는 아이콘과 텍스트 스타일을 확인해요.",
+        question = null,
         itemCounts = emptyList(),
     )
 
@@ -534,6 +610,7 @@ private fun photoMainPreviewEvent(photoCount: Int = 5) =
         title = "친구와 카페",
         subtitle = "성수동 · 작은 카페",
         memo = "오랜만에 만난 고등학교 친구와 만나서 딸기라떼 먹었다. 양이 너무 적었지만 맛있었다.",
+        question = null,
         itemCounts = listOf(TimelineItemCountUiModel(TimelineItemType.PHOTO, photoCount)),
         photoUrls = List(photoCount) { null },
     )
@@ -547,6 +624,7 @@ private fun photoThumbnailPreviewEvent(photoCount: Int = 5) =
         title = "출근길",
         subtitle = "강남역 → 성수역 · 7호선",
         memo = "7호선이 평소보다 많이 붐볐다.",
+        question = null,
         itemCounts = listOf(TimelineItemCountUiModel(TimelineItemType.PHOTO, photoCount)),
         photoUrls = List(photoCount) { null },
     )

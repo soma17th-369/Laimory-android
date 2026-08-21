@@ -567,6 +567,7 @@ class HomeViewModelTest {
                     title = "기상",
                     subtitle = null,
                     memo = null,
+                    question = null,
                     items =
                         listOf(
                             photoItem(
@@ -585,6 +586,7 @@ class HomeViewModelTest {
                     title = "점심",
                     subtitle = null,
                     memo = null,
+                    question = null,
                     items =
                         listOf(
                             photoItem(
@@ -878,6 +880,7 @@ class HomeViewModelTest {
                     title = "점심",
                     subtitle = "파스타",
                     memo = null,
+                    question = null,
                     items =
                         listOf(
                             TimelineItem(

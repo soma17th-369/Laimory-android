@@ -104,7 +104,6 @@ class UpdateTimelineEventUseCaseTest {
                     -400 to TimelineEventUpdateException.Reason.INVALID_REQUEST,
                     -1004 to TimelineEventUpdateException.Reason.PHOTO_LIMIT_EXCEEDED,
                     -404 to TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE,
-                    -1003 to TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED,
                     -1016 to TimelineEventUpdateException.Reason.DATE_OPERATION_IN_PROGRESS,
                 )
 
@@ -159,6 +158,7 @@ class UpdateTimelineEventUseCaseTest {
             title = title,
             subtitle = null,
             memo = null,
+            question = null,
             items = emptyList(),
         )
 }
