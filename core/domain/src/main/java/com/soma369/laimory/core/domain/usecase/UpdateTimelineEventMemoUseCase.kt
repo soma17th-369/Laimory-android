@@ -42,13 +42,11 @@ class UpdateTimelineEventMemoUseCase
             when (errorCode) {
                 INVALID_REQUEST_ERROR_CODE -> TimelineEventUpdateException.Reason.INVALID_REQUEST
                 EVENT_UNAVAILABLE_ERROR_CODE -> TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE
-                RECORD_SAVED_ERROR_CODE -> TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED
                 else -> null
             }
 
         private companion object {
             const val INVALID_REQUEST_ERROR_CODE = -400
             const val EVENT_UNAVAILABLE_ERROR_CODE = -404
-            const val RECORD_SAVED_ERROR_CODE = -1003
         }
     }

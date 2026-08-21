@@ -11,7 +11,6 @@ class TimelineRecordDeleteException(
 ) : Exception(cause.message, cause) {
     enum class Reason {
         TARGET_UNAVAILABLE,
-        RECORD_ALREADY_SAVED,
         DATE_OPERATION_IN_PROGRESS,
         PHOTO_DELETE_FAILED,
     }
@@ -21,7 +20,6 @@ internal fun ApiException.toTimelineRecordDeleteExceptionOrNull(): TimelineRecor
     val reason =
         when (errorCode) {
             TARGET_UNAVAILABLE_ERROR_CODE -> TimelineRecordDeleteException.Reason.TARGET_UNAVAILABLE
-            RECORD_SAVED_ERROR_CODE -> TimelineRecordDeleteException.Reason.RECORD_ALREADY_SAVED
             DATE_OPERATION_ERROR_CODE -> TimelineRecordDeleteException.Reason.DATE_OPERATION_IN_PROGRESS
             PHOTO_DELETE_ERROR_CODE -> TimelineRecordDeleteException.Reason.PHOTO_DELETE_FAILED
             else -> return null
@@ -30,6 +28,5 @@ internal fun ApiException.toTimelineRecordDeleteExceptionOrNull(): TimelineRecor
 }
 
 private const val TARGET_UNAVAILABLE_ERROR_CODE = -404
-private const val RECORD_SAVED_ERROR_CODE = -1003
 private const val DATE_OPERATION_ERROR_CODE = -1016
 private const val PHOTO_DELETE_ERROR_CODE = -1017

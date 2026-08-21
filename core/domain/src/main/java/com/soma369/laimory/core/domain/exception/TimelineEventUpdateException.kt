@@ -14,7 +14,6 @@ class TimelineEventUpdateException(
         INVALID_REQUEST,
         PHOTO_LIMIT_EXCEEDED,
         EVENT_UNAVAILABLE,
-        RECORD_ALREADY_SAVED,
         DATE_OPERATION_IN_PROGRESS,
     }
 }

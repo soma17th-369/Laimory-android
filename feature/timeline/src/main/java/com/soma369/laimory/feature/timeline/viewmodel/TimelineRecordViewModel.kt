@@ -14,17 +14,21 @@ import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.timeline.model.initialMode
 import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
+import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteTarget
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordDeleteTarget
+import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
@@ -47,6 +51,7 @@ class TimelineRecordViewModel
         private val completeDailyRecordUseCase: CompleteDailyRecordUseCase,
         private val updateTimelineEventMemoUseCase: UpdateTimelineEventMemoUseCase,
         private val deleteDailyRecordUseCase: DeleteDailyRecordUseCase,
+        private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
@@ -55,6 +60,14 @@ class TimelineRecordViewModel
             TimelineRecordUiState(),
         ) {
         private var requestedRecordDate: LocalDate? = null
+
+        /**
+         * 최초 진입 모드를 이미 적용한 기록 날짜.
+         *
+         * 세션은 메모 저장·Event 편집마다 다시 방출되는데, 그때마다 기록 상태로 모드를 되돌리면
+         * 편집 중이던 화면이 읽기 모드로 튕긴다. 기록이 바뀔 때 한 번만 적용한다.
+         */
+        private var modeAppliedFor: LocalDate? = null
         private var loadJob: Job? = null
         private var saveJob: Job? = null
 
@@ -64,8 +77,16 @@ class TimelineRecordViewModel
                     val requestedDate = requestedRecordDate ?: return@collect
                     updateState {
                         when {
-                            timeline?.recordDate == requestedDate ->
-                                copy(content = TimelineRecordUiContent.Record(timeline.toUiModel()))
+                            timeline?.recordDate == requestedDate -> {
+                                val record = timeline.toUiModel()
+                                val isFirstApply = modeAppliedFor != requestedDate
+                                modeAppliedFor = requestedDate
+                                copy(
+                                    content = TimelineRecordUiContent.Record(record),
+                                    mode =
+                                        if (isFirstApply) record.initialMode() else mode,
+                                )
+                            }
 
                             // 표시 중이던 기록이 세션에서 사라진 경우(삭제 등).
                             timeline == null && content is TimelineRecordUiContent.Record ->
@@ -89,18 +110,19 @@ class TimelineRecordViewModel
                 is TimelineRecordUiIntent.SelectEmotion -> selectEmotion(intent.emotion)
                 TimelineRecordUiIntent.ConfirmEmotion -> saveRecord()
                 TimelineRecordUiIntent.DismissEmotionSheet -> dismissEmotionSheet()
+                TimelineRecordUiIntent.EnterEditMode -> switchMode(TimelineRecordMode.EDIT)
+                TimelineRecordUiIntent.ExitEditMode -> switchMode(TimelineRecordMode.READ)
                 TimelineRecordUiIntent.RequestDelete -> requestDelete()
                 TimelineRecordUiIntent.ConfirmDelete -> deleteRecord()
                 TimelineRecordUiIntent.DismissDelete -> dismissDelete()
                 TimelineRecordUiIntent.FinishDelete -> finishDelete()
                 is TimelineRecordUiIntent.SelectEvent ->
-                    if (state.value.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                        !state.value.isSavingRecord &&
-                        state.value.memoEditor == null &&
-                        state.value.editableRecord() != null
-                    ) {
+                    if (state.value.mode.isEditing && state.value.isModeSwitchable) {
                         navigationHelper.navigateTo(TimelineEventEditorPage(intent.timelineEventId))
                     }
+                is TimelineRecordUiIntent.RequestDeleteEvent -> requestDeleteEvent(intent.timelineEventId)
+                TimelineRecordUiIntent.ConfirmDeleteEvent -> deleteEvent()
+                TimelineRecordUiIntent.DismissDeleteEvent -> dismissDeleteEvent()
                 is TimelineRecordUiIntent.EditMemo -> editMemo(intent.timelineEventId)
                 is TimelineRecordUiIntent.ChangeMemo -> changeMemo(intent.value)
                 TimelineRecordUiIntent.CancelMemoEdit -> cancelMemoEdit()
@@ -138,6 +160,8 @@ class TimelineRecordViewModel
         private fun loadRecord(recordDate: LocalDate) {
             // latest-wins: 새 기록 요청이 진행 중인 조회를 대체한다.
             loadJob?.cancel()
+            // 새로 조회하면 초기 모드도 다시 정한다.
+            modeAppliedFor = null
             loadJob =
                 safeLaunch(
                     onError = { error ->
@@ -156,8 +180,15 @@ class TimelineRecordViewModel
                                     // 세션에 같은 값이 선저장돼 있으면 StateFlow가 재방출하지
                                     // 않으므로 화면 상태를 직접 전환한 뒤 세션에도 저장한다.
                                     saveTimelineRecordUseCase(outcome.value)
+                                    // 초기 모드는 세션 방출이 아니라 조회 결과로 정한다 —
+                                    // 세션에 남아 있던 이전 값이 모드를 결정하면 안 된다.
+                                    val record = outcome.value.toUiModel()
+                                    modeAppliedFor = recordDate
                                     updateState {
-                                        copy(content = TimelineRecordUiContent.Record(outcome.value.toUiModel()))
+                                        copy(
+                                            content = TimelineRecordUiContent.Record(record),
+                                            mode = record.initialMode(),
+                                        )
                                     }
                                 }
                                 DailyRecordReadOutcome.Unavailable ->
@@ -171,10 +202,23 @@ class TimelineRecordViewModel
                 }
         }
 
+        /**
+         * 화면 모드를 바꾼다.
+         *
+         * 서버 요청도 `DRAFT ↔ SAVED` 전이도 일으키지 않는다. 진행 중인 작업이 있으면 바꾸지 않는다 —
+         * 화면에서는 `X` 가 비활성이라 눌리지 않지만, Intent 경로에서도 한 번 더 막는다.
+         */
+        private fun switchMode(mode: TimelineRecordMode) {
+            val current = state.value
+            if (current.content !is TimelineRecordUiContent.Record) return
+            if (current.mode == mode || !current.isModeSwitchable) return
+            updateState { copy(mode = mode) }
+        }
+
         /** 저장 CTA는 감정 선택 시트를 여는 데까지만 관여한다 — 실제 저장은 시트의 `확인`이 일으킨다. */
         private fun openEmotionSheet() {
             val current = state.value
-            val record = current.editableRecord() ?: return
+            val record = current.unsavedRecord() ?: return
             if (current.emotionSheet != null ||
                 current.isSavingRecord ||
                 saveJob?.isActive == true ||
@@ -215,7 +259,7 @@ class TimelineRecordViewModel
          */
         private fun saveRecord() {
             val current = state.value
-            val record = current.editableRecord() ?: return
+            val record = current.unsavedRecord() ?: return
             val sheet = current.emotionSheet ?: return
             if (current.isSavingRecord ||
                 saveJob?.isActive == true ||
@@ -278,7 +322,8 @@ class TimelineRecordViewModel
         }
 
         private fun requestDelete() {
-            val record = state.value.editableRecord() ?: return
+            // 하루 기록 삭제는 내용 편집과 별개인 기록 단위 관리 동작이라 SAVED 기록과 읽기 모드에서도 연다.
+            val record = (state.value.content as? TimelineRecordUiContent.Record)?.value ?: return
             if (state.value.deleteDialogState != TimelineDeleteDialogState.Hidden ||
                 state.value.isSavingRecord ||
                 state.value.memoEditor != null
@@ -342,6 +387,72 @@ class TimelineRecordViewModel
             navigationHelper.navigateToBack()
         }
 
+        private fun requestDeleteEvent(timelineEventId: Long) {
+            val current = state.value
+            // 카드 `⋮` 는 편집 모드에서만 보이지만 Intent 경로도 막는다.
+            if (!current.mode.isEditing || !current.isModeSwitchable) return
+            val event =
+                current
+                    .record()
+                    ?.events
+                    ?.firstOrNull { it.timelineEventId == timelineEventId }
+                    ?: return
+            updateState {
+                copy(
+                    eventDeleteTarget =
+                        TimelineEventDeleteTarget(
+                            timelineEventId = event.timelineEventId,
+                            title = event.title,
+                        ),
+                    eventDeleteDialogState = TimelineDeleteDialogState.Confirmation,
+                )
+            }
+        }
+
+        /**
+         * Event 하나를 지운다.
+         *
+         * 하루 기록 삭제와 달리 성공 다이얼로그를 띄우지 않는다 — 화면에 남아 세션 갱신으로 카드가
+         * 사라지는 걸 그대로 보여주는 편이 자연스럽다.
+         */
+        private suspend fun deleteEvent() {
+            val current = state.value
+            val target = current.eventDeleteTarget ?: return
+            if (current.isDeletingEvent) return
+
+            updateState { copy(eventDeleteDialogState = TimelineDeleteDialogState.Deleting) }
+            deleteTimelineEventUseCase(target.timelineEventId)
+                .onSuccess { clearEventDeleteDialog() }
+                .onFailure { error ->
+                    if (error is HandledException) {
+                        clearEventDeleteDialog()
+                        return@onFailure
+                    }
+                    updateState {
+                        copy(
+                            eventDeleteDialogState =
+                                TimelineDeleteDialogState.RetryableError(
+                                    message = "삭제하지 못했어요. 잠시 후 다시 시도해주세요.",
+                                ),
+                        )
+                    }
+                }
+        }
+
+        private fun dismissDeleteEvent() {
+            if (state.value.isDeletingEvent) return
+            clearEventDeleteDialog()
+        }
+
+        private fun clearEventDeleteDialog() {
+            updateState {
+                copy(
+                    eventDeleteTarget = null,
+                    eventDeleteDialogState = TimelineDeleteDialogState.Hidden,
+                )
+            }
+        }
+
         private fun handleDeleteFailure(error: Throwable) {
             when (val action = error.toTimelineDeleteFailureAction()) {
                 TimelineDeleteFailureAction.TargetUnavailable -> {
@@ -353,10 +464,6 @@ class TimelineRecordViewModel
                         )
                     }
                     sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 기록이에요."))
-                }
-                TimelineDeleteFailureAction.RecordAlreadySaved -> {
-                    clearDeleteDialog()
-                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."))
                 }
                 TimelineDeleteFailureAction.AlreadyHandled -> clearDeleteDialog()
                 is TimelineDeleteFailureAction.Retryable ->
@@ -372,15 +479,11 @@ class TimelineRecordViewModel
 
         private fun editMemo(timelineEventId: Long) {
             val current = state.value
-            if (current.memoEditor != null ||
-                current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
-                current.isSavingRecord
-            ) {
-                return
-            }
+            // 읽기 모드에서는 메모 영역이 눌리지 않지만 Intent 경로도 막는다.
+            if (!current.mode.isEditing || !current.isModeSwitchable) return
             val event =
                 current
-                    .editableRecord()
+                    .record()
                     ?.events
                     ?.firstOrNull { it.timelineEventId == timelineEventId }
                     ?: return
@@ -432,13 +535,12 @@ class TimelineRecordViewModel
                     sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
                     requestedRecordDate?.let(::loadRecord)
                 }
-                TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED -> {
-                    updateState { copy(memoEditor = null) }
-                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."))
-                }
                 else -> handleFailure(error)
             }
         }
 
-        private fun TimelineRecordUiState.editableRecord() = (content as? TimelineRecordUiContent.Record)?.value?.takeIf { it.isEditable }
+        private fun TimelineRecordUiState.record() = (content as? TimelineRecordUiContent.Record)?.value
+
+        /** 저장 CTA 는 아직 저장하지 않은 기록에만 있다. SAVED 는 저장 API 를 다시 부르지 않는다. */
+        private fun TimelineRecordUiState.unsavedRecord() = record()?.takeIf { !it.isSaved }
     }

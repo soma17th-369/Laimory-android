@@ -7,8 +7,6 @@ import com.soma369.laimory.core.domain.exception.TimelineRecordDeleteException
 internal sealed interface TimelineDeleteFailureAction {
     data object TargetUnavailable : TimelineDeleteFailureAction
 
-    data object RecordAlreadySaved : TimelineDeleteFailureAction
-
     data object AlreadyHandled : TimelineDeleteFailureAction
 
     data class Retryable(
@@ -22,8 +20,6 @@ internal fun Throwable.toTimelineDeleteFailureAction(): TimelineDeleteFailureAct
             when (reason) {
                 TimelineRecordDeleteException.Reason.TARGET_UNAVAILABLE ->
                     TimelineDeleteFailureAction.TargetUnavailable
-                TimelineRecordDeleteException.Reason.RECORD_ALREADY_SAVED ->
-                    TimelineDeleteFailureAction.RecordAlreadySaved
                 TimelineRecordDeleteException.Reason.DATE_OPERATION_IN_PROGRESS ->
                     TimelineDeleteFailureAction.Retryable(DATE_OPERATION_MESSAGE)
                 TimelineRecordDeleteException.Reason.PHOTO_DELETE_FAILED ->

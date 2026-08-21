@@ -77,8 +77,6 @@ class DeleteTimelineRecordUseCasesTest {
                 listOf(
                     ApiException.ClientException(errorCode = -404, rawCode = 404) to
                         TimelineRecordDeleteException.Reason.TARGET_UNAVAILABLE,
-                    ApiException.ConflictException(errorCode = -1003, rawCode = 409) to
-                        TimelineRecordDeleteException.Reason.RECORD_ALREADY_SAVED,
                     ApiException.ConflictException(errorCode = -1016, rawCode = 409) to
                         TimelineRecordDeleteException.Reason.DATE_OPERATION_IN_PROGRESS,
                     ApiException.ServerException(errorCode = -1017, rawCode = 502) to

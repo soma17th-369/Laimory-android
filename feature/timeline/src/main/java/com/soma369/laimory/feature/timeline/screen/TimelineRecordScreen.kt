@@ -22,6 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -54,6 +55,7 @@ import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
+import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
@@ -139,6 +141,23 @@ private fun TimelineRecordContent(
         onDismiss = { onIntent(TimelineRecordUiIntent.DismissDelete) },
         onFinish = { onIntent(TimelineRecordUiIntent.FinishDelete) },
     )
+
+    // 하루 기록 삭제와 상태를 나눠 관리한다 — 문구도 되돌릴 대상도 다르다.
+    // 성공 다이얼로그는 쓰지 않는다. 세션 갱신으로 카드가 사라지는 걸 그대로 보여준다.
+    TimelineDeleteDialog(
+        state = state.eventDeleteDialogState,
+        confirmationTitle =
+            state.eventDeleteTarget
+                ?.title
+                ?.takeIf(String::isNotBlank)
+                ?.let { "'$it' 이벤트를 삭제할까요?" }
+                ?: "이 이벤트를 삭제할까요?",
+        confirmationMessage = "이벤트에 연결된 사진은 기록에서만 빠지고 기기의 원본은 삭제되지 않습니다.",
+        successMessage = "",
+        onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmDeleteEvent) },
+        onDismiss = { onIntent(TimelineRecordUiIntent.DismissDeleteEvent) },
+        onFinish = { onIntent(TimelineRecordUiIntent.DismissDeleteEvent) },
+    )
 }
 
 @Composable
@@ -173,14 +192,17 @@ private fun TimelineRecordScreen(
             },
             onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
             actions = {
-                if ((state.content as? TimelineRecordUiContent.Record)?.value?.isEditable == true) {
+                // 기록 삭제는 내용 편집과 별개인 기록 단위 관리 동작이라 SAVED·읽기 모드에서도 노출한다.
+                if (state.content is TimelineRecordUiContent.Record) {
+                    TimelineRecordModeAction(
+                        mode = state.mode,
+                        enabled = state.isModeSwitchable,
+                        onIntent = onIntent,
+                    )
                     Box {
                         IconButton(
                             onClick = { isRecordMenuExpanded = true },
-                            enabled =
-                                state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                                    !state.isSavingRecord &&
-                                    state.memoEditor == null,
+                            enabled = state.isModeSwitchable,
                         ) {
                             Icon(
                                 painter = painterResource(UiR.drawable.ico_default_more),
@@ -222,7 +244,9 @@ private fun TimelineRecordScreen(
                     TimelineRecordBody(
                         record = content.value,
                         memoEditor = state.memoEditor,
+                        mode = state.mode,
                         onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
+                        onEventDeleteClick = { onIntent(TimelineRecordUiIntent.RequestDeleteEvent(it)) },
                         onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
                         onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
                         onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
@@ -238,7 +262,8 @@ private fun TimelineRecordScreen(
                     )
                     // 메모 편집 중에는 어차피 누를 수 없는 버튼이라 감춘다 — 키보드 위 좁은 자리를
                     // 비활성 버튼이 차지하지 않게 한다.
-                    if (content.value.isEditable && state.memoEditor == null) {
+                    // 저장은 내용 변경이 아니라 상태 확정이라 모드와 무관하게 노출한다. SAVED 는 재호출하지 않는다.
+                    if (!content.value.isSaved && state.memoEditor == null) {
                         SaveRecordButton(
                             enabled =
                                 !state.isSavingRecord &&
@@ -335,11 +360,46 @@ private fun TimelineRecordLoadFailed(onRetryClick: () -> Unit) {
     }
 }
 
+/**
+ * 읽기 모드의 `편집`, 편집 모드의 `X`.
+ *
+ * `X` 는 저장이 아니라 화면 모드만 닫는다 — 편집 결과는 각 API 성공 시점에 이미 반영돼 있다.
+ * 진행 중인 작업이 있으면 비활성으로 두어 눌러도 반응이 없는 상태를 만들지 않는다.
+ */
+@Composable
+private fun TimelineRecordModeAction(
+    mode: TimelineRecordMode,
+    enabled: Boolean,
+    onIntent: (TimelineRecordUiIntent) -> Unit,
+) {
+    if (mode.isEditing) {
+        IconButton(
+            onClick = { onIntent(TimelineRecordUiIntent.ExitEditMode) },
+            enabled = enabled,
+        ) {
+            Icon(
+                painter = painterResource(UiR.drawable.ico_default_close),
+                contentDescription = "편집 닫기",
+                tint = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+        return
+    }
+    TextButton(
+        onClick = { onIntent(TimelineRecordUiIntent.EnterEditMode) },
+        enabled = enabled,
+    ) {
+        Text(text = "편집", style = MaterialTheme.typography.labelLarge)
+    }
+}
+
 @Composable
 private fun TimelineRecordBody(
     record: TimelineRecordUiModel,
+    mode: TimelineRecordMode,
     memoEditor: TimelineMemoEditorState?,
     onEventClick: (Long) -> Unit,
+    onEventDeleteClick: (Long) -> Unit,
     onMemoClick: (Long) -> Unit,
     onMemoChange: (String) -> Unit,
     onMemoCancel: () -> Unit,
@@ -364,8 +424,9 @@ private fun TimelineRecordBody(
             TimelineEventCard(
                 event = event,
                 onEditClick = { onEventClick(event.timelineEventId) },
+                onDeleteClick = { onEventDeleteClick(event.timelineEventId) },
                 onPhotoClick = onPhotoClick,
-                isEditable = record.isEditable,
+                isEditable = mode.isEditing,
                 memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = onMemoChange,
@@ -455,7 +516,11 @@ private fun TimelineRecordPreview() {
     LaimoryTheme {
         TimelineRecordScreen(
             innerPadding = PaddingValues(),
-            state = TimelineRecordUiState(TimelineRecordUiContent.Record(previewRecord())),
+            state =
+                TimelineRecordUiState(
+                    content = TimelineRecordUiContent.Record(previewRecord()),
+                    mode = TimelineRecordMode.EDIT,
+                ),
             onIntent = {},
         )
     }
@@ -518,7 +583,11 @@ private fun TimelineRecordDarkPreview() {
     LaimoryTheme(darkTheme = true) {
         TimelineRecordScreen(
             innerPadding = PaddingValues(),
-            state = TimelineRecordUiState(TimelineRecordUiContent.Record(previewRecord())),
+            state =
+                TimelineRecordUiState(
+                    content = TimelineRecordUiContent.Record(previewRecord()),
+                    mode = TimelineRecordMode.EDIT,
+                ),
             onIntent = {},
         )
     }
@@ -528,7 +597,7 @@ private fun previewRecord() =
     TimelineRecordUiModel(
         dailyRecordId = 31L,
         recordDate = LocalDate.of(2026, 5, 8),
-        isEditable = true,
+        isSaved = false,
         events =
             listOf(
                 TimelineEventUiModel(

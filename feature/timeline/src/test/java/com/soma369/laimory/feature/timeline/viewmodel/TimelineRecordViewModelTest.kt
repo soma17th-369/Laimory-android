@@ -21,11 +21,13 @@ import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
@@ -391,7 +393,7 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `작성 완료된 기록의 메모 수정은 편집을 닫고 안내한다`() =
+    fun `서버가 SAVED 충돌을 보내도 전용 안내 없이 일반 오류로 처리한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
                 ApiException.ConflictException(
@@ -405,11 +407,8 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
             advanceUntilIdle()
 
-            assertEquals(null, viewModel.state.value.memoEditor)
-            assertEquals(
-                TimelineRecordUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."),
-                viewModel.sideEffect.first(),
-            )
+            // 서버가 SAVED 에서도 메모 수정을 허용하므로 -1003 전용 분기를 두지 않는다.
+            assertTrue(viewModel.state.value.memoEditor != null)
         }
 
     @Test
@@ -582,7 +581,7 @@ class TimelineRecordViewModelTest {
 
             assertEquals(false, viewModel.state.value.isSavingRecord)
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
-            assertEquals(false, content.value.isEditable)
+            assertEquals(true, content.value.isSaved)
         }
 
     @Test
@@ -788,8 +787,160 @@ class TimelineRecordViewModelTest {
             assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
         }
 
+    // --- 읽기·편집 모드 (#275) ---
+
     @Test
-    fun `읽기 전용 기록은 편집과 삭제 진입을 전부 무시한다`() =
+    fun `초기 모드는 DRAFT는 편집 SAVED는 읽기다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val draft = createLoadedViewModel(record = timeline(events = listOf(event())))
+            assertEquals(TimelineRecordMode.EDIT, draft.state.value.mode)
+
+            val saved =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
+                )
+            assertEquals(TimelineRecordMode.READ, saved.state.value.mode)
+        }
+
+    @Test
+    fun `SAVED 기록도 편집 모드로 들어가고 X로 닫는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            runCurrent()
+            assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ExitEditMode)
+            runCurrent()
+            assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
+        }
+
+    @Test
+    fun `모드 전환은 기록 상태를 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            runCurrent()
+
+            val content = viewModel.state.value.content as TimelineRecordUiContent.Record
+            assertEquals(true, content.value.isSaved)
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+        }
+
+    @Test
+    fun `편집 모드에서는 이벤트 편집과 메모가 열린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "메모")), status = DailyRecordStatus.SAVED),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            runCurrent()
+
+            assertTrue(navigationHelper.pages.isNotEmpty())
+            assertEquals(1L, viewModel.state.value.memoEditor?.timelineEventId)
+        }
+
+    @Test
+    fun `메모 편집 중에는 모드를 닫지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event(memo = "메모"))))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ExitEditMode)
+            runCurrent()
+
+            // 결과를 받을 화면이 사라지지 않게 진행 중 작업을 먼저 끝내게 한다.
+            assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
+        }
+
+    @Test
+    fun `세션이 갱신돼도 편집 모드를 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "메모")), status = DailyRecordStatus.SAVED),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("고친 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            // 메모 저장마다 세션이 다시 방출되는데 그때마다 기록 상태로 모드를 되돌리면 안 된다.
+            assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
+        }
+
+    // --- 이벤트 삭제 (#275) ---
+
+    @Test
+    fun `편집 모드에서 카드 삭제는 확인 뒤 이벤트를 지운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestDeleteEvent(timelineEventId = 1L))
+            runCurrent()
+            assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.eventDeleteDialogState)
+            assertEquals(1L, viewModel.state.value.eventDeleteTarget?.timelineEventId)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDeleteEvent)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L), recordRepository.deletedEvents)
+            // 성공 다이얼로그 없이 닫는다 — 세션 갱신으로 카드가 사라지는 걸 그대로 보여준다.
+            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+            assertEquals(null, viewModel.state.value.eventDeleteTarget)
+        }
+
+    @Test
+    fun `읽기 모드에서는 카드 삭제를 열지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestDeleteEvent(timelineEventId = 1L))
+            runCurrent()
+
+            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+        }
+
+    @Test
+    fun `이벤트 삭제와 하루 기록 삭제는 상태를 나눠 쓴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestDeleteEvent(timelineEventId = 1L))
+            runCurrent()
+
+            assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.eventDeleteDialogState)
+            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
+            assertEquals(null, viewModel.state.value.deleteTarget)
+        }
+
+    @Test
+    fun `읽기 모드는 이벤트 편집과 메모를 막지만 기록 삭제는 연다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel =
                 createLoadedViewModel(
@@ -803,7 +954,8 @@ class TimelineRecordViewModelTest {
 
             assertTrue(navigationHelper.pages.isEmpty())
             assertEquals(null, viewModel.state.value.memoEditor)
-            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
+            // 하루 기록 삭제는 내용 편집과 별개인 기록 단위 관리 동작이라 읽기 모드에서도 열린다.
+            assertEquals(TimelineDeleteDialogState.Confirmation, viewModel.state.value.deleteDialogState)
         }
 
     @Test
@@ -923,7 +1075,7 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `작성 완료된 하루 기록 삭제는 다이얼로그를 닫고 안내한다`() =
+    fun `하루 기록 삭제에 SAVED 충돌이 와도 전용 안내 없이 재시도 오류로 남는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
             recordRepository.failure =
@@ -936,13 +1088,9 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
             advanceUntilIdle()
 
-            assertEquals(TimelineDeleteDialogState.Hidden, viewModel.state.value.deleteDialogState)
-            assertEquals(null, viewModel.state.value.deleteTarget)
+            // 서버가 SAVED 에서도 하루 기록 삭제를 허용하므로 -1003 전용 분기를 두지 않는다.
+            assertTrue(viewModel.state.value.deleteDialogState is TimelineDeleteDialogState.RetryableError)
             assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
-            assertEquals(
-                TimelineRecordUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."),
-                viewModel.sideEffect.first(),
-            )
         }
 
     @Test
@@ -987,6 +1135,12 @@ class TimelineRecordViewModelTest {
                 ),
             deleteDailyRecordUseCase =
                 DeleteDailyRecordUseCase(
+                    repository = recordRepository,
+                    sessionRepository = repository,
+                    messageHelper = NoOpMessageHelper,
+                ),
+            deleteTimelineEventUseCase =
+                DeleteTimelineEventUseCase(
                     repository = recordRepository,
                     sessionRepository = repository,
                     messageHelper = NoOpMessageHelper,
@@ -1065,6 +1219,7 @@ class TimelineRecordViewModelTest {
     private class RecordingTimelineRecordRepository : TimelineRecordRepository {
         val requestedRecordDates = mutableListOf<LocalDate>()
         val deletedRecordDates = mutableListOf<LocalDate>()
+        val deletedEvents = mutableListOf<Long>()
         val savedRecordDates = mutableListOf<LocalDate>()
         val savedEmotions = mutableListOf<TimelineEmotion>()
         var saveGate: CompletableDeferred<Unit>? = null
@@ -1112,7 +1267,10 @@ class TimelineRecordViewModelTest {
             )
         }
 
-        override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
+        override suspend fun deleteEvent(timelineEventId: Long) {
+            failure?.let { throw it }
+            deletedEvents += timelineEventId
+        }
 
         override suspend fun deleteEventPhoto(
             timelineEventId: Long,

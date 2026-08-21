@@ -9,14 +9,34 @@ import java.time.LocalDate
 @Immutable
 data class TimelineRecordUiState(
     val content: TimelineRecordUiContent = TimelineRecordUiContent.Loading,
+    /** 기록 상태와 무관한 화면 모드. 최초 진입 시에만 기록 상태를 따라 정해진다. */
+    val mode: TimelineRecordMode = TimelineRecordMode.READ,
     val memoEditor: TimelineMemoEditorState? = null,
     val deleteTarget: TimelineRecordDeleteTarget? = null,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
+    val eventDeleteTarget: TimelineEventDeleteTarget? = null,
+    val eventDeleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
     val emotionSheet: TimelineEmotionSheetState? = null,
     val isSavingRecord: Boolean = false,
 ) : UiState {
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
+
+    val isDeletingEvent: Boolean
+        get() = eventDeleteDialogState == TimelineDeleteDialogState.Deleting
+
+    /**
+     * 진행 중인 작업이 없어 화면 모드를 바꿔도 되는 상태인지.
+     *
+     * 편집 모드를 닫는 `X` 와 모드 전환에 함께 쓴다 — 저장·삭제·메모 저장이 도는 중에 모드를 끄면
+     * 결과를 받을 화면이 사라진다.
+     */
+    val isModeSwitchable: Boolean
+        get() =
+            memoEditor == null &&
+                !isSavingRecord &&
+                deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                eventDeleteDialogState == TimelineDeleteDialogState.Hidden
 }
 
 @Immutable

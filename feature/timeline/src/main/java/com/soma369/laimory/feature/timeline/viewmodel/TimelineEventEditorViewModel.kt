@@ -239,7 +239,6 @@ class TimelineEventEditorViewModel
         private suspend fun save() {
             val current = state.value
             if (current.isSaving ||
-                current.isReadOnly ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
                 current.photoDeleteDialogState != TimelineEventPhotoDeleteDialogState.Hidden
             ) {
@@ -325,10 +324,6 @@ class TimelineEventEditorViewModel
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("추가할 수 있는 사진 수를 초과했어요."))
                 TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE ->
                     updateState { copy(content = TimelineEventEditorUiContent.Unavailable) }
-                TimelineEventUpdateException.Reason.RECORD_ALREADY_SAVED -> {
-                    updateState { copy(isReadOnly = true) }
-                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."))
-                }
                 TimelineEventUpdateException.Reason.DATE_OPERATION_IN_PROGRESS ->
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("같은 날짜의 작업이 진행 중이에요. 잠시 후 다시 시도해 주세요."))
                 null -> handleFailure(error)
@@ -435,15 +430,6 @@ class TimelineEventEditorViewModel
             when (error) {
                 is TimelineEventPhotoDeleteException ->
                     when (error.reason) {
-                        TimelineEventPhotoDeleteException.Reason.RECORD_ALREADY_SAVED -> {
-                            updateState {
-                                copy(
-                                    isReadOnly = true,
-                                    photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden,
-                                )
-                            }
-                            sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 수정할 수 없어요."))
-                        }
                         TimelineEventPhotoDeleteException.Reason.ITEM_NOT_PHOTO ->
                             showRetryablePhotoDeleteError(photo, "사진을 제거하지 못했어요. 잠시 후 다시 시도해주세요.")
                     }
@@ -514,15 +500,6 @@ class TimelineEventEditorViewModel
                     }
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
                 }
-                TimelineDeleteFailureAction.RecordAlreadySaved -> {
-                    updateState {
-                        copy(
-                            isReadOnly = true,
-                            deleteDialogState = TimelineDeleteDialogState.Hidden,
-                        )
-                    }
-                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("작성 완료된 기록은 삭제할 수 없어요."))
-                }
                 TimelineDeleteFailureAction.AlreadyHandled ->
                     updateState { copy(deleteDialogState = TimelineDeleteDialogState.Hidden) }
                 is TimelineDeleteFailureAction.Retryable ->
@@ -540,7 +517,6 @@ class TimelineEventEditorViewModel
             with(state.value) {
                 content == TimelineEventEditorUiContent.Editor &&
                     !isSaving &&
-                    !isReadOnly &&
                     deleteDialogState == TimelineDeleteDialogState.Hidden &&
                     photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
             }

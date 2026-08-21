@@ -79,12 +79,10 @@ class DeleteTimelineEventPhotoUseCaseTest {
         }
 
     @Test
-    fun `작성 완료와 PHOTO 타입 불일치는 기능 오류로 변환하고 세션을 유지한다`() =
+    fun `PHOTO 타입 불일치는 기능 오류로 변환하고 세션을 유지한다`() =
         runBlocking {
             val cases =
                 listOf(
-                    ApiException.ConflictException(errorCode = -1003, rawCode = 409) to
-                        TimelineEventPhotoDeleteException.Reason.RECORD_ALREADY_SAVED,
                     ApiException.ClientException(errorCode = -1018, rawCode = 400) to
                         TimelineEventPhotoDeleteException.Reason.ITEM_NOT_PHOTO,
                 )
