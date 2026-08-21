@@ -216,6 +216,141 @@ class DraftSourceItemSelectionPolicyTest {
         assertEquals(selection, selection.excluding(emptySet()))
     }
 
+    // --- 수집 사유 우선순위 (#253) ---
+
+    @Test
+    fun `상한을 넘으면 클릭 알림 최소 스무 건을 보장한다`() {
+        val policy = DraftSourceItemSelectionPolicy()
+        val keywords = notifications("kw", 200, NotificationPayload.CollectReason.KEYWORD, fromMinute = 1)
+        val clicks = notifications("click", 100, NotificationPayload.CollectReason.CLICK, fromMinute = 201)
+
+        val selected = policy.select(window, keywords + clicks).getOrThrow().items
+
+        assertEquals(100, selected.size)
+        assertEquals(20, selected.count { it.reason == NotificationPayload.CollectReason.CLICK })
+        assertEquals(80, selected.count { it.reason == NotificationPayload.CollectReason.KEYWORD })
+    }
+
+    @Test
+    fun `클릭 알림이 쿼터보다 적으면 남은 자리를 다른 사유가 채운다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 10))
+        val keywords = notifications("kw", 20, NotificationPayload.CollectReason.KEYWORD, fromMinute = 1)
+        val clicks = notifications("click", 3, NotificationPayload.CollectReason.CLICK, fromMinute = 21)
+
+        val selected = policy.select(window, keywords + clicks).getOrThrow().items
+
+        assertEquals(10, selected.size)
+        assertEquals(3, selected.count { it.reason == NotificationPayload.CollectReason.CLICK })
+        assertEquals(7, selected.count { it.reason == NotificationPayload.CollectReason.KEYWORD })
+    }
+
+    @Test
+    fun `쿼터를 채우고 남은 클릭 알림도 우선순위 경쟁에 남는다`() {
+        // 쿼터 20건을 채운 뒤 키워드가 자리를 다 못 쓰면 나머지 클릭이 이어서 들어온다.
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 25))
+        val keywords = notifications("kw", 2, NotificationPayload.CollectReason.KEYWORD, fromMinute = 1)
+        val clicks = notifications("click", 30, NotificationPayload.CollectReason.CLICK, fromMinute = 11)
+
+        val selected = policy.select(window, keywords + clicks).getOrThrow().items
+
+        assertEquals(25, selected.size)
+        assertEquals(2, selected.count { it.reason == NotificationPayload.CollectReason.KEYWORD })
+        // 쿼터 20 + 남은 자리 3
+        assertEquals(23, selected.count { it.reason == NotificationPayload.CollectReason.CLICK })
+    }
+
+    @Test
+    fun `사유 우선순위는 키워드 클릭 앱 전체 순이다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 3))
+        val all = item("all", ItemType.NOTIFICATION, minute = 4, reason = NotificationPayload.CollectReason.ALL)
+        val app = item("app", ItemType.NOTIFICATION, minute = 3, reason = NotificationPayload.CollectReason.APP)
+        val click = item("click", ItemType.NOTIFICATION, minute = 2, reason = NotificationPayload.CollectReason.CLICK)
+        val keyword = item("kw", ItemType.NOTIFICATION, minute = 1, reason = NotificationPayload.CollectReason.KEYWORD)
+
+        val selected = policy.select(window, listOf(all, app, click, keyword)).getOrThrow().items
+
+        // 최신순으로는 ALL 이 먼저지만 사유 우선순위가 앞선다. 클릭은 쿼터로도 보장된다.
+        assertEquals(setOf("kw", "click", "app"), selected.mapTo(mutableSetOf(), SourceItem::rawId))
+    }
+
+    @Test
+    fun `같은 사유 안에서는 최신 항목이 우선한다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 2))
+        val oldest = item("oldest", ItemType.NOTIFICATION, minute = 1, reason = NotificationPayload.CollectReason.KEYWORD)
+        val middle = item("middle", ItemType.NOTIFICATION, minute = 2, reason = NotificationPayload.CollectReason.KEYWORD)
+        val newest = item("newest", ItemType.NOTIFICATION, minute = 3, reason = NotificationPayload.CollectReason.KEYWORD)
+
+        val selected = policy.select(window, listOf(oldest, newest, middle)).getOrThrow().items
+
+        assertEquals(listOf(middle, newest), selected)
+    }
+
+    @Test
+    fun `상한 이하이면 사유와 무관하게 최신순 결과를 유지한다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 5))
+        val all = item("all", ItemType.NOTIFICATION, minute = 1, reason = NotificationPayload.CollectReason.ALL)
+        val keyword = item("kw", ItemType.NOTIFICATION, minute = 2, reason = NotificationPayload.CollectReason.KEYWORD)
+        val click = item("click", ItemType.NOTIFICATION, minute = 3, reason = NotificationPayload.CollectReason.CLICK)
+
+        val selected = policy.select(window, listOf(click, all, keyword)).getOrThrow().items
+
+        // 절삭이 없으면 우선순위는 의미가 없다. 최종 정렬은 기존대로 오래된 순이다.
+        assertEquals(listOf(all, keyword, click), selected)
+    }
+
+    @Test
+    fun `리포트에 알림 사유별 원본과 선택 건수를 남긴다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 4))
+        val keywords = notifications("kw", 6, NotificationPayload.CollectReason.KEYWORD, fromMinute = 1)
+        val clicks = notifications("click", 2, NotificationPayload.CollectReason.CLICK, fromMinute = 11)
+
+        val report = policy.select(window, keywords + clicks).getOrThrow().report
+
+        assertEquals(6, report.notificationOriginalCountsByReason.getValue(NotificationPayload.CollectReason.KEYWORD))
+        assertEquals(2, report.notificationOriginalCountsByReason.getValue(NotificationPayload.CollectReason.CLICK))
+        assertEquals(2, report.notificationSelectedCountsByReason.getValue(NotificationPayload.CollectReason.KEYWORD))
+        assertEquals(2, report.notificationSelectedCountsByReason.getValue(NotificationPayload.CollectReason.CLICK))
+        assertEquals(0, report.notificationOriginalCountsByReason.getValue(NotificationPayload.CollectReason.APP))
+    }
+
+    @Test
+    fun `동의 화면 제외 후에도 사유별 선택 건수를 갱신한다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 4))
+        val keyword = item("kw", ItemType.NOTIFICATION, minute = 1, reason = NotificationPayload.CollectReason.KEYWORD)
+        val click = item("click", ItemType.NOTIFICATION, minute = 2, reason = NotificationPayload.CollectReason.CLICK)
+
+        val remaining = policy.select(window, listOf(keyword, click)).getOrThrow().excluding(setOf("click"))
+
+        // 원본 건수는 수집 기준 그대로 두고 선택분만 줄인다.
+        assertEquals(1, remaining.report.notificationOriginalCountsByReason.getValue(NotificationPayload.CollectReason.CLICK))
+        assertEquals(0, remaining.report.notificationSelectedCountsByReason.getValue(NotificationPayload.CollectReason.CLICK))
+        assertEquals(1, remaining.report.notificationSelectedCountsByReason.getValue(NotificationPayload.CollectReason.KEYWORD))
+    }
+
+    @Test
+    fun `알림 사유 우선순위는 다른 타입 선택에 영향을 주지 않는다`() {
+        val policy = DraftSourceItemSelectionPolicy(limits = limits(notification = 1, stay = 2))
+        val stays = (1..4).map { item("stay-$it", ItemType.STAY, minute = it) }
+        val notifications = notifications("kw", 3, NotificationPayload.CollectReason.KEYWORD, fromMinute = 11)
+
+        val selected = policy.select(window, stays + notifications).getOrThrow().items
+
+        assertEquals(listOf("stay-3", "stay-4"), selected.filter { it.itemType == ItemType.STAY }.map(SourceItem::rawId))
+    }
+
+    private fun notifications(
+        prefix: String,
+        count: Int,
+        reason: NotificationPayload.CollectReason,
+        fromMinute: Int,
+    ): List<SourceItem> =
+        (0 until count).map { index ->
+            item("$prefix-$index", ItemType.NOTIFICATION, minute = fromMinute + index, reason = reason)
+        }
+
+    private val SourceItem.reason: NotificationPayload.CollectReason?
+        get() = (payload as? NotificationPayload)?.collectReason
+
     private fun limits(
         stay: Int = 10,
         movement: Int = 10,
@@ -238,19 +373,23 @@ class DraftSourceItemSelectionPolicyTest {
         itemType: ItemType,
         minute: Int,
         endMinute: Int? = null,
+        reason: NotificationPayload.CollectReason = NotificationPayload.CollectReason.APP,
     ): SourceItem =
         SourceItem(
             rawId = rawId,
             startAt = window.start.plusSeconds(minute * 60L),
             endAt = endMinute?.let { window.start.plusSeconds(it * 60L) },
             timeZoneId = java.time.ZoneId.of("UTC"),
-            payload = payload(itemType),
+            payload = payload(itemType, reason),
             sourceName = SourceName.NOTIFICATION_LISTENER,
             sourceKey = "key-$rawId",
             collectedAt = window.start.plusSeconds(minute * 60L),
         )
 
-    private fun payload(itemType: ItemType): SourceItemPayload =
+    private fun payload(
+        itemType: ItemType,
+        reason: NotificationPayload.CollectReason = NotificationPayload.CollectReason.APP,
+    ): SourceItemPayload =
         when (itemType) {
             ItemType.STAY -> StayPayload(latitude = 37.0, longitude = 127.0)
             ItemType.MOVEMENT ->
@@ -268,7 +407,7 @@ class DraftSourceItemSelectionPolicyTest {
                     packageName = "com.example",
                     title = "제목",
                     text = "본문",
-                    collectReason = NotificationPayload.CollectReason.APP,
+                    collectReason = reason,
                 )
             ItemType.PHOTO ->
                 PhotoPayload(
