@@ -4,13 +4,17 @@ import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.message.DialogActionStyle
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
+import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
+import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiSideEffect
@@ -27,6 +31,7 @@ class SettingsViewModel
     @Inject
     constructor(
         private val logoutUseCase: LogoutUseCase,
+        private val withdrawAccountUseCase: WithdrawAccountUseCase,
         observeSignedInAccount: ObserveSignedInAccountUseCase,
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val refreshUserProfileUseCase: RefreshUserProfileUseCase,
@@ -35,6 +40,7 @@ class SettingsViewModel
         private val globalLoadingHelper: GlobalLoadingHelper,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
+        private var accountDeleteConfirmJob: Job? = null
 
         init {
             viewModelScope.launch {
@@ -43,8 +49,9 @@ class SettingsViewModel
                         if (account == null) {
                             copy(accountProvider = null)
                         } else {
-                            // isLoggingOut은 재인증된 계정을 관찰할 때 해제해 대기 중인 중복 확인도 차단한다.
-                            copy(accountProvider = account.provider, isLoggingOut = false)
+                            // 진행 상태는 재인증된 계정을 관찰할 때 해제한다. ViewModel 이 Activity 수명이라
+                            // 여기서 안 지우면 새 계정으로 로그인한 뒤에도 계정 항목이 잠긴 채 남는다.
+                            copy(accountProvider = account.provider, isLoggingOut = false, isWithdrawing = false)
                         }
                     }
                 }
@@ -75,6 +82,9 @@ class SettingsViewModel
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit
                 SettingsUiIntent.LogoutConfirmed -> logout()
+                SettingsUiIntent.AccountDeleteClicked -> requestAccountDeleteConfirm()
+                SettingsUiIntent.AccountDeleteDismissed -> Unit
+                SettingsUiIntent.AccountDeleteConfirmed -> withdrawAccount()
             }
         }
 
@@ -85,7 +95,7 @@ class SettingsViewModel
          * 헬퍼의 활성 단일 정책이 연속 탭의 중복 Dialog를 함께 막는다.
          */
         private fun requestLogoutConfirm() {
-            if (state.value.isLoggingOut) return
+            if (state.value.isAccountActionInProgress) return
             if (logoutConfirmJob?.isActive == true) return
             logoutConfirmJob =
                 safeLaunch(onError = { error -> if (error !is CancellationException) handleFailure(error) }) {
@@ -107,6 +117,68 @@ class SettingsViewModel
                 }
         }
 
+        /**
+         * 확인 체크박스가 달린 공통 Dialog 로 계정 삭제 동의를 받는다.
+         *
+         * 체크 전에는 삭제 버튼이 잠기므로 [DialogResult.Primary] 가 곧 동의를 뜻한다 —
+         * 여기서 체크 여부를 따로 확인하지 않는다.
+         */
+        private fun requestAccountDeleteConfirm() {
+            if (state.value.isAccountActionInProgress) return
+            if (accountDeleteConfirmJob?.isActive == true) return
+            accountDeleteConfirmJob =
+                safeLaunch(onError = { error -> if (error !is CancellationException) handleFailure(error) }) {
+                    val result =
+                        messageHelper.showConsentDialog(
+                            DialogRequest.Consent(
+                                title = ACCOUNT_DELETE_TITLE,
+                                body = ACCOUNT_DELETE_BODY,
+                                consentLabel = ACCOUNT_DELETE_CONSENT_LABEL,
+                                primaryLabel = "계정 삭제",
+                                secondaryLabel = "취소",
+                                primaryStyle = DialogActionStyle.DESTRUCTIVE,
+                            ),
+                        )
+                    sendIntent(
+                        when (result) {
+                            DialogResult.Primary -> SettingsUiIntent.AccountDeleteConfirmed
+                            DialogResult.Secondary, DialogResult.Dismissed -> SettingsUiIntent.AccountDeleteDismissed
+                        },
+                    )
+                }
+        }
+
+        /**
+         * 탈퇴를 요청하고 로그인 Root 로 교체한다.
+         *
+         * 안내는 Root 교체 **뒤에** 공통 채널로 보낸다 — 이 화면은 그 시점에 이미 사라져 있어
+         * 화면 스낵바로는 보이지 않는다.
+         *
+         * `401` 로 끝난 요청은 완료로 안내하지 않는다. 서버가 만료 세션과 이미 탈퇴한 회원을
+         * 구분하지 않으므로 삭제됐다고 단정할 수 없다.
+         */
+        private suspend fun withdrawAccount() {
+            if (state.value.isWithdrawing) return
+            updateState { copy(isWithdrawing = true) }
+            try {
+                globalLoadingHelper.withLoading(WITHDRAW_LOADING_KEY) {
+                    val outcome = withdrawAccountUseCase().getOrThrow()
+                    navigationHelper.replaceRoot(LoginPage)
+                    messageHelper.send(
+                        when (outcome) {
+                            AccountWithdrawalOutcome.Accepted -> UserMessage.AccountWithdrawalAccepted
+                            AccountWithdrawalOutcome.SessionUnavailable -> UserMessage.AccountWithdrawalUnverified
+                        },
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                updateState { copy(isWithdrawing = false) }
+                handleFailure(error)
+            }
+        }
+
         private suspend fun logout() {
             if (state.value.isLoggingOut) return
             updateState { copy(isLoggingOut = true) }
@@ -126,5 +198,24 @@ class SettingsViewModel
 
         private companion object {
             const val LOGOUT_LOADING_KEY = "settings-logout"
+            const val WITHDRAW_LOADING_KEY = "settings-withdraw"
+
+            const val ACCOUNT_DELETE_TITLE = "계정을 삭제할까요?"
+
+            /**
+             * 서버가 실제로 하는 일만 적는다.
+             *
+             * 탈퇴 접수는 논리 탈퇴와 삭제 작업 등록까지이고 물리 삭제는 이후에 처리되므로 "시간이
+             * 걸릴 수 있다"를 밝힌다. 같은 소셜 계정으로 다시 로그인하면 서버가 이전 계정을 복구하지
+             * 않고 새 회원을 만들므로 복구 불가를 명시한다. 기기에 남는 수집 원본은 탈퇴로 지워지지
+             * 않으므로 지우는 방법을 함께 알린다.
+             */
+            const val ACCOUNT_DELETE_BODY =
+                "계정과 서버에 저장된 기록이 모두 삭제되며 되돌릴 수 없습니다. " +
+                    "삭제 처리에는 시간이 걸릴 수 있습니다.\n\n" +
+                    "바로 로그아웃되고, 같은 계정으로 다시 로그인해도 이전 기록은 복구되지 않습니다. " +
+                    "이 기기에 남아 있는 수집 기록은 앱을 삭제하면 지워집니다."
+
+            const val ACCOUNT_DELETE_CONSENT_LABEL = "위 내용을 확인했으며 계정 삭제에 동의합니다"
         }
     }

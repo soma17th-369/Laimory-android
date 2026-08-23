@@ -166,15 +166,17 @@ private fun SettingsScreen(
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_signout,
                                     title = "로그아웃",
-                                    isEnabled = !state.isLoggingOut,
+                                    isEnabled = !state.isAccountActionInProgress,
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.LogoutClicked) },
                                 ),
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_trash,
                                     title = "계정 삭제",
-                                    trailingText = "준비 중",
+                                    isEnabled = !state.isAccountActionInProgress,
+                                    showChevron = true,
                                     contentColor = MaterialTheme.colorScheme.error,
+                                    onClick = { onIntent(SettingsUiIntent.AccountDeleteClicked) },
                                 ),
                             ),
                     )

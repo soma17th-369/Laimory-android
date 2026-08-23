@@ -17,11 +17,14 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
+import com.soma369.laimory.core.domain.repository.UserRepository
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
+import com.soma369.laimory.core.domain.usecase.user.RequestAccountWithdrawalUseCase
+import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -50,6 +53,7 @@ class SettingsViewModelTest {
     private val messageHelper = FakeMessageHelper()
     private val globalLoadingHelper = RecordingGlobalLoadingHelper()
     private val userProfileCoordinator = FakeUserProfileCoordinator()
+    private val userRepository = FakeUserRepository()
 
     @Test
     fun `저장된 로그인 제공자를 화면 상태에 반영한다`() =
@@ -268,6 +272,114 @@ class SettingsViewModelTest {
             assertEquals(2, userProfileCoordinator.refreshCount)
         }
 
+    // --- 계정 삭제 ---
+
+    @Test
+    fun `계정 삭제 클릭은 확인 체크박스가 달린 Dialog로 동의를 요청한다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.AccountDeleteClicked)
+            runCurrent()
+
+            val request = messageHelper.consentRequests.single()
+            assertEquals("계정을 삭제할까요?", request.title)
+            assertEquals("계정 삭제", request.primaryLabel)
+            assertTrue(request.consentLabel.contains("동의"))
+            // 되돌릴 수 없다는 것과 재로그인해도 복구되지 않는다는 것을 문구가 담아야 한다.
+            assertTrue(request.body.contains("되돌릴 수 없습니다"))
+            assertTrue(request.body.contains("복구되지 않습니다"))
+            assertEquals(0, userRepository.withdrawalCount)
+        }
+
+    @Test
+    fun `취소하거나 닫으면 탈퇴를 요청하지 않는다`() =
+        runTest {
+            listOf(DialogResult.Secondary, DialogResult.Dismissed).forEach { result ->
+                val viewModel = createViewModel()
+                runCurrent()
+
+                viewModel.sendIntent(SettingsUiIntent.AccountDeleteClicked)
+                runCurrent()
+                messageHelper.respond(result)
+                runCurrent()
+
+                assertEquals(0, userRepository.withdrawalCount)
+                assertFalse(viewModel.state.value.isWithdrawing)
+            }
+        }
+
+    @Test
+    fun `동의 후 삭제는 탈퇴를 요청하고 세션을 정리한 뒤 로그인 화면으로 교체한다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.AccountDeleteClicked)
+            runCurrent()
+            messageHelper.respond(DialogResult.Primary)
+            runCurrent()
+
+            assertEquals(1, userRepository.withdrawalCount)
+            assertEquals(1, repository.clearSessionCount)
+            // 서버가 이미 credential 을 무효화했으므로 실패가 예정된 logout 요청은 보내지 않는다.
+            assertEquals(0, repository.logoutCount)
+            assertEquals(LoginPage, navigationHelper.replacedRoot)
+            assertTrue(globalLoadingHelper.startedKeys.contains("settings-withdraw"))
+            assertEquals(listOf(UserMessage.AccountWithdrawalAccepted), messageHelper.sentMessages)
+        }
+
+    @Test
+    fun `401로 끝난 탈퇴는 완료로 안내하지 않는다`() =
+        runTest {
+            // 서버가 만료 세션과 이미 탈퇴한 회원을 같은 401 로 합치므로 삭제됐다고 단정할 수 없다.
+            userRepository.withdrawalError = ApiException.fromCode(401, null, -2001)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.AccountDeleteClicked)
+            runCurrent()
+            messageHelper.respond(DialogResult.Primary)
+            runCurrent()
+
+            assertEquals(1, repository.clearSessionCount)
+            assertEquals(LoginPage, navigationHelper.replacedRoot)
+            assertEquals(listOf(UserMessage.AccountWithdrawalUnverified), messageHelper.sentMessages)
+        }
+
+    @Test
+    fun `탈퇴가 실패하면 진행 상태를 풀고 화면에 남는다`() =
+        runTest {
+            userRepository.withdrawalError = ApiException.ServerException(rawCode = 500)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.AccountDeleteClicked)
+            runCurrent()
+            messageHelper.respond(DialogResult.Primary)
+            runCurrent()
+
+            assertEquals(0, repository.clearSessionCount)
+            assertNull(navigationHelper.replacedRoot)
+            assertFalse(viewModel.state.value.isWithdrawing)
+        }
+
+    @Test
+    fun `로그아웃 진행 중에는 계정 삭제 확인을 열지 않는다`() =
+        runTest {
+            repository.logoutGate = CompletableDeferred()
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(SettingsUiIntent.LogoutConfirmed)
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.AccountDeleteClicked)
+            runCurrent()
+
+            assertTrue(messageHelper.consentRequests.isEmpty())
+        }
+
     /** 공용 프로필 상태를 시험에서 직접 밀어 넣는 대역. */
     private class FakeUserProfileCoordinator : UserProfileCoordinator {
         private val mutableProfile = MutableStateFlow<UserProfile?>(null)
@@ -297,6 +409,11 @@ class SettingsViewModelTest {
                             repository = FakePushRegistrationRepository,
                         ),
                 ),
+            withdrawAccountUseCase =
+                WithdrawAccountUseCase(
+                    requestAccountWithdrawal = RequestAccountWithdrawalUseCase(userRepository),
+                    authRepository = repository,
+                ),
             observeSignedInAccount = ObserveSignedInAccountUseCase(repository),
             observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
             refreshUserProfileUseCase = RefreshUserProfileUseCase(userProfileCoordinator),
@@ -307,12 +424,25 @@ class SettingsViewModelTest {
 
     private class FakeMessageHelper : MessageHelper {
         val dialogRequests = mutableListOf<DialogRequest.TwoButton>()
+        val consentRequests = mutableListOf<DialogRequest.Consent>()
+        val sentMessages = mutableListOf<UserMessage>()
         private var pendingResponse: CompletableDeferred<DialogResult>? = null
 
-        override fun send(message: UserMessage) = Unit
+        override fun send(message: UserMessage) {
+            sentMessages += message
+        }
 
         override suspend fun showTwoButtonDialog(request: DialogRequest.TwoButton): DialogResult {
             dialogRequests += request
+            return awaitResponse()
+        }
+
+        override suspend fun showConsentDialog(request: DialogRequest.Consent): DialogResult {
+            consentRequests += request
+            return awaitResponse()
+        }
+
+        private suspend fun awaitResponse(): DialogResult {
             val response = CompletableDeferred<DialogResult>()
             pendingResponse = response
             return response.await()
@@ -349,6 +479,7 @@ class SettingsViewModelTest {
         var logoutCount = 0
         var logoutGate: CompletableDeferred<Unit>? = null
         var logoutError: Throwable? = null
+        var clearSessionCount = 0
 
         override fun observeSessionState(): Flow<AuthSessionState> = MutableStateFlow(AuthSessionState.Authenticated)
 
@@ -366,7 +497,23 @@ class SettingsViewModelTest {
             account.value = null
         }
 
-        override suspend fun clearSession() = Unit
+        override suspend fun clearSession() {
+            clearSessionCount++
+            account.value = null
+        }
+    }
+
+    private class FakeUserRepository : UserRepository {
+        var withdrawalCount = 0
+            private set
+        var withdrawalError: Throwable? = null
+
+        override suspend fun getMyProfile(): UserProfile = UserProfile.of(null)
+
+        override suspend fun requestAccountWithdrawal() {
+            withdrawalCount++
+            withdrawalError?.let { throw it }
+        }
     }
 
     private class FakeNavigationHelper : NavigationHelper {
