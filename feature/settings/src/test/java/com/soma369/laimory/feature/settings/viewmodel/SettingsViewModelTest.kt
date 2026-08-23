@@ -365,6 +365,8 @@ class SettingsViewModelTest {
             logoutGate?.await()
             account.value = null
         }
+
+        override suspend fun clearSession() = Unit
     }
 
     private class FakeNavigationHelper : NavigationHelper {

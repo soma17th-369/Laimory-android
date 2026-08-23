@@ -187,6 +187,8 @@ class LoginViewModelTest {
         }
 
         override suspend fun logout() = Unit
+
+        override suspend fun clearSession() = Unit
     }
 
     private class FakeCallbackHandler : SocialLoginCallbackHandler {

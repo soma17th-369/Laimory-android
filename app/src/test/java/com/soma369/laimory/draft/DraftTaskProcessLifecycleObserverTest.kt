@@ -96,6 +96,8 @@ class DraftTaskProcessLifecycleObserverTest {
         ) = Unit
 
         override suspend fun logout() = Unit
+
+        override suspend fun clearSession() = Unit
     }
 
     private class TestLifecycleOwner : LifecycleOwner {

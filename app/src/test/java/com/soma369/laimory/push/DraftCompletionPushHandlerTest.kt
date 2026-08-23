@@ -169,6 +169,8 @@ class DraftCompletionPushHandlerTest {
         ) = Unit
 
         override suspend fun logout() = Unit
+
+        override suspend fun clearSession() = Unit
     }
 
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {
