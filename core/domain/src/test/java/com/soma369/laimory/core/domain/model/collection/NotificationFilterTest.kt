@@ -189,6 +189,22 @@ class NotificationFilterTest {
     }
 
     @Test
+    fun `포그라운드 서비스 알림은 진행 중 플래그가 없어도 수집하지 않는다`() {
+        val filter = NotificationFilter(allowedPackages = setOf("com.example"))
+
+        val reason =
+            filter.collectReasonFor(
+                packageName = "com.example",
+                title = "새벽배송 자정에 마감해요",
+                text = null,
+                clicked = false,
+                signals = NotificationSignals(isForegroundService = true),
+            )
+
+        assertNull(reason)
+    }
+
+    @Test
     fun `클릭한 알림에는 비이벤트 제외를 적용하지 않는다`() {
         val reason =
             NotificationFilter().collectReasonFor(
@@ -283,6 +299,64 @@ class NotificationFilterTest {
                 filter.collectReasonFor(packageName = COMMERCE_APP, title = title, text = null, clicked = false),
             )
         }
+    }
+
+    // --- 읽을 수 없는 본문 제외 ---
+
+    @Test
+    fun `본문을 읽을 수 없으면 키워드가 일치해도 수집하지 않는다`() {
+        val reason =
+            NotificationFilter().collectReasonFor(
+                packageName = COMMERCE_APP,
+                title = "새벽배송 자정에 마감해요",
+                text = null,
+                clicked = false,
+                signals = NotificationSignals(hasUnreadableBody = true),
+            )
+
+        assertNull(reason)
+    }
+
+    @Test
+    fun `본문을 읽을 수 없어도 사용자가 클릭한 알림은 수집한다`() {
+        val reason =
+            NotificationFilter().collectReasonFor(
+                packageName = COMMERCE_APP,
+                title = "새벽배송 자정에 마감해요",
+                text = null,
+                clicked = true,
+                signals = NotificationSignals(hasUnreadableBody = true),
+            )
+
+        assertEquals(NotificationPayload.CollectReason.CLICK, reason)
+    }
+
+    @Test
+    fun `본문을 읽을 수 없어도 사용자가 고른 앱의 알림은 수집한다`() {
+        val reason =
+            NotificationFilter(allowedPackages = setOf(COMMERCE_APP)).collectReasonFor(
+                packageName = COMMERCE_APP,
+                title = "새벽배송 자정에 마감해요",
+                text = null,
+                clicked = false,
+                signals = NotificationSignals(hasUnreadableBody = true),
+            )
+
+        assertEquals(NotificationPayload.CollectReason.APP, reason)
+    }
+
+    @Test
+    fun `본문을 읽을 수 있으면 기존대로 키워드로 수집한다`() {
+        val reason =
+            NotificationFilter().collectReasonFor(
+                packageName = COMMERCE_APP,
+                title = "새벽배송 자정에 마감해요",
+                text = "주문하신 상품이 배송 출발했습니다",
+                clicked = false,
+                signals = NotificationSignals(hasUnreadableBody = false),
+            )
+
+        assertEquals(NotificationPayload.CollectReason.KEYWORD, reason)
     }
 
     @Test
