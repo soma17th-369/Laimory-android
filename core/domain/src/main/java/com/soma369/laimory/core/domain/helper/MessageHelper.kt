@@ -20,4 +20,12 @@ interface MessageHelper {
     suspend fun showOneButtonDialog(request: DialogRequest.OneButton): DialogResult = DialogResult.Dismissed
 
     suspend fun showTwoButtonDialog(request: DialogRequest.TwoButton): DialogResult = DialogResult.Dismissed
+
+    /**
+     * 확인 체크박스를 켜야 primary 를 누를 수 있는 Dialog 를 표시한다.
+     *
+     * 체크 상태는 표시 중에만 쓰는 값이라 결과에 담기지 않는다 — [DialogResult.Primary] 가
+     * 곧 동의를 확인했다는 뜻이다.
+     */
+    suspend fun showConsentDialog(request: DialogRequest.Consent): DialogResult = DialogResult.Dismissed
 }
