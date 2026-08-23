@@ -68,6 +68,7 @@ internal fun Notification.toSignals(): NotificationSignals =
                 extras.containsKey(Notification.EXTRA_MESSAGES),
         isPromotion = category == Notification.CATEGORY_PROMO,
         isOngoing = flags and Notification.FLAG_ONGOING_EVENT != 0,
+        isForegroundService = flags and Notification.FLAG_FOREGROUND_SERVICE != 0,
         isGroupSummary = flags and Notification.FLAG_GROUP_SUMMARY != 0,
         hasProgress =
             isProgressOngoing(
@@ -75,7 +76,27 @@ internal fun Notification.toSignals(): NotificationSignals =
                 progress = extras.getInt(Notification.EXTRA_PROGRESS),
                 indeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE),
             ),
+        hasUnreadableBody =
+            hasUnreadableBody(
+                template = extras.getString(Notification.EXTRA_TEMPLATE),
+                text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+            ),
     )
+
+/**
+ * 표시 본문을 표준 `extras` 로 읽을 수 없는 알림인지 판정한다.
+ *
+ * 커스텀 뷰 템플릿은 본문 영역을 앱이 직접 그리므로 화면에 보이는 문구가 `EXTRA_TEXT` 에
+ * 들어오지 않는다. 그 안의 글자는 `RemoteViews` 를 우리 프로세스에서 인플레이트하지 않는 한
+ * 공개 API 로 꺼낼 수 없다.
+ *
+ * 커스텀 뷰를 쓰면서 표준 본문도 함께 채우는 앱은 대상에서 뺀다 — 읽을 값이 있으면 광고 표기
+ * 판정이 성립하므로 영향 범위를 넓힐 이유가 없다.
+ */
+internal fun hasUnreadableBody(
+    template: String?,
+    text: String?,
+): Boolean = template in CUSTOM_CONTENT_TEMPLATES && text.isNullOrBlank()
 
 /**
  * 진행률이 아직 진행 중인지 판정한다.
@@ -95,3 +116,10 @@ internal fun PackageManager.appLabel(packageName: String): String =
     runCatching { getApplicationLabel(getApplicationInfo(packageName, 0)).toString() }.getOrDefault(packageName)
 
 private val MESSAGING_STYLE_TEMPLATE: String = Notification.MessagingStyle::class.java.name
+
+/** 본문 영역을 앱이 직접 그리는 템플릿. 표준 헤더만 남고 내용은 커스텀 `RemoteViews` 다. */
+internal val CUSTOM_CONTENT_TEMPLATES: Set<String> =
+    setOf(
+        Notification.DecoratedCustomViewStyle::class.java.name,
+        Notification.DecoratedMediaCustomViewStyle::class.java.name,
+    )
