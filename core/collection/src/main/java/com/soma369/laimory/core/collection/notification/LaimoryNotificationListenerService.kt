@@ -37,8 +37,9 @@ import javax.inject.Inject
  * 저장소의 insert-or-ignore 정책에 따라 최초 수집 사유(KEYWORD/APP)가 유지된다(first-write-wins).
  *
  * 앱이 내용을 갱신하며 다시 알리면 `postTime` 이 바뀌어 새 아이템이 되므로, 게시 경로에는
- * [NotificationUpdateThrottle] 로 같은 알림의 최소 재수집 간격을 둔다. 클릭은 사용자가 그 알림을
- * 직접 지목한 결과라 억제하지 않는다.
+ * [NotificationUpdateThrottle] 로 같은 알림의 최소 재수집 간격과 갱신 에피소드당 건수 상한을 둔다.
+ * 알림이 제거되면 그 기록을 버려 같은 알림 id 를 재사용하는 새 이벤트가 억제되지 않게 한다.
+ * 클릭은 사용자가 그 알림을 직접 지목한 결과라 억제하지 않는다.
  */
 @AndroidEntryPoint
 internal class LaimoryNotificationListenerService : NotificationListenerService() {
@@ -76,8 +77,12 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
         rankingMap: RankingMap?,
         reason: Int,
     ) {
+        val removed = sbn ?: return
+        // 제거 사유를 가리지 않고 억제 기록을 버린다. 앱이 같은 알림 id 를 새 이벤트에 재사용하면
+        // 제거 뒤의 게시는 갱신이 아니라 새 알림이라 억제하면 안 된다.
+        updateThrottle.forget(removed.throttleKey)
         if (reason != REASON_CLICK) return
-        capture(sbn ?: return, clicked = true)
+        capture(removed, clicked = true)
     }
 
     override fun onDestroy() {
@@ -101,7 +106,9 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
         // 갱신 억제를 정제·판정보다 먼저 본다. 한 번 수집된 뒤에도 계속 갱신되는 알림에 개인정보
         // 정규식과 저장을 매번 반복하지 않기 위해서다. 아직 한 번도 수집되지 않은 알림은 기록이
         // 없어 억제되지 않으므로, 수집 자체가 막힌 알림에는 이 순서가 이득을 주지 않는다.
-        if (!clicked && updateThrottle.isThrottled(sbn.throttleKey, collectedAt)) return
+        //
+        // 클릭은 사용자가 그 알림을 직접 지목한 결과라 억제하지 않고, 에피소드 관찰에서도 뺀다.
+        if (!clicked && updateThrottle.onPosted(sbn.throttleKey, collectedAt)) return
 
         val signals = sbn.notification.toSignals()
         val sanitized = sanitize(sbn.notification.toContent(), signals) ?: return
@@ -114,7 +121,7 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
                 signals = signals,
             ) ?: return
 
-        if (!clicked) updateThrottle.markCollected(sbn.throttleKey, collectedAt)
+        if (!clicked) updateThrottle.onCollected(sbn.throttleKey, collectedAt)
 
         serviceScope.launch {
             runCatching {
