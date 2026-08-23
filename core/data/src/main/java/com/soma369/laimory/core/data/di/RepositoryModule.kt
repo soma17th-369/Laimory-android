@@ -9,7 +9,7 @@ import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineDraftRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordSessionRepositoryImpl
-import com.soma369.laimory.core.data.repository.UserProfileRepositoryImpl
+import com.soma369.laimory.core.data.repository.UserRepositoryImpl
 import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
@@ -19,7 +19,7 @@ import com.soma369.laimory.core.domain.repository.SocialLoginRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
-import com.soma369.laimory.core.domain.repository.UserProfileRepository
+import com.soma369.laimory.core.domain.repository.UserRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -67,5 +67,5 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
-    abstract fun bindUserProfileRepository(impl: UserProfileRepositoryImpl): UserProfileRepository
+    abstract fun bindUserRepository(impl: UserRepositoryImpl): UserRepository
 }
