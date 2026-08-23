@@ -30,10 +30,15 @@ data class NotificationFilter(
      * 비이벤트 제외를 적용하지 않고, 앱 allowlist 와 키워드 경로에만 적용한다.
      * 빈 키워드는 설정에 남아 있더라도 일치 조건에서 제외한다.
      *
-     * 광고 표기([hasAdvertisementMarker])는 키워드 경로에만 적용한다 — 키워드는 사용자가
-     * 앱을 고르지 않아도 걸리는 넓은 경로라 광고가 섞이지만, 클릭과 앱 allowlist 는 사용자가
-     * 그 알림·그 앱을 직접 지목한 결과다. 그래서 광고 표기가 있는 allowlist 앱의 알림은
-     * 키워드가 걸리더라도 [NotificationPayload.CollectReason.APP]으로 수집된다.
+     * 광고 표기([hasAdvertisementMarker])와 읽을 수 없는 본문([NotificationSignals.hasUnreadableBody])은
+     * 키워드 경로에만 적용한다 — 키워드는 사용자가 앱을 고르지 않아도 걸리는 넓은 경로라 광고가
+     * 섞이지만, 클릭과 앱 allowlist 는 사용자가 그 알림·그 앱을 직접 지목한 결과다. 그래서 둘 중
+     * 하나에 해당하는 allowlist 앱의 알림은 키워드가 걸리더라도
+     * [NotificationPayload.CollectReason.APP]으로 수집된다.
+     *
+     * 본문을 읽을 수 없으면 키워드 경로로 수집하지 않는다 — 광고 표기가 그 본문에 있으면 판정
+     * 자체가 성립하지 않으므로, 제목 한 줄만 보고 긁어오는 것은 근거가 없는 수집이다. 저장되는
+     * 값도 제목뿐이라 초안 품질에도 기여하지 않는다.
      *
      * 키워드는 사용자 입력과 기본 사전을 **합치기 전에** 나눠 판정한다. 합친 뒤 앱 범위를
      * 걸면 사용자가 직접 등록한 `도착` 까지 목록 밖 앱에서 막힌다.
@@ -59,7 +64,9 @@ data class NotificationFilter(
             useDefaultKeywords && DEFAULT_KEYWORD_SCOPES.any { it.matches(packageName, content) }
 
         return when {
-            (matchesUserKeyword || matchesScopedDefault) && !content.hasAdvertisementMarker() ->
+            (matchesUserKeyword || matchesScopedDefault) &&
+                !signals.hasUnreadableBody &&
+                !content.hasAdvertisementMarker() ->
                 NotificationPayload.CollectReason.KEYWORD
 
             packageName in allowedPackages -> NotificationPayload.CollectReason.APP
