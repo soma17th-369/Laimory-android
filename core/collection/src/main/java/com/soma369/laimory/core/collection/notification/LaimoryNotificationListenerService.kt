@@ -98,8 +98,9 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
         // useDefaultKeywords 를 꺼 둔 사용자의 설정을 무시하게 된다.
         val filter = filter ?: return
         val collectedAt = Instant.now()
-        // 갱신 억제를 정제·판정보다 먼저 본다. 초당 갱신되는 알림에 개인정보 정규식을 매번
-        // 돌리지 않기 위해서다.
+        // 갱신 억제를 정제·판정보다 먼저 본다. 한 번 수집된 뒤에도 계속 갱신되는 알림에 개인정보
+        // 정규식과 저장을 매번 반복하지 않기 위해서다. 아직 한 번도 수집되지 않은 알림은 기록이
+        // 없어 억제되지 않으므로, 수집 자체가 막힌 알림에는 이 순서가 이득을 주지 않는다.
         if (!clicked && updateThrottle.isThrottled(sbn.throttleKey, collectedAt)) return
 
         val signals = sbn.notification.toSignals()
