@@ -1,4 +1,5 @@
 import java.net.URI
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -12,6 +13,21 @@ plugins {
 
 val debugBaseUrl = providers.gradleProperty("laimory.debugBaseUrl").get()
 val releaseBaseUrl = providers.gradleProperty("laimory.releaseBaseUrl").get()
+
+/**
+ * Google Maps Android API 키.
+ *
+ * `local.properties` 는 gitignore 대상이라 키가 저장소에 올라가지 않는다. 값이 없으면 빈
+ * 문자열로 두어 **빌드는 성공하고** 지도만 대체 안내 상태로 떨어진다 — 키 없는 개발 환경이나
+ * CI 에서 빌드가 깨지지 않아야 한다.
+ */
+val mapsApiKey: String =
+    Properties()
+        .apply {
+            rootProject.file("local.properties").takeIf(File::exists)?.inputStream()?.use(::load)
+        }.getProperty("laimory.mapsApiKey")
+        ?: providers.gradleProperty("laimory.mapsApiKey").orNull
+        ?: ""
 
 fun String.toAppLinkHost(): String =
     URI(this).host?.takeIf(String::isNotBlank)
@@ -29,6 +45,10 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 매니페스트의 지도 키와 게이트 판정이 같은 값을 보게 한 곳에서 함께 심는다.
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey
+        buildConfigField("String", "MAPS_API_KEY", "\"$mapsApiKey\"")
     }
 
     buildTypes {
