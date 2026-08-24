@@ -363,6 +363,8 @@ class SettingsViewModelTest {
             assertEquals(0, repository.clearSessionCount)
             assertNull(navigationHelper.replacedRoot)
             assertFalse(viewModel.state.value.isWithdrawing)
+            // 5xx 는 탈퇴 전용 처리를 만들지 않고 공통 정책 메시지로 내려간다.
+            assertEquals(listOf(UserMessage.TemporaryUnavailable), messageHelper.sentMessages)
         }
 
     @Test
@@ -411,7 +413,7 @@ class SettingsViewModelTest {
                 ),
             withdrawAccountUseCase =
                 WithdrawAccountUseCase(
-                    requestAccountWithdrawal = RequestAccountWithdrawalUseCase(userRepository),
+                    requestAccountWithdrawal = RequestAccountWithdrawalUseCase(userRepository, messageHelper),
                     authRepository = repository,
                 ),
             observeSignedInAccount = ObserveSignedInAccountUseCase(repository),

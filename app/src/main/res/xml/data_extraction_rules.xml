@@ -1,25 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+   Android 12 이상의 백업·기기 이전 규칙.
+   https://developer.android.com/about/versions/12/backup-restore#xml-changes
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="datastore/auth_session.preferences_pb" />
         <exclude domain="file" path="datastore/active_timeline_draft.preferences_pb" />
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
+        <!--
+        기기 로컬 수집 원본. 알림 본문·위치 체류 같은 개인정보를 담고 보존 기간이 지나면
+        지워지는 기기 전용 데이터라 클라우드에 올리지 않는다. 백업에 들어가면 앱을 지워도
+        재설치로 되살아나 계정 삭제 안내가 거짓이 된다. WAL·SHM 은 별도 파일이라 함께 제외한다.
         -->
+        <exclude domain="database" path="collection.db" />
+        <exclude domain="database" path="collection.db-wal" />
+        <exclude domain="database" path="collection.db-shm" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/auth_session.preferences_pb" />
         <exclude domain="file" path="datastore/active_timeline_draft.preferences_pb" />
+        <!-- 기기 이전으로도 옮기지 않는다. 하루 기록 정본은 서버에 있고 이 DB 는 그 재료다. -->
+        <exclude domain="database" path="collection.db" />
+        <exclude domain="database" path="collection.db-wal" />
+        <exclude domain="database" path="collection.db-shm" />
     </device-transfer>
-    <!--
-    <device-transfer>
-        <include .../>
-        <exclude .../>
-    </device-transfer>
-    -->
 </data-extraction-rules>
