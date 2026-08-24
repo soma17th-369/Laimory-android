@@ -30,8 +30,13 @@ data class DraftConsentUiContent(
     val windowText: String,
     val sentTotal: Int,
     val typeSummaries: List<DraftConsentTypeSummary>,
+    /** 위치 상세 지도에 찍을 마커. 현재 생성 시도 스냅샷에서만 나오며 다른 날짜를 조회하지 않는다. */
+    val locationMarkers: List<ConsentLocationMarker>,
 ) {
     fun summaryOf(group: DraftConsentTypeGroup): DraftConsentTypeSummary? = typeSummaries.firstOrNull { it.group == group }
+
+    /** 현재 생성 시도의 위치 항목 rawId. 위치정보 전송 Switch 가 한 번에 켜고 끄는 대상이다. */
+    val locationRawIds: Set<String> get() = locationMarkers.mapTo(linkedSetOf()) { it.sourceRawId }
 }
 
 /** 스냅샷에서 화면 본문을 만든다. 건수는 선택 정책 리포트를 그대로 사용하고 재계산하지 않는다. */
@@ -52,6 +57,7 @@ internal fun DraftConsentPreparation.toConsentContent(): DraftConsentUiContent {
         windowText = formatWindow(window.start, window.end, zone),
         sentTotal = report.selectedTotal,
         typeSummaries = summaries,
+        locationMarkers = selection.items.toLocationMarkers(zone),
     )
 }
 
@@ -238,8 +244,12 @@ private fun formatTimeRange(
     return "$startText ~ $endText"
 }
 
-/** 날짜가 섞일 수 있는 목록에서 쓰는 범위: "8월 11일 23:50 ~ 00:40" (종료가 다른 날이면 날짜 포함). */
-private fun formatDateTimeRange(
+/**
+ * 날짜가 섞일 수 있는 목록에서 쓰는 범위: "8월 11일 23:50 ~ 00:40" (종료가 다른 날이면 날짜 포함).
+ *
+ * 위치 마커 설명도 목록과 같은 시각 문구를 쓰도록 모듈 안에서 공유한다.
+ */
+internal fun formatDateTimeRange(
     startAt: Instant,
     endAt: Instant?,
     zone: ZoneId,
