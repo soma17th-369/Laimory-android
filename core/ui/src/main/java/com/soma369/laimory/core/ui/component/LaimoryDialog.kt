@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,8 +13,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -106,20 +109,31 @@ private fun LaimoryDialogContent(
                     end = Spacing.extraLarge2,
                     bottom = Spacing.extraLarge,
                 ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                modifier = Modifier.heightIn(min = DialogBodyMinHeight),
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (consent != null) DialogConsentRow(consent = consent)
+            // 본문·확인 영역만 스크롤하고 액션은 항상 남긴다. 가로 화면이나 큰 글꼴에서 버튼이
+            // 화면 밖으로 밀리면 사용자가 확인도 취소도 할 수 없는 상태가 된다.
+            // weight(fill = false) 라 내용이 짧으면 기존 높이 그대로다.
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    modifier = Modifier.heightIn(min = DialogBodyMinHeight),
+                    text = body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (consent != null) DialogConsentRow(consent = consent)
+            }
+            Spacer(modifier = Modifier.height(Spacing.extraLarge))
             DialogActions(buttons = buttons)
         }
     }
@@ -167,18 +181,26 @@ private fun LaimoryOneButtonDialogPreviewContent() {
     )
 }
 
+/**
+ * 실제 Dialog 와 같이 **높이가 묶인** 부모에 넣는다. `fillMaxWidth` 만 주면 높이가 무한이라
+ * 본문 스크롤 제약이 걸리지 않아, 작은 화면 잘림을 프리뷰가 검증하지 못한다.
+ */
 @Composable
 private fun LaimoryConsentDialogPreviewContent(checked: Boolean) {
     Box(
         modifier =
             Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(Spacing.extraLarge2),
         contentAlignment = Alignment.Center,
     ) {
         LaimoryDialogContent(
             title = "계정을 삭제할까요?",
-            body = "계정과 서버에 저장된 기록이 모두 삭제되며 되돌릴 수 없습니다.",
+            body =
+                "계정과 서버에 저장된 기록이 모두 삭제되며 되돌릴 수 없습니다. " +
+                    "삭제 처리에는 시간이 걸릴 수 있습니다.\n\n" +
+                    "바로 로그아웃되고, 같은 계정으로 다시 로그인해도 이전 기록은 복구되지 않습니다. " +
+                    "이 기기에 남아 있는 수집 기록은 앱을 삭제하면 지워집니다.",
             consent =
                 LaimoryDialogConsent(
                     label = "위 내용을 확인했으며 계정 삭제에 동의합니다",
@@ -198,7 +220,7 @@ private fun LaimoryConsentDialogPreviewContent(checked: Boolean) {
     }
 }
 
-@Preview(name = "Dialog / Consent / Unchecked", showBackground = true, widthDp = 360)
+@Preview(name = "Dialog / Consent / Unchecked", showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
 private fun LaimoryConsentDialogPreview() {
     LaimoryTheme {
@@ -206,10 +228,28 @@ private fun LaimoryConsentDialogPreview() {
     }
 }
 
-@Preview(name = "Dialog / Consent / Checked / Dark", showBackground = true, widthDp = 360)
+@Preview(name = "Dialog / Consent / Checked / Dark", showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
 private fun LaimoryConsentDialogCheckedDarkPreview() {
     LaimoryTheme(darkTheme = true) {
+        LaimoryConsentDialogPreviewContent(checked = true)
+    }
+}
+
+/** 세로 공간이 짧고 글꼴이 큰 조건. 본문이 스크롤되고 체크박스·두 버튼에 도달할 수 있어야 한다. */
+@Preview(name = "Dialog / Consent / Short + Large font", showBackground = true, widthDp = 360, heightDp = 320, fontScale = 1.5f)
+@Composable
+private fun LaimoryConsentDialogCompactPreview() {
+    LaimoryTheme {
+        LaimoryConsentDialogPreviewContent(checked = false)
+    }
+}
+
+/** 가로 화면. 세로 공간이 가장 좁은 조건이다. */
+@Preview(name = "Dialog / Consent / Landscape", showBackground = true, widthDp = 640, heightDp = 360)
+@Composable
+private fun LaimoryConsentDialogLandscapePreview() {
+    LaimoryTheme {
         LaimoryConsentDialogPreviewContent(checked = true)
     }
 }
