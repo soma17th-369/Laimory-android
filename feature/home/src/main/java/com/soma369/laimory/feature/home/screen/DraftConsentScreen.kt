@@ -49,6 +49,7 @@ import com.soma369.laimory.feature.home.component.iconRes
 import com.soma369.laimory.feature.home.component.label
 import com.soma369.laimory.feature.home.component.subtitle
 import com.soma369.laimory.feature.home.component.titleRes
+import com.soma369.laimory.feature.home.state.ConsentLocationMarker
 import com.soma369.laimory.feature.home.state.DraftConsentTerm
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftConsentTypeSummary
@@ -440,6 +441,41 @@ internal fun previewConsentContent(): DraftConsentUiContent =
                 DraftConsentTypeSummary(DraftConsentTypeGroup.HEALTH, 0, 0, emptyList()),
                 DraftConsentTypeSummary(DraftConsentTypeGroup.NOTIFICATION, 133, 100, emptyList()),
             ),
+        locationMarkers = previewLocationMarkers(),
+    )
+
+internal fun previewLocationMarkers(): List<ConsentLocationMarker> =
+    listOf(
+        ConsentLocationMarker(
+            key = "stay-1",
+            sourceRawId = "stay-1",
+            order = 1,
+            kind = ConsentLocationMarker.Kind.STAY,
+            latitude = 37.5665,
+            longitude = 126.9780,
+            title = "서울특별시 중구 세종대로 110",
+            snippet = "8월 11일 09:10 ~ 12:40",
+        ),
+        ConsentLocationMarker(
+            key = "move-1:start",
+            sourceRawId = "move-1",
+            order = 2,
+            kind = ConsentLocationMarker.Kind.MOVEMENT_START,
+            latitude = 37.5701,
+            longitude = 126.9820,
+            title = "서울특별시 종로구 종로 1",
+            snippet = "이동 시작 · 8월 11일 12:40 ~ 13:05",
+        ),
+        ConsentLocationMarker(
+            key = "move-1:end",
+            sourceRawId = "move-1",
+            order = 3,
+            kind = ConsentLocationMarker.Kind.MOVEMENT_END,
+            latitude = 37.5512,
+            longitude = 126.9882,
+            title = "서울특별시 중구 남대문로 81",
+            snippet = "이동 도착 · 8월 11일 12:40 ~ 13:05",
+        ),
     )
 
 @Preview(name = "DraftConsent / Light", showBackground = true, widthDp = 360, heightDp = 800)

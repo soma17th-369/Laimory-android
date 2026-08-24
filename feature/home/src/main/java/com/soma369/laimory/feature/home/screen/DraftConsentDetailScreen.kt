@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,9 +26,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -37,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -50,8 +52,10 @@ import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.home.component.DraftConsentLocationMap
 import com.soma369.laimory.feature.home.component.iconRes
 import com.soma369.laimory.feature.home.component.label
+import com.soma369.laimory.feature.home.state.ConsentLocationMarker
 import com.soma369.laimory.feature.home.state.DraftConsentDetailItem
 import com.soma369.laimory.feature.home.state.DraftConsentDetailSection
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
@@ -98,7 +102,12 @@ private fun DraftConsentDetailContent(
         summary = group?.let { state.content?.summaryOf(it) },
         title = group?.label() ?: "전송 상세",
         excludedRawIds = state.excludedRawIds,
+        locationMarkers = state.content?.locationMarkers.orEmpty(),
+        isMapRenderAllowed = state.isMapRenderAllowed,
+        isLocationIncluded = state.isLocationIncluded,
+        isLocationToggleEnabled = !state.isSubmitting,
         onToggleItem = { itemKey -> onIntent(DraftConsentUiIntent.ToggleItemInclusion(itemKey)) },
+        onToggleLocation = { onIntent(DraftConsentUiIntent.ToggleLocationInclusion) },
         onBack = { onIntent(DraftConsentUiIntent.CloseTypeDetail) },
     )
 }
@@ -110,7 +119,12 @@ private fun DraftConsentDetailScreen(
     title: String,
     onBack: () -> Unit,
     excludedRawIds: Set<String> = emptySet(),
+    locationMarkers: List<ConsentLocationMarker> = emptyList(),
+    isMapRenderAllowed: Boolean = false,
+    isLocationIncluded: Boolean = true,
+    isLocationToggleEnabled: Boolean = true,
     onToggleItem: (String) -> Unit = {},
+    onToggleLocation: () -> Unit = {},
 ) {
     Column(
         modifier =
@@ -126,6 +140,38 @@ private fun DraftConsentDetailScreen(
         if (summary == null) {
             DetailUnavailableContent(onBack = onBack)
             return
+        }
+
+        // rawId 하나가 마커 여러 개(이동의 시작·도착)를 가질 수 있어 목록으로 모은다.
+        val markerOrders =
+            remember(locationMarkers) {
+                locationMarkers.groupBy { it.sourceRawId }.mapValues { (_, group) -> group.map { it.order } }
+            }
+
+        // 지도와 전송 스위치는 목록 **밖** 고정 영역이다. 목록 안에 두면 스크롤로 사라지는 데다,
+        // 지도 드래그와 목록 스크롤이 같은 세로 제스처를 두고 다퉈 지도를 움직이기 어렵다.
+        if (summary.group == DraftConsentTypeGroup.LOCATION) {
+            Column(
+                modifier =
+                    Modifier.padding(
+                        start = Spacing.extraLarge,
+                        end = Spacing.extraLarge,
+                        top = Spacing.medium,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(Spacing.small),
+            ) {
+                DraftConsentLocationMap(
+                    markers = locationMarkers,
+                    excludedRawIds = excludedRawIds,
+                    renderAllowed = isMapRenderAllowed,
+                    onToggleMarker = onToggleItem,
+                )
+                LocationTransferSwitchRow(
+                    included = isLocationIncluded,
+                    enabled = isLocationToggleEnabled && locationMarkers.isNotEmpty(),
+                    onToggle = onToggleLocation,
+                )
+            }
         }
 
         LazyColumn(
@@ -145,10 +191,15 @@ private fun DraftConsentDetailScreen(
                 val label = summary.countLabel(includedCount = summary.sentCount - excludedCount)
                 Text(
                     text =
-                        if (summary.group == DraftConsentTypeGroup.PHOTO) {
-                            "$label · 아래 사진이 그대로 서버로 전송돼요. 사진은 홈 사진 선택에서 변경할 수 있어요."
-                        } else {
-                            "$label · 항목을 누르면 전송에서 제외하거나 다시 포함할 수 있어요. 흐리게 표시된 항목은 전송되지 않아요."
+                        when (summary.group) {
+                            DraftConsentTypeGroup.PHOTO ->
+                                "$label · 아래 사진이 그대로 서버로 전송돼요. 사진은 홈 사진 선택에서 변경할 수 있어요."
+
+                            DraftConsentTypeGroup.LOCATION ->
+                                "$label · 지도 핀을 누르면 장소와 포함 여부가 보이고, 말풍선을 한 번 더 누르면 바뀌어요. 핀 번호는 아래 목록과 같아요."
+
+                            else ->
+                                "$label · 항목을 누르면 전송에서 제외하거나 다시 포함할 수 있어요. 흐리게 표시된 항목은 전송되지 않아요."
                         },
                     modifier = Modifier.padding(bottom = Spacing.small),
                     style = MaterialTheme.typography.bodySmall,
@@ -160,9 +211,86 @@ private fun DraftConsentDetailScreen(
                     group = summary.group,
                     section = section,
                     excludedRawIds = excludedRawIds,
+                    markerOrders = markerOrders,
                     onToggleItem = onToggleItem,
                 )
             }
+        }
+    }
+}
+
+/**
+ * 지도 핀과 목록을 잇는 번호 배지.
+ *
+ * 이동은 시작·도착 두 핀이 한 항목에 묶여 `2-3` 처럼 범위로 적는다.
+ * 배지 자체는 장식이라 낭독에서 뺀다 — 카드가 이미 장소·시각·포함 여부를 읽어 준다.
+ */
+@Composable
+private fun MarkerOrderBadge(
+    orders: List<Int>,
+    included: Boolean,
+) {
+    if (orders.isEmpty()) return
+    val label = if (orders.size > 1) "${orders.first()}-${orders.last()}" else orders.first().toString()
+    Box(
+        modifier =
+            Modifier
+                .clearAndSetSemantics { }
+                .size(ORDER_BADGE_SIZE)
+                .background(
+                    color =
+                        if (included) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = CircleShape,
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (included) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 위치정보 전송 Switch 한 줄.
+ *
+ * 행 전체를 하나의 토글로 노출하고 Switch 자체의 클릭은 비운다 — 둘 다 클릭 가능하면 포커스가
+ * 나뉘고 스크린 리더가 같은 상태를 두 번 읽는다.
+ */
+@Composable
+private fun LocationTransferSwitchRow(
+    included: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .toggleable(
+                    value = included,
+                    enabled = enabled,
+                    role = Role.Switch,
+                    onValueChange = { onToggle() },
+                ).semantics { stateDescription = if (included) "전송 포함" else "전송 제외" },
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = Spacing.medium, vertical = Spacing.small),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = "위치정보 전송",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Switch(checked = included, onCheckedChange = null, enabled = enabled)
         }
     }
 }
@@ -171,6 +299,7 @@ private fun LazyListScope.sectionItems(
     group: DraftConsentTypeGroup,
     section: DraftConsentDetailSection,
     excludedRawIds: Set<String>,
+    markerOrders: Map<String, List<Int>>,
     onToggleItem: (String) -> Unit,
 ) {
     section.title?.let { sectionTitle ->
@@ -206,13 +335,13 @@ private fun LazyListScope.sectionItems(
 
         DraftConsentTypeGroup.LOCATION ->
             items(items = section.items, key = DraftConsentDetailItem::key) { item ->
-                val included = item.key !in excludedRawIds
-                val onToggle = { onToggleItem(item.key) }
-                if (item.title.contains(" → ")) {
-                    MovementItemCard(item = item, included = included, onToggle = onToggle)
-                } else {
-                    StayItemCard(item = item, included = included, onToggle = onToggle)
-                }
+                LocationItemCard(
+                    item = item,
+                    included = item.key !in excludedRawIds,
+                    // 지도 핀과 대조할 수 있게 같은 번호를 붙인다. 이동은 시작·도착 두 핀이라 범위로 적는다.
+                    orders = markerOrders[item.key].orEmpty(),
+                    onToggle = { onToggleItem(item.key) },
+                )
             }
 
         DraftConsentTypeGroup.HEALTH ->
@@ -420,26 +549,14 @@ private fun CalendarItemCard(
 }
 
 @Composable
-private fun StayItemCard(
+private fun LocationItemCard(
     item: DraftConsentDetailItem,
     included: Boolean,
+    orders: List<Int>,
     onToggle: () -> Unit,
 ) {
     DetailCard(included = included, onToggle = onToggle) {
-        Box(
-            modifier =
-                Modifier
-                    .size(32.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(DraftConsentTypeGroup.LOCATION.iconRes()),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
+        MarkerOrderBadge(orders = orders, included = included)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -456,70 +573,27 @@ private fun StayItemCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                text = item.timeText,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MovementItemCard(
-    item: DraftConsentDetailItem,
-    included: Boolean,
-    onToggle: () -> Unit,
-) {
-    DetailCard(included = included, onToggle = onToggle) {
-        Column(
-            modifier = Modifier.width(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(10.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .width(2.dp)
-                        .height(18.dp)
-                        .alpha(0.35f)
-                        .background(MaterialTheme.colorScheme.primary),
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .size(10.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            item.description?.let { description ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = description,
+                    modifier = Modifier.weight(1f),
+                    text = item.timeText,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 이동 거리. 시각과 같은 줄 오른쪽 끝에 붙여 줄 수를 늘리지 않는다.
+                item.trailingText?.let { trailing ->
+                    Text(
+                        text = trailing,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
-        Text(
-            text = item.timeText,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -612,7 +686,7 @@ private fun NotificationItemCard(
 @Composable
 private fun DetailCard(
     included: Boolean,
-    onToggle: () -> Unit,
+    onToggle: (() -> Unit)?,
     content: @Composable RowScope.() -> Unit,
 ) {
     val border =
@@ -621,17 +695,25 @@ private fun DetailCard(
         } else {
             BorderStroke(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
         }
+    // 위치는 카드마다 토글하지 않고 지도 아래 Switch 하나로 제어한다. 그때는 카드에 토글
+    // semantics 를 두지 않는다 — 조작할 수 없는 요소가 체크박스로 낭독되면 안 된다.
+    val stateModifier =
+        if (onToggle == null) {
+            Modifier.semantics { stateDescription = if (included) "전송 포함" else "전송 제외" }
+        } else {
+            Modifier
+                .toggleable(
+                    value = included,
+                    role = Role.Checkbox,
+                    onValueChange = { onToggle() },
+                ).semantics { stateDescription = if (included) "전송 포함" else "전송 제외" }
+        }
     Surface(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .toggleable(
-                    value = included,
-                    role = Role.Checkbox,
-                    onValueChange = { onToggle() },
-                )
-                .semantics { stateDescription = if (included) "전송 포함" else "전송 제외" },
+                .then(stateModifier),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = border,
@@ -683,6 +765,7 @@ private val NOTIFICATION_APP_ICON_SIZE = 24.dp
 
 private const val PHOTO_GRID_COLUMNS = 3
 private val PHOTO_GRID_GAP = 6.dp
+private val ORDER_BADGE_SIZE = 24.dp
 
 /** 미포함 항목의 흐림 처리 강도. 내용은 읽히되 포함 항목과 확실히 구분되는 수준. */
 private const val EXCLUDED_CONTENT_ALPHA = 0.55f

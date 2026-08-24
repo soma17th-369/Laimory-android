@@ -20,6 +20,14 @@ sealed interface DraftConsentUiIntent : UiIntent {
         val itemKey: String,
     ) : DraftConsentUiIntent
 
+    /**
+     * 위치정보 전송을 한 번에 켜고 끈다.
+     *
+     * 위치는 항목별 토글을 두지 않는다 — 지도와 목록 카드가 이미 상태를 보여주는데 카드마다
+     * 토글을 또 얹으면 중첩된 semantics 로 포커스와 낭독이 두 번 생긴다. 제출 중에는 무시된다.
+     */
+    data object ToggleLocationInclusion : DraftConsentUiIntent
+
     /** 유형 상세 화면에서 동의 화면으로 복귀한다. 준비 상태는 유지된다. */
     data object CloseTypeDetail : DraftConsentUiIntent
 

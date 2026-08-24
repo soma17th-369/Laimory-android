@@ -11,4 +11,6 @@ data class DraftConsentDetailItem(
     val timeText: String,
     /** PHOTO 항목의 썸네일 URI. 다른 유형은 null. */
     val imageUri: String? = null,
+    /** 시각 줄 오른쪽 끝에 붙이는 보조 표기. MOVEMENT 의 이동 거리에 쓴다. 다른 유형은 null. */
+    val trailingText: String? = null,
 )

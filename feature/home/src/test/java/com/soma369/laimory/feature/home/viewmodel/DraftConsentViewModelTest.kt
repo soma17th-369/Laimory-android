@@ -6,9 +6,12 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
+import com.soma369.laimory.core.domain.model.collection.GeoPoint
+import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
@@ -16,6 +19,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
@@ -283,6 +287,116 @@ class DraftConsentViewModelTest {
             assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
         }
 
+    // --- 위치정보 전송 Switch ---
+
+    @Test
+    fun `위치정보 전송을 끄면 현재 시도의 체류와 이동을 모두 제외한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1"), movementItem("move-1"), calendarItem("cal-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertTrue(viewModel.state.value.isLocationIncluded)
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertEquals(setOf("stay-1", "move-1"), viewModel.state.value.excludedRawIds)
+            assertFalse(viewModel.state.value.isLocationIncluded)
+            // 다른 유형은 건드리지 않는다.
+            assertEquals(1, viewModel.state.value.includedTotal)
+        }
+
+    @Test
+    fun `다시 켜면 최초 스냅샷의 위치만 복원하고 다른 유형 제외는 유지한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1"), movementItem("move-1"), calendarItem("cal-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
+            assertTrue(viewModel.state.value.isLocationIncluded)
+        }
+
+    @Test
+    fun `위치를 모두 꺼도 다른 유형이 남아 있으면 생성할 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1"), calendarItem("cal-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+            checkAllTerms(viewModel)
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.canSubmit)
+        }
+
+    @Test
+    fun `전송할 항목이 위치뿐이면 모두 끈 뒤 생성 CTA 가 잠긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+            checkAllTerms(viewModel)
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertEquals(0, viewModel.state.value.includedTotal)
+            assertFalse(viewModel.state.value.canSubmit)
+        }
+
+    @Test
+    fun `위치를 끈 채 제출하면 위치가 빠진 목록만 전송한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1"), movementItem("move-1"), calendarItem("cal-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertEquals(listOf("cal-1"), draftRepository.createdItems.map(SourceItem::rawId))
+        }
+
+    @Test
+    fun `지도 마커는 체류 한 개 이동 두 개로 만들어진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1"), movementItem("move-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val markers = viewModel.state.value.content?.locationMarkers.orEmpty()
+
+            assertEquals(3, markers.size)
+            assertEquals(setOf("stay-1", "move-1"), viewModel.state.value.content?.locationRawIds)
+        }
+
+    @Test
+    fun `제출 중에는 위치 Switch 를 바꿀 수 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1"), calendarItem("cal-1")))
+            draftRepository.createGate = CompletableDeferred()
+            val viewModel = createViewModel()
+            runCurrent()
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
+        }
+
     @Test
     fun `제외 항목을 뺀 결과만 제출한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
@@ -454,6 +568,7 @@ class DraftConsentViewModelTest {
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
             submissionGate = DraftConsentSubmissionGate { submissionAllowed },
+            mapRenderGate = LocationMapRenderGate { false },
         )
 
     private fun checkAllTerms(viewModel: DraftConsentViewModel) {
@@ -487,6 +602,40 @@ class DraftConsentViewModelTest {
             payload = CalendarPayload("일정", null, null, false),
             sourceName = SourceName.CALENDAR_PROVIDER,
             sourceKey = id,
+            collectedAt = instant,
+        )
+    }
+
+    private fun stayItem(id: String): SourceItem {
+        val instant = date.atTime(9, 0).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = id,
+            startAt = instant,
+            endAt = instant.plusSeconds(3_600),
+            timeZoneId = zone,
+            payload = StayPayload(latitude = 37.5665, longitude = 126.9780, address = "서울특별시 중구 세종대로 110"),
+            sourceName = SourceName.LOCATION_PROVIDER,
+            sourceKey = "STAY:$id",
+            collectedAt = instant,
+        )
+    }
+
+    private fun movementItem(id: String): SourceItem {
+        val instant = date.atTime(10, 0).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = id,
+            startAt = instant,
+            endAt = instant.plusSeconds(1_500),
+            timeZoneId = zone,
+            payload =
+                MovementPayload(
+                    start = GeoPoint(37.5701, 126.9820, "서울특별시 종로구 종로 1"),
+                    end = GeoPoint(37.5512, 126.9882, "서울특별시 중구 남대문로 81"),
+                    distanceMeters = 2_400.0,
+                    transports = MovementPayload.Transport.WALKING,
+                ),
+            sourceName = SourceName.LOCATION_PROVIDER,
+            sourceKey = "MOVEMENT:$id",
             collectedAt = instant,
         )
     }

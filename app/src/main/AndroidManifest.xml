@@ -16,6 +16,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Laimory">
 
+        <!--
+            Google Maps Android API 키. local.properties 에서 주입하며 비어 있으면 SDK 인증이
+            실패해 지도 영역이 대체 안내로 떨어진다(빌드는 성공한다).
+        -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
+
         <meta-data
             android:name="firebase_messaging_installation_id_enabled"
             android:value="true" />

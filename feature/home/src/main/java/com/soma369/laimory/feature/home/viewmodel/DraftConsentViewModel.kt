@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
+import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
@@ -37,10 +38,15 @@ class DraftConsentViewModel
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
         submissionGate: DraftConsentSubmissionGate,
+        mapRenderGate: LocationMapRenderGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
-            DraftConsentUiState(isSubmissionAllowed = submissionGate.isSubmissionAllowed()),
+            DraftConsentUiState(
+                isSubmissionAllowed = submissionGate.isSubmissionAllowed(),
+                isMapRenderAllowed = mapRenderGate.isMapRenderAllowed(),
+            ),
         ) {
         private val isSubmissionAllowed = submissionGate.isSubmissionAllowed()
+        private val isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()
         private var activePreparation: DraftConsentPreparation? = null
 
         init {
@@ -67,6 +73,7 @@ class DraftConsentViewModel
             when (intent) {
                 is DraftConsentUiIntent.ToggleTerm -> toggleTerm(intent)
                 is DraftConsentUiIntent.ToggleItemInclusion -> toggleItemInclusion(intent)
+                DraftConsentUiIntent.ToggleLocationInclusion -> toggleLocationInclusion()
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
                 is DraftConsentUiIntent.OpenTermsDetail -> updateState { copy(openTermsDetail = intent.term) }
@@ -100,6 +107,25 @@ class DraftConsentViewModel
                         } else {
                             excludedRawIds + intent.itemKey
                         },
+                )
+            }
+        }
+
+        /**
+         * 현재 생성 시도의 위치 항목 전체를 한 번에 포함·제외한다.
+         *
+         * 켤 때 최초 스냅샷의 위치 rawId 만 제외 집합에서 뺀다 — 다른 유형이 제외한 항목을 함께
+         * 되살리지 않기 위해서다. 상한 여유 재충원은 [DraftSourceItemSelection.excluding] 정책 그대로
+         * 하지 않는다.
+         */
+        private fun toggleLocationInclusion() {
+            if (state.value.isSubmitting) return
+            val locationRawIds = state.value.content?.locationRawIds.orEmpty()
+            if (locationRawIds.isEmpty()) return
+            updateState {
+                copy(
+                    excludedRawIds =
+                        if (isLocationIncluded) excludedRawIds + locationRawIds else excludedRawIds - locationRawIds,
                 )
             }
         }
@@ -168,5 +194,9 @@ class DraftConsentViewModel
             navigationHelper.navigateToBack()
         }
 
-        private fun initialUiState(): DraftConsentUiState = DraftConsentUiState(isSubmissionAllowed = isSubmissionAllowed)
+        private fun initialUiState(): DraftConsentUiState =
+            DraftConsentUiState(
+                isSubmissionAllowed = isSubmissionAllowed,
+                isMapRenderAllowed = isMapRenderAllowed,
+            )
     }

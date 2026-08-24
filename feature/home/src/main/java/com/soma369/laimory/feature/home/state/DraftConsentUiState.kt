@@ -21,6 +21,11 @@ data class DraftConsentUiState(
     val openTermsDetail: DraftConsentTerm? = null,
     /** 동의 문구 법무 확정 전 배포 가드 — false 면 모든 동의를 완료해도 제출할 수 없다. */
     val isSubmissionAllowed: Boolean = true,
+    /**
+     * 위치 지도를 그려도 되는지. false 면 `GoogleMap` 을 composition 에 넣지 않는다 —
+     * 지도를 그리는 것 자체가 카메라 영역을 Google 로 보내는 일이라 동의·키 확인이 먼저다.
+     */
+    val isMapRenderAllowed: Boolean = false,
 ) : UiState {
     val isAllTermsChecked: Boolean
         get() = checkedTerms.size == DraftConsentTerm.entries.size
@@ -30,6 +35,16 @@ data class DraftConsentUiState(
         get() = (content?.sentTotal ?: 0) - excludedRawIds.size
 
     fun isIncluded(itemKey: String): Boolean = itemKey !in excludedRawIds
+
+    /**
+     * 위치정보 전송 Switch 의 상태.
+     *
+     * 위치 항목 하나라도 제외돼 있으면 OFF 로 본다 — 위치는 개별 토글을 제공하지 않으므로 중간
+     * 상태가 생기지 않지만, 이전 시도에서 넘어온 값이나 다른 경로로 섞여도 켜짐으로 보이지 않게 한다.
+     * 표시할 위치가 없으면 켜 둔 것으로 본다(끌 대상이 없다).
+     */
+    val isLocationIncluded: Boolean
+        get() = content?.locationRawIds.orEmpty().none { it in excludedRawIds }
 
     /** 유형 안에서 사용자가 제외한 건수. */
     fun excludedCountOf(group: DraftConsentTypeGroup): Int {
