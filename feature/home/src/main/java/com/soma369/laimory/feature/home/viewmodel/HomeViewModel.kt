@@ -1,8 +1,12 @@
 package com.soma369.laimory.feature.home.viewmodel
 
+import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
+import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
@@ -15,6 +19,7 @@ import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
+import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
@@ -36,7 +41,6 @@ import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
-import com.soma369.laimory.feature.home.state.nonPhotoSourceItems
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -60,8 +64,15 @@ class HomeViewModel
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val refreshUserProfileUseCase: RefreshUserProfileUseCase,
         private val navigationHelper: NavigationHelper,
+        private val globalLoadingHelper: GlobalLoadingHelper,
+        private val autoCollectionCoordinator: AutoCollectionCoordinator,
+        private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
+        collectionLabAccessGate: CollectionLabAccessGate,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
-            HomeUiState(selectedDate = LocalDate.now(ZoneId.systemDefault())),
+            HomeUiState(
+                selectedDate = LocalDate.now(ZoneId.systemDefault()),
+                isCollectionLabAccessible = collectionLabAccessGate.isCollectionLabAccessible(),
+            ),
         ) {
         private val zone: ZoneId = ZoneId.systemDefault()
         private var sourceItems: List<SourceItem> = emptyList()
@@ -101,7 +112,9 @@ class HomeViewModel
                 // 첫 조회가 실패한 세션 내내 닉네임이 fallback 으로 남는다. 성공한 뒤의 중복 요청은
                 // coordinator 의 세션 캐시·single-flight 가 막는다.
                 HomeUiIntent.RefreshProfile -> refreshUserProfileUseCase()
-                HomeUiIntent.NavigateToCollection -> navigationHelper.navigateTo(CollectionPage)
+                // 버튼만 숨기지 않고 호출 경계에서도 막는다 — release 에는 라우트 자체가 없다.
+                HomeUiIntent.NavigateToCollection ->
+                    if (state.value.isCollectionLabAccessible) navigationHelper.navigateTo(CollectionPage) else Unit
                 HomeUiIntent.OpenDraftSheet -> openDraftSheet()
                 HomeUiIntent.DismissDraftSheet -> updateState { copy(isDraftSheetVisible = false) }
                 HomeUiIntent.OpenPhotoSheet -> requestPhotoSheet()
@@ -164,6 +177,18 @@ class HomeViewModel
 
         private fun openDraftSheet() {
             updateState { copy(isDraftSheetVisible = true) }
+            // 기본 날짜(오늘)를 그대로 쓰면 날짜 확정을 거치지 않으므로 여기서도 선행 수집을 건다.
+            startAutoCollectionAhead()
+        }
+
+        /**
+         * 최종 생성 전에 미리 수집을 시작한다. 결과를 기다리지 않는다.
+         *
+         * 조율자가 유형별 최신성으로 중복을 막으므로 여러 진입점에서 불려도 작업은 하나다.
+         * 저장 결과는 [ObserveSourceItemsUseCase] 흐름으로 홈 요약에 반영된다.
+         */
+        private fun startAutoCollectionAhead() {
+            safeLaunch(onError = { }) { autoCollectionCoordinator.refresh() }
         }
 
         private fun requestPhotoSheet() {
@@ -275,6 +300,8 @@ class HomeViewModel
         private fun selectDate(date: LocalDate) {
             if (state.value.draftStatus.isDateLocked) return
             hasUserSelectedDate = true
+            // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
+            startAutoCollectionAhead()
             updateState {
                 if (date == selectedDate) return@updateState copy(isDatePickerVisible = false)
                 val next =
@@ -370,21 +397,25 @@ class HomeViewModel
                 sendEffect(HomeUiSideEffect.ShowSnackbar("종료 시각은 시작 시각보다 뒤로 설정해주세요."))
                 return
             }
-            if (current.summary.totalItemCount == 0) {
-                sendEffect(HomeUiSideEffect.ShowSnackbar("선택한 범위에 모인 데이터가 없어요."))
-                return
-            }
-
+            // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤로 미룬다. 여기서 끊으면 아직 한 번도
+            // 수집하지 않은 사용자가 수집 기회를 갖기 전에 생성이 막힌다.
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
             consentPreparationJob =
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
+                    awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
+                    // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
+                    val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
+                    if (collected.isEmpty() && selectedPhotoItems.isEmpty()) {
+                        sendEffect(HomeUiSideEffect.ShowSnackbar("선택한 범위에 모인 데이터가 없어요."))
+                        return@safeLaunch
+                    }
                     val selection =
                         prepareTimelineDraftSelectionUseCase(
                             window,
-                            current.nonPhotoSourceItems(sourceItems, zone) + selectedPhotoItems,
+                            collected + selectedPhotoItems,
                         ).getOrElse {
                             handleDraftCreationFailure(it)
                             return@safeLaunch
@@ -398,6 +429,25 @@ class HomeViewModel
                     )
                     navigationHelper.navigateTo(DraftConsentPage)
                 }
+        }
+
+        /**
+         * 최종 생성 직전 자동 수집의 최신성을 확인한다.
+         *
+         * 날짜 확정·시트 진입에서 미리 시작했으므로 정상 경로에서는 대부분 즉시 통과한다.
+         * 그래도 첫 실행처럼 아직 한 번도 못 긁은 경우가 있어 상한을 두고 기다린다.
+         *
+         * 상한을 넘기거나 일부 유형이 실패하면 **기존 저장 데이터로 계속한다.** 수집 때문에 생성
+         * 자체가 막히면 안 된다. 다만 최신이 아닐 수 있다는 것은 알려 준다.
+         */
+        private suspend fun awaitAutoCollection() {
+            val result =
+                globalLoadingHelper.withLoading(AUTO_COLLECTION_LOADING_KEY) {
+                    autoCollectionCoordinator.refresh(AUTO_COLLECTION_TIMEOUT_MILLIS)
+                }
+            if (result.isIncomplete) {
+                sendEffect(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요."))
+            }
         }
 
         /**
@@ -718,4 +768,16 @@ class HomeViewModel
             val ids: Set<Long>,
             val items: List<SourceItem>,
         )
+
+        private companion object {
+            const val AUTO_COLLECTION_LOADING_KEY = "home-auto-collection"
+
+            /**
+             * 최종 생성에서 자동 수집을 기다리는 상한.
+             *
+             * 날짜 확정·시트 진입에서 미리 시작하므로 정상 경로에서는 거의 걸리지 않는다.
+             * 상한을 넘기면 기존 저장 데이터로 생성을 이어 간다 — 수집이 느리다고 생성이 막히면 안 된다.
+             */
+            const val AUTO_COLLECTION_TIMEOUT_MILLIS = 10_000L
+        }
     }

@@ -17,6 +17,8 @@ import kotlin.math.roundToLong
 
 @Immutable
 data class HomeUiState(
+    /** 수집 실험실 진입 가능 여부. 개발 도구라 debug 빌드에서만 참이다. */
+    val isCollectionLabAccessible: Boolean = false,
     /** 인사말에 쓸 닉네임. 조회 전·없음·실패를 구분하지 않는다 — 어느 쪽이든 문구가 같다. */
     val nickname: String? = null,
     val selectedDate: LocalDate = LocalDate.now(),

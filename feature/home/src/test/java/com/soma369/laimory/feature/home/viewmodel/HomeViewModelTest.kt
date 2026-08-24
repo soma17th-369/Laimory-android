@@ -1,11 +1,14 @@
 package com.soma369.laimory.feature.home.viewmodel
 
+import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.NotificationPrivacyPolicy
@@ -36,6 +39,7 @@ import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
+import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
@@ -81,6 +85,8 @@ class HomeViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val sourceRepository = FakeSourceItemRepository()
+    private val autoCollectionCoordinator = FakeAutoCollectionCoordinator()
+    private var isCollectionLabAccessible = true
     private val recordRepository = FakeTimelineRecordRepository()
     private val photoSource = FakePhotoSource()
     private val sessionStore = DraftConsentSessionStore()
@@ -843,6 +849,75 @@ class HomeViewModelTest {
             assertEquals(2, userProfileCoordinator.refreshCount)
         }
 
+    // --- 자동 수집 연동 ---
+
+    @Test
+    fun `날짜를 확정하면 최종 생성 전에 미리 수집한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            val before = autoCollectionCoordinator.refreshCount
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(LocalDate.of(2026, 8, 10)))
+            runCurrent()
+
+            assertTrue(autoCollectionCoordinator.refreshCount > before)
+        }
+
+    @Test
+    fun `기본 날짜로 생성 설정을 열어도 미리 수집한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 오늘을 그대로 쓰면 날짜 확정을 거치지 않아 선행 수집 기회가 없다.
+            val viewModel = createViewModel()
+            runCurrent()
+            val before = autoCollectionCoordinator.refreshCount
+
+            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            runCurrent()
+
+            assertTrue(autoCollectionCoordinator.refreshCount > before)
+        }
+
+    @Test
+    fun `저장 데이터가 없어도 자동 수집 기회를 갖기 전에 생성을 끊지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            val before = autoCollectionCoordinator.refreshCount
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            assertTrue(autoCollectionCoordinator.refreshCount > before)
+        }
+
+    @Test
+    fun `최신 확보에 실패하면 알리되 기존 데이터로 생성을 이어 간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            autoCollectionCoordinator.result = AutoCollectionResult(timedOut = true)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            assertEquals(listOf(DraftConsentPage), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `수집 실험실을 열 수 없으면 진입 요청을 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            isCollectionLabAccessible = false
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.NavigateToCollection)
+            runCurrent()
+
+            assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             observeSourceItemsUseCase = ObserveSourceItemsUseCase(sourceRepository),
@@ -864,6 +939,10 @@ class HomeViewModelTest {
             observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
             refreshUserProfileUseCase = RefreshUserProfileUseCase(userProfileCoordinator),
             navigationHelper = navigationHelper,
+            globalLoadingHelper = NoOpGlobalLoadingHelper,
+            autoCollectionCoordinator = autoCollectionCoordinator,
+            getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
+            collectionLabAccessGate = { isCollectionLabAccessible },
         )
 
     private fun pastTimeline(
@@ -960,6 +1039,29 @@ class HomeViewModelTest {
         )
     }
 
+    /** 자동 수집은 홈 테스트의 관심사가 아니라 곧장 통과시킨다. 호출 여부만 센다. */
+    private class FakeAutoCollectionCoordinator : AutoCollectionCoordinator {
+        var refreshCount = 0
+            private set
+        var result = AutoCollectionResult()
+
+        override suspend fun refresh(timeoutMillis: Long?): AutoCollectionResult {
+            refreshCount++
+            return result
+        }
+
+        override fun discard() = Unit
+    }
+
+    private data object NoOpGlobalLoadingHelper : GlobalLoadingHelper {
+        override val activeKeys: StateFlow<Set<String>> = MutableStateFlow(emptySet())
+
+        override suspend fun <T> withLoading(
+            key: String,
+            block: suspend () -> T,
+        ): T = block()
+    }
+
     private class FakeSourceItemRepository : SourceItemRepository {
         val items = MutableStateFlow<List<SourceItem>>(emptyList())
 
@@ -968,6 +1070,20 @@ class HomeViewModelTest {
         override suspend fun upsertAll(items: List<SourceItem>): Int = 0
 
         override fun observeAll(): Flow<List<SourceItem>> = items
+
+        /** 실제 구현과 같은 겹침 규칙으로 걸러 준다 — 스냅샷 확정이 이 조회 결과를 쓴다. */
+        override suspend fun getInWindow(
+            start: Instant,
+            end: Instant,
+        ): List<SourceItem> =
+            items.value.filter { item ->
+                val itemEnd = item.endAt
+                if (itemEnd == null) {
+                    item.startAt >= start && item.startAt < end
+                } else {
+                    item.startAt < end && itemEnd > start
+                }
+            }
 
         override suspend fun getLatestCollectedAt(itemType: ItemType): Instant? = null
 

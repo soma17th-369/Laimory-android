@@ -251,13 +251,16 @@ private fun HomeScreen(
             )
         }
 
-        item(key = "collectionEntry") {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                TextButton(
-                    onClick = { onIntent(HomeUiIntent.NavigateToCollection) },
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                ) {
-                    Text("수집 데이터 자세히 보기")
+        // 수집 실험실은 개발 도구라 release 에서는 진입 버튼 자체를 두지 않는다.
+        if (state.isCollectionLabAccessible) {
+            item(key = "collectionEntry") {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    TextButton(
+                        onClick = { onIntent(HomeUiIntent.NavigateToCollection) },
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    ) {
+                        Text("수집 데이터 자세히 보기")
+                    }
                 }
             }
         }
