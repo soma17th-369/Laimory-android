@@ -15,6 +15,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -55,13 +56,25 @@ internal class HealthCollector
             val startDateTime = startDate.atStartOfDay()
             val endDateTime = LocalDateTime.now(zone)
 
-            // 권한 미허용 시 read 가 SecurityException 을 던진다 — 계약대로 빈 목록.
-            return runCatching {
+            /*
+             * 권한 미허용 시 read 가 SecurityException 을 던진다 — 계약대로 빈 목록이다.
+             *
+             * 실제 조회 실패는 삼키지 않고 올린다. 자동 수집은 "권한이 없어 건너뜀" 과 "긁다가
+             * 실패함" 을 구분해야 하는데, 둘 다 빈 목록이 되면 호출 경계에서 나눌 수 없다.
+             * 수동 수집 경로는 예외를 기존처럼 상위에서 처리한다.
+             */
+            return try {
                 collectSteps(client, startDateTime, endDateTime, zone, collectedAt) +
                     collectSleep(client, startDateTime, endDateTime, zone, collectedAt)
-            }.getOrElse { e ->
-                Logger.w(LogDomain.COLLECTION, "건강 데이터 수집 실패: ${e.message}")
+            } catch (_: SecurityException) {
+                Logger.w(LogDomain.COLLECTION, "건강 데이터 읽기 권한 없음")
                 emptyList()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 예외 메시지에 건강 값이 실릴 수 있어 종류만 남긴다.
+                Logger.w(LogDomain.COLLECTION, "건강 데이터 수집 실패: ${e.javaClass.simpleName}")
+                throw e
             }
         }
 
