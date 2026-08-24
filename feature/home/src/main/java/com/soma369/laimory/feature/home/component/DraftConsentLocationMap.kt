@@ -17,7 +17,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,6 +43,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.ConsentLocationMarker
 import com.soma369.laimory.feature.home.state.ConsentMapBounds
 import com.soma369.laimory.feature.home.state.toBounds
+import kotlinx.coroutines.delay
 
 /**
  * 위치 상세 지도. 전송되는 좌표가 어디인지 보여준다.
@@ -82,14 +87,20 @@ internal fun DraftConsentLocationMap(
             shape = RoundedCornerShape(MAP_CORNER_RADIUS),
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
+            // 키가 있어도 값이 틀렸거나 앱 제한이 안 맞거나 네트워크가 막히면 SDK 가 조용히
+            // 빈 지도를 그린다. 그 상태를 감지해 같은 자리 대체 안내로 넘긴다.
+            var loadFailed by remember { mutableStateOf(false) }
             when {
                 markers.isEmpty() -> MapPlaceholder("전송할 위치가 없어요.")
-                !renderAllowed -> MapPlaceholder("지도를 표시할 수 없어요. 아래 목록에서 장소와 시간을 확인할 수 있어요.")
+                !renderAllowed || loadFailed ->
+                    MapPlaceholder("지도를 표시할 수 없어요. 아래 목록에서 장소와 시간을 확인할 수 있어요.")
+
                 else ->
                     LocationMarkerMap(
                         markers = markers,
                         excludedRawIds = excludedRawIds,
                         onToggleMarker = onToggleMarker,
+                        onLoadFailed = { loadFailed = true },
                     )
             }
         }
@@ -101,7 +112,23 @@ private fun LocationMarkerMap(
     markers: List<ConsentLocationMarker>,
     excludedRawIds: Set<String>,
     onToggleMarker: (String) -> Unit,
+    onLoadFailed: () -> Unit,
 ) {
+    /*
+     * 지도 SDK 는 인증 실패를 콜백으로 알려 주지 않는다 — 키가 틀리거나 앱 제한이 안 맞으면
+     * 로그만 남기고 빈 지도를 그린다. 타일이 한 번이라도 그려졌는지(`onMapLoaded`)로 대신 본다.
+     * 제한 시간 안에 소식이 없으면 실패로 보고 대체 안내로 넘긴다.
+     *
+     * 한 번 성공한 뒤에는 되돌리지 않는다. 이후 네트워크가 끊겨도 이미 그려진 지도를 지우면
+     * 사용자가 보던 화면이 사라진다. 반대로 실패로 넘어간 뒤 네트워크가 돌아와도 다시 붙지
+     * 않는다 — 화면을 다시 열면 재시도된다.
+     */
+    var loaded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(MAP_LOAD_TIMEOUT_MILLIS)
+        if (!loaded) onLoadFailed()
+    }
+
     // 지도는 목록 밖 고정 영역이라 스크롤로 폐기되지 않는다. 카메라는 최초 1회만 맞추고,
     // 항목을 켜고 끌 때마다 되돌리지 않는다 — 사용자가 보던 영역이 사라진다.
     // 그래서 remember 에 key 를 두지 않는다(마커가 줄어도 다시 계산하지 않는다).
@@ -111,6 +138,7 @@ private fun LocationMarkerMap(
     GoogleMap(
         modifier = Modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState,
+        onMapLoaded = { loaded = true },
         uiSettings =
             MapUiSettings(
                 zoomControlsEnabled = false,
@@ -274,6 +302,14 @@ private val MAP_CORNER_RADIUS = 16.dp
  * 가로 화면·태블릿에서 목록이 밀려나므로 화면 높이로 한 번 더 자른다.
  */
 private const val MAX_SCREEN_HEIGHT_FRACTION = 0.45f
+
+/**
+ * 첫 타일이 그려지기를 기다리는 시간.
+ *
+ * 인증 실패는 즉시 판가름 나지만 느린 네트워크도 있어 넉넉히 준다. 이 시간을 넘기면 사용자가
+ * 빈 지도를 계속 보는 편보다 목록을 쓰라고 안내하는 편이 낫다.
+ */
+private const val MAP_LOAD_TIMEOUT_MILLIS = 8_000L
 private val MARKER_SIZE = 28.dp
 private val MARKER_BORDER_WIDTH = 2.dp
 
