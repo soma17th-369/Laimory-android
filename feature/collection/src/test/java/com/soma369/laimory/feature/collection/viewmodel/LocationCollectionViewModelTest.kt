@@ -114,6 +114,11 @@ class LocationCollectionViewModelTest {
 
         override fun observeAll(): Flow<List<SourceItem>> = items
 
+        override suspend fun getInWindow(
+            start: Instant,
+            end: Instant,
+        ): List<SourceItem> = emptyList()
+
         override suspend fun getLatestCollectedAt(itemType: ItemType): Instant? = null
 
         override suspend fun deleteExpired(cutoff: Instant): Int = 0

@@ -31,6 +31,22 @@ interface SourceItemRepository {
     /** 저장된 전체 아이템을 이벤트 시각 내림차순으로 관찰한다. */
     fun observeAll(): Flow<List<SourceItem>>
 
+    /**
+     * 기록 창 `[start, end)` 와 겹치는 아이템을 **한 번** 읽는다.
+     *
+     * 자동 수집 직후 전송 스냅샷을 확정할 때 쓴다. [observeAll] 의 첫 emission 을 기다리는 방식은
+     * 관찰과 조회를 섞어 "수집이 반영된 값인지" 를 호출부가 보장할 수 없다.
+     *
+     * 포함 규칙은
+     * [com.soma369.laimory.core.domain.model.timeline.RecordDateWindow.contains] 와 같다 —
+     * 단일 시점은 `start <= startAt < end`, 구간은 `startAt < end && endAt > start`.
+     * 자정을 걸친 수면·일정은 겹치므로 딸려오고, 경계에 맞닿기만 한 구간은 빠진다.
+     */
+    suspend fun getInWindow(
+        start: Instant,
+        end: Instant,
+    ): List<SourceItem>
+
     /** 해당 카테고리에서 마지막으로 수집된 시각. 증분 수집 커서로 사용한다. 없으면 null. */
     suspend fun getLatestCollectedAt(itemType: ItemType): Instant?
 

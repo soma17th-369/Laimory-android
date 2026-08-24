@@ -69,6 +69,23 @@ internal interface SourceItemDao {
         return insertedCount
     }
 
+    /**
+     * 기록 창 `[start, end)` 와 겹치는 행. 포함 규칙은 `RecordDateWindow.contains` 와 같다.
+     *
+     * 단일 시점(`endAtUtc IS NULL`)은 창 안에 들어야 하고, 구간은 두 반열린 구간이 실제로 겹쳐야
+     * 한다. 정렬은 시각이 같을 때도 순서가 흔들리지 않도록 rawId 를 2차 키로 둔다.
+     */
+    @Query(
+        "SELECT * FROM source_item " +
+            "WHERE (endAtUtc IS NULL AND startAtUtc >= :startUtc AND startAtUtc < :endUtc) " +
+            "OR (endAtUtc IS NOT NULL AND startAtUtc < :endUtc AND endAtUtc > :startUtc) " +
+            "ORDER BY startAtUtc DESC, rawId ASC",
+    )
+    suspend fun getInWindow(
+        startUtc: Long,
+        endUtc: Long,
+    ): List<SourceItemEntity>
+
     @Query("SELECT * FROM source_item ORDER BY startAtUtc DESC")
     fun observeAll(): Flow<List<SourceItemEntity>>
 
