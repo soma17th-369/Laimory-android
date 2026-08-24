@@ -79,5 +79,7 @@ class IssueAuthTokensUseCaseTest {
         }
 
         override suspend fun logout() = Unit
+
+        override suspend fun clearSession() = Unit
     }
 }

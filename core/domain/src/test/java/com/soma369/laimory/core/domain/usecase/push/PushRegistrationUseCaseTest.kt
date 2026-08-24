@@ -146,5 +146,7 @@ class PushRegistrationUseCaseTest {
             logoutCount++
             onLogout()
         }
+
+        override suspend fun clearSession() = Unit
     }
 }

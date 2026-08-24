@@ -135,6 +135,38 @@ class MessageHelperImplTest {
             assertEquals(DialogResult.Primary, fresh.await())
         }
 
+    @Test
+    fun `확인 체크박스 Dialog도 같은 활성 단일 정책을 따른다`() =
+        runTest {
+            val helper = MessageHelperImpl()
+
+            val active = async { helper.showConsentDialog(consent()) }
+            runCurrent()
+            val rejected = async { helper.showTwoButtonDialog(twoButton(title = "겹친 요청")) }
+            runCurrent()
+
+            // 표시 중 들어온 요청은 등록되지 않고 즉시 Dismissed 로 응답한다.
+            assertEquals(DialogResult.Dismissed, rejected.await())
+
+            val shown = checkNotNull(helper.activeDialog.value)
+            assertEquals("계정을 삭제할까요?", shown.request.title)
+
+            helper.resolveDialog(shown.requestId, DialogResult.Primary)
+            runCurrent()
+
+            assertEquals(DialogResult.Primary, active.await())
+            assertNull(helper.activeDialog.value)
+        }
+
+    private fun consent() =
+        DialogRequest.Consent(
+            title = "계정을 삭제할까요?",
+            body = "본문",
+            consentLabel = "동의합니다",
+            primaryLabel = "계정 삭제",
+            secondaryLabel = "취소",
+        )
+
     private fun twoButton(title: String = "제목") =
         DialogRequest.TwoButton(
             title = title,

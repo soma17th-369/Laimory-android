@@ -27,4 +27,22 @@ sealed interface DialogRequest {
         val primaryStyle: DialogActionStyle = DialogActionStyle.PRIMARY,
         override val dismissible: Boolean = true,
     ) : DialogRequest
+
+    /**
+     * 확인 체크박스를 켜야 primary 를 누를 수 있는 두 버튼 Dialog.
+     *
+     * 되돌릴 수 없는 동작에 쓴다 — 안내를 읽지 않고 습관적으로 누르는 것을 막으려고 확인 동작을
+     * 한 단계 더 둔다. 체크 상태는 표시 중에만 필요한 값이라 이 요청에도 [DialogResult] 에도
+     * 담기지 않는다. 체크되지 않은 채로는 primary 를 누를 수 없으므로 [DialogResult.Primary] 자체가
+     * 동의를 뜻한다.
+     */
+    data class Consent(
+        override val title: String,
+        override val body: String,
+        val consentLabel: String,
+        val primaryLabel: String,
+        val secondaryLabel: String,
+        val primaryStyle: DialogActionStyle = DialogActionStyle.PRIMARY,
+        override val dismissible: Boolean = true,
+    ) : DialogRequest
 }

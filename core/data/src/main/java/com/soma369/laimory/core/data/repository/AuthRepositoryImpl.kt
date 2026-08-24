@@ -58,6 +58,13 @@ internal class AuthRepositoryImpl
             }
         }
 
+        override suspend fun clearSession() =
+            operationLock.mutex.withLock {
+                withContext(NonCancellable) {
+                    sessionStore.clear()
+                }
+            }
+
         override suspend fun logout() =
             operationLock.mutex.withLock {
                 val refreshToken = sessionStore.get()?.refreshToken

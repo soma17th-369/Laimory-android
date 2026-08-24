@@ -55,6 +55,8 @@ class MessageHelperImpl
 
         override suspend fun showTwoButtonDialog(request: DialogRequest.TwoButton): DialogResult = awaitDialogResult(request)
 
+        override suspend fun showConsentDialog(request: DialogRequest.Consent): DialogResult = awaitDialogResult(request)
+
         /** Root 호스트가 사용자 선택을 반환한다. 활성 [requestId]와 일치하지 않으면 무시한다. */
         fun resolveDialog(
             requestId: Long,

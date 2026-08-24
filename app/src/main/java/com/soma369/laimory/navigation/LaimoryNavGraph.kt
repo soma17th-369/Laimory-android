@@ -185,4 +185,7 @@ private fun UserMessage.toText(): String =
         UserMessage.UnsupportedFeature -> "현재 버전에서 지원하지 않는 기능입니다."
         UserMessage.TemporaryUnavailable -> "일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
         UserMessage.DailyRecordSaved -> "하루 기록 작성을 완료했어요."
+        UserMessage.AccountWithdrawalAccepted -> "계정 삭제를 접수했어요. 삭제 처리에는 시간이 걸릴 수 있어요."
+        // 서버가 만료 세션과 이미 탈퇴한 회원을 같은 401 로 합치므로 완료를 단정하지 않는다.
+        UserMessage.AccountWithdrawalUnverified -> "로그인이 만료되어 삭제 결과를 확인하지 못했어요. 다시 로그인해 확인해 주세요."
     }

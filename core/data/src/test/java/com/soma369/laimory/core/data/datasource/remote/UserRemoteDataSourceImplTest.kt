@@ -17,10 +17,10 @@ import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
-class UserProfileRemoteDataSourceImplTest {
+class UserRemoteDataSourceImplTest {
     private val json = Json { ignoreUnknownKeys = true }
     private lateinit var server: MockWebServer
-    private lateinit var remote: UserProfileRemoteDataSource
+    private lateinit var remote: UserRemoteDataSource
 
     @OptIn(ExperimentalSerializationApi::class)
     @Before
@@ -33,7 +33,7 @@ class UserProfileRemoteDataSourceImplTest {
                     json.asConverterFactory("application/json".toMediaType()),
                 ).build()
                 .create(UserApi::class.java)
-        remote = UserProfileRemoteDataSourceImpl(api)
+        remote = UserRemoteDataSourceImpl(api)
     }
 
     @After
@@ -91,6 +91,74 @@ class UserProfileRemoteDataSourceImplTest {
 
             assertEquals(401, error?.rawCode)
         }
+
+    // --- 회원 탈퇴 ---
+
+    @Test
+    fun `인증 경로의 users me를 DELETE로 요청하고 request body를 보내지 않는다`() =
+        runTest {
+            server.enqueue(accepted())
+
+            remote.requestAccountWithdrawal()
+
+            val request = server.takeRequest()
+            assertEquals("DELETE", request.method)
+            assertEquals("/a/api/v1/users/me", request.path)
+            assertEquals(0L, request.bodySize)
+        }
+
+    @Test
+    fun `202와 body가 null인 공통 envelope를 성공으로 받는다`() =
+        runTest {
+            // HTTP 무바디가 아니라 envelope 의 body 만 null 이다. safeApiCall 은 무바디를 다루지 못한다.
+            server.enqueue(accepted())
+
+            remote.requestAccountWithdrawal()
+        }
+
+    @Test
+    fun `탈퇴 요청의 401도 인증 예외로 정규화한다`() =
+        runTest {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(401)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody("""{"header":{"code":-2001,"message":"unauthorized"}}"""),
+            )
+
+            val error =
+                try {
+                    remote.requestAccountWithdrawal()
+                    null
+                } catch (e: ApiException) {
+                    e
+                }
+
+            assertEquals(401, error?.rawCode)
+            assertEquals(-2001, error?.errorCode)
+        }
+
+    @Test
+    fun `탈퇴 요청의 5xx는 서버 예외로 정규화한다`() =
+        runTest {
+            server.enqueue(MockResponse().setResponseCode(500))
+
+            val error =
+                try {
+                    remote.requestAccountWithdrawal()
+                    null
+                } catch (e: ApiException) {
+                    e
+                }
+
+            assertEquals(500, error?.rawCode)
+        }
+
+    private fun accepted() =
+        MockResponse()
+            .setResponseCode(202)
+            .setHeader("Content-Type", "application/json")
+            .setBody("""{"header":{"code":0,"message":""},"body":null}""")
 
     private fun success(body: String) =
         MockResponse()

@@ -5,7 +5,7 @@ import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.user.UserProfile
-import com.soma369.laimory.core.domain.repository.UserProfileRepository
+import com.soma369.laimory.core.domain.repository.UserRepository
 import javax.inject.Inject
 
 /**
@@ -20,7 +20,7 @@ import javax.inject.Inject
 class GetUserProfileUseCase
     @Inject
     constructor(
-        private val repository: UserProfileRepository,
+        private val repository: UserRepository,
         private val messageHelper: MessageHelper,
     ) {
         suspend operator fun invoke(): Result<UserProfile> =

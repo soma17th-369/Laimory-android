@@ -91,5 +91,7 @@ class CompleteSocialLoginUseCaseTest {
         }
 
         override suspend fun logout() = Unit
+
+        override suspend fun clearSession() = Unit
     }
 }

@@ -20,4 +20,12 @@ interface AuthRepository {
 
     /** 서버 refresh 폐기를 시도한 뒤 결과와 무관하게 이 기기의 세션을 제거한다. */
     suspend fun logout()
+
+    /**
+     * 서버 호출 없이 이 기기의 인증 세션만 제거한다.
+     *
+     * 회원 탈퇴처럼 **서버가 이미 credential 을 무효화한** 뒤에 쓴다. 그때는 [logout] 의 refresh
+     * 폐기 요청이 반드시 실패하므로, 실패가 예정된 호출을 보내지 않고 로컬만 정리한다.
+     */
+    suspend fun clearSession()
 }
