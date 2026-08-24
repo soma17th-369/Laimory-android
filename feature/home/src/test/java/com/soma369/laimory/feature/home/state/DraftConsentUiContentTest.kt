@@ -98,8 +98,11 @@ class DraftConsentUiContentTest {
         assertEquals("서울시 강남구", location.sections[0].items[0].title)
         assertNull(location.sections[0].items[0].description)
         assertEquals("주소 미확인", location.sections[0].items[1].title)
-        assertEquals("주소 미확인 → 주소 미확인", location.sections[1].items[0].title)
-        assertEquals("2.4km · 도보", location.sections[1].items[0].description)
+        // 출발지와 도착지는 줄을 나누고, 거리·이동수단은 시각 줄 오른쪽에 한 덩어리로 붙인다.
+        assertEquals("주소 미확인 →\n주소 미확인", location.sections[1].items[0].title)
+        assertNull(location.sections[1].items[0].description)
+        assertEquals("2.4km · 도보", location.sections[1].items[0].trailingText)
+        assertTrue(location.sections[1].items[0].timeText.contains("~"))
     }
 
     @Test

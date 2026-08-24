@@ -168,12 +168,22 @@ private fun SourceItem.toDetailItem(zone: ZoneId): DraftConsentDetailItem =
                 timeText = formatDateTimeRange(startAt, endAt, zone),
             )
 
+        /*
+         * 체류와 같은 형태로 맞춘다 — 시각은 시작~종료 범위로 제목 아래에 둔다.
+         *
+         * 출발지와 도착지는 줄을 나눈다. 주소가 둘 다 길어 한 줄에 붙이면 어디서 끊겼는지
+         * 읽기 어렵다. 화살표는 첫 줄 끝에 남겨 다음 줄이 도착지임을 알린다.
+         *
+         * 거리와 이동수단은 시각 줄 오른쪽 끝에 함께 붙인다. 둘 다 짧아 한 덩어리로 읽히고,
+         * 설명 줄을 따로 두지 않아 카드가 한 줄 짧아진다.
+         */
         is MovementPayload ->
             DraftConsentDetailItem(
                 key = rawId,
-                title = "${payload.start.label()} → ${payload.end.label()}",
-                description = "${formatDistance(payload.distanceMeters)} · ${payload.transports.label()}",
-                timeText = DATE_TIME_FORMAT.format(startAt.atZone(zone)),
+                title = "${payload.start.label()} →\n${payload.end.label()}",
+                description = null,
+                timeText = formatDateTimeRange(startAt, endAt, zone),
+                trailingText = "${formatDistance(payload.distanceMeters)} · ${payload.transports.label()}",
             )
 
         is HealthPayload ->

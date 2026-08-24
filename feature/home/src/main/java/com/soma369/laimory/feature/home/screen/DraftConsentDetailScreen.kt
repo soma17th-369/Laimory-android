@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -336,15 +335,13 @@ private fun LazyListScope.sectionItems(
 
         DraftConsentTypeGroup.LOCATION ->
             items(items = section.items, key = DraftConsentDetailItem::key) { item ->
-                val included = item.key !in excludedRawIds
-                val onToggle = { onToggleItem(item.key) }
-                // 지도 핀과 대조할 수 있게 같은 번호를 붙인다. 이동은 시작·도착 두 핀이라 범위로 적는다.
-                val orders = markerOrders[item.key].orEmpty()
-                if (item.title.contains(" → ")) {
-                    MovementItemCard(item = item, included = included, orders = orders, onToggle = onToggle)
-                } else {
-                    StayItemCard(item = item, included = included, orders = orders, onToggle = onToggle)
-                }
+                LocationItemCard(
+                    item = item,
+                    included = item.key !in excludedRawIds,
+                    // 지도 핀과 대조할 수 있게 같은 번호를 붙인다. 이동은 시작·도착 두 핀이라 범위로 적는다.
+                    orders = markerOrders[item.key].orEmpty(),
+                    onToggle = { onToggleItem(item.key) },
+                )
             }
 
         DraftConsentTypeGroup.HEALTH ->
@@ -552,7 +549,7 @@ private fun CalendarItemCard(
 }
 
 @Composable
-private fun StayItemCard(
+private fun LocationItemCard(
     item: DraftConsentDetailItem,
     included: Boolean,
     orders: List<Int>,
@@ -560,20 +557,6 @@ private fun StayItemCard(
 ) {
     DetailCard(included = included, onToggle = onToggle) {
         MarkerOrderBadge(orders = orders, included = included)
-        Box(
-            modifier =
-                Modifier
-                    .size(32.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(DraftConsentTypeGroup.LOCATION.iconRes()),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -590,72 +573,27 @@ private fun StayItemCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                text = item.timeText,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MovementItemCard(
-    item: DraftConsentDetailItem,
-    included: Boolean,
-    orders: List<Int>,
-    onToggle: () -> Unit,
-) {
-    DetailCard(included = included, onToggle = onToggle) {
-        MarkerOrderBadge(orders = orders, included = included)
-        Column(
-            modifier = Modifier.width(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(10.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .width(2.dp)
-                        .height(18.dp)
-                        .alpha(0.35f)
-                        .background(MaterialTheme.colorScheme.primary),
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .size(10.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            item.description?.let { description ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = description,
+                    modifier = Modifier.weight(1f),
+                    text = item.timeText,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // 이동 거리. 시각과 같은 줄 오른쪽 끝에 붙여 줄 수를 늘리지 않는다.
+                item.trailingText?.let { trailing ->
+                    Text(
+                        text = trailing,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
-        Text(
-            text = item.timeText,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
