@@ -26,9 +26,13 @@ import javax.inject.Inject
  * 사용자가 소유한(owner-access) 캘린더의 일정만 대상으로 한다 — 구독/공휴일/공유 읽기전용 캘린더는 제외한다.
  * 오늘 기준 최근 [COLLECTION_MONTHS]개월 구간의 인스턴스를 수집하며, 반복 일정은 인스턴스 단위로 펼쳐진다.
  *
- * 권한(READ_CALENDAR) 확인/요청은 수집기 밖(UI 계층)의 책임이다([Collector] 계약) — 권한이 없어 query 가
- * 실패(null 커서/SecurityException)하면 빈 목록을 반환한다. sourceKey 는 `eventId:begin` 으로 인스턴스마다
- * 유일해, 반복 일정도 인스턴스별로 dedupe 된다. 조회는 blocking I/O 이므로 [Dispatchers.IO] 에서 수행한다.
+ * 권한(READ_CALENDAR) 확인/요청은 수집기 밖(UI 계층)의 책임이다([Collector] 계약) — 권한이 없어
+ * `SecurityException` 이 나면 빈 목록을 반환한다. 그 밖의 실패는 삼키지 않고 올린다. 권한 확인을 통과한
+ * 뒤의 null 커서도 실제 조회 실패로 본다([resolveCalendarQuery]) — 빈 목록으로 바꾸면 자동 수집이
+ * "성공 0건" 으로 확정하고 최신성까지 갱신해, 실패 안내 없이 옛 데이터를 계속 쓴다.
+ *
+ * sourceKey 는 `eventId:begin` 으로 인스턴스마다 유일해, 반복 일정도 인스턴스별로 dedupe 된다.
+ * 조회는 blocking I/O 이므로 [Dispatchers.IO] 에서 수행한다.
  */
 internal class CalendarCollector
     @Inject
