@@ -102,14 +102,54 @@ class DefaultAutoCollectionCoordinatorTest {
         }
 
     @Test
-    fun `권한 없음은 성공처럼 캐시해 매번 다시 묻지 않는다`() =
+    fun `권한 없음은 캐시하지 않아 권한을 켜면 곧바로 수집한다`() =
         runTest(UnconfinedTestDispatcher()) {
-            val coordinator = coordinator(availability = FakeAvailability(calendar = false))
+            // 권한은 사용자가 설정에서 바꾸는 값이라 "재시도해도 같은 답" 이 아니다.
+            // 캐시하면 권한을 켜고 돌아와도 창이 닫힐 때까지 수집이 건너뛰어진다.
+            val availability = MutableAvailability(calendar = false)
+            val repository = RecordingRepository()
+            val coordinator = coordinator(availability = availability, repository = repository)
             coordinator.refresh()
+            assertEquals(0, repository.addAllCalls)
 
+            availability.calendar = true
             val second = coordinator.refresh()
 
-            assertTrue(second.outcomes.isEmpty())
+            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.CALENDAR])
+            assertEquals(1, repository.addAllCalls)
+        }
+
+    @Test
+    fun `Health Connect 미지원도 캐시하지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 앱을 켜 둔 채 Health Connect 를 설치·업데이트할 수 있다.
+            val availability = MutableAvailability(healthAvailable = false)
+            val coordinator = coordinator(availability = availability)
+            coordinator.refresh()
+
+            availability.healthAvailable = true
+            val second = coordinator.refresh()
+
+            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.HEALTH])
+        }
+
+    @Test
+    fun `세션이 바뀌면 그 전에 시작한 작업의 결과를 최신성에 반영하지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // discard 가 코루틴만 예약하고 반환하면, 새 세션의 refresh 가 이전 결과를 물려받는다.
+            val repository = RecordingRepository(gate = CompletableDeferred())
+            val coordinator = coordinator(repository = repository)
+            val first = async { coordinator.refresh() }
+            runCurrent()
+
+            coordinator.discard()
+            repository.gate?.complete(Unit)
+            // 진행 중이던 작업은 세션과 함께 취소된다 — 그 결과를 기다리는 쪽은 실패로 끝난다.
+            runCatching { first.await() }
+
+            // 이전 세션 결과가 캐시됐다면 여기서 건너뛴다.
+            val second = coordinator.refresh()
+            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.CALENDAR])
         }
 
     @Test
@@ -192,6 +232,19 @@ class DefaultAutoCollectionCoordinatorTest {
         collectHealth = CollectHealthUseCase(mapOf(ItemType.HEALTH to FakeCollector(ItemType.HEALTH)), repository),
         applicationScope = backgroundScope,
     )
+
+    /** 실행 중에 권한·지원 상태가 바뀌는 경우를 만든다. */
+    private class MutableAvailability(
+        var calendar: Boolean = true,
+        var healthAvailable: Boolean = true,
+        var health: Boolean = true,
+    ) : CollectionAvailabilityProvider {
+        override fun canCollectCalendar(): Boolean = calendar
+
+        override fun isHealthConnectAvailable(): Boolean = healthAvailable
+
+        override suspend fun canCollectHealth(): Boolean = health
+    }
 
     private class FakeAvailability(
         private val calendar: Boolean = true,

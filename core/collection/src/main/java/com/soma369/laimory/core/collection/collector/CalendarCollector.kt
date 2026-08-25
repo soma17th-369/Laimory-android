@@ -62,7 +62,10 @@ internal class CalendarCollector
                     )
                 }.getOrElse { e ->
                     // 권한 미허용은 SecurityException 으로 온다 — 계약대로 빈 목록.
-                    Logger.w(LogDomain.COLLECTION, "개인 캘린더 목록 조회 실패: ${e.message}")
+                    // 그 밖의 오류는 삼키지 않고 올린다. 빈 목록으로 바꾸면 자동 수집이 실제 실패를
+                    // "성공 0건" 으로 확정하고 최신성 캐시까지 갱신해, 실패 안내 없이 옛 데이터를 쓴다.
+                    if (e !is SecurityException) throw e
+                    Logger.w(LogDomain.COLLECTION, "개인 캘린더 목록 읽기 권한 없음")
                     null
                 } ?: return emptyList()
 
@@ -96,7 +99,8 @@ internal class CalendarCollector
                         "${CalendarContract.Instances.BEGIN} ASC",
                     )
                 }.getOrElse { e ->
-                    Logger.w(LogDomain.COLLECTION, "일정 인스턴스 조회 실패: ${e.message}")
+                    if (e !is SecurityException) throw e
+                    Logger.w(LogDomain.COLLECTION, "일정 인스턴스 읽기 권한 없음")
                     null
                 } ?: return emptyList()
 

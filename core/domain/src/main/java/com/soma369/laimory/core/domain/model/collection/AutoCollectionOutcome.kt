@@ -23,6 +23,12 @@ sealed interface AutoCollectionOutcome {
     /** 권한과 지원 여부는 문제없는데 조회·저장이 실패했다. 이 유형만 5분 캐시를 갱신하지 않는다. */
     data object Failed : AutoCollectionOutcome
 
-    /** 다시 시도할 값어치가 있는 결과인지. 권한 없음·미지원은 재시도해도 같은 답이라 성공처럼 캐시한다. */
-    val isRetryable: Boolean get() = this is Failed
+    /**
+     * 최신성 창에 캐시해도 되는 결과인지. **성공만 캐시한다.**
+     *
+     * 권한 없음·미지원을 캐시하면 사용자가 설정에서 권한을 켜고 돌아와도 창이 닫힐 때까지
+     * 수집이 건너뛰어진다. 권한은 사용자 행동으로 바뀌는 값이라 "재시도해도 같은 답" 이 아니다.
+     * 다시 묻는 비용도 권한 조회 한 번이라 캐시할 이유가 없다.
+     */
+    val isCacheable: Boolean get() = this is Collected
 }
