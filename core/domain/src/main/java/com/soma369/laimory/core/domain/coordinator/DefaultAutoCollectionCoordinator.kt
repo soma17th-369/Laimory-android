@@ -46,14 +46,18 @@ class DefaultAutoCollectionCoordinator
         private val mutex = Mutex()
         private var runningJob: Deferred<Map<ItemType, AutoCollectionOutcome>>? = null
         private var runningEpoch = 0L
-        private val lastSucceededAt = mutableMapOf<ItemType, Instant>()
 
         /**
-         * 인증 세션 세대. [discard] 가 **호출 즉시** 올린다.
+         * 유형별 마지막 성공. **세대를 함께 들고 있는다.**
          *
-         * 정리 작업을 코루틴으로 미루면 그 코루틴이 자물쇠를 잡기 전에 새 세션의 [refresh] 가
-         * 이전 작업을 재사용하거나, 새로 시작한 작업이 뒤늦은 정리에 취소될 수 있다.
+         * 세대가 다르면 값이 남아 있어도 없는 셈으로 본다. 그래서 세션이 바뀔 때 지도를 비우는
+         * 별도 정리가 필요 없다 — 세대만 올리면 이전 세션의 모든 캐시가 그 자리에서 무효가 된다.
+         * 비우기를 코루틴으로 미루면 그 코루틴이 자물쇠를 잡기 전에 새 세션의 [refresh] 가 이전
+         * 값을 보고 수집을 건너뛴다.
          */
+        private val lastSucceeded = mutableMapOf<ItemType, Freshness>()
+
+        /** 인증 세션 세대. [discard] 가 **호출 즉시** 올린다. */
         @Volatile
         private var sessionEpoch = 0L
 
@@ -67,14 +71,17 @@ class DefaultAutoCollectionCoordinator
         }
 
         override fun discard() {
-            // 세대를 먼저 올려 이 시점 이후의 판정이 곧바로 이전 세션과 갈리게 한다.
-            // 자물쇠가 필요한 정리는 뒤따라 하되, 정확성은 세대 비교가 보장한다.
-            sessionEpoch++
+            // 세대를 먼저 올린다. 이 한 줄로 이전 세션의 최신성 캐시가 그 자리에서 무효가 되므로
+            // 새 세션의 refresh 가 곧바로 들어와도 옛 값을 보고 건너뛸 수 없다.
+            val invalidated = sessionEpoch
+            sessionEpoch = invalidated + 1
             applicationScope.launch {
                 mutex.withLock {
+                    // 그 사이 새 세션이 시작한 작업은 건드리지 않는다. 세대를 확인하지 않으면
+                    // 뒤늦은 정리가 방금 시작한 새 작업을 취소한다.
+                    if (runningEpoch != invalidated) return@withLock
                     runningJob?.cancel()
                     runningJob = null
-                    lastSucceededAt.clear()
                 }
             }
         }
@@ -88,7 +95,7 @@ class DefaultAutoCollectionCoordinator
                 val epoch = sessionEpoch
                 // 이전 세션의 작업은 재사용하지 않는다. 계정이 바뀌었는데 그 결과를 물려받으면 안 된다.
                 runningJob?.takeIf { it.isActive && runningEpoch == epoch }?.let { return@withLock it }
-                val stale = AUTO_COLLECTED_TYPES.filter { it.isStale() }
+                val stale = AUTO_COLLECTED_TYPES.filter { it.isStale(epoch) }
                 if (stale.isEmpty()) return@withLock null
                 applicationScope.async { collect(stale, epoch) }.also {
                     runningJob = it
@@ -96,9 +103,11 @@ class DefaultAutoCollectionCoordinator
                 }
             }
 
-        private fun ItemType.isStale(): Boolean {
-            val last = lastSucceededAt[this] ?: return true
-            return Duration.between(last, Instant.now()) >= FRESHNESS_WINDOW
+        private fun ItemType.isStale(epoch: Long): Boolean {
+            val last = lastSucceeded[this] ?: return true
+            // 이전 세션에서 성공한 값은 남아 있어도 없는 셈이다.
+            if (last.epoch != epoch) return true
+            return Duration.between(last.at, Instant.now()) >= FRESHNESS_WINDOW
         }
 
         private suspend fun collect(
@@ -117,8 +126,9 @@ class DefaultAutoCollectionCoordinator
                 // 시작한 세션이 이미 끝났으면 결과를 최신성 상태에 반영하지 않는다.
                 if (epoch != sessionEpoch) return outcomes
                 // 성공만 캐시한다. 권한 없음·미지원은 다음 호출에서 곧장 다시 본다.
+                val now = Instant.now()
                 outcomes.forEach { (type, outcome) ->
-                    if (outcome.isCacheable) lastSucceededAt[type] = Instant.now() else lastSucceededAt.remove(type)
+                    if (outcome.isCacheable) lastSucceeded[type] = Freshness(epoch, now) else lastSucceeded.remove(type)
                 }
                 if (runningEpoch == epoch) runningJob = null
             }
@@ -153,6 +163,12 @@ class DefaultAutoCollectionCoordinator
                 // 예외 메시지에 일정 제목·건강 값이 실릴 수 있어 값으로만 올리고 여기서 기록하지 않는다.
                 AutoCollectionOutcome.Failed
             }
+
+        /** 마지막 성공 시각과 그때의 세션 세대. 세대가 다르면 재사용하지 않는다. */
+        private data class Freshness(
+            val epoch: Long,
+            val at: Instant,
+        )
 
         private companion object {
             val AUTO_COLLECTED_TYPES = listOf(ItemType.CALENDAR, ItemType.HEALTH)

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -221,6 +222,41 @@ class DefaultAutoCollectionCoordinatorTest {
             coordinator.refresh()
 
             assertEquals(2, repository.addAllCalls)
+        }
+
+    @Test
+    fun `세션 폐기 직후 들어온 refresh 는 지연된 정리보다 먼저여도 다시 수집한다`() =
+        runTest {
+            // 기본 dispatcher 라 discard 의 정리 코루틴은 큐에만 올라간다. 그 상태로 refresh 를
+            // 부르면 "정리가 아직 안 돌았는데 새 세션이 먼저 들어오는" 순서가 강제된다.
+            val repository = RecordingRepository()
+            val coordinator = coordinator(repository = repository)
+            coordinator.refresh()
+            assertEquals(1, repository.addAllCalls)
+
+            coordinator.discard()
+            val afterDiscard = coordinator.refresh()
+
+            // 이전 세션 캐시를 보고 건너뛰면 여기가 비어 있다.
+            assertEquals(AutoCollectionOutcome.Collected(1), afterDiscard.outcomes[ItemType.CALENDAR])
+            assertEquals(2, repository.addAllCalls)
+        }
+
+    @Test
+    fun `뒤늦은 정리가 새 세션의 작업을 취소하지 않는다`() =
+        runTest {
+            val repository = RecordingRepository()
+            val coordinator = coordinator(repository = repository)
+            coordinator.discard()
+
+            // 정리 코루틴이 아직 큐에 있는 사이 새 세션 작업을 시작하고, 그 뒤에 정리를 흘려보낸다.
+            val started = coordinator.refresh()
+            advanceUntilIdle()
+
+            assertEquals(AutoCollectionOutcome.Collected(1), started.outcomes[ItemType.CALENDAR])
+            // 정리가 새 작업을 취소했다면 다음 호출이 캐시를 못 찾아 다시 수집한다.
+            val next = coordinator.refresh()
+            assertTrue(next.outcomes.isEmpty())
         }
 
     private fun TestScope.coordinator(
