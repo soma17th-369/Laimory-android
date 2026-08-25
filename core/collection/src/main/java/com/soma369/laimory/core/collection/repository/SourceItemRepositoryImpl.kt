@@ -28,6 +28,11 @@ internal class SourceItemRepositoryImpl
                 entities.map { entity -> entity.toDomain() }
             }
 
+        override suspend fun getInWindow(
+            start: Instant,
+            end: Instant,
+        ): List<SourceItem> = sourceItemDao.getInWindow(start.toEpochMilli(), end.toEpochMilli()).map { it.toDomain() }
+
         override suspend fun getLatestCollectedAt(itemType: ItemType): Instant? =
             sourceItemDao.latestCollectedAtUtc(itemType.name)?.let(Instant::ofEpochMilli)
 

@@ -1,11 +1,14 @@
 package com.soma369.laimory.di
 
 import com.soma369.laimory.BuildConfig
+import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
+import com.soma369.laimory.core.domain.coordinator.DefaultAutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultDraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultUserProfileCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
+import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
@@ -36,6 +39,11 @@ abstract class DraftTaskBindingModule {
     @Binds
     @Singleton
     abstract fun bindUserProfileCoordinator(impl: DefaultUserProfileCoordinator): UserProfileCoordinator
+
+    /** 일정·건강 자동 수집을 앱 전경 진입·초안 설정·최종 생성이 함께 쓰는 조율자. */
+    @Binds
+    @Singleton
+    abstract fun bindAutoCollectionCoordinator(impl: DefaultAutoCollectionCoordinator): AutoCollectionCoordinator
 
     @Binds
     @Singleton
@@ -75,6 +83,15 @@ object DraftTaskRuntimeModule {
     @Provides
     @Singleton
     fun provideDraftConsentSubmissionGate(): DraftConsentSubmissionGate = DraftConsentSubmissionGate { BuildConfig.DEBUG }
+
+    /**
+     * 수집 실험실 접근 허용 여부. 개발 도구라 debug 에서만 연다.
+     *
+     * 자동 수집과 무관하다 — 릴리즈에서도 권한이 있는 일정·건강 자동 수집은 그대로 돈다.
+     */
+    @Provides
+    @Singleton
+    fun provideCollectionLabAccessGate(): CollectionLabAccessGate = CollectionLabAccessGate { BuildConfig.DEBUG }
 
     /**
      * 지도 렌더링 허용 여부.

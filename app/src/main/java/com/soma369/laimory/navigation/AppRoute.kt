@@ -64,6 +64,24 @@ data class AppRoute(
 }
 
 /**
+ * 수집 실험실 라우트. 개발 도구라 debug 에서만 표에 들어간다.
+ *
+ * 버튼을 숨기는 것과 별개로 라우트 자체를 등록하지 않아, release 에서 `CollectionPage` 로
+ * 이동 요청이 들어와도 열 화면이 없다.
+ */
+private val collectionLabRoutes: List<AppRoute> =
+    if (BuildConfig.DEBUG) {
+        listOf(
+            AppRoute(
+                path = CollectionPage.PATH,
+                render = { innerPadding, _ -> CollectionLabRoute(innerPadding = innerPadding) },
+            ),
+        )
+    } else {
+        emptyList()
+    }
+
+/**
  * 앱의 모든 페이지 메타데이터. 새 화면은 여기에 한 줄 추가한다.
  */
 val appRoutes: List<AppRoute> =
@@ -136,10 +154,6 @@ val appRoutes: List<AppRoute> =
             },
         ),
         AppRoute(
-            path = CollectionPage.PATH,
-            render = { innerPadding, _ -> CollectionLabRoute(innerPadding = innerPadding) },
-        ),
-        AppRoute(
             path = TimelinePage.PATH,
             render = { innerPadding, args ->
                 TimelineRecordRoute(
@@ -161,7 +175,7 @@ val appRoutes: List<AppRoute> =
             path = Feature1Page.PATH,
             render = { innerPadding, _ -> Feature1Route(innerPadding = innerPadding) },
         ),
-    )
+    ) + collectionLabRoutes
 
 private const val INVALID_TIMELINE_EVENT_ID = -1L
 

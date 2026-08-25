@@ -45,6 +45,11 @@ class DeleteExpiredSourceItemsUseCaseTest {
 
         override fun observeAll(): Flow<List<SourceItem>> = emptyFlow()
 
+        override suspend fun getInWindow(
+            start: Instant,
+            end: Instant,
+        ): List<SourceItem> = emptyList()
+
         override suspend fun getLatestCollectedAt(itemType: ItemType): Instant? = error("사용하지 않음")
 
         override suspend fun deleteExpired(cutoff: Instant): Int {

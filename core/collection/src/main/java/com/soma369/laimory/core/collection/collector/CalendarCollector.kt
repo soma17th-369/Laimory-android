@@ -26,9 +26,13 @@ import javax.inject.Inject
  * 사용자가 소유한(owner-access) 캘린더의 일정만 대상으로 한다 — 구독/공휴일/공유 읽기전용 캘린더는 제외한다.
  * 오늘 기준 최근 [COLLECTION_MONTHS]개월 구간의 인스턴스를 수집하며, 반복 일정은 인스턴스 단위로 펼쳐진다.
  *
- * 권한(READ_CALENDAR) 확인/요청은 수집기 밖(UI 계층)의 책임이다([Collector] 계약) — 권한이 없어 query 가
- * 실패(null 커서/SecurityException)하면 빈 목록을 반환한다. sourceKey 는 `eventId:begin` 으로 인스턴스마다
- * 유일해, 반복 일정도 인스턴스별로 dedupe 된다. 조회는 blocking I/O 이므로 [Dispatchers.IO] 에서 수행한다.
+ * 권한(READ_CALENDAR) 확인/요청은 수집기 밖(UI 계층)의 책임이다([Collector] 계약) — 권한이 없어
+ * `SecurityException` 이 나면 빈 목록을 반환한다. 그 밖의 실패는 삼키지 않고 올린다. 권한 확인을 통과한
+ * 뒤의 null 커서도 실제 조회 실패로 본다([resolveCalendarQuery]) — 빈 목록으로 바꾸면 자동 수집이
+ * "성공 0건" 으로 확정하고 최신성까지 갱신해, 실패 안내 없이 옛 데이터를 계속 쓴다.
+ *
+ * sourceKey 는 `eventId:begin` 으로 인스턴스마다 유일해, 반복 일정도 인스턴스별로 dedupe 된다.
+ * 조회는 blocking I/O 이므로 [Dispatchers.IO] 에서 수행한다.
  */
 internal class CalendarCollector
     @Inject
@@ -52,19 +56,19 @@ internal class CalendarCollector
         /** owner-access(사용자 소유) 캘린더의 id 만 모은다. 구독/공휴일/공유 캘린더는 접근 레벨이 낮아 제외된다. */
         private fun queryPersonalCalendarIds(): List<Long> {
             val cursor =
-                runCatching {
-                    context.contentResolver.query(
-                        CalendarContract.Calendars.CONTENT_URI,
-                        arrayOf(CalendarContract.Calendars._ID),
-                        "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} = ?",
-                        arrayOf(CalendarContract.Calendars.CAL_ACCESS_OWNER.toString()),
-                        null,
-                    )
-                }.getOrElse { e ->
-                    // 권한 미허용은 SecurityException 으로 온다 — 계약대로 빈 목록.
-                    Logger.w(LogDomain.COLLECTION, "개인 캘린더 목록 조회 실패: ${e.message}")
-                    null
-                } ?: return emptyList()
+                resolveCalendarQuery(
+                    label = "개인 캘린더 목록",
+                    result =
+                        runCatching {
+                            context.contentResolver.query(
+                                CalendarContract.Calendars.CONTENT_URI,
+                                arrayOf(CalendarContract.Calendars._ID),
+                                "${CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL} = ?",
+                                arrayOf(CalendarContract.Calendars.CAL_ACCESS_OWNER.toString()),
+                                null,
+                            )
+                        },
+                ) ?: return emptyList()
 
             return cursor.use { c ->
                 val idColumn = c.getColumnIndexOrThrow(CalendarContract.Calendars._ID)
@@ -87,18 +91,19 @@ internal class CalendarCollector
                     }.build()
             val placeholders = calendarIds.joinToString(",") { "?" }
             val cursor =
-                runCatching {
-                    context.contentResolver.query(
-                        uri,
-                        INSTANCE_PROJECTION,
-                        "${CalendarContract.Instances.CALENDAR_ID} IN ($placeholders)",
-                        calendarIds.map(Long::toString).toTypedArray(),
-                        "${CalendarContract.Instances.BEGIN} ASC",
-                    )
-                }.getOrElse { e ->
-                    Logger.w(LogDomain.COLLECTION, "일정 인스턴스 조회 실패: ${e.message}")
-                    null
-                } ?: return emptyList()
+                resolveCalendarQuery(
+                    label = "일정 인스턴스",
+                    result =
+                        runCatching {
+                            context.contentResolver.query(
+                                uri,
+                                INSTANCE_PROJECTION,
+                                "${CalendarContract.Instances.CALENDAR_ID} IN ($placeholders)",
+                                calendarIds.map(Long::toString).toTypedArray(),
+                                "${CalendarContract.Instances.BEGIN} ASC",
+                            )
+                        },
+                ) ?: return emptyList()
 
             return cursor.use { readInstances(it, collectedAt) }
         }
@@ -169,3 +174,28 @@ internal class CalendarCollector
                 )
         }
     }
+
+/**
+ * 캘린더 조회 결과를 권한 없음과 실제 실패로 가른다.
+ *
+ * - `SecurityException`: 권한 미허용. 수집기 계약대로 빈 결과(null)로 돌아간다.
+ * - `null` 값: `ContentResolver.query` 는 provider 가 null 을 돌려주거나 죽었을 때도 null 을 낸다.
+ *   권한 확인을 통과한 뒤의 null 은 **실제 조회 실패**라 예외로 올린다. 빈 목록으로 바꾸면 자동
+ *   수집이 "성공 0건" 으로 확정하고 최신성까지 갱신해, 실패 안내 없이 옛 데이터를 계속 쓴다.
+ * - 그 밖의 예외: 그대로 올린다.
+ *
+ * 로그에는 일정 제목이 실릴 수 있는 예외 메시지를 남기지 않는다.
+ *
+ * `Cursor` 를 다루지 않는 순수 판정이라 JVM 테스트로 검증한다 — 커서를 만들려면 계측 환경이 필요하다.
+ */
+internal fun <T> resolveCalendarQuery(
+    label: String,
+    result: Result<T?>,
+): T? {
+    val failure = result.exceptionOrNull()
+    if (failure is SecurityException) {
+        Logger.w(LogDomain.COLLECTION, "$label 읽기 권한 없음")
+        return null
+    }
+    return result.getOrThrow() ?: error("$label 조회가 결과를 반환하지 않았습니다.")
+}

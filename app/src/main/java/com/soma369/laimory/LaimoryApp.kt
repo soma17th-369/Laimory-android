@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import com.soma369.laimory.collection.AutoCollectionProcessLifecycleObserver
 import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetectionEntryPoint
 import com.soma369.laimory.draft.DraftTaskProcessLifecycleObserver
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
@@ -25,6 +26,9 @@ class LaimoryApp :
     lateinit var draftTaskProcessLifecycleObserver: DraftTaskProcessLifecycleObserver
 
     @Inject
+    lateinit var autoCollectionProcessLifecycleObserver: AutoCollectionProcessLifecycleObserver
+
+    @Inject
     lateinit var pushRegistrationSessionObserver: PushRegistrationSessionObserver
 
     @Inject
@@ -43,6 +47,7 @@ class LaimoryApp :
     override fun onCreate() {
         super.onCreate()
         ProcessLifecycleOwner.get().lifecycle.addObserver(draftTaskProcessLifecycleObserver)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(autoCollectionProcessLifecycleObserver)
         pushRegistrationSessionObserver.start()
         sourceItemRetentionScheduler.schedule()
         DraftCompletionNotificationChannel.create(this)
