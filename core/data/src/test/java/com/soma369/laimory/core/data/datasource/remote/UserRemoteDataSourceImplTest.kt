@@ -42,7 +42,7 @@ class UserRemoteDataSourceImplTest {
     }
 
     @Test
-    fun `인증 경로의 users me를 GET으로 조회한다`() =
+    fun `인증 경로의 user를 GET으로 조회한다`() =
         runTest {
             server.enqueue(success("""{"nickname":"김소마"}"""))
 
@@ -50,7 +50,7 @@ class UserRemoteDataSourceImplTest {
 
             val request = server.takeRequest()
             assertEquals("GET", request.method)
-            assertEquals("/a/api/v1/users/me", request.path)
+            assertEquals("/a/api/v1/user", request.path)
             assertEquals("김소마", response.nickname)
         }
 
@@ -95,7 +95,7 @@ class UserRemoteDataSourceImplTest {
     // --- 회원 탈퇴 ---
 
     @Test
-    fun `인증 경로의 users me를 DELETE로 요청하고 request body를 보내지 않는다`() =
+    fun `인증 경로의 user를 DELETE로 요청하고 request body를 보내지 않는다`() =
         runTest {
             server.enqueue(accepted())
 
@@ -103,7 +103,7 @@ class UserRemoteDataSourceImplTest {
 
             val request = server.takeRequest()
             assertEquals("DELETE", request.method)
-            assertEquals("/a/api/v1/users/me", request.path)
+            assertEquals("/a/api/v1/user", request.path)
             assertEquals(0L, request.bodySize)
         }
 

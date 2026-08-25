@@ -13,7 +13,7 @@ interface UserApi {
      *
      * 응답에 닉네임이 담기므로 debug 에서도 BODY 를 로깅하지 않는 Retrofit 으로 만든다.
      */
-    @GET("users/me")
+    @GET("user")
     suspend fun getMyProfile(): Response<ApiResponse<UserProfileResponse>>
 
     /**
@@ -23,6 +23,6 @@ interface UserApi {
      * 논리 탈퇴·credential 차단·push 등록 삭제와 데이터 삭제 작업 접수가 commit 됐다는 뜻이고
      * 물리 삭제 완료를 뜻하지 않는다. 접수 뒤 같은 access token 의 새 요청은 `401` 로 끝난다.
      */
-    @DELETE("users/me")
+    @DELETE("user")
     suspend fun withdraw(): Response<ApiResponse<Unit>>
 }
