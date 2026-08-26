@@ -29,20 +29,24 @@ internal sealed interface TimelineMemoDisplay {
 /**
  * 메모 영역 표시 내용을 고른다. `null` 이면 영역을 그리지 않는다.
  *
- * 읽기 모드([isEditable] = false)에서 메모와 질문이 모두 없으면 기본 안내 문구를 띄우지 않고 감춘다 —
- * 읽을 내용이 없는 자리에 누를 수 없는 입력칸을 남기지 않기 위해서다.
+ * **읽기 모드([isEditable] = false)에서는 사용자가 남긴 메모만 보여 준다.** 질문과 안내 문구는
+ * 답을 유도하는 prompt 라 쓸 수 없는 자리에서는 소음이다 — 읽기만 하는 화면에 "무엇을 적어
+ * 보라" 는 문장이 남아 있으면 읽을거리로 오인된다. 그래서 메모가 없으면 영역째 감춘다.
  *
- * 그 대가로 메모도 질문도 없는 이벤트는 모드에 따라 카드 높이가 달라진다. 편집 아이콘 자리를
- * 비워 두는 것과 방향이 반대이며, 빈 입력칸이 더 거슬린다는 제품 판단이다.
+ * 그 대가로 메모가 없는 이벤트는 모드에 따라 카드 높이가 달라진다. 편집 아이콘 자리를 비워 두는
+ * 것과 방향이 반대이며, 쓸 수 없는 안내가 더 거슬린다는 제품 판단이다.
  */
 internal fun timelineMemoDisplay(
     memo: String?,
     question: String?,
     isEditable: Boolean,
-): TimelineMemoDisplay? =
-    memo?.takeIf(String::isNotBlank)?.let(TimelineMemoDisplay::Memo)
-        ?: question?.takeIf(String::isNotBlank)?.let(TimelineMemoDisplay::Question)
-        ?: TimelineMemoDisplay.Prompt(DEFAULT_MEMO_PROMPT).takeIf { isEditable }
+): TimelineMemoDisplay? {
+    val savedMemo = memo?.takeIf(String::isNotBlank)?.let(TimelineMemoDisplay::Memo)
+    if (savedMemo != null) return savedMemo
+    if (!isEditable) return null
+    return question?.takeIf(String::isNotBlank)?.let(TimelineMemoDisplay::Question)
+        ?: TimelineMemoDisplay.Prompt(DEFAULT_MEMO_PROMPT)
+}
 
 /** 질문이 없을 때 쓰는 기본 안내 문구. 인라인 편집기의 입력 placeholder 로도 쓴다. */
 internal const val DEFAULT_MEMO_PROMPT = "이 순간에 대한 메모…"
