@@ -464,14 +464,14 @@ private fun PhotoThumbnailRow(
 ) {
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
         itemsIndexed(photoSlots) { index, photoUrl ->
             TimelinePhoto(
                 photoUrl = photoUrl,
                 onClick = { onPhotoClick(photoSlots, index) },
-                modifier = Modifier.size(64.dp),
-                cornerRadius = 4.dp,
+                modifier = Modifier.size(THUMBNAIL_SIZE),
+                cornerRadius = THUMBNAIL_CORNER_RADIUS,
             )
         }
     }
@@ -952,6 +952,19 @@ private fun photoThumbnailPreviewEvent(photoCount: Int = 5) =
         itemCounts = listOf(TimelineItemCountUiModel(TimelineItemType.PHOTO, photoCount)),
         photoUrls = List(photoCount) { null },
     )
+
+/**
+ * 본문에 딸린 사진의 한 변. 읽기·편집 모드가 같은 값을 쓴다.
+ *
+ * 종전 64dp 는 20sp 메모·20sp 제목 옆에서 사진이 각주처럼 작아 보였다. 콘텐츠 폭(기기 실측
+ * 335dp)에 8dp 간격으로 세 장이 들어가는 크기라, 흔한 1~3장은 스크롤 없이 한눈에 들어오고
+ * 그 이상은 가로로 이어진다.
+ *
+ * 모드별로 나누지 않는 이유는 편집이 읽기 화면의 같은 사진을 손보는 자리이기 때문이다 — 크기가
+ * 달라지면 편집 중 보는 것과 저장 뒤 보이는 것이 어긋난다.
+ */
+private val THUMBNAIL_SIZE = 96.dp
+private val THUMBNAIL_CORNER_RADIUS = 8.dp
 
 /** 표시자 원형 크기. 시안 32dp. */
 private val INDICATOR_SIZE = 32.dp
