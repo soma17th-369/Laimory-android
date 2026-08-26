@@ -44,6 +44,7 @@ import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.util.permission.LocationPermission
 import com.soma369.laimory.feature.collection.state.LocationUiIntent
 import com.soma369.laimory.feature.collection.state.LocationUiSideEffect
 import com.soma369.laimory.feature.collection.state.LocationUiState

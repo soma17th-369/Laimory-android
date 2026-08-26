@@ -1,13 +1,12 @@
 package com.soma369.laimory.core.collection.collector
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import com.soma369.laimory.core.domain.provider.CollectionAvailabilityProvider
+import com.soma369.laimory.core.util.permission.CalendarPermission
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,8 +17,8 @@ import javax.inject.Singleton
  * 판정만 하고 권한을 요청하지 않는다. 자동 수집은 사용자가 시작한 동작이 아니라 권한 요청
  * 화면을 띄우면 안 된다.
  *
- * `feature:collection` 의 권한 유틸은 `internal` 이라 재사용할 수 없어 여기서 다시 판정한다.
- * 요구 권한 자체는 같은 값이다.
+ * 권한 판정은 `core:permission` 에 위임한다 — 같은 권한을 두 곳에서 판정하면 수집 실험실과
+ * 자동 수집이 서로 다른 답을 낼 수 있다.
  */
 @Singleton
 internal class AndroidCollectionAvailabilityProvider
@@ -27,8 +26,7 @@ internal class AndroidCollectionAvailabilityProvider
     constructor(
         @ApplicationContext private val context: Context,
     ) : CollectionAvailabilityProvider {
-        override fun canCollectCalendar(): Boolean =
-            context.checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
+        override fun canCollectCalendar(): Boolean = CalendarPermission.isGranted(context)
 
         override fun isHealthConnectAvailable(): Boolean = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
 

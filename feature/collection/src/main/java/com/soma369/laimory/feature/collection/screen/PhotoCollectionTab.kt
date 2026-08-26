@@ -52,7 +52,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
-import com.soma369.laimory.core.ui.permission.PhotoPermission
+import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.collection.state.CollectionUiIntent
 import com.soma369.laimory.feature.collection.state.CollectionUiSideEffect
 import com.soma369.laimory.feature.collection.state.CollectionUiState

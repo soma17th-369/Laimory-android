@@ -38,8 +38,8 @@ import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
-import com.soma369.laimory.core.ui.permission.PhotoPermission
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.DraftSettingsSheet
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
