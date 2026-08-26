@@ -388,12 +388,13 @@ private fun TimelineRecordBody(
         itemsIndexed(
             items = record.events,
             key = { _, event -> event.timelineEventId },
-        ) { _, event ->
+        ) { index, event ->
             TimelineEventCard(
                 event = event,
                 onEditClick = { onEventClick(event.timelineEventId) },
                 onPhotoClick = onPhotoClick,
                 isEditable = mode.isEditing,
+                isLast = index == record.events.lastIndex,
                 memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = onMemoChange,
