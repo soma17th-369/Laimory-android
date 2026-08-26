@@ -383,7 +383,8 @@ private fun TimelineRecordBody(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = Spacing.large, vertical = Spacing.small),
-        verticalArrangement = Arrangement.spacedBy(Spacing.large),
+        // 행 사이 간격은 항목이 스스로 진다. 여기서 주면 읽기 모드 연결선의 그리기 영역 밖이라
+        // 이벤트마다 선이 끊긴다.
     ) {
         itemsIndexed(
             items = record.events,

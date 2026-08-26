@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -82,7 +83,7 @@ internal fun TimelineEventCard(
             onMemoChange = onMemoChange,
             onMemoCancel = onMemoCancel,
             onMemoConfirm = onMemoConfirm,
-            modifier = modifier,
+            modifier = modifier.padding(bottom = rowGap(isLast)),
         )
     } else {
         ReadModeEventRow(
@@ -143,7 +144,11 @@ private fun ReadModeEventRow(
                         strokeWidth = CONNECTOR_WIDTH.toPx(),
                         cap = StrokeCap.Round,
                     )
-                },
+                }
+                // 행 사이 여백을 drawBehind **뒤에** 둔다. 앞에 두면 그리기 영역이 여백을 뺀
+                // 크기가 돼 선이 매 행마다 끊긴다. 뒤에 두면 size.height 가 여백까지 포함해
+                // 다음 표시자 윗변까지 이어진다.
+                .padding(bottom = rowGap(isLast)),
         horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
     ) {
         EventTypeIndicator(eventType = event.eventType)
@@ -151,9 +156,10 @@ private fun ReadModeEventRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
         ) {
-            // 시각 줄은 아이콘과 같은 높이로 잡아 첫 줄이 아이콘 가운데에 맞물린다.
+            // 시각 줄은 아이콘과 같은 높이로 잡아 첫 줄이 아이콘 가운데에 맞물린다. 최대 높이는
+            // 묶지 않는다 — 글꼴을 키운 사용자의 한 줄이 32dp 를 넘으면 시각이 잘린다.
             Box(
-                modifier = Modifier.height(INDICATOR_SIZE),
+                modifier = Modifier.heightIn(min = INDICATOR_SIZE),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Text(
@@ -195,6 +201,14 @@ private fun ReadModeEventRow(
         }
     }
 }
+
+/**
+ * 행 아래에 둘 여백. 마지막 행은 이어질 곳이 없으므로 0 이다.
+ *
+ * 목록의 `Arrangement.spacedBy` 대신 항목이 스스로 진다 — 항목 바깥 간격은 읽기 모드 연결선의
+ * 그리기 영역에 들어오지 않아 행마다 선이 끊긴다.
+ */
+private fun rowGap(isLast: Boolean): Dp = if (isLast) 0.dp else TIMELINE_ROW_GAP
 
 /**
  * 표시자 아이콘. 연결선은 행 배경이 그리므로 여기서는 원형 아이콘만 둔다.
@@ -697,12 +711,12 @@ private fun ReadModeConnectorPreview() {
 @Composable
 private fun ReadModePhotoThumbnailPreview(
     @PreviewParameter(PhotoThumbnailCountPreviewParameterProvider::class)
-    event: TimelineEventUiModel,
+    photoCount: Int,
 ) {
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             TimelineEventCard(
-                event = event,
+                event = photoThumbnailPreviewEvent(photoCount),
                 onEditClick = {},
                 onPhotoClick = { _, _ -> },
                 isEditable = false,
@@ -716,12 +730,12 @@ private fun ReadModePhotoThumbnailPreview(
 @Composable
 private fun ReadModePhotoMainPreview(
     @PreviewParameter(PhotoMainCountPreviewParameterProvider::class)
-    event: TimelineEventUiModel,
+    photoCount: Int,
 ) {
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             TimelineEventCard(
-                event = event,
+                event = photoMainPreviewEvent(photoCount),
                 onEditClick = {},
                 onPhotoClick = { _, _ -> },
                 isEditable = false,
@@ -965,6 +979,9 @@ private fun photoThumbnailPreviewEvent(photoCount: Int = 5) =
  */
 private val THUMBNAIL_SIZE = 96.dp
 private val THUMBNAIL_CORNER_RADIUS = 8.dp
+
+/** 타임라인 행 사이 간격. 종전 목록의 `Arrangement.spacedBy(Spacing.large)` 와 같은 값이다. */
+private val TIMELINE_ROW_GAP = 16.dp
 
 /** 표시자 원형 크기. 시안 32dp. */
 private val INDICATOR_SIZE = 32.dp
