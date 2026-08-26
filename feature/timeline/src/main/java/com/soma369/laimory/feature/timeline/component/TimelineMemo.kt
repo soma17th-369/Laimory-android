@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
@@ -74,12 +75,21 @@ internal fun TimelineMemo(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .dashedRoundRectBorder(
-                        color = MaterialTheme.colorScheme.outline,
-                        cornerRadius = MaterialTheme.shapes.medium.topStart,
-                    ).clickable(enabled = isEditable, onClick = onClick)
-                    .padding(horizontal = Spacing.medium, vertical = 10.dp),
-            style = MaterialTheme.laimorySignature.note,
+                    // 점선 테두리와 안쪽 여백은 "여기를 눌러 적을 수 있다"는 표시라 편집 모드에서만 둔다.
+                    // 읽기 모드에서는 메모가 본문의 한 문단이므로 테를 두르면 입력칸으로 오인된다.
+                    .then(
+                        if (isEditable) {
+                            Modifier
+                                .dashedRoundRectBorder(
+                                    color = MaterialTheme.colorScheme.outline,
+                                    cornerRadius = MaterialTheme.shapes.medium.topStart,
+                                ).clickable(onClick = onClick)
+                                .padding(horizontal = Spacing.medium, vertical = 10.dp)
+                        } else {
+                            Modifier
+                        },
+                    ),
+            style = if (isEditable) MaterialTheme.laimorySignature.note else readModeMemoStyle(),
             color =
                 if (display is TimelineMemoDisplay.Memo) {
                     MaterialTheme.colorScheme.onSurface
@@ -282,6 +292,22 @@ private fun TimelineMemoActionButton(
     }
 }
 
+/**
+ * 읽기 모드 메모 서체.
+ *
+ * 읽기 화면에서 메모는 본문의 한 문단이라 편집기 안의 note(13sp)보다 커야 읽힌다.
+ * `laimorySignature.note` 를 직접 키우지 않는 이유는 그 토큰을 로그인 화면도 쓰기 때문이다 —
+ * 여기서만 크기를 덮고 서체(고운 바탕)는 그대로 물려받는다.
+ *
+ * 행간은 시안값을 그대로 쓴다. 글자 크기의 1.1 배라 여러 줄로 접히면 빽빽해진다.
+ */
+@Composable
+private fun readModeMemoStyle() =
+    MaterialTheme.laimorySignature.note.copy(
+        fontSize = READ_MODE_MEMO_FONT_SIZE,
+        lineHeight = READ_MODE_MEMO_LINE_HEIGHT,
+    )
+
 private fun Modifier.dashedRoundRectBorder(
     color: Color,
     cornerRadius: androidx.compose.foundation.shape.CornerSize,
@@ -299,6 +325,9 @@ private fun Modifier.dashedRoundRectBorder(
         )
     }
 }
+
+private val READ_MODE_MEMO_FONT_SIZE = 20.sp
+private val READ_MODE_MEMO_LINE_HEIGHT = 22.sp
 
 private const val STABLE_IME_FRAME_COUNT = 2
 private const val MAX_IME_WAIT_FRAME_COUNT = 60

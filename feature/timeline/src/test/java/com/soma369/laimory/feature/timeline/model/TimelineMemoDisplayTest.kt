@@ -20,15 +20,17 @@ class TimelineMemoDisplayTest {
     }
 
     @Test
-    fun `읽기 모드에서도 메모와 질문은 보여준다`() {
+    fun `읽기 모드는 사용자가 남긴 메모만 보여준다`() {
         assertEquals(
             TimelineMemoDisplay.Memo("친구를 만났다"),
             timelineMemoDisplay(memo = "친구를 만났다", question = null, isEditable = false),
         )
-        assertEquals(
-            TimelineMemoDisplay.Question("오늘 어땠나요?"),
-            timelineMemoDisplay(memo = null, question = "오늘 어땠나요?", isEditable = false),
-        )
+    }
+
+    @Test
+    fun `읽기 모드에서는 질문을 보여주지 않는다`() {
+        // 질문은 답을 유도하는 prompt 라, 쓸 수 없는 자리에 두면 읽을거리로 오인된다.
+        assertNull(timelineMemoDisplay(memo = null, question = "오늘 어땠나요?", isEditable = false))
     }
 
     @Test
@@ -52,6 +54,7 @@ class TimelineMemoDisplayTest {
             TimelineMemoDisplay.Prompt(DEFAULT_MEMO_PROMPT),
             timelineMemoDisplay(memo = "\n", question = " ", isEditable = true),
         )
-        assertNull(timelineMemoDisplay(memo = " ", question = "\t", isEditable = false))
+        // 읽기 모드는 질문 자체를 보지 않으므로 공백 여부와 무관하게 감춘다.
+        assertNull(timelineMemoDisplay(memo = " ", question = "무엇을 했나요?", isEditable = false))
     }
 }
