@@ -689,10 +689,9 @@ private fun ReadModeConnectorPreview() {
     val events = TimelineEventPreviewParameterProvider().values.take(3).toList()
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
-            Column(
-                modifier = Modifier.padding(Spacing.large),
-                verticalArrangement = Arrangement.spacedBy(Spacing.large),
-            ) {
+            // 간격을 주지 않는다 — 실제 목록과 같이 항목이 자기 아래 여백을 지고, 그 여백까지
+            // 연결선이 그려지는지 보는 Preview 다. 여기서 더하면 검증 대상이 사라진다.
+            Column(modifier = Modifier.padding(Spacing.large)) {
                 events.forEachIndexed { index, event ->
                     TimelineEventCard(
                         event = event,
