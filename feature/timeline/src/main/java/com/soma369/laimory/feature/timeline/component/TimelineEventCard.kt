@@ -213,9 +213,9 @@ private fun rowGap(isLast: Boolean): Dp = if (isLast) 0.dp else TIMELINE_ROW_GAP
 /**
  * 표시자 아이콘. 연결선은 행 배경이 그리므로 여기서는 원형 아이콘만 둔다.
  *
- * 채움색은 시안의 `surface-variant` 대신 화면 배경색을 쓴다 — 읽기 화면은 배경 하나로 이어지는
- * 면이라, 행마다 밝기가 다른 원이 찍히면 아이콘이 아니라 원이 먼저 눈에 띈다. 원형 자리는 그대로
- * 남긴다: 24dp 아이콘을 32dp 안에 가운데 두고 연결선의 시작점을 잡아 주는 배치 기준이다.
+ * 채움은 시안대로 `surfaceVariant` 다. 배경색으로 낮춰 봤더니 원이 사라지면서 아이콘이 허공에
+ * 뜨고, 아래에서 올라온 연결선도 닿을 곳을 잃어 어색했다. 원은 아이콘의 바탕이자 연결선이
+ * 맞물리는 마디라 배경과 구분돼야 한다.
  */
 @Composable
 private fun EventTypeIndicator(eventType: TimelineEventType) {
@@ -224,7 +224,7 @@ private fun EventTypeIndicator(eventType: TimelineEventType) {
             Modifier
                 .size(INDICATOR_SIZE)
                 .clip(RoundedCornerShape(INDICATOR_CORNER_RADIUS))
-                .background(MaterialTheme.colorScheme.background),
+                .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
