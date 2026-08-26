@@ -23,10 +23,12 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.onboarding.OnboardingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NavSignal
+import com.soma369.laimory.core.domain.navigation.OnboardingPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
@@ -53,12 +55,16 @@ fun LaimoryNavGraph(
     messages: Flow<UserMessage> = emptyFlow(),
     navigationFlow: Flow<NavSignal> = emptyFlow(),
     authSessionStates: Flow<AuthSessionState> = flowOf(AuthSessionState.Authenticated),
+    onboardingStates: Flow<OnboardingState> = flowOf(OnboardingState(isCompleted = true)),
     pendingDraftCompletions: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null),
     onDraftCompletionConsumed: suspend (String) -> Boolean = { false },
     onAuthRootReplaced: () -> Unit = {},
 ) {
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
-    val rootPage = sessionState.rootPage()
+    // 아직 읽기 전이면 null 이다. 온보딩 상태를 모르는 채로 Home 을 먼저 그리면, 온보딩이 필요한
+    // 사용자에게 홈이 한 프레임 번쩍인 뒤 화면이 갈린다.
+    val onboardingState by onboardingStates.collectAsStateWithLifecycle(initialValue = null)
+    val rootPage = rootPage(sessionState, onboardingState)
     if (rootPage == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -124,7 +130,7 @@ fun LaimoryNavGraph(
     }
 
     LaunchedEffect(rootPage) {
-        backStack.syncAuthRoot(rootPage, onRootReplaced = onAuthRootReplaced)
+        backStack.syncRoot(rootPage, onRootReplaced = onAuthRootReplaced)
     }
 
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
@@ -152,30 +158,44 @@ fun LaimoryNavGraph(
 /** 완료 표시를 보여주는 시간. 넘어가기 전에 `완료`로 바뀌는 것을 알아볼 만큼만 둔다. */
 private const val COMPLETION_REVEAL_MILLIS = 800L
 
-internal fun AuthSessionState.rootPage(): Page? =
-    when (this) {
+/**
+ * 인증과 온보딩을 함께 보고 앱 루트를 하나로 정한다. `null` 이면 아직 정할 수 없다는 뜻이다.
+ *
+ * 로그인하지 않았으면 온보딩 상태를 기다리지 않는다 — 로그인 화면은 온보딩과 무관해서,
+ * 기다리면 로그인이 늦게 뜨기만 한다.
+ */
+internal fun rootPage(
+    session: AuthSessionState,
+    onboarding: OnboardingState?,
+): Page? =
+    when (session) {
         AuthSessionState.Loading -> null
-        AuthSessionState.Authenticated -> HomePage
         AuthSessionState.Unauthenticated -> LoginPage
+        AuthSessionState.Authenticated ->
+            when {
+                onboarding == null -> null
+                onboarding.isCompleted -> HomePage
+                else -> OnboardingPage
+            }
     }
 
 /**
- * 인증 여부가 바뀐 경우에만 Login/Home 경계를 교체하고, 같은 경계의 복원된 백스택은 보존한다.
+ * 루트가 실제로 바뀐 경우에만 경계를 교체하고, 같은 경계의 복원된 백스택은 보존한다.
+ *
+ * 루트가 셋(Login·Onboarding·Home)이라 "로그인 화면인가" 같은 불리언으로는 가를 수 없다.
+ * 현재 백스택 바닥의 경로와 목표 경로를 직접 비교하면 루트가 더 늘어도 그대로 쓴다.
  *
  * [onRootReplaced]는 실제 경계 교체 순간에만 호출된다 — 구성 변경으로 같은 Root가 다시
  * 구성될 때는 호출되지 않아 활성 Dialog가 유지되고, 교체 뒤에는 오래된 요청이 정리된다.
  */
-internal fun NavBackStack<NavKey>.syncAuthRoot(
+internal fun NavBackStack<NavKey>.syncRoot(
     targetRoot: Page,
     onRootReplaced: () -> Unit = {},
 ) {
     val currentRootPath = (firstOrNull() as? GenericNavKey)?.path
-    val isLoginRoot = currentRootPath == LoginPage.PATH
-    val shouldBeLoginRoot = targetRoot == LoginPage
-    if (isLoginRoot != shouldBeLoginRoot) {
-        onRootReplaced()
-        replaceRoot(targetRoot.toRoute())
-    }
+    if (currentRootPath == targetRoot.toRoute().path) return
+    onRootReplaced()
+    replaceRoot(targetRoot.toRoute())
 }
 
 /** 의미 수준 메시지를 실제 스낵바 문구로 매핑한다. (presentation 책임) */

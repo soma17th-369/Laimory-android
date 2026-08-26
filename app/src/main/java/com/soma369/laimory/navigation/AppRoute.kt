@@ -16,6 +16,7 @@ import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
+import com.soma369.laimory.core.domain.navigation.OnboardingPage
 import com.soma369.laimory.core.domain.navigation.ReflectionPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
@@ -27,6 +28,7 @@ import com.soma369.laimory.feature.home.screen.DraftConsentRoute
 import com.soma369.laimory.feature.home.screen.DraftLoadingRoute
 import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.login.screen.LoginRoute
+import com.soma369.laimory.feature.onboarding.screen.OnboardingRoute
 import com.soma369.laimory.feature.settings.screen.SettingsRoute
 import com.soma369.laimory.feature.timeline.screen.CalendarRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineEventEditorRoute
@@ -89,6 +91,10 @@ val appRoutes: List<AppRoute> =
         AppRoute(
             path = LoginPage.PATH,
             render = { innerPadding, _ -> LoginAppRoute(innerPadding) },
+        ),
+        AppRoute(
+            path = OnboardingPage.PATH,
+            render = { innerPadding, _ -> OnboardingRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = HomePage.PATH,
