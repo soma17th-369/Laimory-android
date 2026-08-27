@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.base.BaseUseCase
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
+import com.soma369.laimory.core.domain.model.timeline.sortedForDisplay
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import java.time.LocalDate
@@ -32,12 +33,7 @@ class CreateTimelineEventUseCase
                 created
             }
 
-        /**
-         * 세션 목록에 새 이벤트를 시각 순서대로 끼워 넣는다.
-         *
-         * 서버가 시각을 보낸 값 그대로 저장하고 겹침 보정을 하지 않으므로, 같은 시각이 있으면 그
-         * 뒤에 둔다 — 목록이 서버 조회 순서와 어긋나지 않는다.
-         */
+        /** 세션 목록에 새 이벤트를 끼워 넣는다. 조회 매핑과 **같은 규칙**으로 정렬해야 새로고침 전후 순서가 같다. */
         private fun appendToSession(
             recordDate: LocalDate,
             event: TimelineEvent,
@@ -45,7 +41,7 @@ class CreateTimelineEventUseCase
             val timeline = sessionRepository.timeline.value ?: return
             // 다른 날짜의 세션이면 건드리지 않는다 — 그 화면은 자기 날짜를 다시 조회해 맞춘다.
             if (timeline.recordDate != recordDate) return
-            val merged = (timeline.events + event).sortedBy(TimelineEvent::startAt)
+            val merged = (timeline.events + event).sortedForDisplay()
             sessionRepository.save(timeline.copy(events = merged))
         }
     }
