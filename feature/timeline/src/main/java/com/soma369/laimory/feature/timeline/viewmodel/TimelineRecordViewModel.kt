@@ -17,12 +17,15 @@ import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
+import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionOutcome
+import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.timeline.model.initialMode
 import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetPurpose
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordDeleteTarget
@@ -47,6 +50,7 @@ class TimelineRecordViewModel
         private val getDailyRecordUseCase: GetDailyRecordUseCase,
         private val saveTimelineRecordUseCase: SaveTimelineRecordUseCase,
         private val completeDailyRecordUseCase: CompleteDailyRecordUseCase,
+        private val updateDailyRecordEmotionUseCase: UpdateDailyRecordEmotionUseCase,
         private val updateTimelineEventMemoUseCase: UpdateTimelineEventMemoUseCase,
         private val deleteDailyRecordUseCase: DeleteDailyRecordUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
@@ -105,7 +109,8 @@ class TimelineRecordViewModel
                     navigateBack()
                 TimelineRecordUiIntent.RequestSave -> openEmotionSheet()
                 is TimelineRecordUiIntent.SelectEmotion -> selectEmotion(intent.emotion)
-                TimelineRecordUiIntent.ConfirmEmotion -> saveRecord()
+                TimelineRecordUiIntent.EditEmotion -> openEmotionEditor()
+                TimelineRecordUiIntent.ConfirmEmotion -> confirmEmotion()
                 TimelineRecordUiIntent.DismissEmotionSheet -> dismissEmotionSheet()
                 TimelineRecordUiIntent.EnterEditMode -> switchMode(TimelineRecordMode.EDIT)
                 TimelineRecordUiIntent.ExitEditMode -> switchMode(TimelineRecordMode.READ)
@@ -233,6 +238,90 @@ class TimelineRecordViewModel
                         ),
                 )
             }
+        }
+
+        /**
+         * 저장된 기록의 감정을 바꾸기 위해 시트를 연다.
+         *
+         * 저장 전(DRAFT)에는 열리지 않는다 — 최초 감정은 작성 완료가 정하고, 서버도 DRAFT 에는
+         * `409/-1020` 을 낸다. 읽기 모드에서도 열지 않는다: 감정은 보여 주기만 한다.
+         */
+        private fun openEmotionEditor() {
+            val current = state.value
+            val record = (current.content as? TimelineRecordUiContent.Record)?.value ?: return
+            if (!record.isSaved || !current.mode.isEditing) return
+            if (current.emotionSheet != null || !current.isModeSwitchable) return
+            val today = LocalDate.now(clock.withZone(ZoneId.systemDefault()))
+            updateState {
+                copy(
+                    emotionSheet =
+                        TimelineEmotionSheetState(
+                            recordDate = record.recordDate,
+                            dateLabel = timelineEmotionDateLabel(record.recordDate, today),
+                            // 지금 감정을 미리 골라 둔다. 바꾸러 온 사람에게 기본값을 다시 고르게 하면
+                            // 무엇이 현재 값인지 시트가 알려 주지 않는 셈이다.
+                            selected = record.emotion ?: TimelineEmotion.DEFAULT_SELECTION,
+                            purpose = TimelineEmotionSheetPurpose.EDIT_EMOTION,
+                        ),
+                )
+            }
+        }
+
+        /** 시트가 열린 목적에 따라 서버 경로가 갈린다. */
+        private fun confirmEmotion() {
+            when (state.value.emotionSheet?.purpose) {
+                TimelineEmotionSheetPurpose.SAVE_RECORD -> saveRecord()
+                TimelineEmotionSheetPurpose.EDIT_EMOTION -> updateEmotion()
+                null -> Unit
+            }
+        }
+
+        /**
+         * 저장된 기록의 감정만 교체한다.
+         *
+         * 저장과 달리 화면을 떠나지 않는다 — 감정만 바뀌고 기록은 그 자리에 남는다. 성공하면
+         * 다시 조회하지 않고 화면의 값만 갈아 끼운다. 서버가 멱등이라 같은 값을 눌러도 성공이다.
+         */
+        private fun updateEmotion() {
+            val current = state.value
+            val sheet = current.emotionSheet ?: return
+            if (current.isSavingRecord) return
+            updateState { copy(isSavingRecord = true) }
+            saveJob =
+                safeLaunch(onError = {
+                    finishEmotionUpdate()
+                    handleFailure(it)
+                }) {
+                    val outcome =
+                        updateDailyRecordEmotionUseCase(sheet.recordDate, sheet.selected)
+                            .getOrElse {
+                                finishEmotionUpdate()
+                                return@safeLaunch
+                            }
+                    when (outcome) {
+                        UpdateDailyRecordEmotionOutcome.Updated -> applyEmotion(sheet.selected)
+                        // 화면이 DRAFT 진입을 막으므로 여기 오면 화면과 서버가 어긋난 것이다.
+                        UpdateDailyRecordEmotionOutcome.NotSaved ->
+                            showSnackbar("먼저 하루 기록을 저장해 주세요.")
+
+                        UpdateDailyRecordEmotionOutcome.RecordUnavailable ->
+                            showSnackbar("이 기록을 찾을 수 없어요.")
+                    }
+                    finishEmotionUpdate()
+                }
+        }
+
+        private fun showSnackbar(message: String) = sendEffect(TimelineRecordUiSideEffect.ShowSnackbar(message))
+
+        private fun applyEmotion(emotion: TimelineEmotion) {
+            updateState {
+                val record = (content as? TimelineRecordUiContent.Record)?.value ?: return@updateState this
+                copy(content = TimelineRecordUiContent.Record(record.copy(emotion = emotion)))
+            }
+        }
+
+        private fun finishEmotionUpdate() {
+            updateState { copy(isSavingRecord = false, emotionSheet = null) }
         }
 
         private fun selectEmotion(emotion: TimelineEmotion) {

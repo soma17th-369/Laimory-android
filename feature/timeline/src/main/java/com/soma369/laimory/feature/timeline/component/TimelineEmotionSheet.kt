@@ -38,6 +38,7 @@ import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetPurpose
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
 
 /**
@@ -56,6 +57,9 @@ internal fun TimelineEmotionSheet(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // 저장 확정과 감정 수정이 같은 시트를 쓴다. 확인을 누르면 서버 경로가 갈리므로 문구도 갈라
+    // 사용자가 무엇이 일어날지 알 수 있게 한다 — 수정인데 "확인" 만 보이면 다시 저장되는 것처럼 읽힌다.
+    val isEditing = state.purpose == TimelineEmotionSheetPurpose.EDIT_EMOTION
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = { if (!isSaving) onDismiss() },
@@ -74,13 +78,18 @@ internal fun TimelineEmotionSheet(
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2),
         ) {
             LaimorySheetHeader(
-                title = "감정 선택하기",
+                title = if (isEditing) "감정 바꾸기" else "감정 선택하기",
                 onClose = onDismiss,
                 closeEnabled = !isSaving,
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge3)) {
                 Text(
-                    text = "${state.dateLabel} 하루, 어떤 기분이었나요?",
+                    text =
+                        if (isEditing) {
+                            "${state.dateLabel} 하루, 지금은 어떤 기분인가요?"
+                        } else {
+                            "${state.dateLabel} 하루, 어떤 기분이었나요?"
+                        },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -113,7 +122,7 @@ internal fun TimelineEmotionSheet(
                     )
                 } else {
                     Text(
-                        text = "확인",
+                        text = if (isEditing) "바꾸기" else "확인",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     )
                 }

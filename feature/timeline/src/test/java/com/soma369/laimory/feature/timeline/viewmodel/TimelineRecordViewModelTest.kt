@@ -24,6 +24,7 @@ import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
+import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
@@ -41,6 +42,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -1091,6 +1093,11 @@ class TimelineRecordViewModelTest {
                     sessionRepository = repository,
                     messageHelper = NoOpMessageHelper,
                 ),
+            updateDailyRecordEmotionUseCase =
+                UpdateDailyRecordEmotionUseCase(
+                    repository = recordRepository,
+                    messageHelper = NoOpMessageHelper,
+                ),
             deleteDailyRecordUseCase =
                 DeleteDailyRecordUseCase(
                     repository = recordRepository,
@@ -1103,6 +1110,64 @@ class TimelineRecordViewModelTest {
             clock = clock,
         )
 
+    @Test
+    fun `저장된 기록의 편집 모드에서 감정을 바꾼다`() =
+        runTest {
+            val viewModel = createLoadedViewModel(timeline(status = DailyRecordStatus.SAVED, emotion = TimelineEmotion.NEUTRAL))
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditEmotion)
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.HAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE to TimelineEmotion.HAPPY), recordRepository.updatedEmotions)
+            val record = (viewModel.state.value.content as TimelineRecordUiContent.Record).value
+            assertEquals(TimelineEmotion.HAPPY, record.emotion)
+            assertNull(viewModel.state.value.emotionSheet)
+        }
+
+    @Test
+    fun `수정 시트는 지금 감정을 미리 골라 둔다`() =
+        runTest {
+            // 바꾸러 온 사람에게 기본값을 다시 고르게 하면 무엇이 현재 값인지 시트가 알려 주지 않는다.
+            val viewModel = createLoadedViewModel(timeline(status = DailyRecordStatus.SAVED, emotion = TimelineEmotion.UNHAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditEmotion)
+            advanceUntilIdle()
+
+            assertEquals(TimelineEmotion.UNHAPPY, viewModel.state.value.emotionSheet?.selected)
+        }
+
+    @Test
+    fun `읽기 모드에서는 감정 수정 시트가 열리지 않는다`() =
+        runTest {
+            // 감정은 읽기 모드에서 보여 주기만 한다.
+            val viewModel = createLoadedViewModel(timeline(status = DailyRecordStatus.SAVED, emotion = TimelineEmotion.HAPPY))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditEmotion)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.emotionSheet)
+        }
+
+    @Test
+    fun `저장 전 기록은 감정 수정 시트를 열지 않는다`() =
+        runTest {
+            // 최초 감정은 작성 완료가 정한다. 서버도 DRAFT 에는 409 를 낸다.
+            val viewModel = createLoadedViewModel(timeline(status = DailyRecordStatus.DRAFT))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditEmotion)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.emotionSheet)
+            assertEquals(emptyList<Pair<LocalDate, TimelineEmotion>>(), recordRepository.updatedEmotions)
+        }
+
     private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {
         recordRepository.dailyRecordResult = Result.success(record)
         val viewModel = createViewModel()
@@ -1112,12 +1177,13 @@ class TimelineRecordViewModelTest {
     }
 
     private fun timeline(
-        events: List<TimelineEvent>,
+        events: List<TimelineEvent> = listOf(event()),
         status: DailyRecordStatus? = DailyRecordStatus.DRAFT,
+        emotion: TimelineEmotion? = null,
     ) = DailyTimeline(
         dailyRecordId = DAILY_RECORD_ID,
         recordDate = RECORD_DATE,
-        emotion = null,
+        emotion = emotion,
         events = events,
         status = status,
     )
