@@ -173,11 +173,13 @@ private fun TimelineRecordScreen(
     ) {
         LaimoryTopAppBar(
             title = {
+                val record = (state.content as? TimelineRecordUiContent.Record)?.value
                 TimelineRecordTitle(
                     title = state.title(),
-                    emotion = (state.content as? TimelineRecordUiContent.Record)?.value?.emotion,
-                    // 저장 전에는 감정 자체가 없다. 자리를 비워 두면 날짜가 가운데에서 밀리므로
-                    // 아예 그리지 않고 날짜만 가운데에 둔다.
+                    // 저장된 기록에만 자리를 준다. 저장 전에는 감정이라는 것이 아직 없어서,
+                    // 자리를 비워 두면 날짜가 가운데에서 밀린다.
+                    showsEmotion = record?.isSaved == true,
+                    emotion = record?.emotion,
                     isEditable = state.mode.isEditing && state.isModeSwitchable,
                     onEmotionClick = { onIntent(TimelineRecordUiIntent.EditEmotion) },
                 )
@@ -488,12 +490,17 @@ private val RecordDateFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", 
  * 감정은 읽기·편집 모드 모두에 보이고 **편집 모드에서만 누를 수 있다.** 지금까지 감정은 홈 카드와
  * 월간 캘린더에만 있어서, 정작 그 기록을 열면 자신이 무엇을 골랐는지 알 수 없었다.
  *
- * 감정이 없으면(DRAFT) 자리째 그리지 않는다. 빈 자리를 남기면 날짜가 가운데에서 밀리고, 저장
+ * 저장 전(DRAFT)에는 자리째 그리지 않는다. 빈 자리를 남기면 날짜가 가운데에서 밀리고, 저장
  * 전후로 타이틀이 좌우로 움직인다.
+ *
+ * **저장됐는데 감정이 아직 없는 기록**은 감추지 않고 미상(`?`)으로 그린다 — 감정이 생기기 전에
+ * 저장된 기록이 그렇고, 감추면 그 기록만 영영 감정을 넣을 수 없다. 홈·캘린더가 같은 기록을
+ * 이미 `?` 로 보여 주고 있어 표시도 어긋나지 않는다.
  */
 @Composable
 private fun TimelineRecordTitle(
     title: String,
+    showsEmotion: Boolean,
     emotion: TimelineEmotion?,
     isEditable: Boolean,
     onEmotionClick: () -> Unit,
@@ -503,10 +510,10 @@ private fun TimelineRecordTitle(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = title, maxLines = 1)
-        emotion?.let { value ->
-            val label = value.toUiEmotionOrNull().displayLabel()
+        if (showsEmotion) {
+            val label = emotion?.toUiEmotionOrNull().displayLabel()
             EmotionIcon(
-                emotion = value.toUiEmotionOrNull(),
+                emotion = emotion?.toUiEmotionOrNull(),
                 size = TitleEmotionSize,
                 contentDescription = if (isEditable) "하루 감정 $label, 눌러서 바꾸기" else "하루 감정 $label",
                 modifier =
