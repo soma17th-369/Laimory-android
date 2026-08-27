@@ -123,12 +123,27 @@ internal fun OnboardingScreen(
         ) {
             OnboardingProgress(currentIndex = pagerState.currentPage, pageCount = state.pages.size)
 
-            if (state.hasCompletionFailed) {
-                Text(
-                    text = "완료를 저장하지 못했어요. 다시 시도해 주세요.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                )
+            // 보조 슬롯. 내용이 없어도 높이를 그대로 차지한다 — 장마다 이 자리가 비었다 찼다 하면
+            // 진행 표시와 본문의 y 가 흔들려, 넘길 때마다 화면 전체가 위아래로 튄다.
+            Box(
+                modifier = Modifier.fillMaxWidth().height(SECONDARY_SLOT_HEIGHT),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    state.hasCompletionFailed ->
+                        Text(
+                            text = "완료를 저장하지 못했어요. 다시 시도해 주세요.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+
+                    // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는
+                    // 건너뛸 것이 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
+                    currentPage?.isSkippable == true && needsRequest && !isLastPage ->
+                        TextButton(onClick = goNext, enabled = !state.isCompleting) {
+                            Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
+                        }
+                }
             }
 
             Button(
@@ -152,14 +167,6 @@ internal fun OnboardingScreen(
                     )
                 }
             }
-
-            // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸
-            // 것이 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
-            if (currentPage?.isSkippable == true && needsRequest && !isLastPage) {
-                TextButton(onClick = goNext, enabled = !state.isCompleting) {
-                    Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
-                }
-            }
         }
     }
 }
@@ -176,6 +183,14 @@ private fun nextLabel(
     } else {
         page?.primaryCta.orEmpty()
     }
+
+/**
+ * 진행 표시와 CTA 사이 보조 슬롯의 높이.
+ *
+ * `나중에` 와 완료 실패 문구가 이 자리를 나눠 쓴다. 둘은 같은 장에 함께 오지 않는다 — 완료
+ * 실패는 마지막 장에서만 나고 그 장은 건너뛸 것이 없다.
+ */
+private val SECONDARY_SLOT_HEIGHT = 48.dp
 
 private val CTA_HEIGHT = 52.dp
 private val CTA_SPINNER_SIZE = 18.dp
