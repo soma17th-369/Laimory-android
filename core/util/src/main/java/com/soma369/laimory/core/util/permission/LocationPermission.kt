@@ -31,6 +31,18 @@ object LocationPermission {
             }
         }.toTypedArray()
 
+    /**
+     * 전경 위치**만**. 온보딩처럼 권한을 한 장에 하나씩 받는 화면이 쓴다.
+     *
+     * [required] 는 알림·활동 인식을 함께 실어 수집 실험실의 `추적 켜기` 한 번에 필요한 것을 모두
+     * 받는다. 그 목록을 위치 페이지가 쓰면 다른 페이지가 받을 권한까지 여기서 묻게 된다.
+     */
+    fun foreground(): Array<String> =
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+
     /** 2단계 요청 권한(백그라운드 위치, "항상 허용"). */
     fun background(): String = Manifest.permission.ACCESS_BACKGROUND_LOCATION
 

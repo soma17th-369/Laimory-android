@@ -82,12 +82,13 @@ fun rememberDataPermissionState(): DataPermissionState {
 
     val locationStep =
         remember(refreshKey, context) {
-            when {
-                LocationPermission.needsForegroundRequest(context) -> LocationPermissionStep.FOREGROUND
-                !LocationPermission.hasBackground(context) -> LocationPermissionStep.BACKGROUND
-                !LocationPermission.hasActivityRecognition(context) -> LocationPermissionStep.ACTIVITY
-                else -> LocationPermissionStep.GRANTED
-            }
+            locationPermissionStep(
+                // needsForegroundRequest 를 쓰면 안 된다 — 그것은 알림·활동 인식까지 묶어 보므로,
+                // 대략 위치만 허용했거나 활동 인식을 거부한 사용자가 FOREGROUND 에 갇힌다.
+                hasForeground = LocationPermission.canCollect(context),
+                hasBackground = LocationPermission.hasBackground(context),
+                hasActivityRecognition = LocationPermission.hasActivityRecognition(context),
+            )
         }
 
     val granted =
@@ -108,7 +109,8 @@ fun rememberDataPermissionState(): DataPermissionState {
                 DataPermission.CALENDAR -> runtimeLauncher.launch(CalendarPermission.required())
                 DataPermission.LOCATION ->
                     when (locationStep) {
-                        LocationPermissionStep.FOREGROUND -> runtimeLauncher.launch(LocationPermission.required())
+                        // 위치만 묻는다. 알림·활동 인식은 각자의 자리에서 받는다.
+                        LocationPermissionStep.FOREGROUND -> runtimeLauncher.launch(LocationPermission.foreground())
                         // Android 11+ 는 `항상 허용` 을 다이얼로그로 주지 않는다. 앱 설정으로 보내고
                         // 돌아왔을 때 ON_RESUME 재조회가 결과를 반영한다.
                         LocationPermissionStep.BACKGROUND ->

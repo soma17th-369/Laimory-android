@@ -22,3 +22,24 @@ enum class LocationPermissionStep {
     /** 더 받을 것이 없다. */
     GRANTED,
 }
+
+/**
+ * 허용 상태에서 남은 단계를 고른다.
+ *
+ * 순수 함수로 둬 조합을 테스트로 고정한다. 이 판정이 틀리면 예외가 아니라 **버튼이 영영 같은
+ * 자리에 머물러** 눌러도 아무 일이 없는 화면이 된다.
+ *
+ * @param hasForeground 정밀 또는 대략 위치 중 하나라도 허용됐는지. 대략만 허용한 사용자도 위치를
+ *   쓸 수 있으므로 둘 다 요구하지 않는다.
+ */
+fun locationPermissionStep(
+    hasForeground: Boolean,
+    hasBackground: Boolean,
+    hasActivityRecognition: Boolean,
+): LocationPermissionStep =
+    when {
+        !hasForeground -> LocationPermissionStep.FOREGROUND
+        !hasBackground -> LocationPermissionStep.BACKGROUND
+        !hasActivityRecognition -> LocationPermissionStep.ACTIVITY
+        else -> LocationPermissionStep.GRANTED
+    }

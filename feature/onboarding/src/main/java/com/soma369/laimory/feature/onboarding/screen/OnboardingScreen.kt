@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,7 +46,6 @@ import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import com.soma369.laimory.feature.onboarding.viewmodel.OnboardingViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 @Composable
@@ -54,29 +54,35 @@ fun OnboardingRoute(
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    OnboardingScreen(
+    OnboardingContent(
         innerPadding = innerPadding,
         state = state,
-        sideEffects = viewModel.sideEffect,
         onIntent = viewModel::sendIntent,
+        sideEffectFlow = viewModel.sideEffect,
     )
 }
 
+/**
+ * 플랫폼 오케스트레이션을 맡는다 — 권한 요청 창구, 진행 복원 SideEffect, Pager 위치.
+ *
+ * [OnboardingScreen] 은 이 결과를 파라미터로만 받아 그린다. 권한 launcher 가 Screen 에 있으면
+ * Preview 가 Android 요청 경로를 타서 미리보기로 배치를 확인할 수 없다.
+ */
 @Composable
-internal fun OnboardingScreen(
+private fun OnboardingContent(
     innerPadding: PaddingValues,
     state: OnboardingUiState,
-    sideEffects: Flow<OnboardingUiSideEffect> = emptyFlow(),
-    onIntent: (OnboardingUiIntent) -> Unit = {},
+    onIntent: (OnboardingUiIntent) -> Unit,
+    sideEffectFlow: Flow<OnboardingUiSideEffect>,
 ) {
+    val permissionState = rememberDataPermissionState()
     val pagerState = rememberPagerState(pageCount = { state.pages.size })
     val scope = rememberCoroutineScope()
-    val permissionState = rememberDataPermissionState()
 
-    // 마지막으로 본 장으로 되돌린다. 상태에 인덱스를 두고 pagerState 초기값으로 쓸 수 없다 —
+    // 마지막으로 본 장으로 되돌린다. 상태의 인덱스를 pagerState 초기값으로 쓸 수 없다 —
     // pagerState 는 첫 컴포지션에 만들어지고 복원 값은 그 뒤에 도착한다.
-    LaunchedEffect(sideEffects) {
-        sideEffects.collect { effect ->
+    LaunchedEffect(Unit) {
+        sideEffectFlow.collect { effect ->
             when (effect) {
                 is OnboardingUiSideEffect.RestorePage -> pagerState.scrollToPage(effect.pageIndex)
             }
@@ -89,19 +95,6 @@ internal fun OnboardingScreen(
             .collect { page -> onIntent(OnboardingUiIntent.PageChanged(page)) }
     }
 
-    // 첫 장에서는 뒤로 갈 곳이 없다. 앱 루트라 뒤로가기로 빠져나가면 빈 화면이 남는다.
-    BackHandler(enabled = pagerState.currentPage > 0) {
-        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
-    }
-
-    val currentPage = state.pages.getOrNull(pagerState.currentPage)
-    val isLastPage = pagerState.currentPage == state.pages.lastIndex
-    val isCurrentGranted = permissionState.isGranted(currentPage?.permission)
-    // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
-    // 일어나지 않은 것처럼 보이기 때문이다.
-    val needsRequest = currentPage?.permission != null && !isCurrentGranted
-    val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
-
     // 백그라운드 위치까지 받은 순간에만 추적을 켠다. 진입 시점에 이미 허용돼 있던 경우는 건드리지
     // 않는다 — 사용자가 일부러 꺼 둔 추적을 온보딩이 조용히 되살리면 안 된다.
     var wasLocationGranted by remember { mutableStateOf(permissionState.locationStep == LocationPermissionStep.GRANTED) }
@@ -110,6 +103,49 @@ internal fun OnboardingScreen(
         if (isGranted && !wasLocationGranted) onIntent(OnboardingUiIntent.EnableLocationTracking)
         wasLocationGranted = isGranted
     }
+
+    val currentPage = state.pages.getOrNull(pagerState.currentPage)
+    val isLastPage = pagerState.currentPage == state.pages.lastIndex
+    // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
+    // 일어나지 않은 것처럼 보이기 때문이다.
+    val needsRequest = currentPage?.permission != null && !permissionState.isGranted(currentPage.permission)
+    val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
+
+    OnboardingScreen(
+        innerPadding = innerPadding,
+        state = state,
+        pagerState = pagerState,
+        ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, permissionState.locationStep),
+        // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
+        // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
+        showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
+        isPageGranted = { page -> permissionState.isGranted(page.permission) },
+        onPrimaryClick = {
+            when {
+                needsRequest -> currentPage?.permission?.let(permissionState::request)
+                isLastPage -> onIntent(OnboardingUiIntent.Complete)
+                else -> goNext()
+            }
+        },
+        onSkipClick = goNext,
+        onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
+    )
+}
+
+@Composable
+private fun OnboardingScreen(
+    innerPadding: PaddingValues,
+    state: OnboardingUiState,
+    pagerState: PagerState,
+    ctaLabel: String,
+    showsSkip: Boolean,
+    isPageGranted: (OnboardingPageSpec) -> Boolean,
+    onPrimaryClick: () -> Unit,
+    onSkipClick: () -> Unit,
+    onBack: () -> Unit,
+) {
+    // 첫 장에서는 뒤로 갈 곳이 없다. 앱 루트라 뒤로가기로 빠져나가면 빈 화면이 남는다.
+    BackHandler(enabled = pagerState.currentPage > 0, onBack = onBack)
 
     Column(
         modifier =
@@ -126,7 +162,7 @@ internal fun OnboardingScreen(
                 OnboardingPageContent(
                     page = spec,
                     nickname = state.nickname,
-                    isGranted = permissionState.isGranted(spec.permission),
+                    isGranted = isPageGranted(spec),
                 )
             }
         }
@@ -152,23 +188,15 @@ internal fun OnboardingScreen(
                             color = MaterialTheme.colorScheme.error,
                         )
 
-                    // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는
-                    // 건너뛸 것이 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
-                    currentPage?.isSkippable == true && needsRequest && !isLastPage ->
-                        TextButton(onClick = goNext, enabled = !state.isCompleting) {
+                    showsSkip ->
+                        TextButton(onClick = onSkipClick, enabled = !state.isCompleting) {
                             Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
                         }
                 }
             }
 
             Button(
-                onClick = {
-                    when {
-                        needsRequest -> currentPage?.permission?.let(permissionState::request)
-                        isLastPage -> onIntent(OnboardingUiIntent.Complete)
-                        else -> goNext()
-                    }
-                },
+                onClick = onPrimaryClick,
                 enabled = !state.isCompleting,
                 modifier = Modifier.fillMaxWidth().height(CTA_HEIGHT),
                 shape = MaterialTheme.shapes.medium,
@@ -176,10 +204,7 @@ internal fun OnboardingScreen(
                 if (state.isCompleting) {
                     CircularProgressIndicator(modifier = Modifier.height(CTA_SPINNER_SIZE), strokeWidth = 2.dp)
                 } else {
-                    Text(
-                        text = ctaLabel(currentPage, needsRequest, isLastPage, permissionState.locationStep),
-                        style = MaterialTheme.typography.titleSmall,
-                    )
+                    Text(text = ctaLabel, style = MaterialTheme.typography.titleSmall)
                 }
             }
         }
@@ -189,8 +214,8 @@ internal fun OnboardingScreen(
 /**
  * 주 버튼 문구.
  *
- * 위치만 한 장 안에서 문구가 세 번 바뀐다 — 남은 단계가 무엇인지 버튼이 말하지 않으면, 눌렀는데
- * 또 눌러야 하는 화면이 된다.
+ * 위치만 한 장 안에서 문구가 바뀐다 — 남은 단계가 무엇인지 버튼이 말하지 않으면, 눌렀는데 또
+ * 눌러야 하는 화면이 된다.
  */
 private fun ctaLabel(
     page: OnboardingPageSpec?,
@@ -212,6 +237,12 @@ private fun ctaLabel(
         else -> page?.primaryCta.orEmpty()
     }
 
+/**
+ * 진행 표시와 주 버튼 사이 보조 슬롯의 높이.
+ *
+ * `나중에` 와 완료 실패 문구가 이 자리를 나눠 쓴다. 둘은 같은 장에 함께 오지 않는다 — 완료
+ * 실패는 마지막 장에서만 나고 그 장은 건너뛸 것이 없다.
+ */
 private val SECONDARY_SLOT_HEIGHT = 48.dp
 
 private val CTA_HEIGHT = 52.dp
@@ -220,19 +251,40 @@ private val CTA_SPINNER_SIZE = 18.dp
 @Preview(name = "온보딩 / 소개", showBackground = true, widthDp = 360, heightDp = 720)
 @Composable
 private fun OnboardingIntroPreview() {
-    LaimoryTheme {
-        Box(modifier = Modifier.fillMaxSize()) {
-            OnboardingScreen(innerPadding = PaddingValues(), state = OnboardingUiState(nickname = "김소마"))
-        }
-    }
+    OnboardingScreenPreview(pageIndex = 0)
+}
+
+@Preview(name = "온보딩 / 권한 장", showBackground = true, widthDp = 360, heightDp = 720)
+@Composable
+private fun OnboardingPermissionPreview() {
+    OnboardingScreenPreview(pageIndex = 1, showsSkip = true, ctaLabel = "사진 연결하기")
 }
 
 @Preview(name = "온보딩 / 다크", showBackground = true, widthDp = 360, heightDp = 720)
 @Composable
 private fun OnboardingDarkPreview() {
-    LaimoryTheme(darkTheme = true) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            OnboardingScreen(innerPadding = PaddingValues(), state = OnboardingUiState(nickname = "김소마"))
-        }
+    OnboardingScreenPreview(pageIndex = 0, darkTheme = true)
+}
+
+@Composable
+private fun OnboardingScreenPreview(
+    pageIndex: Int,
+    showsSkip: Boolean = false,
+    ctaLabel: String = "시작하기",
+    darkTheme: Boolean = false,
+) {
+    val state = OnboardingUiState(nickname = "김소마")
+    LaimoryTheme(darkTheme = darkTheme) {
+        OnboardingScreen(
+            innerPadding = PaddingValues(),
+            state = state,
+            pagerState = rememberPagerState(initialPage = pageIndex, pageCount = { state.pages.size }),
+            ctaLabel = ctaLabel,
+            showsSkip = showsSkip,
+            isPageGranted = { false },
+            onPrimaryClick = {},
+            onSkipClick = {},
+            onBack = {},
+        )
     }
 }
