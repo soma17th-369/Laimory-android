@@ -13,6 +13,7 @@ node ["shape"="rectangle" "style"="filled"]
 "feature-feature1" ["label"="feature:feature1" "fillcolor"="#A9DFBF"]
 "feature-home" ["label"="feature:home" "fillcolor"="#A9DFBF"]
 "feature-login" ["label"="feature:login" "fillcolor"="#A9DFBF"]
+"feature-onboarding" ["label"="feature:onboarding" "fillcolor"="#A9DFBF"]
 "feature-settings" ["label"="feature:settings" "fillcolor"="#A9DFBF"]
 "feature-timeline" ["label"="feature:timeline" "fillcolor"="#A9DFBF"]
 
@@ -26,21 +27,28 @@ node ["shape"="rectangle" "style"="filled"]
 "app" -> "feature-feature1"
 "app" -> "feature-home"
 "app" -> "feature-login"
+"app" -> "feature-onboarding"
 "app" -> "feature-settings"
 "app" -> "feature-timeline"
 "core-collection" -> "core-domain"
 "core-collection" -> "core-util"
 "core-data" -> "core-domain"
+"core-data" -> "core-util"
 "core-ui" -> "core-domain"
 "core-ui" -> "core-util"
 "feature-collection" -> "core-domain"
 "feature-collection" -> "core-ui"
+"feature-collection" -> "core-util"
 "feature-feature1" -> "core-domain"
 "feature-feature1" -> "core-ui"
 "feature-home" -> "core-domain"
 "feature-home" -> "core-ui"
+"feature-home" -> "core-util"
 "feature-login" -> "core-domain"
 "feature-login" -> "core-ui"
+"feature-onboarding" -> "core-domain"
+"feature-onboarding" -> "core-ui"
+"feature-onboarding" -> "core-util"
 "feature-settings" -> "core-domain"
 "feature-settings" -> "core-ui"
 "feature-timeline" -> "core-domain"
