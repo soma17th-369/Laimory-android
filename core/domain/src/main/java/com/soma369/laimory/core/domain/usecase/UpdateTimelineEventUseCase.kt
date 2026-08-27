@@ -24,7 +24,15 @@ class UpdateTimelineEventUseCase
             try {
                 execute {
                     try {
-                        repository.updateEvent(command).also(sessionRepository::replaceEvent)
+                        repository.updateEvent(command).also {
+                            // 제자리 치환은 인덱스를 유지해서, 시각을 고쳐도 목록 위치가 그대로다.
+                            // 서버가 정한 순서를 그대로 받도록 기록을 다시 읽는다.
+                            refreshTimelineRecordSession(
+                                sessionRepository.timeline.value?.recordDate,
+                                repository,
+                                sessionRepository,
+                            )
+                        }
                     } catch (exception: ApiException) {
                         val reason = exception.toUpdateReason() ?: throw exception
                         throw TimelineEventUpdateException(reason, exception)

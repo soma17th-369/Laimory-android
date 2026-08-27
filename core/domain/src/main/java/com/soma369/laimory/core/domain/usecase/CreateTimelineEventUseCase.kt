@@ -4,19 +4,16 @@ import com.soma369.laimory.core.domain.base.BaseUseCase
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
-import com.soma369.laimory.core.domain.model.timeline.sortedForDisplay
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
-import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * 하루 기록에 새 Event 를 만든다.
  *
- * 생성 결과를 세션 타임라인에 바로 반영한다 — 화면이 다시 조회하지 않아도 목록이 새 이벤트를
- * 포함하고, 편집기에서 돌아온 직후 빈 화면을 보지 않는다. 수정([UpdateTimelineEventUseCase])과
- * 같은 방식이다.
+ * 만든 뒤 하루 기록을 **서버에서 다시 읽어** 세션을 갈아 끼운다. 응답 하나를 목록에 끼워 넣는
+ * 방식은 클라이언트가 서버의 계산을 흉내 내는 것이라, 흉내가 틀리면 화면만 조용히 어긋난다.
  */
 @Singleton
 class CreateTimelineEventUseCase
@@ -29,19 +26,7 @@ class CreateTimelineEventUseCase
         suspend operator fun invoke(command: CreateTimelineEventCommand): Result<TimelineEvent> =
             execute {
                 val created = repository.createEvent(command)
-                appendToSession(command.recordDate, created)
+                refreshTimelineRecordSession(command.recordDate, repository, sessionRepository)
                 created
             }
-
-        /** 세션 목록에 새 이벤트를 끼워 넣는다. 조회 매핑과 **같은 규칙**으로 정렬해야 새로고침 전후 순서가 같다. */
-        private fun appendToSession(
-            recordDate: LocalDate,
-            event: TimelineEvent,
-        ) {
-            val timeline = sessionRepository.timeline.value ?: return
-            // 다른 날짜의 세션이면 건드리지 않는다 — 그 화면은 자기 날짜를 다시 조회해 맞춘다.
-            if (timeline.recordDate != recordDate) return
-            val merged = (timeline.events + event).sortedForDisplay()
-            sessionRepository.save(timeline.copy(events = merged))
-        }
     }

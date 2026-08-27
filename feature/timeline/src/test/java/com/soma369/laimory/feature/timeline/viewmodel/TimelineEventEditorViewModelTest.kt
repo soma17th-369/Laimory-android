@@ -937,10 +937,15 @@ class TimelineEventEditorViewModelTest {
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             commands += command
             failure?.let { throw it }
-            return event(
-                title = command.title,
-                memo = (command.memo as? TimelineEventUpdateField.Value)?.value,
-            )
+            val updated =
+                event(
+                    title = command.title,
+                    memo = (command.memo as? TimelineEventUpdateField.Value)?.value,
+                )
+            // 실제 서버는 쓰기를 반영한 뒤 조회에 그것을 돌려준다. 반영하지 않으면 재조회가 옛 값을
+            // 되돌려, 테스트가 UseCase 가 아니라 페이크의 한계를 검증하게 된다.
+            dailyRecord = dailyRecord.copy(events = listOf(updated))
+            return updated
         }
 
         override suspend fun updateEventMemo(
