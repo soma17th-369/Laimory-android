@@ -7,7 +7,6 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.soma369.laimory.core.data.datasource.remote.OnboardingRemoteDataSource
-import com.soma369.laimory.core.domain.model.onboarding.OnboardingState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -16,83 +15,48 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OnboardingRepositoryImplTest {
     private val dataStore = InMemoryPreferencesDataStore()
-    private val remoteDataSource = RecordingRemoteDataSource()
+    private val remoteDataSource = FakeRemoteDataSource()
     private val repository = OnboardingRepositoryImpl(dataStore, remoteDataSource)
 
     @Test
-    fun `저장된 것이 없으면 아직 하지 않은 상태다`() =
+    fun `받은 적이 없으면 캐시는 모름이다`() =
         runTest {
-            assertEquals(OnboardingState(isCompleted = false, lastPageKey = null), repository.observe().first())
+            // false 로 떨어뜨리면 "완료 아님" 과 "아직 못 받음" 을 조율자가 구분하지 못한다.
+            assertNull(repository.cachedCompletion())
         }
 
     @Test
-    fun `진행 기록은 완료 여부를 건드리지 않는다`() =
+    fun `서버 값을 캐시에 남긴다`() =
+        runTest {
+            repository.cacheCompletion(true)
+
+            assertEquals(true, repository.cachedCompletion())
+        }
+
+    @Test
+    fun `조회 실패는 예외가 아니라 값으로 돌아온다`() =
+        runTest {
+            // 앱 진입 판정에 쓰이므로 예외를 올리면 루트를 못 정해 로딩에서 멈춘다.
+            remoteDataSource.fetchFailure = IllegalStateException("500")
+
+            val result = repository.fetchCompletion()
+
+            assertTrue(result.isFailure)
+        }
+
+    @Test
+    fun `진행 기록은 캐시를 건드리지 않는다`() =
         runTest {
             repository.saveProgress("photo")
 
-            val state = repository.observe().first()
-            assertEquals("photo", state.lastPageKey)
-            assertFalse(state.isCompleted)
-        }
-
-    @Test
-    fun `서버 기록이 실패해도 로컬 완료는 확정된다`() =
-        runTest {
-            // 판정의 정본이 설치 단위 로컬이라, 서버가 안 되는 동안 사용자를 온보딩에 묶어 둘 이유가 없다.
-            remoteDataSource.failure = IllegalStateException("network")
-
-            repository.complete()
-
-            assertTrue(repository.observe().first().isCompleted)
-            assertEquals(1, remoteDataSource.attempts)
-        }
-
-    @Test
-    fun `완료하면 서버에도 한 번 기록한다`() =
-        runTest {
-            repository.complete()
-
-            assertEquals(1, remoteDataSource.attempts)
-        }
-
-    @Test
-    fun `초기화는 서버를 건드리지 않는다`() =
-        runTest {
-            // 서버에는 false 로 되돌리는 API 가 없다. 설치 단위 판정만 처음으로 간다.
-            repository.complete()
-
-            repository.reset()
-
-            assertEquals(1, remoteDataSource.attempts)
-        }
-
-    @Test
-    fun `완료는 마지막 페이지를 지우지 않는다`() =
-        runTest {
-            // 완료 뒤에도 설정에서 다시 열 수 있어 진행 흔적을 지울 이유가 없다.
-            repository.saveProgress("location")
-            repository.complete()
-
-            val state = repository.observe().first()
-            assertTrue(state.isCompleted)
-            assertEquals("location", state.lastPageKey)
-        }
-
-    @Test
-    fun `초기화하면 처음 상태로 돌아간다`() =
-        runTest {
-            repository.saveProgress("calendar")
-            repository.complete()
-
-            repository.reset()
-
-            assertEquals(OnboardingState(), repository.observe().first())
-            assertEquals(0, dataStore.current.asMap().size)
+            assertEquals("photo", repository.observeLastPageKey().first())
+            assertNull(repository.cachedCompletion())
         }
 
     @Test
@@ -105,18 +69,52 @@ class OnboardingRepositoryImplTest {
                 )
             }
 
-            val state = repository.observe().first()
-            assertEquals(null, state.lastPageKey)
-            assertTrue(state.isCompleted)
+            assertNull(repository.observeLastPageKey().first())
+            assertEquals(true, repository.cachedCompletion())
         }
 
-    private class RecordingRemoteDataSource : OnboardingRemoteDataSource {
-        var attempts = 0
-        var failure: Throwable? = null
+    @Test
+    fun `비우면 캐시와 진행 위치가 함께 사라진다`() =
+        runTest {
+            // 계정 경계에서 부른다. 캐시만 남으면 이전 계정의 완료가 새 계정으로 샌다.
+            repository.cacheCompletion(true)
+            repository.saveProgress("calendar")
+
+            repository.clear()
+
+            assertNull(repository.cachedCompletion())
+            assertNull(repository.observeLastPageKey().first())
+            assertEquals(0, dataStore.current.asMap().size)
+        }
+
+    @Test
+    fun `완료 기록은 서버로 나간다`() =
+        runTest {
+            repository.recordCompletion()
+
+            assertEquals(1, remoteDataSource.recordAttempts)
+        }
+
+    @Test
+    fun `조회 성공은 서버 값을 그대로 돌려준다`() =
+        runTest {
+            remoteDataSource.completion = false
+
+            assertFalse(repository.fetchCompletion().getOrThrow())
+        }
+
+    private class FakeRemoteDataSource : OnboardingRemoteDataSource {
+        var recordAttempts = 0
+        var completion = true
+        var fetchFailure: Throwable? = null
 
         override suspend fun recordCompletion() {
-            attempts++
-            failure?.let { throw it }
+            recordAttempts++
+        }
+
+        override suspend fun fetchCompletion(): Boolean {
+            fetchFailure?.let { throw it }
+            return completion
         }
     }
 

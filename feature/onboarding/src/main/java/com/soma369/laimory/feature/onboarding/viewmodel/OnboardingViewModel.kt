@@ -1,7 +1,7 @@
 package com.soma369.laimory.feature.onboarding.viewmodel
 
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
-import com.soma369.laimory.core.domain.usecase.ObserveOnboardingStateUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
@@ -18,7 +18,7 @@ import javax.inject.Inject
 class OnboardingViewModel
     @Inject
     constructor(
-        private val observeOnboardingStateUseCase: ObserveOnboardingStateUseCase,
+        private val observeOnboardingProgressUseCase: ObserveOnboardingProgressUseCase,
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val saveOnboardingProgressUseCase: SaveOnboardingProgressUseCase,
         private val completeOnboardingUseCase: CompleteOnboardingUseCase,
@@ -37,8 +37,8 @@ class OnboardingViewModel
          */
         private fun restoreLastPage() {
             safeLaunch {
-                val saved = observeOnboardingStateUseCase().first()
-                val index = state.value.pages.indexOfKeyOrFirst(saved.lastPageKey)
+                val savedPageKey = observeOnboardingProgressUseCase().first()
+                val index = state.value.pages.indexOfKeyOrFirst(savedPageKey)
                 updateState { copy(initialPageIndex = index) }
                 sendEffect(OnboardingUiSideEffect.RestorePage(index))
             }

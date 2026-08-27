@@ -4,4 +4,7 @@ package com.soma369.laimory.core.data.datasource.remote
 interface OnboardingRemoteDataSource {
     /** 인증 subject 의 온보딩 완료를 기록한다. 멱등이라 재시도가 안전하다. */
     suspend fun recordCompletion()
+
+    /** 인증 subject 의 저장된 온보딩 완료 여부를 조회한다. */
+    suspend fun fetchCompletion(): Boolean
 }

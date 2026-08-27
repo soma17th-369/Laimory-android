@@ -3,7 +3,6 @@ package com.soma369.laimory.navigation
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
-import com.soma369.laimory.core.domain.model.onboarding.OnboardingState
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.OnboardingPage
@@ -86,30 +85,30 @@ class AuthNavigationTest {
 
     @Test
     fun `세션 확인 중에는 화면을 정하지 않는다`() {
-        assertNull(rootPage(AuthSessionState.Loading, OnboardingState(isCompleted = true)))
+        assertNull(rootPage(AuthSessionState.Loading, onboardingCompleted = true))
     }
 
     @Test
-    fun `온보딩 상태를 모르는 동안에는 홈을 먼저 보여주지 않는다`() {
-        // 여기서 홈을 내주면 온보딩이 필요한 사용자에게 홈이 한 프레임 번쩍인다.
-        assertNull(rootPage(AuthSessionState.Authenticated, onboarding = null))
+    fun `완료 여부를 모르는 동안에는 홈을 먼저 보여주지 않는다`() {
+        // 서버 조회 전이라는 뜻이다. 여기서 홈을 내주면 온보딩이 필요한 사용자에게 홈이 한 프레임 번쩍인다.
+        assertNull(rootPage(AuthSessionState.Authenticated, onboardingCompleted = null))
     }
 
     @Test
-    fun `로그인하지 않았으면 온보딩 상태를 기다리지 않는다`() {
+    fun `로그인하지 않았으면 완료 여부를 기다리지 않는다`() {
         // 로그인 화면은 온보딩과 무관하다. 기다리면 로그인만 늦게 뜬다.
-        assertEquals(LoginPage, rootPage(AuthSessionState.Unauthenticated, onboarding = null))
+        assertEquals(LoginPage, rootPage(AuthSessionState.Unauthenticated, onboardingCompleted = null))
     }
 
     @Test
     fun `인증된 사용자는 온보딩 완료 여부로 갈린다`() {
         assertEquals(
             OnboardingPage,
-            rootPage(AuthSessionState.Authenticated, OnboardingState(isCompleted = false)),
+            rootPage(AuthSessionState.Authenticated, onboardingCompleted = false),
         )
         assertEquals(
             HomePage,
-            rootPage(AuthSessionState.Authenticated, OnboardingState(isCompleted = true)),
+            rootPage(AuthSessionState.Authenticated, onboardingCompleted = true),
         )
     }
 }

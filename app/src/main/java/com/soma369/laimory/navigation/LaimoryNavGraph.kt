@@ -23,7 +23,6 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
-import com.soma369.laimory.core.domain.model.onboarding.OnboardingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
@@ -55,7 +54,7 @@ fun LaimoryNavGraph(
     messages: Flow<UserMessage> = emptyFlow(),
     navigationFlow: Flow<NavSignal> = emptyFlow(),
     authSessionStates: Flow<AuthSessionState> = flowOf(AuthSessionState.Authenticated),
-    onboardingStates: Flow<OnboardingState> = flowOf(OnboardingState(isCompleted = true)),
+    onboardingCompletions: Flow<Boolean?> = flowOf(true),
     pendingDraftCompletions: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null),
     onDraftCompletionConsumed: suspend (String) -> Boolean = { false },
     onAuthRootReplaced: () -> Unit = {},
@@ -63,8 +62,8 @@ fun LaimoryNavGraph(
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
     // 아직 읽기 전이면 null 이다. 온보딩 상태를 모르는 채로 Home 을 먼저 그리면, 온보딩이 필요한
     // 사용자에게 홈이 한 프레임 번쩍인 뒤 화면이 갈린다.
-    val onboardingState by onboardingStates.collectAsStateWithLifecycle(initialValue = null)
-    val rootPage = rootPage(sessionState, onboardingState)
+    val onboardingCompleted by onboardingCompletions.collectAsStateWithLifecycle(initialValue = null)
+    val rootPage = rootPage(sessionState, onboardingCompleted)
     if (rootPage == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -161,21 +160,25 @@ private const val COMPLETION_REVEAL_MILLIS = 800L
 /**
  * 인증과 온보딩을 함께 보고 앱 루트를 하나로 정한다. `null` 이면 아직 정할 수 없다는 뜻이다.
  *
- * 로그인하지 않았으면 온보딩 상태를 기다리지 않는다 — 로그인 화면은 온보딩과 무관해서,
- * 기다리면 로그인이 늦게 뜨기만 한다.
+ * 완료 여부는 계정 단위라 서버가 정본이다. `null` 은 아직 조회 전이라는 뜻이고, 그동안에는
+ * Home 도 온보딩도 열지 않는다 — 모르는 채로 하나를 고르면 반대였을 때 화면이 한 번 번쩍인 뒤
+ * 갈린다.
+ *
+ * 로그인하지 않았으면 기다리지 않는다 — 로그인 화면은 온보딩과 무관해서, 기다리면 로그인이
+ * 늦게 뜨기만 한다.
  */
 internal fun rootPage(
     session: AuthSessionState,
-    onboarding: OnboardingState?,
+    onboardingCompleted: Boolean?,
 ): Page? =
     when (session) {
         AuthSessionState.Loading -> null
         AuthSessionState.Unauthenticated -> LoginPage
         AuthSessionState.Authenticated ->
-            when {
-                onboarding == null -> null
-                onboarding.isCompleted -> HomePage
-                else -> OnboardingPage
+            when (onboardingCompleted) {
+                null -> null
+                true -> HomePage
+                false -> OnboardingPage
             }
     }
 

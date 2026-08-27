@@ -15,8 +15,9 @@ import javax.inject.Singleton
 /**
  * 온보딩 진행 상태 저장소.
  *
- * 인증 저장소([AuthStorageModule])와 **파일을 나눈다.** 온보딩 완료는 로그아웃·탈퇴로 지워지면
- * 안 되는데, 같은 파일에 얹으면 세션 정리가 통째로 비우면서 함께 사라진다.
+ * 인증 저장소([AuthStorageModule])와 **파일을 나눈다.** 세션 정리가 통째로 비우는 자리에 얹으면
+ * 무엇을 언제 비울지 이 모듈이 정할 수 없다. 완료 여부는 계정 단위 서버 값의 캐시라 계정 경계에서
+ * 비우고, 진행 위치는 그 사이에도 남겨야 한다.
  */
 @Module
 @InstallIn(SingletonComponent::class)
