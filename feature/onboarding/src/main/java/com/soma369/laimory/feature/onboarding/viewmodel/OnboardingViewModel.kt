@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.onboarding.viewmodel
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingStateUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
+import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.onboarding.model.indexOfKeyOrFirst
@@ -21,6 +22,7 @@ class OnboardingViewModel
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val saveOnboardingProgressUseCase: SaveOnboardingProgressUseCase,
         private val completeOnboardingUseCase: CompleteOnboardingUseCase,
+        private val setLocationTrackingUseCase: SetLocationTrackingUseCase,
     ) : BaseMviViewModel<OnboardingUiState, OnboardingUiIntent, OnboardingUiSideEffect>(OnboardingUiState()) {
         init {
             restoreLastPage()
@@ -55,6 +57,7 @@ class OnboardingViewModel
             when (intent) {
                 is OnboardingUiIntent.PageChanged -> saveProgress(intent.pageIndex)
                 OnboardingUiIntent.Complete -> complete()
+                OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
             }
         }
 
@@ -62,6 +65,17 @@ class OnboardingViewModel
         private fun saveProgress(pageIndex: Int) {
             val key = state.value.pages.getOrNull(pageIndex)?.key ?: return
             safeLaunch(onError = { }) { saveOnboardingProgressUseCase(key) }
+        }
+
+        /**
+         * 백그라운드 위치가 허용되면 자동 수집을 켠다.
+         *
+         * 수집 실험실 토글과 **같은 UseCase** 를 쓴다 — 갈라지면 한쪽에서 켠 추적이 다른 쪽에는
+         * 꺼진 것으로 보인다. 실패는 알리지 않는다. 권한은 이미 받았고, 사용자가 다시 할 수 있는
+         * 일이 없는 배경 작업이다.
+         */
+        private fun enableLocationTracking() {
+            safeLaunch(onError = { }) { setLocationTrackingUseCase(true) }
         }
 
         /**

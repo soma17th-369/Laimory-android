@@ -8,4 +8,7 @@ sealed interface OnboardingUiIntent : UiIntent {
 
     /** 마지막 장의 완료 CTA. 저장이 끝나야 Home 으로 간다. */
     data object Complete : OnboardingUiIntent
+
+    /** 백그라운드 위치까지 허용됐다. 자동 수집을 켠다. */
+    data object EnableLocationTracking : OnboardingUiIntent
 }

@@ -20,7 +20,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,11 +31,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.ui.permission.DataPermission
+import com.soma369.laimory.core.ui.permission.LocationPermissionStep
+import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
-import com.soma369.laimory.feature.onboarding.component.rememberOnboardingPermissionState
+import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
@@ -65,7 +71,7 @@ internal fun OnboardingScreen(
 ) {
     val pagerState = rememberPagerState(pageCount = { state.pages.size })
     val scope = rememberCoroutineScope()
-    val permissionState = rememberOnboardingPermissionState()
+    val permissionState = rememberDataPermissionState()
 
     // 마지막으로 본 장으로 되돌린다. 상태에 인덱스를 두고 pagerState 초기값으로 쓸 수 없다 —
     // pagerState 는 첫 컴포지션에 만들어지고 복원 값은 그 뒤에 도착한다.
@@ -95,6 +101,15 @@ internal fun OnboardingScreen(
     // 일어나지 않은 것처럼 보이기 때문이다.
     val needsRequest = currentPage?.permission != null && !isCurrentGranted
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
+
+    // 백그라운드 위치까지 받은 순간에만 추적을 켠다. 진입 시점에 이미 허용돼 있던 경우는 건드리지
+    // 않는다 — 사용자가 일부러 꺼 둔 추적을 온보딩이 조용히 되살리면 안 된다.
+    var wasLocationGranted by remember { mutableStateOf(permissionState.locationStep == LocationPermissionStep.GRANTED) }
+    LaunchedEffect(permissionState.locationStep) {
+        val isGranted = permissionState.locationStep == LocationPermissionStep.GRANTED
+        if (isGranted && !wasLocationGranted) onIntent(OnboardingUiIntent.EnableLocationTracking)
+        wasLocationGranted = isGranted
+    }
 
     Column(
         modifier =
@@ -162,7 +177,7 @@ internal fun OnboardingScreen(
                     CircularProgressIndicator(modifier = Modifier.height(CTA_SPINNER_SIZE), strokeWidth = 2.dp)
                 } else {
                     Text(
-                        text = if (needsRequest) currentPage?.primaryCta.orEmpty() else nextLabel(isLastPage, currentPage),
+                        text = ctaLabel(currentPage, needsRequest, isLastPage, permissionState.locationStep),
                         style = MaterialTheme.typography.titleSmall,
                     )
                 }
@@ -171,25 +186,32 @@ internal fun OnboardingScreen(
     }
 }
 
-/** 요청이 끝난 장의 CTA. 마지막 장은 완료 문구를 그대로 쓴다. */
-private fun nextLabel(
+/**
+ * 주 버튼 문구.
+ *
+ * 위치만 한 장 안에서 문구가 세 번 바뀐다 — 남은 단계가 무엇인지 버튼이 말하지 않으면, 눌렀는데
+ * 또 눌러야 하는 화면이 된다.
+ */
+private fun ctaLabel(
+    page: OnboardingPageSpec?,
+    needsRequest: Boolean,
     isLastPage: Boolean,
-    page: com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec?,
+    locationStep: LocationPermissionStep,
 ): String =
-    if (isLastPage) {
-        page?.primaryCta.orEmpty()
-    } else if (page?.permission != null) {
-        "다음"
-    } else {
-        page?.primaryCta.orEmpty()
+    when {
+        page?.permission == DataPermission.LOCATION && locationStep != LocationPermissionStep.GRANTED ->
+            when (locationStep) {
+                LocationPermissionStep.BACKGROUND -> "'항상 허용'으로 바꾸기"
+                LocationPermissionStep.ACTIVITY -> "이동수단 인식 켜기"
+                else -> page.primaryCta
+            }
+
+        needsRequest -> page?.primaryCta.orEmpty()
+        isLastPage -> page?.primaryCta.orEmpty()
+        page?.permission != null -> "다음"
+        else -> page?.primaryCta.orEmpty()
     }
 
-/**
- * 진행 표시와 CTA 사이 보조 슬롯의 높이.
- *
- * `나중에` 와 완료 실패 문구가 이 자리를 나눠 쓴다. 둘은 같은 장에 함께 오지 않는다 — 완료
- * 실패는 마지막 장에서만 나고 그 장은 건너뛸 것이 없다.
- */
 private val SECONDARY_SLOT_HEIGHT = 48.dp
 
 private val CTA_HEIGHT = 52.dp

@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.onboarding.model
 
 import androidx.annotation.DrawableRes
+import com.soma369.laimory.core.ui.permission.DataPermission
 
 /**
  * 온보딩 한 장.
@@ -25,7 +26,7 @@ data class OnboardingPageSpec(
     /**
      * 이 장의 CTA 가 요청할 권한. `null` 이면 안내 전용 장이라 CTA 가 다음으로만 넘긴다.
      */
-    val permission: OnboardingPermission? = null,
+    val permission: DataPermission? = null,
     val primaryCta: String,
     /** `나중에` 를 함께 둘지. 안내 전용 장에는 건너뛸 것이 없다. */
     val isSkippable: Boolean = permission != null,
