@@ -1173,6 +1173,8 @@ class TimelineRecordViewModelTest {
         val deletedRecordDates = mutableListOf<LocalDate>()
         val savedRecordDates = mutableListOf<LocalDate>()
         val savedEmotions = mutableListOf<TimelineEmotion>()
+        val updatedEmotions = mutableListOf<Pair<LocalDate, TimelineEmotion>>()
+        var updateEmotionFailure: Throwable? = null
         var saveGate: CompletableDeferred<Unit>? = null
         var saveFailure: ApiException? = null
         val updatedMemos = mutableListOf<Pair<Long, String?>>()
@@ -1236,6 +1238,14 @@ class TimelineRecordViewModelTest {
                 gate.await()
             }
             saveFailure?.let { throw it }
+        }
+
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
+            updatedEmotions += recordDate to emotion
+            updateEmotionFailure?.let { throw it }
         }
 
         override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("사용하지 않음")

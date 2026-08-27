@@ -153,6 +153,11 @@ class CompleteDailyRecordUseCaseTest {
             failure?.let { throw it }
         }
 
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = Unit
+
         override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("사용하지 않음")
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")

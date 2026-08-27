@@ -52,6 +52,12 @@ interface TimelineRecordRemoteDataSource {
     /** 하루 기록과 하위 Event를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
 
+    /** 저장된 하루 기록의 감정만 교체한다. 같은 값 재요청도 멱등 성공이다. */
+    suspend fun updateDailyRecordEmotion(
+        recordDate: LocalDate,
+        emotion: TimelineEmotion,
+    )
+
     /** 선택한 하루 감정과 함께 DRAFT 하루 기록을 SAVED로 확정한다. 성공 응답의 body는 null이다. */
     suspend fun saveDailyRecord(
         recordDate: LocalDate,

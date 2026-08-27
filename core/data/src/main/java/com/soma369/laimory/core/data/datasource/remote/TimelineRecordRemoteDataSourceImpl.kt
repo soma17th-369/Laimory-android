@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateDailyRecordEmotionRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
@@ -60,6 +61,14 @@ class TimelineRecordRemoteDataSourceImpl
             safeApiCallUnit { api.deleteDailyRecord(recordDate.toString()) }
         }
 
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
+            val request = UpdateDailyRecordEmotionRequest(emotionType = emotion.toRequestLiteral())
+            safeApiCallUnit { api.updateDailyRecordEmotion(recordDate.toString(), request) }
+        }
+
         override suspend fun saveDailyRecord(
             recordDate: LocalDate,
             emotion: TimelineEmotion,
@@ -70,7 +79,7 @@ class TimelineRecordRemoteDataSourceImpl
     }
 
 /**
- * 도메인 감정을 서버 저장 literal 로 옮긴다.
+ * 도메인 감정을 서버 literal 로 옮긴다. 작성 완료와 감정 교체가 같은 어휘를 쓴다.
  *
  * 이름이 서버 계약과 1:1이지만 [TimelineEmotion.UNKNOWN] 은 조회에서 모르는 값을 수렴시키는 표시 상태라
  * 저장 요청에 실리면 안 된다. `when` 으로 열어 두어 새 감정이 추가되면 여기서 컴파일이 깨지게 한다.

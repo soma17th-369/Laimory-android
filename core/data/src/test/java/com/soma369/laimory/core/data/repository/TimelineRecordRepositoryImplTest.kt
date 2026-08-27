@@ -36,6 +36,8 @@ class TimelineRecordRepositoryImplTest {
         var deletedEventPhotoIds: Pair<Long, Long>? = null
         var deletedRecordDate: LocalDate? = null
         var savedRecordDate: LocalDate? = null
+        var updatedEmotionRecordDate: LocalDate? = null
+        var updatedEmotion: TimelineEmotion? = null
         var savedEmotion: TimelineEmotion? = null
         var requestedMonth: YearMonth? = null
         var updateFailure: Throwable? = null
@@ -89,6 +91,14 @@ class TimelineRecordRepositoryImplTest {
         ) {
             savedRecordDate = recordDate
             savedEmotion = emotion
+        }
+
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
+            updatedEmotionRecordDate = recordDate
+            updatedEmotion = emotion
         }
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {
