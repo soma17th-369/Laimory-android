@@ -69,7 +69,18 @@ class DefaultOnboardingCompletionCoordinator
             repository.clear()
         }
 
-        /** 계정이 사라지면 값을 모름으로 되돌리고 캐시도 비운다 — 다음 계정이 깨끗하게 판정한다. */
+        /**
+         * 계정이 사라지면 값을 모름으로 되돌리고 저장분을 모두 비운다.
+         *
+         * **아직 못 올린 완료도 함께 버린다.** 남겨 두면 다음에 들어온 계정이 그 표시를 자기
+         * 것으로 읽어, 온보딩을 한 번도 하지 않은 사람이 곧장 홈으로 간다. 계정별로 나눠 보관하려면
+         * 계정 식별자가 필요한데 앱에는 없다 — [com.soma369.laimory.core.domain.model.auth.SignedInAccount]
+         * 는 provider 뿐이고 서버도 subject 를 내려 주지 않는다.
+         *
+         * 그래서 **오프라인에서 완료한 뒤 한 번도 온라인이 되지 못한 채 로그아웃하면 재시도하지
+         * 않는다.** 같은 계정으로 다시 들어오면 서버가 미완료라고 답해 온보딩을 한 번 더 본다.
+         * 조회 실패 때와 같은 대가이며, 그 반대(다른 계정에게 남의 완료를 물려주는 것)보다 낫다.
+         */
         private suspend fun clearSession() {
             mutex.withLock {
                 sessionEpoch++

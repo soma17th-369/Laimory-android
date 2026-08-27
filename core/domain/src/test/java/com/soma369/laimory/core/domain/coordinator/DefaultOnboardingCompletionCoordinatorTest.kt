@@ -95,6 +95,24 @@ class DefaultOnboardingCompletionCoordinatorTest {
         }
 
     @Test
+    fun `로그아웃하면 아직 못 올린 완료도 버린다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 남겨 두면 다음에 들어온 계정이 그 표시를 자기 것으로 읽어, 온보딩을 한 번도 하지
+            // 않은 사람이 곧장 홈으로 간다. 계정별로 나눠 보관할 식별자가 앱에 없다.
+            val repository =
+                FakeOnboardingRepository(remoteCompletion = Result.success(true), pending = true)
+            repository.recordFailure = IllegalStateException("offline")
+            val accounts = MutableStateFlow<SignedInAccount?>(google)
+            coordinator(repository, accounts)
+            runCurrent()
+
+            accounts.value = null
+            runCurrent()
+
+            assertFalse(repository.pending)
+        }
+
+    @Test
     fun `완료는 서버 응답을 기다리지 않고 값을 올린다`() =
         runTest(UnconfinedTestDispatcher()) {
             val repository = FakeOnboardingRepository(remoteCompletion = Result.success(false))
