@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.soma369.laimory.core.data.datasource.remote.OnboardingRemoteDataSource
 import com.soma369.laimory.core.domain.model.onboarding.OnboardingState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +21,8 @@ import org.junit.Test
 
 class OnboardingRepositoryImplTest {
     private val dataStore = InMemoryPreferencesDataStore()
-    private val repository = OnboardingRepositoryImpl(dataStore)
+    private val remoteDataSource = RecordingRemoteDataSource()
+    private val repository = OnboardingRepositoryImpl(dataStore, remoteDataSource)
 
     @Test
     fun `저장된 것이 없으면 아직 하지 않은 상태다`() =
@@ -36,6 +38,37 @@ class OnboardingRepositoryImplTest {
             val state = repository.observe().first()
             assertEquals("photo", state.lastPageKey)
             assertFalse(state.isCompleted)
+        }
+
+    @Test
+    fun `서버 기록이 실패해도 로컬 완료는 확정된다`() =
+        runTest {
+            // 판정의 정본이 설치 단위 로컬이라, 서버가 안 되는 동안 사용자를 온보딩에 묶어 둘 이유가 없다.
+            remoteDataSource.failure = IllegalStateException("network")
+
+            repository.complete()
+
+            assertTrue(repository.observe().first().isCompleted)
+            assertEquals(1, remoteDataSource.attempts)
+        }
+
+    @Test
+    fun `완료하면 서버에도 한 번 기록한다`() =
+        runTest {
+            repository.complete()
+
+            assertEquals(1, remoteDataSource.attempts)
+        }
+
+    @Test
+    fun `초기화는 서버를 건드리지 않는다`() =
+        runTest {
+            // 서버에는 false 로 되돌리는 API 가 없다. 설치 단위 판정만 처음으로 간다.
+            repository.complete()
+
+            repository.reset()
+
+            assertEquals(1, remoteDataSource.attempts)
         }
 
     @Test
@@ -76,6 +109,16 @@ class OnboardingRepositoryImplTest {
             assertEquals(null, state.lastPageKey)
             assertTrue(state.isCompleted)
         }
+
+    private class RecordingRemoteDataSource : OnboardingRemoteDataSource {
+        var attempts = 0
+        var failure: Throwable? = null
+
+        override suspend fun recordCompletion() {
+            attempts++
+            failure?.let { throw it }
+        }
+    }
 
     private class InMemoryPreferencesDataStore : DataStore<Preferences> {
         private val state = MutableStateFlow<Preferences>(emptyPreferences())

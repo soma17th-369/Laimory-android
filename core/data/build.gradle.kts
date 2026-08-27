@@ -35,10 +35,17 @@ android {
     kotlin {
         jvmToolchain(17)
     }
+
+    testOptions {
+        // 저장소가 Logger 를 거치는데 그 안이 android.util.Log 다. 단위 테스트에는 android.jar
+        // 구현이 없어 호출만으로 예외가 나므로, 로그 한 줄 때문에 검증 경로가 막히지 않게 한다.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
     implementation(project(":core:domain"))
+    implementation(project(":core:util"))
 
     implementation(libs.androidx.core.ktx)
 
