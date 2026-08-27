@@ -1,12 +1,9 @@
 package com.soma369.laimory
 
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -18,11 +15,11 @@ import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
-import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
+import com.soma369.laimory.core.domain.usecase.ObserveOnboardingCompletionUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
@@ -39,11 +36,6 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-            // 권한 거부도 초안 생성·polling·전경 복구를 막지 않는다.
-        }
-
     @Inject
     lateinit var messageHelper: MessageHelperImpl
 
@@ -60,6 +52,9 @@ class MainActivity : ComponentActivity() {
     lateinit var observeAuthSession: ObserveAuthSessionUseCase
 
     @Inject
+    lateinit var observeOnboardingCompletion: ObserveOnboardingCompletionUseCase
+
+    @Inject
     lateinit var draftCompletionPushHandler: DraftCompletionPushHandler
 
     @Inject
@@ -72,11 +67,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
+        // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
+        // 다이얼로그는 거부되기 쉽고, 한 번 거부하면 다시 물을 기회가 사실상 없다.
+        // 요청은 온보딩의 알림 장 CTA 가 맡는다.
         val authSessionStates = observeAuthSession()
-        lifecycleScope.launch {
-            observeAuthSession().first { it == AuthSessionState.Authenticated }
-            requestNotificationPermissionIfNeeded()
-        }
         setContent {
             LaimoryTheme {
                 Surface(
@@ -86,6 +80,7 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         LaimoryNavGraph(
                             messages = messageHelper.messages,
+                            onboardingCompletions = observeOnboardingCompletion(),
                             navigationFlow = navigationHelper.navigationFlow,
                             authSessionStates = authSessionStates,
                             pendingDraftCompletions = draftTaskCoordinator.pendingCompletion,
@@ -162,11 +157,5 @@ class MainActivity : ComponentActivity() {
     private companion object {
         /** 알림을 눌러 앱이 처음 뜰 때 활성 작업 복원을 기다리는 한도. */
         const val ACTIVE_TASK_RESTORE_TIMEOUT_MILLIS = 3_000L
-    }
-
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
-        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
     }
 }

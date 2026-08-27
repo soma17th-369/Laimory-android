@@ -21,6 +21,18 @@ data object LoginPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/**
+ * 로그인 직후 한 번 보여 주는 데이터 권한 온보딩.
+ *
+ * Login·Home 과 같은 층위의 **앱 루트**다. 밀어 넣는 화면이 아니라, 인증과 온보딩 완료 여부로
+ * 셋 중 하나가 정해진다.
+ */
+data object OnboardingPage : Page {
+    const val PATH = "/onboarding"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object Feature1Page : Page {
     const val PATH = "/feature1"
 

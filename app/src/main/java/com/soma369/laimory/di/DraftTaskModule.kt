@@ -4,8 +4,10 @@ import com.soma369.laimory.BuildConfig
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultAutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultDraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.DefaultOnboardingCompletionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultUserProfileCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.OnboardingCompletionCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
@@ -39,6 +41,11 @@ abstract class DraftTaskBindingModule {
     @Binds
     @Singleton
     abstract fun bindUserProfileCoordinator(impl: DefaultUserProfileCoordinator): UserProfileCoordinator
+
+    /** 온보딩 완료 여부를 세션당 한 번 조회해 앱 루트가 나눠 쓰는 조율자. */
+    @Binds
+    @Singleton
+    abstract fun bindOnboardingCompletionCoordinator(impl: DefaultOnboardingCompletionCoordinator): OnboardingCompletionCoordinator
 
     /** 일정·건강 자동 수집을 앱 전경 진입·초안 설정·최종 생성이 함께 쓰는 조율자. */
     @Binds

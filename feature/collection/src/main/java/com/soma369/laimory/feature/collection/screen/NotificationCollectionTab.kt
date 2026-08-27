@@ -50,6 +50,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.source.InstalledApp
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.theme.laimoryColors
+import com.soma369.laimory.core.util.permission.NotificationListenerAccess
 import com.soma369.laimory.feature.collection.state.NotificationUiIntent
 import com.soma369.laimory.feature.collection.state.NotificationUiSideEffect
 import com.soma369.laimory.feature.collection.state.NotificationUiState
@@ -96,9 +97,9 @@ private fun NotificationCollectionContent(
     }
 
     // 알림 접근은 설정에서 켜므로, 설정에 다녀온 뒤(resume)마다 상태를 다시 읽는다.
-    var accessGranted by remember { mutableStateOf(NotificationAccess.isGranted(context)) }
+    var accessGranted by remember { mutableStateOf(NotificationListenerAccess.isGranted(context)) }
     LifecycleResumeEffect(Unit) {
-        accessGranted = NotificationAccess.isGranted(context)
+        accessGranted = NotificationListenerAccess.isGranted(context)
         onPauseOrDispose { }
     }
 
@@ -119,7 +120,7 @@ private fun NotificationCollectionContent(
         item {
             PermissionSection(
                 granted = accessGranted,
-                onOpenSettings = { context.startActivity(NotificationAccess.settingsIntent()) },
+                onOpenSettings = { context.startActivity(NotificationListenerAccess.settingsIntent()) },
             )
         }
 

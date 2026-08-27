@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.network.ApiPrefix
 import com.soma369.laimory.core.data.network.api.AuthApi
 import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
+import com.soma369.laimory.core.data.network.api.OnboardingApi
 import com.soma369.laimory.core.data.network.api.PushRegistrationApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
@@ -205,6 +206,12 @@ object NetworkModule {
     fun provideUserApi(
         @SensitiveAuthRetrofit retrofit: Retrofit,
     ): UserApi = retrofit.create(UserApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideOnboardingApi(
+        @AuthRetrofit retrofit: Retrofit,
+    ): OnboardingApi = retrofit.create(OnboardingApi::class.java)
 
     @Provides
     @Singleton

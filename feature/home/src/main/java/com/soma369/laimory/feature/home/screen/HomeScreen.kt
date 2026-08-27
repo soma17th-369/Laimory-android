@@ -38,15 +38,15 @@ import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
-import com.soma369.laimory.core.ui.permission.PhotoPermission
+import com.soma369.laimory.core.ui.greeting.GreetingEmphasis
+import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.DraftSettingsSheet
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
 import com.soma369.laimory.feature.home.component.PastRecordCard
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
-import com.soma369.laimory.feature.home.greeting.HomeGreetingEmphasis
-import com.soma369.laimory.feature.home.greeting.homeGreetingSegments
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
@@ -313,11 +313,11 @@ private fun HomeGreeting(nickname: String?) {
     val greeting =
         remember(nickname, normalColor, nicknameColor) {
             buildAnnotatedString {
-                homeGreetingSegments(nickname).forEach { segment ->
+                nicknameGreetingSegments(nickname).forEach { segment ->
                     val color =
                         when (segment.emphasis) {
-                            HomeGreetingEmphasis.NORMAL -> normalColor
-                            HomeGreetingEmphasis.NICKNAME -> nicknameColor
+                            GreetingEmphasis.NORMAL -> normalColor
+                            GreetingEmphasis.NICKNAME -> nicknameColor
                         }
                     withStyle(SpanStyle(color = color)) { append(segment.text) }
                 }

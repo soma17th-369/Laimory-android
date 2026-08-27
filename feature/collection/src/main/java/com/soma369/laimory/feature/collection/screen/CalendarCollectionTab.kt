@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.util.permission.CalendarPermission
 import com.soma369.laimory.feature.collection.state.CalendarUiIntent
 import com.soma369.laimory.feature.collection.state.CalendarUiSideEffect
 import com.soma369.laimory.feature.collection.state.CalendarUiState
@@ -81,14 +82,14 @@ private fun CalendarCollectionContent(
     // 일정 조회는 READ_CALENDAR 가 필요하다. 수집 트리거 전에 권한을 먼저 확보한다(Collector 는 권한 무지성).
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            if (CalendarPermission.canCollect(result)) {
+            if (CalendarPermission.isGranted(result)) {
                 onIntent(CalendarUiIntent.Collect)
             } else {
                 scope.launch { snackbarHostState.showSnackbar("캘린더 접근 권한이 필요합니다.") }
             }
         }
     val onCollect: () -> Unit = {
-        if (CalendarPermission.canCollect(context)) {
+        if (CalendarPermission.isGranted(context)) {
             onIntent(CalendarUiIntent.Collect)
         } else {
             permissionLauncher.launch(CalendarPermission.required())

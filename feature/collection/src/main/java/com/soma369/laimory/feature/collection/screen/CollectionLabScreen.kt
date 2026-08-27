@@ -35,6 +35,8 @@ fun CollectionLabRoute(innerPadding: PaddingValues) {
                 .fillMaxSize()
                 .padding(innerPadding),
     ) {
+        OnboardingResetAction()
+
         TabRow(selectedTabIndex = selectedTab.ordinal) {
             CollectionLabTab.entries.forEach { tab ->
                 Tab(

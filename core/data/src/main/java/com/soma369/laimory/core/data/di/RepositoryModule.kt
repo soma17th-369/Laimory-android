@@ -4,6 +4,7 @@ import com.soma369.laimory.core.data.repository.ActiveDraftTaskRepositoryImpl
 import com.soma369.laimory.core.data.repository.AuthRepositoryImpl
 import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
+import com.soma369.laimory.core.data.repository.OnboardingRepositoryImpl
 import com.soma369.laimory.core.data.repository.PushRegistrationRepositoryImpl
 import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineDraftRepositoryImpl
@@ -14,6 +15,7 @@ import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.IntroRepository
+import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
@@ -32,6 +34,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindActiveDraftTaskRepository(impl: ActiveDraftTaskRepositoryImpl): ActiveDraftTaskRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindOnboardingRepository(impl: OnboardingRepositoryImpl): OnboardingRepository
 
     @Binds
     @Singleton
