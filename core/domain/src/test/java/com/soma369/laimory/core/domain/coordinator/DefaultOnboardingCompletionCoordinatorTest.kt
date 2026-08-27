@@ -109,6 +109,49 @@ class DefaultOnboardingCompletionCoordinatorTest {
         }
 
     @Test
+    fun `완료 기록이 실패하면 올리지 못한 표시가 남는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val repository = FakeOnboardingRepository(remoteCompletion = Result.success(false))
+            repository.recordFailure = IllegalStateException("offline")
+            val coordinator = coordinator(repository, MutableStateFlow(google))
+            runCurrent()
+
+            coordinator.markCompleted()
+
+            // 사용자에게는 이미 끝났다고 보였으므로 값은 완료다.
+            assertEquals(true, coordinator.completed.value)
+            assertTrue(repository.pending)
+        }
+
+    @Test
+    fun `올리지 못한 완료는 다음 세션에서 다시 올린다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val repository =
+                FakeOnboardingRepository(remoteCompletion = Result.success(false), pending = true)
+            val coordinator = coordinator(repository, MutableStateFlow(google))
+
+            runCurrent()
+
+            assertEquals(1, repository.recordCount)
+            assertFalse(repository.pending)
+        }
+
+    @Test
+    fun `아직 못 올린 완료는 서버의 미완료보다 우선한다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 서버는 기록을 못 받았으니 false 를 준다. 끝낸 사람에게 온보딩을 다시 보이면 안 된다.
+            val repository =
+                FakeOnboardingRepository(remoteCompletion = Result.success(false), pending = true)
+            repository.recordFailure = IllegalStateException("offline")
+            val coordinator = coordinator(repository, MutableStateFlow(google))
+
+            runCurrent()
+
+            assertEquals(true, coordinator.completed.value)
+            assertEquals(0, repository.fetchCount)
+        }
+
+    @Test
     fun `초기화는 다시 조회하지 않는다`() =
         runTest(UnconfinedTestDispatcher()) {
             // 다시 조회하면 서버가 곧장 완료라고 답해 온보딩이 열리자마자 닫힌다.
@@ -137,10 +180,12 @@ class DefaultOnboardingCompletionCoordinatorTest {
     private class FakeOnboardingRepository(
         private val remoteCompletion: Result<Boolean>,
         var cached: Boolean? = null,
+        var pending: Boolean = false,
     ) : OnboardingRepository {
         var fetchCount = 0
         var recordCount = 0
         var cleared = false
+        var recordFailure: Throwable? = null
 
         override suspend fun cachedCompletion(): Boolean? = cached
 
@@ -150,6 +195,13 @@ class DefaultOnboardingCompletionCoordinatorTest {
 
         override suspend fun recordCompletion() {
             recordCount++
+            recordFailure?.let { throw it }
+        }
+
+        override suspend fun isCompletionPending(): Boolean = pending
+
+        override suspend fun setCompletionPending(isPending: Boolean) {
+            pending = isPending
         }
 
         override suspend fun fetchCompletion(): Result<Boolean> {
@@ -164,6 +216,7 @@ class DefaultOnboardingCompletionCoordinatorTest {
         override suspend fun clear() {
             cleared = true
             cached = null
+            pending = false
         }
     }
 

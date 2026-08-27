@@ -30,6 +30,12 @@ internal class OnboardingRepositoryImpl
 
         override suspend fun recordCompletion() = remoteDataSource.recordCompletion()
 
+        override suspend fun isCompletionPending(): Boolean = preferences().first()[KEY_COMPLETION_PENDING] == true
+
+        override suspend fun setCompletionPending(isPending: Boolean) {
+            dataStore.edit { preferences -> preferences[KEY_COMPLETION_PENDING] = isPending }
+        }
+
         /**
          * 실패를 값으로 돌려준다.
          *
@@ -58,5 +64,6 @@ internal class OnboardingRepositoryImpl
         private companion object {
             val KEY_COMPLETED = booleanPreferencesKey("is_completed")
             val KEY_LAST_PAGE_KEY = stringPreferencesKey("last_page_key")
+            val KEY_COMPLETION_PENDING = booleanPreferencesKey("completion_pending")
         }
     }

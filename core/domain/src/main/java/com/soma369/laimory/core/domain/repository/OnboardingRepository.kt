@@ -20,6 +20,16 @@ interface OnboardingRepository {
     /** 서버에 완료를 기록한다. 멱등이라 재시도가 안전하다. */
     suspend fun recordCompletion()
 
+    /**
+     * 완료했지만 아직 서버에 올리지 못했는지.
+     *
+     * 완료 여부의 정본이 서버라, 기록이 빠지면 다음 실행에서 서버가 `false` 를 주고 사용자가
+     * 끝낸 온보딩을 다시 본다. 올릴 때까지 이 표시를 남겨 두고 로컬을 믿는다.
+     */
+    suspend fun isCompletionPending(): Boolean
+
+    suspend fun setCompletionPending(isPending: Boolean)
+
     /** 서버가 보는 완료 여부를 조회한다. */
     suspend fun fetchCompletion(): Result<Boolean>
 

@@ -46,12 +46,18 @@ class DefaultOnboardingCompletionCoordinator
             applicationScope.launch { fetchIfNeeded() }
         }
 
+        /**
+         * 완료를 확정한다.
+         *
+         * 서버 응답을 기다리지 않고 값을 먼저 올린다 — 기록이 늦다고 사용자를 온보딩에 묶어 둘
+         * 이유가 없다. 대신 **올리기 전에 대기 표시를 남긴다.** 완료 여부의 정본이 서버라,
+         * 표시 없이 실패하면 다음 실행에서 서버가 `false` 를 주고 끝낸 온보딩을 다시 본다.
+         */
         override suspend fun markCompleted() {
-            // 화면 전환이 서버 응답을 기다리지 않도록 값을 먼저 올린다. 기록은 멱등이라 실패해도
-            // 다음 완료에서 다시 올라가고, 실패로 사용자를 온보딩에 묶어 둘 이유가 없다.
-            mutex.withLock { mutableCompleted.value = true }
+            repository.setCompletionPending(true)
             repository.cacheCompletion(true)
-            repository.recordCompletion()
+            mutex.withLock { mutableCompleted.value = true }
+            syncPendingCompletion()
         }
 
         override suspend fun resetForCurrentSession() {
@@ -83,6 +89,13 @@ class DefaultOnboardingCompletionCoordinator
             }
         }
 
+        /** 밀린 완료 기록을 올린다. 멱등이라 여러 번 불러도 안전하고, 성공해야 표시를 지운다. */
+        private suspend fun syncPendingCompletion() {
+            if (!repository.isCompletionPending()) return
+            runCatching { repository.recordCompletion() }
+                .onSuccess { repository.setCompletionPending(false) }
+        }
+
         /**
          * 서버 값을 받아 반영한다.
          *
@@ -91,6 +104,16 @@ class DefaultOnboardingCompletionCoordinator
          * 것이라면 그쪽이 낫다. 완료 기록은 멱등이라 다시 눌러도 안전하다.
          */
         private suspend fun fetchInto(epoch: Long) {
+            syncPendingCompletion()
+            // 아직도 못 올렸으면 서버에 묻지 않는다. 서버는 기록을 못 받았으니 `false` 를 줄
+            // 텐데, 끝낸 사람에게 온보딩을 다시 보이는 것보다 로컬을 믿는 편이 맞다.
+            if (repository.isCompletionPending()) {
+                mutex.withLock {
+                    if (epoch != sessionEpoch) return@withLock
+                    mutableCompleted.value = true
+                }
+                return
+            }
             val result = repository.fetchCompletion()
             result.getOrNull()?.let { repository.cacheCompletion(it) }
             val resolved = result.getOrNull() ?: repository.cachedCompletion() ?: false

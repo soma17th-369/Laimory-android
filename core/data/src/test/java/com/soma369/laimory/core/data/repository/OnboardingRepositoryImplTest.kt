@@ -74,16 +74,30 @@ class OnboardingRepositoryImplTest {
         }
 
     @Test
+    fun `올리지 못한 완료 표시를 남기고 지운다`() =
+        runTest {
+            assertFalse(repository.isCompletionPending())
+
+            repository.setCompletionPending(true)
+            assertTrue(repository.isCompletionPending())
+
+            repository.setCompletionPending(false)
+            assertFalse(repository.isCompletionPending())
+        }
+
+    @Test
     fun `비우면 캐시와 진행 위치가 함께 사라진다`() =
         runTest {
             // 계정 경계에서 부른다. 캐시만 남으면 이전 계정의 완료가 새 계정으로 샌다.
             repository.cacheCompletion(true)
             repository.saveProgress("calendar")
+            repository.setCompletionPending(true)
 
             repository.clear()
 
             assertNull(repository.cachedCompletion())
             assertNull(repository.observeLastPageKey().first())
+            assertFalse(repository.isCompletionPending())
             assertEquals(0, dataStore.current.asMap().size)
         }
 
