@@ -8,6 +8,7 @@ import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordL
 import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineItemResponse
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
@@ -92,6 +93,8 @@ class TimelineRecordRepositoryImplTest {
             savedRecordDate = recordDate
             savedEmotion = emotion
         }
+
+        override suspend fun createTimelineEvent(command: CreateTimelineEventCommand): TimelineEventResponse = error("사용하지 않음")
 
         override suspend fun updateDailyRecordEmotion(
             recordDate: LocalDate,

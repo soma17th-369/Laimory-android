@@ -3,6 +3,7 @@ package com.soma369.laimory.core.data.datasource.remote
 import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateDailyRecordEmotionRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.toRequestJson
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
@@ -10,6 +11,7 @@ import com.soma369.laimory.core.data.model.timeline.response.TimelineEventRespon
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.safeApiCall
 import com.soma369.laimory.core.data.network.safeApiCallUnit
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import kotlinx.serialization.json.JsonObject
 import java.time.LocalDate
@@ -60,6 +62,9 @@ class TimelineRecordRemoteDataSourceImpl
         override suspend fun deleteDailyRecord(recordDate: LocalDate) {
             safeApiCallUnit { api.deleteDailyRecord(recordDate.toString()) }
         }
+
+        override suspend fun createTimelineEvent(command: CreateTimelineEventCommand): TimelineEventResponse =
+            safeApiCall { api.createTimelineEvent(command.recordDate.toString(), command.toRequestJson()) }
 
         override suspend fun updateDailyRecordEmotion(
             recordDate: LocalDate,

@@ -36,7 +36,7 @@ internal fun UpdateTimelineEventCommand.toRequestJson(): JsonObject =
         }
     }
 
-private fun TimelineEventPhotoAddition.toRequestJson(): JsonObject =
+internal fun TimelineEventPhotoAddition.toRequestJson(): JsonObject =
     buildJsonObject {
         put("rawId", JsonPrimitive(rawId))
         startAt?.let { put("startAt", JsonPrimitive(it.toApiDateTime())) }
@@ -52,8 +52,8 @@ private fun TimelineEventPhotoAddition.toRequestJson(): JsonObject =
         )
     }
 
-private fun String?.toJsonStringOrNull() = this?.let(::JsonPrimitive) ?: JsonNull
+internal fun String?.toJsonStringOrNull() = this?.let(::JsonPrimitive) ?: JsonNull
 
-private fun LocalDateTime.toApiDateTime(): String = API_DATE_TIME_FORMATTER.format(this)
+internal fun LocalDateTime.toApiDateTime(): String = API_DATE_TIME_FORMATTER.format(this)
 
 private val API_DATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME

@@ -4,6 +4,7 @@ import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataS
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.request.toRequestJson
 import com.soma369.laimory.core.data.model.timeline.response.toDomain
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -57,6 +58,11 @@ class TimelineRecordRepositoryImpl
 
         override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> =
             remote.getMonthlyDailyRecords(month).toDomain()
+
+        override suspend fun createEvent(command: CreateTimelineEventCommand): TimelineEvent =
+            remote.createTimelineEvent(
+                command,
+            ).toDomain()
 
         override suspend fun updateDailyRecordEmotion(
             recordDate: LocalDate,

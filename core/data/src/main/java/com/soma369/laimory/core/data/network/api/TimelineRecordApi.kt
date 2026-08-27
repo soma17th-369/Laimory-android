@@ -70,6 +70,18 @@ interface TimelineRecordApi {
     ): Response<ApiResponse<Unit>>
 
     /**
+     * 하루 기록에 새 Event 를 만든다. DRAFT·SAVED 모두 허용하며 DailyRecord 를 자동 생성하지 않는다.
+     *
+     * 수정 PATCH 와 달리 다섯 키가 모두 필수라 sparse 조립이 아니지만, 값이 null 인 필수 키를
+     * 보존해야 해서 같은 이유로 [JsonObject] 를 쓴다.
+     */
+    @POST("timeline/daily-records/{recordDate}/events")
+    suspend fun createTimelineEvent(
+        @Path("recordDate") recordDate: String,
+        @Body request: JsonObject,
+    ): Response<ApiResponse<TimelineEventResponse>>
+
+    /**
      * 저장된 하루 기록의 감정만 교체한다. 응답 envelope 의 `body` 는 null 이다(HTTP 무바디가 아니다).
      *
      * 대상은 **SAVED 기록뿐**이다 — DRAFT 의 최초 감정 확정은 [saveDailyRecord] 가 담당하고,
