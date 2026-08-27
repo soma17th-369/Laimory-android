@@ -16,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +32,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
+import com.soma369.laimory.feature.onboarding.component.rememberOnboardingPermissionState
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
@@ -63,6 +65,7 @@ internal fun OnboardingScreen(
 ) {
     val pagerState = rememberPagerState(pageCount = { state.pages.size })
     val scope = rememberCoroutineScope()
+    val permissionState = rememberOnboardingPermissionState()
 
     // 마지막으로 본 장으로 되돌린다. 상태에 인덱스를 두고 pagerState 초기값으로 쓸 수 없다 —
     // pagerState 는 첫 컴포지션에 만들어지고 복원 값은 그 뒤에 도착한다.
@@ -87,6 +90,11 @@ internal fun OnboardingScreen(
 
     val currentPage = state.pages.getOrNull(pagerState.currentPage)
     val isLastPage = pagerState.currentPage == state.pages.lastIndex
+    val isCurrentGranted = permissionState.isGranted(currentPage?.permission)
+    // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
+    // 일어나지 않은 것처럼 보이기 때문이다.
+    val needsRequest = currentPage?.permission != null && !isCurrentGranted
+    val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 
     Column(
         modifier =
@@ -100,7 +108,11 @@ internal fun OnboardingScreen(
             modifier = Modifier.fillMaxWidth().weight(1f),
         ) { page ->
             state.pages.getOrNull(page)?.let { spec ->
-                OnboardingPageContent(page = spec, nickname = state.nickname)
+                OnboardingPageContent(
+                    page = spec,
+                    nickname = state.nickname,
+                    isGranted = permissionState.isGranted(spec.permission),
+                )
             }
         }
 
@@ -121,10 +133,10 @@ internal fun OnboardingScreen(
 
             Button(
                 onClick = {
-                    if (isLastPage) {
-                        onIntent(OnboardingUiIntent.Complete)
-                    } else {
-                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                    when {
+                        needsRequest -> currentPage?.permission?.let(permissionState::request)
+                        isLastPage -> onIntent(OnboardingUiIntent.Complete)
+                        else -> goNext()
                     }
                 },
                 enabled = !state.isCompleting,
@@ -135,14 +147,35 @@ internal fun OnboardingScreen(
                     CircularProgressIndicator(modifier = Modifier.height(CTA_SPINNER_SIZE), strokeWidth = 2.dp)
                 } else {
                     Text(
-                        text = currentPage?.primaryCta.orEmpty(),
+                        text = if (needsRequest) currentPage?.primaryCta.orEmpty() else nextLabel(isLastPage, currentPage),
                         style = MaterialTheme.typography.titleSmall,
                     )
+                }
+            }
+
+            // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸
+            // 것이 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
+            if (currentPage?.isSkippable == true && needsRequest && !isLastPage) {
+                TextButton(onClick = goNext, enabled = !state.isCompleting) {
+                    Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
     }
 }
+
+/** 요청이 끝난 장의 CTA. 마지막 장은 완료 문구를 그대로 쓴다. */
+private fun nextLabel(
+    isLastPage: Boolean,
+    page: com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec?,
+): String =
+    if (isLastPage) {
+        page?.primaryCta.orEmpty()
+    } else if (page?.permission != null) {
+        "다음"
+    } else {
+        page?.primaryCta.orEmpty()
+    }
 
 private val CTA_HEIGHT = 52.dp
 private val CTA_SPINNER_SIZE = 18.dp

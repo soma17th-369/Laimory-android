@@ -36,6 +36,7 @@ import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 internal fun OnboardingPageContent(
     page: OnboardingPageSpec,
     nickname: String?,
+    isGranted: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -52,9 +53,9 @@ internal fun OnboardingPageContent(
         }
         page.label?.let { label ->
             Text(
-                text = label,
+                text = if (isGranted) "$label · 연결됨" else label,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = if (isGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Text(

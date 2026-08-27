@@ -17,6 +17,44 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             showsGreeting = true,
         ),
         OnboardingPageSpec(
+            key = "photo",
+            label = "PHOTO",
+            title = "사진에 시간과 장소가\n남아 있어요",
+            description =
+                "찍은 사진에서 시각과 위치만 읽어 하루의 순간을 채워요.\n" +
+                    "전체가 부담스러우면 고른 사진만 허용해도 돼요.",
+            permission = OnboardingPermission.PHOTO,
+            primaryCta = "사진 연결하기",
+        ),
+        OnboardingPageSpec(
+            key = "calendar",
+            label = "CALENDAR",
+            title = "쓰던 캘린더를\n그대로 읽어요",
+            description =
+                "이미 적어 둔 일정을 그대로 가져와 하루의 뼈대를 세워요.\n" +
+                    "읽기만 하고 일정을 바꾸지 않아요.",
+            permission = OnboardingPermission.CALENDAR,
+            primaryCta = "캘린더 연결하기",
+        ),
+        OnboardingPageSpec(
+            key = "notification",
+            label = "NOTIFICATION",
+            title = "지나간 알림에도\n하루가 있어요",
+            description =
+                "결제·배송·예약처럼 생활 이벤트를 알리는 알림만 읽어요.\n" +
+                    "개인 대화와 광고 알림은 수집하지 않아요.",
+            permission = OnboardingPermission.NOTIFICATION_LISTENER,
+            primaryCta = "알림 접근 켜기",
+        ),
+        OnboardingPageSpec(
+            key = "app_notification",
+            label = "REMINDER",
+            title = "하루가 정리되면\n알려드릴게요",
+            description = "타임라인이 완성됐을 때와 기록을 남길 시간에만 알려요.",
+            permission = OnboardingPermission.APP_NOTIFICATION,
+            primaryCta = "알림 받기",
+        ),
+        OnboardingPageSpec(
             key = "done",
             title = "준비됐어요",
             description = "지금 켜 두지 않은 것도 설정에서 언제든 바꿀 수 있어요.",
