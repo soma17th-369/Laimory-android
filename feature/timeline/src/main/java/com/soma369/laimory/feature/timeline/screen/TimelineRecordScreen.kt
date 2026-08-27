@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -256,24 +260,35 @@ private fun TimelineRecordScreen(
                 )
             is TimelineRecordUiContent.Record ->
                 Column(modifier = Modifier.fillMaxSize()) {
-                    TimelineRecordBody(
-                        record = content.value,
-                        memoEditor = state.memoEditor,
-                        mode = state.mode,
-                        onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
-                        onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
-                        onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
-                        onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
-                        onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
-                        onPhotoClick = { photoUrls, initialIndex ->
-                            photoViewerState =
-                                TimelinePhotoViewerState(
-                                    photoUrls = photoUrls,
-                                    initialIndex = initialIndex,
-                                )
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                        TimelineRecordBody(
+                            record = content.value,
+                            memoEditor = state.memoEditor,
+                            mode = state.mode,
+                            onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
+                            onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
+                            onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
+                            onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
+                            onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
+                            onPhotoClick = { photoUrls, initialIndex ->
+                                photoViewerState =
+                                    TimelinePhotoViewerState(
+                                        photoUrls = photoUrls,
+                                        initialIndex = initialIndex,
+                                    )
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        // 목록 위에 얹어 저장 버튼과 겹치지 않게 둔다. 편집 모드에서만 보인다 —
+                        // 읽는 화면에 만들기 버튼이 떠 있으면 무엇을 읽는 화면인지 흐려진다.
+                        if (state.mode.isEditing && state.memoEditor == null) {
+                            AddEventFab(
+                                enabled = state.isModeSwitchable,
+                                onClick = { onIntent(TimelineRecordUiIntent.AddEvent) },
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(FabMargin),
+                            )
+                        }
+                    }
                     // 메모 편집 중에는 어차피 누를 수 없는 버튼이라 감춘다 — 키보드 위 좁은 자리를
                     // 비활성 버튼이 차지하지 않게 한다.
                     // 저장은 내용 변경이 아니라 상태 확정이라 모드와 무관하게 노출한다. SAVED 는 재호출하지 않는다.
@@ -483,6 +498,31 @@ private fun TimelineRecordEmpty(modifier: Modifier = Modifier) {
 }
 
 private val RecordDateFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)
+
+/** 새 이벤트 만들기. 시안의 우하단 플로팅 버튼이다. */
+@Composable
+private fun AddEventFab(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FloatingActionButton(
+        onClick = { if (enabled) onClick() },
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        shape = CircleShape,
+    ) {
+        // 시안이 아이콘이 아니라 `+` 글자다. 전용 에셋을 만들 만큼 다른 모양이 아니라 그대로 쓴다.
+        Text(
+            text = "+",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.semantics { contentDescription = "이벤트 추가" },
+        )
+    }
+}
+
+private val FabMargin = 20.dp
 
 /**
  * 앱바 타이틀 — 날짜와 하루 감정.

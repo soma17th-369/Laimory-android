@@ -21,6 +21,7 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
+import com.soma369.laimory.core.domain.usecase.CreateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
@@ -50,10 +51,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimelineEventEditorViewModelTest {
@@ -859,7 +863,14 @@ class TimelineEventEditorViewModelTest {
                     sessionRepository = sessionRepository,
                     messageHelper = messageHelper,
                 ),
+            createTimelineEventUseCase =
+                CreateTimelineEventUseCase(
+                    repository = recordRepository,
+                    sessionRepository = sessionRepository,
+                    messageHelper = messageHelper,
+                ),
             navigationHelper = navigationHelper,
+            clock = Clock.fixed(Instant.parse("2026-05-08T13:45:00Z"), ZoneOffset.UTC),
         )
 
     private fun timeline() =

@@ -71,6 +71,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeSheetState
 import com.soma369.laimory.feature.timeline.viewmodel.TimelineEventEditorViewModel
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
 import java.time.LocalDateTime
 import com.soma369.laimory.core.ui.R as UiR
 
@@ -83,6 +84,31 @@ fun TimelineEventEditorRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(timelineEventId) {
         viewModel.sendIntent(TimelineEventEditorUiIntent.Initialize(timelineEventId))
+    }
+    TimelineEventEditorContent(
+        innerPadding = innerPadding,
+        state = state,
+        onIntent = viewModel::sendIntent,
+        snackbarFlow = viewModel.snackbar,
+        sideEffectFlow = viewModel.sideEffect,
+    )
+}
+
+/**
+ * 새 이벤트를 만드는 진입점. 편집과 **같은 화면**을 쓰고 초기화 인텐트만 다르다.
+ *
+ * 화면을 나누지 않는 이유는 입력 항목이 같기 때문이다 — 나누면 검증·사진 업로드·저장 경로가 두
+ * 벌이 되고, 한쪽만 고치는 일이 생긴다.
+ */
+@Composable
+fun TimelineEventCreateRoute(
+    innerPadding: PaddingValues,
+    recordDate: LocalDate,
+    viewModel: TimelineEventEditorViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(recordDate) {
+        viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(recordDate))
     }
     TimelineEventEditorContent(
         innerPadding = innerPadding,
@@ -261,7 +287,9 @@ private fun TimelineEventEditorScreen(
                 .padding(innerPadding),
     ) {
         LaimoryTopAppBar(
-            title = { Text("이벤트 수정") },
+            // 같은 화면이지만 무엇을 하는 자리인지는 달라야 한다 — 새로 만드는데 `수정` 이라고
+            // 적혀 있으면 어떤 이벤트를 고치는 중인지 찾게 된다.
+            title = { Text(if (state.timelineEventId == null) "이벤트 추가" else "이벤트 수정") },
             onBackClick = { onIntent(TimelineEventEditorUiIntent.NavigateBack) },
             actions = {
                 // 후속 overflow 메뉴 구현 전까지 Figma의 action 영역을 비활성 상태로 유지한다.
@@ -405,21 +433,25 @@ private fun TimelineEventEditorBody(
                     ),
             horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
         ) {
-            OutlinedButton(
-                onClick = { onIntent(TimelineEventEditorUiIntent.RequestDelete) },
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .height(ActionButtonHeight),
-                enabled = enabled,
-                shape = MaterialTheme.shapes.medium,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            ) {
-                Text(
-                    text = "삭제",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // 아직 만들지 않은 이벤트에는 지울 것이 없다. 자리를 남기면 눌러도 아무 일이 없거나,
+            // 눌린다면 없는 것을 지우려 서버에 묻게 된다.
+            if (state.timelineEventId != null) {
+                OutlinedButton(
+                    onClick = { onIntent(TimelineEventEditorUiIntent.RequestDelete) },
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .height(ActionButtonHeight),
+                    enabled = enabled,
+                    shape = MaterialTheme.shapes.medium,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    Text(
+                        text = "삭제",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             Button(
                 onClick = { onIntent(TimelineEventEditorUiIntent.Save) },

@@ -19,6 +19,7 @@ import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.OnboardingPage
 import com.soma369.laimory.core.domain.navigation.ReflectionPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
+import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
@@ -31,6 +32,7 @@ import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.onboarding.screen.OnboardingRoute
 import com.soma369.laimory.feature.settings.screen.SettingsRoute
 import com.soma369.laimory.feature.timeline.screen.CalendarRoute
+import com.soma369.laimory.feature.timeline.screen.TimelineEventCreateRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineEventEditorRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRecordRoute
 import com.soma369.laimory.ui.PlaceholderScreen
@@ -166,6 +168,14 @@ val appRoutes: List<AppRoute> =
                     innerPadding = innerPadding,
                     recordDate = TimelinePage.recordDateFrom(args),
                 )
+            },
+        ),
+        AppRoute(
+            path = TimelineEventCreatePage.PATH,
+            render = { innerPadding, args ->
+                TimelineEventCreatePage.recordDateFrom(args)?.let { recordDate ->
+                    TimelineEventCreateRoute(innerPadding = innerPadding, recordDate = recordDate)
+                }
             },
         ),
         AppRoute(

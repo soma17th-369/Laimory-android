@@ -5,12 +5,15 @@ import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventPhotoDeleteException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventPhotoAddition
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.usecase.CreateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoOutcome
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
@@ -33,7 +36,12 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeSheetState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Clock
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
@@ -47,12 +55,15 @@ class TimelineEventEditorViewModel
         private val updateTimelineEventUseCase: UpdateTimelineEventUseCase,
         private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
         private val deleteTimelineEventPhotoUseCase: DeleteTimelineEventPhotoUseCase,
+        private val createTimelineEventUseCase: CreateTimelineEventUseCase,
         private val navigationHelper: NavigationHelper,
+        private val clock: Clock,
     ) : BaseMviViewModel<TimelineEventEditorUiState, TimelineEventEditorUiIntent, TimelineEventEditorUiSideEffect>(
             TimelineEventEditorUiState(),
         ) {
         override suspend fun handleIntent(intent: TimelineEventEditorUiIntent) {
             when (intent) {
+                is TimelineEventEditorUiIntent.InitializeNew -> initializeNew(intent.recordDate)
                 is TimelineEventEditorUiIntent.Initialize -> initialize(intent.timelineEventId)
                 is TimelineEventEditorUiIntent.ChangeEventType ->
                     changeForm(transform = { copy(eventType = intent.eventType) })
@@ -95,6 +106,43 @@ class TimelineEventEditorViewModel
                 TimelineEventEditorUiIntent.ConfirmDelete -> deleteEvent()
                 TimelineEventEditorUiIntent.DismissDelete -> dismissDelete()
                 TimelineEventEditorUiIntent.FinishDelete -> finishDelete()
+            }
+        }
+
+        /**
+         * 빈 편집기를 연다.
+         *
+         * 시작 시각은 **그 기록 날짜의 지금 시각**이다. `현재 일시`를 그대로 쓰면 8월 8일 기록에
+         * 오늘 날짜가 박히고, `마지막 이벤트 뒤`로 밀면 하루 중간에 끼워 넣는 흔한 사용이 매번
+         * 시각을 고쳐야 한다. 종료 시각은 비워 둔다 — 서버가 null 을 허용하고, 필요하면 사용자가
+         * 넣는다.
+         */
+        private fun initializeNew(recordDate: LocalDate) {
+            if (state.value.form != null) return
+            // 분 단위로 자른다. 피커가 분까지만 다루므로, 초·나노를 실어 보내면 화면에 보이는
+            // 값과 저장된 값이 어긋나고 나중에 시각을 한 번만 고쳐도 초가 조용히 날아간다.
+            val startAt =
+                LocalDateTime.of(
+                    recordDate,
+                    LocalTime.now(clock.withZone(ZoneId.systemDefault())).truncatedTo(ChronoUnit.MINUTES),
+                )
+            val form =
+                TimelineEventEditorForm(
+                    eventType = TimelineEventType.UNKNOWN,
+                    title = "",
+                    subtitle = "",
+                    startAt = startAt,
+                    endAt = null,
+                    memo = "",
+                )
+            updateState {
+                TimelineEventEditorUiState(
+                    timelineEventId = null,
+                    recordDate = recordDate,
+                    content = TimelineEventEditorUiContent.Editor,
+                    originalForm = form,
+                    form = form,
+                )
             }
         }
 
@@ -267,8 +315,14 @@ class TimelineEventEditorViewModel
                     updateState { copy(isSaving = false) }
                     return
                 }
-            val command = readyState.toUpdateCommand(readyForm)
-            updateTimelineEventUseCase(command)
+            // 신규는 id 가 없다. 같은 화면이지만 서버 경로가 갈린다.
+            val result =
+                if (readyState.timelineEventId == null) {
+                    createTimelineEventUseCase(readyState.toCreateCommand(readyForm)).map { }
+                } else {
+                    updateTimelineEventUseCase(readyState.toUpdateCommand(readyForm))
+                }
+            result
                 .onSuccess {
                     clearEditorState()
                     navigationHelper.navigateToBack()
@@ -521,20 +575,41 @@ class TimelineEventEditorViewModel
                     photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
             }
 
+        /**
+         * 신규 생성 명령.
+         *
+         * 수정과 달리 **바뀐 것만 골라 보내지 않는다** — 서버가 다섯 키를 모두 요구하므로 폼의
+         * 현재 값을 그대로 싣는다.
+         */
+        private fun TimelineEventEditorUiState.toCreateCommand(form: TimelineEventEditorForm): CreateTimelineEventCommand =
+            CreateTimelineEventCommand(
+                recordDate = requireNotNull(recordDate),
+                eventType = form.eventType,
+                title = form.title.trim(),
+                subtitle = form.subtitle.trim().ifBlank { null },
+                startAt = form.startAt,
+                endAt = form.endAt,
+                memo = form.memo.trim().ifBlank { null },
+                photosToAdd = photoAdditions(),
+            )
+
+        /** 업로드가 끝난 대기 사진을 서버 payload 로 옮긴다. 생성과 수정이 같은 목록을 쓴다. */
+        private fun TimelineEventEditorUiState.photoAdditions(): List<TimelineEventPhotoAddition> =
+            pendingPhotos.map { photo ->
+                TimelineEventPhotoAddition(
+                    rawId = photo.rawId,
+                    startAt = null,
+                    endAt = null,
+                    filename = requireNotNull(photo.uploadedFilename),
+                    clientPhotoUri = photo.clientPhotoUri,
+                    latitude = null,
+                    longitude = null,
+                )
+            }
+
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {
             val original = requireNotNull(originalForm)
-            val photoAdditions =
-                pendingPhotos.map { photo ->
-                    TimelineEventPhotoAddition(
-                        rawId = photo.rawId,
-                        startAt = null,
-                        endAt = null,
-                        filename = requireNotNull(photo.uploadedFilename),
-                        clientPhotoUri = photo.clientPhotoUri,
-                        latitude = null,
-                        longitude = null,
-                    )
-                }
+            val photoAdditions = photoAdditions()
             return UpdateTimelineEventCommand(
                 timelineEventId = requireNotNull(timelineEventId),
                 title = form.title.trim(),
