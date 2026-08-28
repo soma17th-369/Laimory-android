@@ -17,6 +17,7 @@ class DataPermissionStatusTest {
         hasListenerSettings: Boolean = true,
         needsSettingsForBackgroundLocation: Boolean = true,
         isHealthAvailable: Boolean = true,
+        blocked: Set<DataPermission> = emptySet(),
     ) = DataPermissionState(
         granted = granted,
         locationStep = locationStep,
@@ -24,6 +25,7 @@ class DataPermissionStatusTest {
         hasListenerSettings = hasListenerSettings,
         needsSettingsForBackgroundLocation = needsSettingsForBackgroundLocation,
         isHealthAvailable = isHealthAvailable,
+        blocked = blocked,
         onRequest = {},
     )
 
@@ -84,6 +86,23 @@ class DataPermissionStatusTest {
         val subject = state(locationStep = LocationPermissionStep.FOREGROUND)
 
         assertEquals(DataSourceStatus.DENIED, subject.statusOf(DataPermission.LOCATION))
+    }
+
+    @Test
+    fun `시스템이 더 이상 묻지 않는 권한은 허용하기 대신 설정으로 보낸다`() {
+        // 두 번 거부한 뒤에는 요청을 보내도 다이얼로그가 뜨지 않는다. 그대로 두면 눌러도
+        // 아무 일이 없는 버튼이 된다.
+        val subject = state(blocked = setOf(DataPermission.PHOTO))
+
+        assertEquals(DataSourceStatus.DENIED, subject.statusOf(DataPermission.PHOTO))
+        assertEquals(DataPermissionAction.APP_SETTINGS, subject.actionFor(DataPermission.PHOTO))
+    }
+
+    @Test
+    fun `아직 물어볼 수 있는 권한은 다이얼로그를 띄운다`() {
+        val subject = state()
+
+        assertEquals(DataPermissionAction.REQUEST, subject.actionFor(DataPermission.PHOTO))
     }
 
     @Test

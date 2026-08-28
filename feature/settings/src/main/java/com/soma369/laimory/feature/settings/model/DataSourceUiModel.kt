@@ -123,7 +123,12 @@ fun DataPermissionAction.buttonLabel(status: DataSourceStatus): String? =
         DataPermissionAction.REQUEST -> "허용하기"
         DataPermissionAction.RESELECT_PHOTOS -> "사진 다시 선택"
         DataPermissionAction.APP_SETTINGS ->
-            if (status == DataSourceStatus.GRANTED) "설정에서 변경" else "앱 설정 열기"
+            when (status) {
+                DataSourceStatus.GRANTED -> "설정에서 변경"
+                // 시스템이 더 이상 묻지 않아 설정에서 켜는 수밖에 없다.
+                DataSourceStatus.DENIED -> "설정에서 허용"
+                else -> "앱 설정 열기"
+            }
 
         DataPermissionAction.HEALTH_SETTINGS -> "Health Connect 에서 변경"
         DataPermissionAction.LISTENER_SETTINGS -> "알림 접근 설정 열기"

@@ -83,6 +83,15 @@ internal fun DataSourceSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // 두 번 거부하면 Android 가 요청을 삼킨다. 왜 다이얼로그가 안 뜨는지 알려 주지
+                // 않으면 사용자는 버튼이 고장난 줄 안다.
+                if (status == DataSourceStatus.DENIED && action == DataPermissionAction.APP_SETTINGS) {
+                    Text(
+                        text = "이 권한은 더 이상 앱에서 물어볼 수 없어요. 설정에서 직접 켜 주세요.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             action.buttonLabel(status)?.let { label ->
                 Button(

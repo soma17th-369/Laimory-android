@@ -28,6 +28,7 @@ import com.soma369.laimory.core.util.permission.CalendarPermission
 import com.soma369.laimory.core.util.permission.LocationPermission
 import com.soma369.laimory.core.util.permission.NotificationListenerAccess
 import com.soma369.laimory.core.util.permission.PhotoPermission
+import com.soma369.laimory.core.util.permission.isPermanentlyDenied
 
 /**
  * 화면이 보는 권한 상태와 요청 창구.
@@ -51,6 +52,13 @@ class DataPermissionState(
     private val needsSettingsForBackgroundLocation: Boolean,
     /** Health Connect 를 쓸 수 있는 기기인지. 미설치·업데이트 필요면 요청 자체가 성립하지 않는다. */
     private val isHealthAvailable: Boolean = false,
+    /**
+     * 요청을 보냈지만 시스템이 다이얼로그를 띄우지 않은 권한.
+     *
+     * 두 번 거부하면 Android 는 요청을 조용히 삼킨다. 이때도 `허용하기` 를 보여 주면 눌러도
+     * 아무 일이 없는 버튼이 되므로 설정으로 길을 바꾼다.
+     */
+    private val blocked: Set<DataPermission> = emptySet(),
     /** 앱이 켜고 끌 수 없는 것을 사용자가 직접 바꾸러 가는 창구. */
     private val onOpenSettings: (DataPermission) -> Unit = {},
     private val onRequest: (DataPermission) -> Unit,
@@ -132,10 +140,11 @@ class DataPermissionState(
                 }
 
             DataSourceStatus.DENIED ->
-                if (permission == DataPermission.NOTIFICATION_LISTENER) {
-                    DataPermissionAction.LISTENER_SETTINGS
-                } else {
-                    DataPermissionAction.REQUEST
+                when {
+                    permission == DataPermission.NOTIFICATION_LISTENER -> DataPermissionAction.LISTENER_SETTINGS
+                    // 시스템이 더 이상 묻지 않으므로 다이얼로그를 기다릴 수 없다.
+                    permission in blocked -> DataPermissionAction.APP_SETTINGS
+                    else -> DataPermissionAction.REQUEST
                 }
         }
 
@@ -178,10 +187,25 @@ fun rememberDataPermissionState(): DataPermissionState {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // 어느 소스를 요청했는지 알아야 결과를 그 소스에 귀속시킬 수 있다.
+    var pending by remember { mutableStateOf<DataPermission?>(null) }
+    var blocked by remember { mutableStateOf(emptySet<DataPermission>()) }
     val runtimeLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             // 결과 맵을 직접 읽지 않고 다시 조회한다. 일부 허용처럼 결과와 실제 상태가 갈리는
             // 경우가 있어, 판정 경로를 하나로 두는 편이 어긋날 여지가 없다.
+            val requested = pending
+            if (requested != null) {
+                val keys = result.keys.toTypedArray()
+                // 요청 **직후** 의 rationale=false 는 "물어봤는데 다이얼로그가 안 떴다" 는 뜻이다.
+                blocked =
+                    if (keys.isNotEmpty() && context.isPermanentlyDenied(keys)) {
+                        blocked + requested
+                    } else {
+                        blocked - requested
+                    }
+            }
+            pending = null
             refreshKey++
         }
     val settingsLauncher =
@@ -233,7 +257,7 @@ fun rememberDataPermissionState(): DataPermissionState {
     val isPhotoLimited = remember(refreshKey, context) { PhotoPermission.isLimited(context) }
     val hasListenerSettings = remember(refreshKey, context) { NotificationListenerAccess.hasSettings(context) }
 
-    return remember(granted, locationStep, isPhotoLimited, hasListenerSettings) {
+    return remember(granted, locationStep, isPhotoLimited, hasListenerSettings, blocked) {
         DataPermissionState(
             granted = granted,
             locationStep = locationStep,
@@ -241,6 +265,7 @@ fun rememberDataPermissionState(): DataPermissionState {
             hasListenerSettings = hasListenerSettings,
             needsSettingsForBackgroundLocation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
             isHealthAvailable = isHealthAvailable,
+            blocked = blocked,
             onOpenSettings = { permission ->
                 // 헬스 권한은 앱 설정에 나오지 않는다. Health Connect 앱이 자기 권한 화면을 갖는다.
                 val intent =
@@ -254,12 +279,22 @@ fun rememberDataPermissionState(): DataPermissionState {
             },
         ) { permission ->
             when (permission) {
-                DataPermission.PHOTO -> runtimeLauncher.launch(PhotoPermission.required())
-                DataPermission.CALENDAR -> runtimeLauncher.launch(CalendarPermission.required())
+                DataPermission.PHOTO -> {
+                    pending = permission
+                    runtimeLauncher.launch(PhotoPermission.required())
+                }
+
+                DataPermission.CALENDAR -> {
+                    pending = permission
+                    runtimeLauncher.launch(CalendarPermission.required())
+                }
                 DataPermission.LOCATION ->
                     when (locationStep) {
                         // 위치만 묻는다. 알림·활동 인식은 각자의 자리에서 받는다.
-                        LocationPermissionStep.FOREGROUND -> runtimeLauncher.launch(LocationPermission.foreground())
+                        LocationPermissionStep.FOREGROUND -> {
+                            pending = permission
+                            runtimeLauncher.launch(LocationPermission.foreground())
+                        }
                         // Android 11+ 는 `항상 허용` 을 다이얼로그로 주지 않는다. 앱 설정으로 보내고
                         // 돌아왔을 때 ON_RESUME 재조회가 결과를 반영한다.
                         LocationPermissionStep.BACKGROUND ->
