@@ -47,6 +47,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -78,6 +79,40 @@ class TimelineEventEditorViewModelTest {
         draftRepository = RecordingTimelineDraftRepository()
         navigationHelper = RecordingNavigationHelper()
     }
+
+    @Test
+    fun `기존 이벤트를 보다 나온 뒤 추가를 열면 신규 생성으로 시작한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // NavDisplay 가 화면별 ViewModelStoreOwner 를 주지 않아 같은 ViewModel 이 재사용된다.
+            // 폼 유무만 보면 이전 이벤트 상태가 남아 `+` 가 신규 대신 그 이벤트 편집을 연다.
+            val viewModel = createViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
+            runCurrent()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(RECORD_DATE))
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.timelineEventId)
+            assertEquals("", state.form?.title)
+            assertEquals(RECORD_DATE, state.recordDate)
+        }
+
+    @Test
+    fun `생성 화면을 다시 열어도 입력한 내용을 잃지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 같은 대상이면 재사용한다 — 구성 변경으로 Initialize 가 다시 와도 작성 중인 값이 남아야 한다.
+            val viewModel = createViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(RECORD_DATE))
+            runCurrent()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("점심"))
+            runCurrent()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(RECORD_DATE))
+            runCurrent()
+
+            assertEquals("점심", viewModel.state.value.form?.title)
+        }
 
     @Test
     fun `초기화하면 세션 Event와 기존 사진을 편집 상태로 연다`() =
@@ -1072,5 +1107,6 @@ class TimelineEventEditorViewModelTest {
 
     private companion object {
         const val EVENT_ID = 17L
+        val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
     }
 }

@@ -118,7 +118,12 @@ class TimelineEventEditorViewModel
          * 넣는다.
          */
         private fun initializeNew(recordDate: LocalDate) {
-            if (state.value.form != null) return
+            // 폼 유무만 보면 안 된다 — 이 앱의 NavDisplay 는 화면별 ViewModelStoreOwner 를 주지
+            // 않아 같은 ViewModel 이 재사용된다. 기존 이벤트를 열었다가 바꾸지 않고 뒤로 나가면
+            // 상태가 남아 있어, 그대로 두면 `+` 가 신규 대신 **이전 이벤트 편집**을 열고 저장이
+            // POST 가 아니라 PATCH 로 나간다. 무엇을 위해 열렸는지까지 같아야 재사용한다.
+            val current = state.value
+            if (current.timelineEventId == null && current.recordDate == recordDate && current.form != null) return
             // 분 단위로 자른다. 피커가 분까지만 다루므로, 초·나노를 실어 보내면 화면에 보이는
             // 값과 저장된 값이 어긋나고 나중에 시각을 한 번만 고쳐도 초가 조용히 날아간다.
             val startAt =
@@ -147,6 +152,7 @@ class TimelineEventEditorViewModel
         }
 
         private fun initialize(timelineEventId: Long) {
+            // 같은 이벤트를 다시 여는 경우만 상태를 재사용한다.
             if (state.value.timelineEventId == timelineEventId && state.value.form != null) return
             val timeline = observeTimelineRecordUseCase().value
             val event = timeline?.events?.firstOrNull { it.timelineEventId == timelineEventId }
