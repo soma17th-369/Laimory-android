@@ -25,4 +25,12 @@ enum class DataPermission {
 
     /** Laimory 가 알림을 표시할 권한. */
     APP_NOTIFICATION,
+
+    /**
+     * Health Connect 걸음수·수면 읽기.
+     *
+     * Android 권한이 아니라 Health Connect 앱이 가진 권한이다 — 그 앱이 없으면 요청 자체가
+     * 성립하지 않아 `거부` 와 `쓸 수 없는 기기` 를 구분해야 한다.
+     */
+    HEALTH,
 }

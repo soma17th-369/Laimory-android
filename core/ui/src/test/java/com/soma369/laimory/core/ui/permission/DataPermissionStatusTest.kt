@@ -16,12 +16,14 @@ class DataPermissionStatusTest {
         isPhotoLimited: Boolean = false,
         hasListenerSettings: Boolean = true,
         needsSettingsForBackgroundLocation: Boolean = true,
+        isHealthAvailable: Boolean = true,
     ) = DataPermissionState(
         granted = granted,
         locationStep = locationStep,
         isPhotoLimited = isPhotoLimited,
         hasListenerSettings = hasListenerSettings,
         needsSettingsForBackgroundLocation = needsSettingsForBackgroundLocation,
+        isHealthAvailable = isHealthAvailable,
         onRequest = {},
     )
 
@@ -90,6 +92,23 @@ class DataPermissionStatusTest {
 
         assertEquals(DataSourceStatus.UNSUPPORTED, subject.statusOf(DataPermission.NOTIFICATION_LISTENER))
         assertEquals(DataPermissionAction.NONE, subject.actionFor(DataPermission.NOTIFICATION_LISTENER))
+    }
+
+    @Test
+    fun `Health Connect 가 없는 기기는 거부가 아니라 미지원이다`() {
+        // 허용/거부 이전의 문제라 `허용하기` 버튼을 줘도 열리는 화면이 없다.
+        val subject = state(isHealthAvailable = false)
+
+        assertEquals(DataSourceStatus.UNSUPPORTED, subject.statusOf(DataPermission.HEALTH))
+        assertEquals(DataPermissionAction.NONE, subject.actionFor(DataPermission.HEALTH))
+    }
+
+    @Test
+    fun `Health Connect 가 있으면 허용 여부를 묻는다`() {
+        val subject = state()
+
+        assertEquals(DataSourceStatus.DENIED, subject.statusOf(DataPermission.HEALTH))
+        assertEquals(DataPermissionAction.REQUEST, subject.actionFor(DataPermission.HEALTH))
     }
 
     @Test

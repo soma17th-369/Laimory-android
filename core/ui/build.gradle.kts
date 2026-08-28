@@ -12,6 +12,10 @@ android {
         minSdk = 28
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     kotlin {
         jvmToolchain(17)
     }
@@ -28,6 +32,10 @@ dependencies {
     implementation(libs.compose.lifecycle)
     implementation(libs.compose.activity)
     debugImplementation(libs.compose.ui.tooling)
+
+    // 헬스는 다른 소스와 달리 자체 권한 모델을 쓴다. 설정·온보딩이 같은 권한 경계를 보므로
+    // 판정도 여기에 둔다 — 화면마다 Health Connect 를 따로 물으면 답이 갈린다.
+    implementation(libs.health.connect)
 
     implementation(libs.lifecycle.viewmodel)
     implementation(libs.coroutines.android)

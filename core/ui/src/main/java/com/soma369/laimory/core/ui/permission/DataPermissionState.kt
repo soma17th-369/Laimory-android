@@ -11,13 +11,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.soma369.laimory.core.util.permission.AppNotificationPermission
@@ -46,6 +49,8 @@ class DataPermissionState(
     private val hasListenerSettings: Boolean,
     /** Android 11+ 는 `항상 허용` 을 다이얼로그로 주지 않아 앱 설정으로 보내야 한다. */
     private val needsSettingsForBackgroundLocation: Boolean,
+    /** Health Connect 를 쓸 수 있는 기기인지. 미설치·업데이트 필요면 요청 자체가 성립하지 않는다. */
+    private val isHealthAvailable: Boolean = false,
     private val onRequest: (DataPermission) -> Unit,
 ) {
     fun isGranted(permission: DataPermission?): Boolean = permission != null && permission in granted
@@ -79,6 +84,15 @@ class DataPermissionState(
                 when {
                     isGranted(permission) -> DataSourceStatus.GRANTED
                     !hasListenerSettings -> DataSourceStatus.UNSUPPORTED
+                    else -> DataSourceStatus.DENIED
+                }
+
+            // Health Connect 가 없는 기기에서는 허용할 방법이 없다. `허용 안 됨` 으로 쓰면
+            // 사용자가 열 수 없는 화면을 찾게 된다.
+            DataPermission.HEALTH ->
+                when {
+                    !isHealthAvailable -> DataSourceStatus.UNSUPPORTED
+                    isGranted(permission) -> DataSourceStatus.GRANTED
                     else -> DataSourceStatus.DENIED
                 }
 
@@ -146,6 +160,12 @@ fun rememberDataPermissionState(): DataPermissionState {
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             refreshKey++
         }
+    // Health Connect 는 자체 권한 화면을 연다. 결과 집합을 읽지 않고 다시 조회하는 것은
+    // 다른 권한과 같은 이유다 — 판정 경로를 하나로 둔다.
+    val healthLauncher =
+        rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) {
+            refreshKey++
+        }
 
     val locationStep =
         remember(refreshKey, context) {
@@ -158,14 +178,25 @@ fun rememberDataPermissionState(): DataPermissionState {
             )
         }
 
+    // Health Connect 는 시스템이 아니라 그 앱에 물어야 하고 답이 suspend 로 온다. 조회가
+    // 일시적으로 실패했을 때 `거부` 로 낮추지 않는다 — 허용해 둔 사용자에게 틀린 문구가 뜬다.
+    val isHealthAvailable =
+        remember(refreshKey, context) { HealthDataSource.isEnabled && HealthDataSource.isAvailable(context) }
+    var isHealthGranted by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshKey, isHealthAvailable) {
+        isHealthGranted =
+            isHealthAvailable && runCatching { HealthDataSource.isGranted(context) }.getOrDefault(isHealthGranted)
+    }
+
     val granted =
-        remember(refreshKey, context, locationStep) {
+        remember(refreshKey, context, locationStep, isHealthGranted) {
             buildSet {
                 if (PhotoPermission.canRead(context)) add(DataPermission.PHOTO)
                 if (CalendarPermission.isGranted(context)) add(DataPermission.CALENDAR)
                 if (NotificationListenerAccess.isGranted(context)) add(DataPermission.NOTIFICATION_LISTENER)
                 if (AppNotificationPermission.isGranted(context)) add(DataPermission.APP_NOTIFICATION)
                 if (locationStep == LocationPermissionStep.GRANTED) add(DataPermission.LOCATION)
+                if (isHealthGranted) add(DataPermission.HEALTH)
             }
         }
 
@@ -181,6 +212,7 @@ fun rememberDataPermissionState(): DataPermissionState {
             isPhotoLimited = isPhotoLimited,
             hasListenerSettings = hasListenerSettings,
             needsSettingsForBackgroundLocation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
+            isHealthAvailable = isHealthAvailable,
         ) { permission ->
             when (permission) {
                 DataPermission.PHOTO -> runtimeLauncher.launch(PhotoPermission.required())
@@ -207,6 +239,9 @@ fun rememberDataPermissionState(): DataPermissionState {
                     // 결과가 즉시 돌아오지만 요청 자체가 성립하지 않으므로 부르지 않는다.
                     if (required.isNotEmpty()) runtimeLauncher.launch(required)
                 }
+
+                // 쓸 수 없는 기기에서 요청 화면을 열면 Health Connect 가 없다는 오류로 끝난다.
+                DataPermission.HEALTH -> if (isHealthAvailable) healthLauncher.launch(HealthDataSource.required)
 
                 DataPermission.NOTIFICATION_LISTENER -> {
                     // 알림 접근 화면이 없는 기기가 있다. 확인 없이 열면 ActivityNotFoundException 으로 앱이 죽는다.

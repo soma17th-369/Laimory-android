@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataPermissionAction
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.permission.HealthDataSource
 import com.soma369.laimory.core.ui.R as CoreUiR
 
 /**
@@ -43,6 +44,12 @@ enum class DataSourceUiModel(
         iconRes = CoreUiR.drawable.ico_collection_notification,
         purpose = "결제·배송·예약처럼 생활 이벤트가 담긴 알림만 골라 후보로 씁니다. 대화 알림은 읽지 않아요.",
     ),
+    HEALTH(
+        permission = DataPermission.HEALTH,
+        label = "헬스",
+        iconRes = CoreUiR.drawable.ico_collection_health,
+        purpose = "걸음수와 수면으로 하루의 활동과 휴식을 채워요. Health Connect 를 거쳐 읽습니다.",
+    ),
     ;
 
     /**
@@ -74,8 +81,27 @@ enum class DataSourceUiModel(
                     else -> "설정 필요"
                 }
 
+            HEALTH ->
+                when (status) {
+                    DataSourceStatus.GRANTED -> "허용됨"
+                    // 앱이 없으면 허용/거부 이전의 문제라, 무엇을 해야 하는지를 문구가 말해야 한다.
+                    DataSourceStatus.UNSUPPORTED -> "Health Connect 필요"
+                    else -> "허용 안 됨"
+                }
+
             CALENDAR -> if (status == DataSourceStatus.GRANTED) "허용됨" else "허용 안 됨"
         }
+
+    companion object {
+        /**
+         * 목록에 실제로 그릴 소스.
+         *
+         * 헬스는 Play Console 의 Health Connect 데이터 유형 신고가 끝나기 전까지 release 에서
+         * 뺀다 — 허용을 받아도 수집이 켜지지 않는 항목을 보여 주면 사용자가 한 일이 헛일이 된다.
+         */
+        val visible: List<DataSourceUiModel>
+            get() = entries.filter { it != HEALTH || HealthDataSource.isEnabled }
+    }
 }
 
 /**

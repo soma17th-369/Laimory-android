@@ -169,7 +169,7 @@ private fun SettingsScreen(
                 SettingsSection(title = "데이터 소스") {
                     SettingsGroup(
                         items =
-                            DataSourceUiModel.entries.map { source ->
+                            DataSourceUiModel.visible.map { source ->
                                 val status = statusOf(source.permission)
                                 SettingsItem(
                                     iconRes = source.iconRes,
@@ -453,6 +453,7 @@ private val PreviewDataSourceStatuses =
         DataPermission.LOCATION to DataSourceStatus.DENIED,
         DataPermission.NOTIFICATION_LISTENER to DataSourceStatus.UNSUPPORTED,
         DataPermission.APP_NOTIFICATION to DataSourceStatus.GRANTED,
+        DataPermission.HEALTH to DataSourceStatus.GRANTED,
     )
 
 @Preview(name = "Settings Default", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 800)
