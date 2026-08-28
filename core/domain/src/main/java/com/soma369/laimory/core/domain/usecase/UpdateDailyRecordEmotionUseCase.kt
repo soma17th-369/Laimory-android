@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
+import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,6 +38,7 @@ class UpdateDailyRecordEmotionUseCase
     @Inject
     constructor(
         private val repository: TimelineRecordRepository,
+        private val sessionRepository: TimelineRecordSessionRepository,
         messageHelper: MessageHelper,
     ) : BaseUseCase(messageHelper) {
         suspend operator fun invoke(
@@ -46,6 +48,7 @@ class UpdateDailyRecordEmotionUseCase
             execute {
                 try {
                     repository.updateDailyRecordEmotion(recordDate, emotion)
+                    applyToSession(recordDate, emotion)
                     UpdateDailyRecordEmotionOutcome.Updated
                 } catch (exception: ApiException) {
                     when (exception.errorCode) {
@@ -55,6 +58,23 @@ class UpdateDailyRecordEmotionUseCase
                     }
                 }
             }
+
+        /**
+         * 세션에도 새 감정을 남긴다.
+         *
+         * 화면 상태만 바꾸면 세션은 옛 감정을 들고 있다가, 같은 화면에서 메모를 저장하는 순간
+         * `replaceEvent` 가 세션을 재방출하면서 **방금 바꾼 감정을 되돌린다.** 화면이 세션을
+         * 구독하기 때문이다.
+         */
+        private fun applyToSession(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
+            val timeline = sessionRepository.timeline.value ?: return
+            // 다른 날짜의 세션이면 건드리지 않는다.
+            if (timeline.recordDate != recordDate) return
+            sessionRepository.save(timeline.copy(emotion = emotion))
+        }
 
         private companion object {
             const val RECORD_NOT_SAVED_ERROR_CODE = -1020

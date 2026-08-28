@@ -1096,6 +1096,7 @@ class TimelineRecordViewModelTest {
             updateDailyRecordEmotionUseCase =
                 UpdateDailyRecordEmotionUseCase(
                     repository = recordRepository,
+                    sessionRepository = repository,
                     messageHelper = NoOpMessageHelper,
                 ),
             deleteDailyRecordUseCase =
@@ -1127,6 +1128,31 @@ class TimelineRecordViewModelTest {
             val record = (viewModel.state.value.content as TimelineRecordUiContent.Record).value
             assertEquals(TimelineEmotion.HAPPY, record.emotion)
             assertNull(viewModel.state.value.emotionSheet)
+        }
+
+    @Test
+    fun `감정을 바꾼 뒤 메모를 저장해도 감정이 되돌아가지 않는다`() =
+        runTest {
+            // 화면이 세션을 구독하므로, 세션에 감정을 남기지 않으면 메모 저장이 세션을 재방출하는
+            // 순간 옛 감정으로 덮인다.
+            val viewModel =
+                createLoadedViewModel(timeline(status = DailyRecordStatus.SAVED, emotion = TimelineEmotion.NEUTRAL))
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineRecordUiIntent.EditEmotion)
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEmotion(TimelineEmotion.HAPPY))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            advanceUntilIdle()
+
+            val record = (viewModel.state.value.content as TimelineRecordUiContent.Record).value
+            assertEquals(TimelineEmotion.HAPPY, record.emotion)
         }
 
     @Test
