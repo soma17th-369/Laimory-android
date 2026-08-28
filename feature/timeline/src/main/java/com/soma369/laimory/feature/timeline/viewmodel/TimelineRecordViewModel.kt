@@ -10,6 +10,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
+import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
@@ -109,6 +110,7 @@ class TimelineRecordViewModel
                     navigateBack()
                 TimelineRecordUiIntent.RequestSave -> openEmotionSheet()
                 is TimelineRecordUiIntent.SelectEmotion -> selectEmotion(intent.emotion)
+                TimelineRecordUiIntent.AddEvent -> addEvent()
                 TimelineRecordUiIntent.EditEmotion -> openEmotionEditor()
                 TimelineRecordUiIntent.ConfirmEmotion -> confirmEmotion()
                 TimelineRecordUiIntent.DismissEmotionSheet -> dismissEmotionSheet()
@@ -238,6 +240,14 @@ class TimelineRecordViewModel
                         ),
                 )
             }
+        }
+
+        /** 빈 편집기를 열어 새 이벤트를 만든다. 편집 모드에서만, 진행 중인 작업이 없을 때만 연다. */
+        private fun addEvent() {
+            val current = state.value
+            val record = (current.content as? TimelineRecordUiContent.Record)?.value ?: return
+            if (!current.mode.isEditing || !current.isModeSwitchable) return
+            navigationHelper.navigateTo(TimelineEventCreatePage(record.recordDate))
         }
 
         /**

@@ -1,14 +1,15 @@
 package com.soma369.laimory.core.data.network.api
 
 import com.soma369.laimory.core.data.model.common.ApiResponse
+import com.soma369.laimory.core.data.model.timeline.request.CreateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateDailyRecordEmotionRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
-import kotlinx.serialization.json.JsonObject
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -44,7 +45,7 @@ interface TimelineRecordApi {
     @PATCH("timeline/events/{timelineEventId}")
     suspend fun updateTimelineEvent(
         @Path("timelineEventId") timelineEventId: Long,
-        @Body request: JsonObject,
+        @Body request: UpdateTimelineEventRequest,
     ): Response<ApiResponse<Unit>>
 
     @PUT("timeline/events/{timelineEventId}/memo")
@@ -68,6 +69,16 @@ interface TimelineRecordApi {
     suspend fun deleteDailyRecord(
         @Path("recordDate") recordDate: String,
     ): Response<ApiResponse<Unit>>
+
+    /**
+     * 하루 기록에 새 Event 를 만든다. DRAFT·SAVED 모두 허용하며 DailyRecord 를 자동 생성하지 않는다.
+     *
+     */
+    @POST("timeline/daily-records/{recordDate}/events")
+    suspend fun createTimelineEvent(
+        @Path("recordDate") recordDate: String,
+        @Body request: CreateTimelineEventRequest,
+    ): Response<ApiResponse<TimelineEventResponse>>
 
     /**
      * 저장된 하루 기록의 감정만 교체한다. 응답 envelope 의 `body` 는 null 이다(HTTP 무바디가 아니다).

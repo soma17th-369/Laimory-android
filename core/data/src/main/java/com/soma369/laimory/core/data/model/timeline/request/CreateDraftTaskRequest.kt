@@ -29,6 +29,6 @@ data class SourceItemDto(
     val itemType: String,
     val rawId: String,
     val startAt: String,
-    val endAt: String?,
+    val endAt: String? = null,
     val payload: JsonObject,
 )

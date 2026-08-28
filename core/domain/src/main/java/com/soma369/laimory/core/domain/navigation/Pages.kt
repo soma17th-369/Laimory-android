@@ -57,6 +57,30 @@ data class TimelinePage(
     }
 }
 
+/**
+ * 하루 기록에 새 이벤트를 만드는 화면.
+ *
+ * 편집과 같은 화면을 쓰지만 경로를 나눈다 — 인자가 다르고(기존은 이벤트 id, 신규는 기록 날짜),
+ * 한 경로에 둘을 섞으면 "id 가 없는 편집" 과 "생성" 을 구분할 수 없다.
+ */
+data class TimelineEventCreatePage(
+    val recordDate: LocalDate,
+) : Page {
+    override fun toRoute(): NavRoute =
+        NavRoute(
+            path = PATH,
+            args = mapOf(RECORD_DATE_ARG to recordDate.toString()),
+        )
+
+    companion object {
+        const val PATH = "/timeline/event/new"
+        const val RECORD_DATE_ARG = "recordDate"
+
+        fun recordDateFrom(args: Map<String, String>): LocalDate? =
+            args[RECORD_DATE_ARG]?.let { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
+    }
+}
+
 data class TimelineEventEditorPage(
     val timelineEventId: Long,
 ) : Page {

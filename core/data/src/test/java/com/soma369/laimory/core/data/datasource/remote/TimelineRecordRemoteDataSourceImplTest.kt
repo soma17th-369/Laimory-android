@@ -1,7 +1,9 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.toDomain
+import com.soma369.laimory.core.data.network.SplitJsonConverterFactory
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -9,8 +11,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -45,7 +45,13 @@ class TimelineRecordRemoteDataSourceImplTest {
             Retrofit.Builder()
                 .baseUrl(server.url("/"))
                 .client(OkHttpClient())
-                .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+                // 프로덕션과 같은 컨버터를 쓴다 — 요청 쪽 설정이 다르면 실제로 나가는 본문을 검증하지 못한다.
+                .addConverterFactory(
+                    SplitJsonConverterFactory(
+                        send = Json(from = json) { explicitNulls = true }.asConverterFactory("application/json".toMediaType()),
+                        receive = json.asConverterFactory("application/json".toMediaType()),
+                    ),
+                )
                 .build()
                 .create(TimelineRecordApi::class.java)
         remote = TimelineRecordRemoteDataSourceImpl(api)
@@ -157,13 +163,25 @@ class TimelineRecordRemoteDataSourceImplTest {
 
             remote.updateTimelineEvent(
                 timelineEventId = 17L,
-                request = buildJsonObject { put("title", "수정 제목") },
+                request =
+                    UpdateTimelineEventRequest(
+                        title = "수정 제목",
+                        subtitle = "성수동",
+                        startAt = "2026-07-08T14:00:00",
+                        endAt = null,
+                    ),
             )
 
             val request = server.takeRequest()
             assertEquals("PATCH", request.method)
             assertEquals("/timeline/events/17", request.path)
-            assertEquals("""{"title":"수정 제목"}""", request.body.readUtf8())
+            // 필수 4키는 값이 null 이어도 함께 나간다 — DTO 가 그 계약을 타입으로 보장한다.
+            assertEquals(
+                Json.parseToJsonElement(
+                    """{"title":"수정 제목","subtitle":"성수동","startAt":"2026-07-08T14:00:00","endAt":null}""",
+                ),
+                Json.parseToJsonElement(request.body.readUtf8()),
+            )
         }
 
     @Test

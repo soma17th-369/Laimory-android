@@ -3,9 +3,15 @@ package com.soma369.laimory.feature.timeline.state
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.ui.base.UiIntent
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerColumn
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 sealed interface TimelineEventEditorUiIntent : UiIntent {
+    /** 새 이벤트를 만들기 위해 빈 편집기를 연다. */
+    data class InitializeNew(
+        val recordDate: LocalDate,
+    ) : TimelineEventEditorUiIntent
+
     data class Initialize(
         val timelineEventId: Long,
     ) : TimelineEventEditorUiIntent

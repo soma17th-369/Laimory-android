@@ -5,6 +5,8 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,6 +14,16 @@ import org.junit.Test
 import java.time.LocalDateTime
 
 class UpdateTimelineEventRequestTest {
+    /**
+     * 실제로 나가는 JSON 을 본다.
+     *
+     * DTO 필드만 확인하면 어떤 키가 실제로 나가는지 알 수 없다 — 이 요청은 **키 존재 자체가
+     * 의미**라 직렬화 결과가 계약이다.
+     */
+    private val json = Json { explicitNulls = true }
+
+    private fun UpdateTimelineEventCommand.toWireJson() = json.encodeToJsonElement(toRequest()).jsonObject
+
     @Test
     fun `필수 4키는 nullable 값과 초가 0인 시각까지 exact shape으로 전송한다`() {
         val request =
@@ -19,7 +31,7 @@ class UpdateTimelineEventRequestTest {
                 subtitle = null,
                 startAt = LocalDateTime.of(2026, 7, 8, 14, 0),
                 endAt = null,
-            ).toRequestJson()
+            ).toWireJson()
 
         assertEquals(
             Json.parseToJsonElement(
@@ -46,7 +58,7 @@ class UpdateTimelineEventRequestTest {
                 eventType = TimelineEventType.MEAL,
                 memo = TimelineEventUpdateField.Value(null),
                 photosToAdd = TimelineEventUpdateField.Value(emptyList()),
-            ).toRequestJson()
+            ).toWireJson()
 
         assertEquals("MEAL", request["eventType"]?.jsonPrimitive?.content)
         assertEquals("null", request["memo"].toString())
@@ -60,7 +72,7 @@ class UpdateTimelineEventRequestTest {
         val request =
             command(
                 memo = TimelineEventUpdateField.Value(memo),
-            ).toRequestJson()
+            ).toWireJson()
 
         assertEquals(memo, request["memo"]?.jsonPrimitive?.content)
     }
@@ -83,7 +95,7 @@ class UpdateTimelineEventRequestTest {
                             ),
                         ),
                     ),
-            ).toRequestJson()
+            ).toWireJson()
 
         assertEquals(
             Json.parseToJsonElement(

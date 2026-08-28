@@ -2,6 +2,7 @@ package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.BuildConfig
 import com.soma369.laimory.core.data.network.ApiPrefix
+import com.soma369.laimory.core.data.network.SplitJsonConverterFactory
 import com.soma369.laimory.core.data.network.api.AuthApi
 import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
@@ -168,8 +169,22 @@ object NetworkModule {
         Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(okHttpClient)
-            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .addConverterFactory(splitJsonConverterFactory(json))
             .build()
+
+    /**
+     * 요청은 값이 null 인 키를 보존하고(`explicitNulls = true`), 응답은 누락 키를 허용한다.
+     *
+     * 자세한 이유는 [SplitJsonConverterFactory] 참고.
+     */
+    private fun splitJsonConverterFactory(receiveJson: Json): SplitJsonConverterFactory {
+        val contentType = "application/json".toMediaType()
+        val sendJson = Json(from = receiveJson) { explicitNulls = true }
+        return SplitJsonConverterFactory(
+            send = sendJson.asConverterFactory(contentType),
+            receive = receiveJson.asConverterFactory(contentType),
+        )
+    }
 
     @Provides
     @Singleton

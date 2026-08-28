@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
@@ -20,6 +21,7 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
+import com.soma369.laimory.core.domain.usecase.CreateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
@@ -45,14 +47,18 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimelineEventEditorViewModelTest {
@@ -73,6 +79,40 @@ class TimelineEventEditorViewModelTest {
         draftRepository = RecordingTimelineDraftRepository()
         navigationHelper = RecordingNavigationHelper()
     }
+
+    @Test
+    fun `기존 이벤트를 보다 나온 뒤 추가를 열면 신규 생성으로 시작한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // NavDisplay 가 화면별 ViewModelStoreOwner 를 주지 않아 같은 ViewModel 이 재사용된다.
+            // 폼 유무만 보면 이전 이벤트 상태가 남아 `+` 가 신규 대신 그 이벤트 편집을 연다.
+            val viewModel = createViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
+            runCurrent()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(RECORD_DATE))
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.timelineEventId)
+            assertEquals("", state.form?.title)
+            assertEquals(RECORD_DATE, state.recordDate)
+        }
+
+    @Test
+    fun `생성 화면을 다시 열어도 입력한 내용을 잃지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 같은 대상이면 재사용한다 — 구성 변경으로 Initialize 가 다시 와도 작성 중인 값이 남아야 한다.
+            val viewModel = createViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(RECORD_DATE))
+            runCurrent()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("점심"))
+            runCurrent()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(RECORD_DATE))
+            runCurrent()
+
+            assertEquals("점심", viewModel.state.value.form?.title)
+        }
 
     @Test
     fun `초기화하면 세션 Event와 기존 사진을 편집 상태로 연다`() =
@@ -858,7 +898,14 @@ class TimelineEventEditorViewModelTest {
                     sessionRepository = sessionRepository,
                     messageHelper = messageHelper,
                 ),
+            createTimelineEventUseCase =
+                CreateTimelineEventUseCase(
+                    repository = recordRepository,
+                    sessionRepository = sessionRepository,
+                    messageHelper = messageHelper,
+                ),
             navigationHelper = navigationHelper,
+            clock = Clock.fixed(Instant.parse("2026-05-08T13:45:00Z"), ZoneOffset.UTC),
         )
 
     private fun timeline() =
@@ -920,13 +967,20 @@ class TimelineEventEditorViewModelTest {
             return dailyRecord
         }
 
+        override suspend fun createEvent(command: CreateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
+
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             commands += command
             failure?.let { throw it }
-            return event(
-                title = command.title,
-                memo = (command.memo as? TimelineEventUpdateField.Value)?.value,
-            )
+            val updated =
+                event(
+                    title = command.title,
+                    memo = (command.memo as? TimelineEventUpdateField.Value)?.value,
+                )
+            // 실제 서버는 쓰기를 반영한 뒤 조회에 그것을 돌려준다. 반영하지 않으면 재조회가 옛 값을
+            // 되돌려, 테스트가 UseCase 가 아니라 페이크의 한계를 검증하게 된다.
+            dailyRecord = dailyRecord.copy(events = listOf(updated))
+            return updated
         }
 
         override suspend fun updateEventMemo(
@@ -1053,5 +1107,6 @@ class TimelineEventEditorViewModelTest {
 
     private companion object {
         const val EVENT_ID = 17L
+        val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
     }
 }

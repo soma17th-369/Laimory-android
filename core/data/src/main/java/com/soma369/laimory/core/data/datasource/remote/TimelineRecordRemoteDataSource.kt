@@ -1,12 +1,13 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
-import kotlinx.serialization.json.JsonObject
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -28,7 +29,7 @@ interface TimelineRecordRemoteDataSource {
      */
     suspend fun updateTimelineEvent(
         timelineEventId: Long,
-        request: JsonObject,
+        request: UpdateTimelineEventRequest,
     )
 
     /** Event 메모를 작성·수정·제거한다. 성공 응답의 body는 null이다. */
@@ -51,6 +52,9 @@ interface TimelineRecordRemoteDataSource {
 
     /** 하루 기록과 하위 Event를 삭제한다. */
     suspend fun deleteDailyRecord(recordDate: LocalDate)
+
+    /** 하루 기록에 새 Event 를 만들고 생성된 Event 를 돌려받는다. */
+    suspend fun createTimelineEvent(command: CreateTimelineEventCommand): TimelineEventResponse
 
     /** 저장된 하루 기록의 감정만 교체한다. 같은 값 재요청도 멱등 성공이다. */
     suspend fun updateDailyRecordEmotion(

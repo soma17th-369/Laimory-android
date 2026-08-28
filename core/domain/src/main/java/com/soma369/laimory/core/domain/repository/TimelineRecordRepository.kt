@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.repository
 
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -15,6 +16,9 @@ interface TimelineRecordRepository {
 
     /** DailyRecord 한 건을 하위 Event·Item graph와 함께 조회한다. */
     suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline
+
+    /** 하루 기록에 새 Event 를 만든다. DRAFT·SAVED 모두 허용한다. */
+    suspend fun createEvent(command: CreateTimelineEventCommand): TimelineEvent
 
     /** 통합 PATCH로 Event 상세·타입·메모를 수정하고 업로드 완료 PHOTO를 append한다. */
     suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent
