@@ -39,6 +39,11 @@ class GetDailyRecordsUseCaseTest {
             timelineItemId: Long,
         ) = error("사용하지 않음")
 
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = Unit
+
         override suspend fun saveDailyRecord(
             recordDate: LocalDate,
             emotion: TimelineEmotion,

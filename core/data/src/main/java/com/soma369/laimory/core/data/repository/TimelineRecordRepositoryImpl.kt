@@ -58,6 +58,13 @@ class TimelineRecordRepositoryImpl
         override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> =
             remote.getMonthlyDailyRecords(month).toDomain()
 
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) {
+            remote.updateDailyRecordEmotion(recordDate, emotion)
+        }
+
         override suspend fun saveDailyRecord(
             recordDate: LocalDate,
             emotion: TimelineEmotion,

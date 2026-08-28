@@ -20,7 +20,10 @@ sealed interface TimelineRecordUiIntent : UiIntent {
         val emotion: TimelineEmotion,
     ) : TimelineRecordUiIntent
 
-    /** 시트의 `확인` — 선택한 감정으로 실제 저장을 요청한다. */
+    /** 앱바 감정을 눌러 수정 시트를 연다. 저장된 기록의 편집 모드에서만 열린다. */
+    data object EditEmotion : TimelineRecordUiIntent
+
+    /** 시트의 확인 — 시트가 열린 목적에 따라 작성 완료 또는 감정 교체를 요청한다. */
     data object ConfirmEmotion : TimelineRecordUiIntent
 
     data object DismissEmotionSheet : TimelineRecordUiIntent

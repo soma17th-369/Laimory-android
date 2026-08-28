@@ -40,6 +40,16 @@ interface TimelineRecordRepository {
     /** 표시 월의 기록 날짜와 감정만 조회한다. 캘린더 탐색용이라 Event graph 는 포함하지 않는다. */
     suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord>
 
+    /**
+     * 저장된 하루 기록의 감정만 교체한다. status 는 바뀌지 않고 같은 값 재요청도 멱등 성공이다.
+     *
+     * DRAFT 의 최초 감정 확정은 [saveDailyRecord] 가 담당한다 — DRAFT 에 부르면 `409/-1020` 이다.
+     */
+    suspend fun updateDailyRecordEmotion(
+        recordDate: LocalDate,
+        emotion: TimelineEmotion,
+    )
+
     /** 전용 POST로 선택한 하루 감정과 함께 DRAFT 하루 기록을 SAVED로 확정한다. 성공 응답의 body는 null이다. */
     suspend fun saveDailyRecord(
         recordDate: LocalDate,

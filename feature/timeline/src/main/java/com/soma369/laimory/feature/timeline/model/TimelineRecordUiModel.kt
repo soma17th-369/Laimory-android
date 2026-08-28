@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.timeline.model
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
@@ -23,6 +24,12 @@ data class TimelineRecordUiModel(
     val recordDate: LocalDate,
     val events: List<TimelineEventUiModel>,
     val isSaved: Boolean,
+    /**
+     * 하루를 대표하는 감정. 아직 고르지 않았으면 null 이다.
+     *
+     * DRAFT 는 언제나 null 이다 — 최초 감정은 작성 완료가 정한다.
+     */
+    val emotion: TimelineEmotion? = null,
 )
 
 @Immutable
@@ -60,6 +67,7 @@ internal fun DailyTimeline.toUiModel() =
         events = events.map(TimelineEvent::toUiModel),
         // 상태 미상(null·미지원 값)은 작성 중으로 간주한다 — status 미배포 서버와의 결합을 없앤다.
         isSaved = status == DailyRecordStatus.SAVED,
+        emotion = emotion,
     )
 
 private fun TimelineEvent.toUiModel() =

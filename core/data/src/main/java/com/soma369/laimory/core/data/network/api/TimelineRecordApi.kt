@@ -2,6 +2,7 @@ package com.soma369.laimory.core.data.network.api
 
 import com.soma369.laimory.core.data.model.common.ApiResponse
 import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateDailyRecordEmotionRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
@@ -66,6 +67,18 @@ interface TimelineRecordApi {
     @DELETE("timeline/daily-records/{recordDate}")
     suspend fun deleteDailyRecord(
         @Path("recordDate") recordDate: String,
+    ): Response<ApiResponse<Unit>>
+
+    /**
+     * 저장된 하루 기록의 감정만 교체한다. 응답 envelope 의 `body` 는 null 이다(HTTP 무바디가 아니다).
+     *
+     * 대상은 **SAVED 기록뿐**이다 — DRAFT 의 최초 감정 확정은 [saveDailyRecord] 가 담당하고,
+     * DRAFT 에 요청하면 `409/-1020` 이다.
+     */
+    @PUT("timeline/daily-records/{recordDate}/emotion")
+    suspend fun updateDailyRecordEmotion(
+        @Path("recordDate") recordDate: String,
+        @Body request: UpdateDailyRecordEmotionRequest,
     ): Response<ApiResponse<Unit>>
 
     @POST("timeline/daily-records/{recordDate}/save")

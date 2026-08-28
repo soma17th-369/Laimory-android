@@ -2,10 +2,12 @@ package com.soma369.laimory.feature.timeline.screen
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,13 +38,17 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.EmotionIcon
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItemStyle
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.model.displayLabel
+import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
@@ -167,9 +173,15 @@ private fun TimelineRecordScreen(
     ) {
         LaimoryTopAppBar(
             title = {
-                Text(
-                    text = state.title(),
-                    maxLines = 1,
+                val record = (state.content as? TimelineRecordUiContent.Record)?.value
+                TimelineRecordTitle(
+                    title = state.title(),
+                    // 저장된 기록에만 자리를 준다. 저장 전에는 감정이라는 것이 아직 없어서,
+                    // 자리를 비워 두면 날짜가 가운데에서 밀린다.
+                    showsEmotion = record?.isSaved == true,
+                    emotion = record?.emotion,
+                    isEditable = state.mode.isEditing && state.isModeSwitchable,
+                    onEmotionClick = { onIntent(TimelineRecordUiIntent.EditEmotion) },
                 )
             },
             onBackClick = { onIntent(TimelineRecordUiIntent.NavigateBack) },
@@ -471,6 +483,52 @@ private fun TimelineRecordEmpty(modifier: Modifier = Modifier) {
 }
 
 private val RecordDateFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREAN)
+
+/**
+ * 앱바 타이틀 — 날짜와 하루 감정.
+ *
+ * 감정은 읽기·편집 모드 모두에 보이고 **편집 모드에서만 누를 수 있다.** 지금까지 감정은 홈 카드와
+ * 월간 캘린더에만 있어서, 정작 그 기록을 열면 자신이 무엇을 골랐는지 알 수 없었다.
+ *
+ * 저장 전(DRAFT)에는 자리째 그리지 않는다. 빈 자리를 남기면 날짜가 가운데에서 밀리고, 저장
+ * 전후로 타이틀이 좌우로 움직인다.
+ *
+ * **저장됐는데 감정이 아직 없는 기록**은 감추지 않고 미상(`?`)으로 그린다 — 감정이 생기기 전에
+ * 저장된 기록이 그렇고, 감추면 그 기록만 영영 감정을 넣을 수 없다. 홈·캘린더가 같은 기록을
+ * 이미 `?` 로 보여 주고 있어 표시도 어긋나지 않는다.
+ */
+@Composable
+private fun TimelineRecordTitle(
+    title: String,
+    showsEmotion: Boolean,
+    emotion: TimelineEmotion?,
+    isEditable: Boolean,
+    onEmotionClick: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = title, maxLines = 1)
+        if (showsEmotion) {
+            val label = emotion?.toUiEmotionOrNull().displayLabel()
+            EmotionIcon(
+                emotion = emotion?.toUiEmotionOrNull(),
+                size = TitleEmotionSize,
+                contentDescription = if (isEditable) "하루 감정 $label, 눌러서 바꾸기" else "하루 감정 $label",
+                modifier =
+                    if (isEditable) {
+                        Modifier.clickable(onClick = onEmotionClick)
+                    } else {
+                        Modifier
+                    },
+            )
+        }
+    }
+}
+
+/** 타이틀 옆 감정 크기. 시안 24dp. */
+private val TitleEmotionSize = 24.dp
 
 private fun TimelineRecordUiState.title(): String =
     (content as? TimelineRecordUiContent.Record)

@@ -45,6 +45,11 @@ class UpdateTimelineEventUseCaseTest {
             timelineItemId: Long,
         ) = Unit
 
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = Unit
+
         override suspend fun saveDailyRecord(
             recordDate: LocalDate,
             emotion: TimelineEmotion,
