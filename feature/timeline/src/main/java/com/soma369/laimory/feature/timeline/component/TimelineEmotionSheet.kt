@@ -57,8 +57,9 @@ internal fun TimelineEmotionSheet(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // 저장 확정과 감정 수정이 같은 시트를 쓴다. 확인을 누르면 서버 경로가 갈리므로 문구도 갈라
-    // 사용자가 무엇이 일어날지 알 수 있게 한다 — 수정인데 "확인" 만 보이면 다시 저장되는 것처럼 읽힌다.
+    // 저장 확정과 감정 수정이 같은 시트를 쓴다. 확인을 누르면 서버 경로가 갈리므로(save 대
+    // emotion) 헤더와 버튼만 갈라 무엇이 일어날지 알린다 — 수정인데 "확인" 만 보이면 다시
+    // 저장되는 것처럼 읽힌다. 안내 문구는 묻는 것이 같아 그대로 둔다.
     val isEditing = state.purpose == TimelineEmotionSheetPurpose.EDIT_EMOTION
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -84,12 +85,9 @@ internal fun TimelineEmotionSheet(
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge3)) {
                 Text(
-                    text =
-                        if (isEditing) {
-                            "${state.dateLabel} 하루, 지금은 어떤 기분인가요?"
-                        } else {
-                            "${state.dateLabel} 하루, 어떤 기분이었나요?"
-                        },
+                    // 안내 문구는 두 경우가 같다 — 묻는 것이 `그날의 기분` 으로 같고, 수정이라고
+                    // 시제를 바꾸면 어색하다. 무엇이 일어날지는 헤더와 버튼이 말한다.
+                    text = "${state.dateLabel} 하루, 어떤 기분이었나요?",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
