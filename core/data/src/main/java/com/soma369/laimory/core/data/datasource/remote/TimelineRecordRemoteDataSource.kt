@@ -1,13 +1,13 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
-import kotlinx.serialization.json.JsonObject
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -29,7 +29,7 @@ interface TimelineRecordRemoteDataSource {
      */
     suspend fun updateTimelineEvent(
         timelineEventId: Long,
-        request: JsonObject,
+        request: UpdateTimelineEventRequest,
     )
 
     /** Event 메모를 작성·수정·제거한다. 성공 응답의 body는 null이다. */

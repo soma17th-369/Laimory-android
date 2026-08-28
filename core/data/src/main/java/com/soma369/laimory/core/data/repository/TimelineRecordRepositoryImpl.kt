@@ -2,7 +2,7 @@ package com.soma369.laimory.core.data.repository
 
 import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSource
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
-import com.soma369.laimory.core.data.model.timeline.request.toRequestJson
+import com.soma369.laimory.core.data.model.timeline.request.toRequest
 import com.soma369.laimory.core.data.model.timeline.response.toDomain
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
@@ -28,7 +28,7 @@ class TimelineRecordRepositoryImpl
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent {
             remote.updateTimelineEvent(
                 timelineEventId = command.timelineEventId,
-                request = command.toRequestJson(),
+                request = command.toRequest(),
             )
             return remote.getTimelineEvent(command.timelineEventId).toDomain()
         }

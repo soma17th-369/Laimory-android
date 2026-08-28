@@ -103,16 +103,16 @@ private fun GeoPoint.toDto() = DraftGeoPointDto(latitude = latitude, longitude =
 private data class DraftPhotoPayloadDto(
     val filename: String,
     val clientPhotoUri: String,
-    val latitude: Double?,
-    val longitude: Double?,
-    val description: String?,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val description: String? = null,
 )
 
 @Serializable
 private data class DraftCalendarPayloadDto(
     val title: String,
-    val locationText: String?,
-    val description: String?,
+    val locationText: String? = null,
+    val description: String? = null,
     val allDay: Boolean,
 )
 
@@ -145,6 +145,6 @@ private data class DraftHealthPayloadDto(
 @Serializable
 private data class DraftNotificationPayloadDto(
     val appName: String,
-    val title: String?,
-    val text: String?,
+    val title: String? = null,
+    val text: String? = null,
 )

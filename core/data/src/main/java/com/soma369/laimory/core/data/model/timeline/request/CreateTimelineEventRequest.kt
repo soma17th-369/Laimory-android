@@ -1,33 +1,36 @@
 package com.soma369.laimory.core.data.model.timeline.request
 
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
+import kotlinx.serialization.Serializable
 
 /**
- * Event 생성 전용 exact-shape JSON.
+ * Event 생성 요청.
  *
- * 전역 Json 은 `explicitNulls = false` 라 값이 null 인 필수 키가 통째로 빠진다. 서버는 `subtitle`·
- * `endAt` 을 **키는 필수, 값은 nullable** 로 요구하므로(누락 400) 여기서도 [JsonObject] 를 직접
- * 조립한다.
+ * 서버는 `eventType`·`title`·`subtitle`·`startAt`·`endAt` 다섯 키를 모두 요구하고 누락은 400 이다.
+ * 그중 `subtitle`·`endAt` 은 값이 nullable 이라 **기본값을 주지 않는다** — 요청 Json 이
+ * `explicitNulls = true` 라 기본값 없는 nullable 은 `null` 로 그대로 실린다.
  *
- * 사진 payload 는 수정과 **같은 함수**를 쓴다 — 모양이 갈라지면 한쪽만 서버 계약을 따라가고
- * 다른 쪽은 조용히 400 이 된다.
+ * 반대로 `memo`·`photosToAdd` 는 optional 이라 기본값을 줘 빈 값이면 키째 빠지게 한다.
  */
-internal fun CreateTimelineEventCommand.toRequestJson(): JsonObject =
-    buildJsonObject {
-        put("eventType", JsonPrimitive(eventType.name))
-        put("title", JsonPrimitive(title))
-        put("subtitle", subtitle.toJsonStringOrNull())
-        put("startAt", JsonPrimitive(startAt.toApiDateTime()))
-        put("endAt", endAt?.let { JsonPrimitive(it.toApiDateTime()) } ?: JsonNull)
-        // 누락·null·blank 가 모두 메모 없음이라 빈 값이면 키를 넣지 않는다.
-        memo?.takeIf(String::isNotBlank)?.let { put("memo", JsonPrimitive(it)) }
-        if (photosToAdd.isNotEmpty()) {
-            put("photosToAdd", JsonArray(photosToAdd.map { it.toRequestJson() }))
-        }
-    }
+@Serializable
+data class CreateTimelineEventRequest(
+    val eventType: String,
+    val title: String,
+    val subtitle: String?,
+    val startAt: String,
+    val endAt: String?,
+    val memo: String? = null,
+    val photosToAdd: List<TimelineEventPhotoRequest>? = null,
+)
+
+internal fun CreateTimelineEventCommand.toRequest() =
+    CreateTimelineEventRequest(
+        eventType = eventType.name,
+        title = title,
+        subtitle = subtitle,
+        startAt = startAt.toApiDateTime(),
+        endAt = endAt?.toApiDateTime(),
+        // 누락·null·blank 가 모두 메모 없음이라 빈 값이면 키를 생략한다.
+        memo = memo?.takeIf(String::isNotBlank),
+        photosToAdd = photosToAdd.takeIf { it.isNotEmpty() }?.map { it.toRequest() },
+    )

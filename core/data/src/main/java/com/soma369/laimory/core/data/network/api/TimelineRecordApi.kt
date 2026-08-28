@@ -1,14 +1,15 @@
 package com.soma369.laimory.core.data.network.api
 
 import com.soma369.laimory.core.data.model.common.ApiResponse
+import com.soma369.laimory.core.data.model.timeline.request.CreateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateDailyRecordEmotionRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
 import com.soma369.laimory.core.data.model.timeline.response.TimelineEventResponse
-import kotlinx.serialization.json.JsonObject
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -44,7 +45,7 @@ interface TimelineRecordApi {
     @PATCH("timeline/events/{timelineEventId}")
     suspend fun updateTimelineEvent(
         @Path("timelineEventId") timelineEventId: Long,
-        @Body request: JsonObject,
+        @Body request: UpdateTimelineEventRequest,
     ): Response<ApiResponse<Unit>>
 
     @PUT("timeline/events/{timelineEventId}/memo")
@@ -72,13 +73,11 @@ interface TimelineRecordApi {
     /**
      * 하루 기록에 새 Event 를 만든다. DRAFT·SAVED 모두 허용하며 DailyRecord 를 자동 생성하지 않는다.
      *
-     * 수정 PATCH 와 달리 다섯 키가 모두 필수라 sparse 조립이 아니지만, 값이 null 인 필수 키를
-     * 보존해야 해서 같은 이유로 [JsonObject] 를 쓴다.
      */
     @POST("timeline/daily-records/{recordDate}/events")
     suspend fun createTimelineEvent(
         @Path("recordDate") recordDate: String,
-        @Body request: JsonObject,
+        @Body request: CreateTimelineEventRequest,
     ): Response<ApiResponse<TimelineEventResponse>>
 
     /**

@@ -2,6 +2,7 @@ package com.soma369.laimory.core.data.repository
 
 import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSource
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
 import com.soma369.laimory.core.data.model.timeline.response.MonthlyDailyRecordListResponse
@@ -14,7 +15,6 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -31,7 +31,7 @@ class TimelineRecordRepositoryImplTest {
         var requestedRecordDate: LocalDate? = null
         var requestedEventId: Long? = null
         var requestedEventFetchId: Long? = null
-        var requestedBody: JsonObject? = null
+        var requestedBody: UpdateTimelineEventRequest? = null
         var requestedMemo: String? = null
         var deletedEventId: Long? = null
         var deletedEventPhotoIds: Pair<Long, Long>? = null
@@ -61,7 +61,7 @@ class TimelineRecordRepositoryImplTest {
 
         override suspend fun updateTimelineEvent(
             timelineEventId: Long,
-            request: JsonObject,
+            request: UpdateTimelineEventRequest,
         ) {
             calls += "PATCH"
             requestedEventId = timelineEventId
@@ -170,8 +170,8 @@ class TimelineRecordRepositoryImplTest {
             assertEquals(17L, remote.requestedEventId)
             assertEquals(17L, remote.requestedEventFetchId)
             assertEquals(listOf("PATCH", "GET"), remote.calls)
-            assertEquals("수정 제목", remote.requestedBody?.get("title").toString().trim('"'))
-            assertEquals("null", remote.requestedBody?.get("subtitle").toString())
+            assertEquals("수정 제목", remote.requestedBody?.title)
+            assertNull(remote.requestedBody?.subtitle)
             assertEquals(TimelineEventType.PHOTO_MOMENT, event.eventType)
             assertEquals(TimelineItemType.PHOTO, event.items.single().itemType)
             assertNull(event.items.single().startAt)
