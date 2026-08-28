@@ -1,0 +1,98 @@
+package com.soma369.laimory.feature.settings.model
+
+import androidx.annotation.DrawableRes
+import com.soma369.laimory.core.ui.permission.DataPermission
+import com.soma369.laimory.core.ui.permission.DataPermissionAction
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.R as CoreUiR
+
+/**
+ * 설정 `데이터 소스` 목록에 놓이는 소스 하나.
+ *
+ * 목록 순서는 하루 기록에 쓰이는 비중 순이다. 권한 문자열이나 Android 판정은 들고 있지 않다 —
+ * 그쪽은 [DataPermission] 과 `core:ui` 의 권한 경계가 맡는다.
+ */
+enum class DataSourceUiModel(
+    val permission: DataPermission,
+    val label: String,
+    @DrawableRes val iconRes: Int,
+    /** 시트에서 이 데이터를 무엇에 쓰는지 설명하는 한 줄. 온보딩 문구와 같은 말을 쓴다. */
+    val purpose: String,
+) {
+    PHOTO(
+        permission = DataPermission.PHOTO,
+        label = "사진",
+        iconRes = CoreUiR.drawable.ico_collection_photo,
+        purpose = "촬영 시각과 위치로 그날의 순간을 타임라인에 놓아요. 기기에 저장된 사진을 읽기만 합니다.",
+    ),
+    CALENDAR(
+        permission = DataPermission.CALENDAR,
+        label = "캘린더",
+        iconRes = CoreUiR.drawable.ico_collection_calendar,
+        purpose = "쓰던 캘린더의 일정을 읽어 하루의 계획과 만남을 복원해요.",
+    ),
+    LOCATION(
+        permission = DataPermission.LOCATION,
+        label = "위치",
+        iconRes = CoreUiR.drawable.ico_collection_location,
+        purpose = "오간 길과 머문 장소로 하루의 뼈대를 만들어요. 배경에서도 기록하려면 항상 허용이 필요합니다.",
+    ),
+    NOTIFICATION(
+        permission = DataPermission.NOTIFICATION_LISTENER,
+        label = "알림",
+        iconRes = CoreUiR.drawable.ico_collection_notification,
+        purpose = "결제·배송·예약처럼 생활 이벤트가 담긴 알림만 골라 후보로 씁니다. 대화 알림은 읽지 않아요.",
+    ),
+    ;
+
+    /**
+     * 목록 오른쪽에 붙는 상태 문구.
+     *
+     * 소스마다 말이 다르다 — 위치의 `앱 사용 중에만` 을 사진과 같은 `일부 허용` 으로 뭉치면
+     * 사용자가 무엇을 더 열어야 하는지 알 수 없다.
+     */
+    fun statusLabel(status: DataSourceStatus): String =
+        when (this) {
+            PHOTO ->
+                when (status) {
+                    DataSourceStatus.GRANTED -> "전체 허용됨"
+                    DataSourceStatus.LIMITED -> "일부 사진만"
+                    else -> "허용 안 됨"
+                }
+
+            LOCATION ->
+                when (status) {
+                    DataSourceStatus.GRANTED -> "항상 허용됨"
+                    DataSourceStatus.LIMITED -> "앱 사용 중에만"
+                    else -> "허용 안 됨"
+                }
+
+            NOTIFICATION ->
+                when (status) {
+                    DataSourceStatus.GRANTED -> "허용됨"
+                    DataSourceStatus.UNSUPPORTED -> "이 기기에서 불가"
+                    else -> "설정 필요"
+                }
+
+            CALENDAR -> if (status == DataSourceStatus.GRANTED) "허용됨" else "허용 안 됨"
+        }
+}
+
+/**
+ * 상태 문구를 눈에 띄게 할지 여부.
+ *
+ * 다 열린 소스는 사용자가 할 일이 없으므로 조용히 둔다. 손봐야 하는 줄만 올린다 — 모든 줄을
+ * 강조하면 강조가 아니고, 정상 상태를 강조하면 정작 고칠 곳이 묻힌다.
+ */
+val DataSourceStatus.needsAttention: Boolean
+    get() = this == DataSourceStatus.LIMITED || this == DataSourceStatus.DENIED
+
+/** 시트 기본 버튼 문구. 누를 것이 없으면 null 이다. */
+fun DataPermissionAction.buttonLabel(): String? =
+    when (this) {
+        DataPermissionAction.REQUEST -> "허용하기"
+        DataPermissionAction.RESELECT_PHOTOS -> "사진 다시 선택"
+        DataPermissionAction.APP_SETTINGS -> "앱 설정 열기"
+        DataPermissionAction.LISTENER_SETTINGS -> "알림 접근 설정 열기"
+        DataPermissionAction.NONE -> null
+    }

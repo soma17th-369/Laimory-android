@@ -32,7 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -47,8 +49,14 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.permission.DataPermission
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.settings.component.DataSourceSheet
+import com.soma369.laimory.feature.settings.model.DataSourceUiModel
+import com.soma369.laimory.feature.settings.model.needsAttention
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiState
 import com.soma369.laimory.feature.settings.viewmodel.SettingsViewModel
@@ -89,12 +97,29 @@ private fun SettingsContent(
         snackbarFlow.collect { message -> snackbarHostState.showSnackbar(message) }
     }
 
+    // 권한 상태는 저장하지 않고 화면이 뜰 때마다 Android 에 묻는다. 시스템 설정에 다녀오면
+    // ON_RESUME 재조회가 목록 문구를 바로 따라오게 한다.
+    val permissionState = rememberDataPermissionState()
+    var sheetSource by remember { mutableStateOf<DataSourceUiModel?>(null) }
+
     SettingsScreen(
         innerPadding = innerPadding,
         appVersionName = appVersionName,
         state = state,
+        statusOf = permissionState::statusOf,
+        onDataSourceClick = { sheetSource = it },
         onIntent = onIntent,
     )
+
+    sheetSource?.let { source ->
+        DataSourceSheet(
+            source = source,
+            status = permissionState.statusOf(source.permission),
+            action = permissionState.actionFor(source.permission),
+            onAction = { permissionState.request(source.permission) },
+            onDismiss = { sheetSource = null },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,6 +128,8 @@ private fun SettingsScreen(
     innerPadding: PaddingValues,
     appVersionName: String,
     state: SettingsUiState,
+    statusOf: (DataPermission) -> DataSourceStatus,
+    onDataSourceClick: (DataSourceUiModel) -> Unit,
     onIntent: (SettingsUiIntent) -> Unit,
 ) {
     Column(
@@ -139,6 +166,30 @@ private fun SettingsScreen(
         ) {
             AccountSummaryCard(provider = state.accountProvider, nickname = state.nickname)
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
+                SettingsSection(title = "데이터 소스") {
+                    SettingsGroup(
+                        items =
+                            DataSourceUiModel.entries.map { source ->
+                                val status = statusOf(source.permission)
+                                SettingsItem(
+                                    iconRes = source.iconRes,
+                                    title = source.label,
+                                    trailingText = source.statusLabel(status),
+                                    // 손봐야 하는 줄만 본문색으로 올린다. 다 열린 줄은 보조색으로 둔다.
+                                    trailingColor =
+                                        if (status.needsAttention) {
+                                            MaterialTheme.colorScheme.onSurface
+                                        } else {
+                                            Color.Unspecified
+                                        },
+                                    // 색만으로 구분하지 않는다 — 색을 구별하지 못해도 점으로 알아볼 수 있어야 한다.
+                                    showTrailingDot = status.needsAttention,
+                                    showChevron = true,
+                                    onClick = { onDataSourceClick(source) },
+                                )
+                            },
+                    )
+                }
                 SettingsSection(title = "정보") {
                     SettingsGroup(
                         items =
@@ -321,11 +372,27 @@ private fun SettingsRow(item: SettingsItem) {
             overflow = TextOverflow.Ellipsis,
         )
         item.trailingText?.let { trailingText ->
-            Text(
-                text = trailingText,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val trailingColor =
+                item.trailingColor.takeUnless { it == Color.Unspecified }
+                    ?: MaterialTheme.colorScheme.onSurfaceVariant
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (item.showTrailingDot) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(5.dp)
+                                .background(trailingColor, CircleShape),
+                    )
+                }
+                Text(
+                    text = trailingText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = trailingColor,
+                )
+            }
         }
         if (item.showChevron) {
             Icon(
@@ -342,6 +409,10 @@ private data class SettingsItem(
     @DrawableRes val iconRes: Int,
     val title: String,
     val trailingText: String? = null,
+    /** 후행 문구 색. 지정하지 않으면 보조색이다. 손볼 것이 있는 줄만 올린다. */
+    val trailingColor: Color = Color.Unspecified,
+    /** 색 말고도 알아볼 수 있게 후행 문구 앞에 점을 찍을지. */
+    val showTrailingDot: Boolean = false,
     val contentColor: Color = Color.Unspecified,
     val isEnabled: Boolean = true,
     val showChevron: Boolean = false,
@@ -372,6 +443,18 @@ private val SocialLoginProvider?.iconRes: Int?
             null -> null
         }
 
+/**
+ * Preview 용 권한 상태. 정상·제한·거부·미지원을 한 화면에 모아 색과 점 배지가 실제로 갈리는지 본다.
+ */
+private val PreviewDataSourceStatuses =
+    mapOf(
+        DataPermission.PHOTO to DataSourceStatus.LIMITED,
+        DataPermission.CALENDAR to DataSourceStatus.GRANTED,
+        DataPermission.LOCATION to DataSourceStatus.DENIED,
+        DataPermission.NOTIFICATION_LISTENER to DataSourceStatus.UNSUPPORTED,
+        DataPermission.APP_NOTIFICATION to DataSourceStatus.GRANTED,
+    )
+
 @Preview(name = "Settings Default", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun SettingsDefaultPreview() {
@@ -380,6 +463,8 @@ private fun SettingsDefaultPreview() {
             innerPadding = PaddingValues(),
             appVersionName = "1.0.0",
             state = SettingsUiState(accountProvider = SocialLoginProvider.GOOGLE),
+            statusOf = { PreviewDataSourceStatuses.getValue(it) },
+            onDataSourceClick = {},
             onIntent = {},
         )
     }
@@ -410,6 +495,8 @@ private fun SettingsDarkPreview() {
             innerPadding = PaddingValues(),
             appVersionName = "1.0.0",
             state = SettingsUiState(accountProvider = SocialLoginProvider.KAKAO),
+            statusOf = { PreviewDataSourceStatuses.getValue(it) },
+            onDataSourceClick = {},
             onIntent = {},
         )
     }
