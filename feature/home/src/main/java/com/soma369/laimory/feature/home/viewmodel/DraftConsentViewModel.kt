@@ -1,10 +1,12 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
+import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
-import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
+import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
@@ -37,15 +39,11 @@ class DraftConsentViewModel
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
-        submissionGate: DraftConsentSubmissionGate,
+        private val termsCoordinator: TermsAgreementCoordinator,
         mapRenderGate: LocationMapRenderGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
-            DraftConsentUiState(
-                isSubmissionAllowed = submissionGate.isSubmissionAllowed(),
-                isMapRenderAllowed = mapRenderGate.isMapRenderAllowed(),
-            ),
+            DraftConsentUiState(isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()),
         ) {
-        private val isSubmissionAllowed = submissionGate.isSubmissionAllowed()
         private val isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()
         private var activePreparation: DraftConsentPreparation? = null
 
@@ -63,9 +61,30 @@ class DraftConsentViewModel
                         preparation.attemptId != activePreparation?.attemptId -> {
                             activePreparation = preparation
                             updateState { initialUiState().copy(content = preparation.toConsentContent()) }
+                            loadTermRequirement()
                         }
                     }
                 }
+            }
+        }
+
+        /**
+         * 서버 이력으로 이 계정이 아직 받아야 할 동의를 가른다.
+         *
+         * 이미 동의한 것은 확인 대상에서 빼고 원문 열람만 남긴다 — 화면에서 해제해도 서버에
+         * 철회 API 가 없어 실제로 철회되지 않으므로, 되돌릴 수 없는 것을 되돌릴 수 있게 보이면 안 된다.
+         *
+         * 조회에 실패하면 요구를 세우지 않는다. 서버가 gate 를 들고 있어 실제로 미동의면 제출이
+         * 거절되고 그때 다시 판정한다 — 앱이 여기서 막아 봐야 더 정확해지지 않는다.
+         */
+        private suspend fun loadTermRequirement() {
+            val requirement = termsCoordinator.requirementOf(TermStage.TIMELINE_FIRST_CREATE).getOrNull()
+            updateState {
+                copy(
+                    pendingTerms = requirement?.pending.orEmpty(),
+                    agreedTerms = requirement?.items?.filter { it.isAgreed }?.map { it.document }.orEmpty(),
+                    checkedTerms = emptySet(),
+                )
             }
         }
 
@@ -76,8 +95,6 @@ class DraftConsentViewModel
                 DraftConsentUiIntent.ToggleLocationInclusion -> toggleLocationInclusion()
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
-                is DraftConsentUiIntent.OpenTermsDetail -> updateState { copy(openTermsDetail = intent.term) }
-                DraftConsentUiIntent.CloseTermsDetail -> updateState { copy(openTermsDetail = null) }
                 DraftConsentUiIntent.Submit -> submit()
                 DraftConsentUiIntent.NavigateBack -> navigateBack()
             }
@@ -88,7 +105,11 @@ class DraftConsentViewModel
             updateState {
                 copy(
                     checkedTerms =
-                        if (intent.term in checkedTerms) checkedTerms - intent.term else checkedTerms + intent.term,
+                        if (intent.termType in checkedTerms) {
+                            checkedTerms - intent.termType
+                        } else {
+                            checkedTerms + intent.termType
+                        },
                 )
             }
         }
@@ -143,6 +164,7 @@ class DraftConsentViewModel
             val submission = preparation.selection.excluding(state.value.excludedRawIds)
             updateState { copy(isSubmitting = true, submitError = null) }
             safeLaunch(onError = ::handleSubmitFailure) {
+                if (!recordAgreements()) return@safeLaunch
                 if (preparation.discardActiveTask) draftTaskCoordinator.discard()
                 val result =
                     createTimelineDraftUseCase(
@@ -165,6 +187,36 @@ class DraftConsentViewModel
                 navigationHelper.navigateToBack()
                 navigationHelper.navigateTo(DraftLoadingPage)
             }
+        }
+
+        /**
+         * 남은 필수 동의를 먼저 기록한다. 실패하면 초안 생성으로 넘어가지 않는다.
+         *
+         * 개정 경쟁이면 새 버전으로 자동 재시도하지 않는다 — 사용자가 읽지 않은 내용에 동의한
+         * 기록이 서버에 남는다. 다시 조회해 바뀐 문서를 싣고 확인 상태를 되돌린다.
+         *
+         * **성공한 동의는 초안 생성이 실패해도 되돌리지 않는다.** 같은 스냅샷으로 다시 제출할 때
+         * 이미 기록된 동의는 확인 대상에서 빠진다.
+         */
+        private suspend fun recordAgreements(): Boolean {
+            val pending = state.value.pendingTerms
+            if (pending.isEmpty()) return true
+
+            val error = termsCoordinator.agree(pending).exceptionOrNull()
+            if (error == null) {
+                // 기록된 동의를 화면에도 반영한다. 초안 생성이 실패해 다시 제출하더라도 이미
+                // 기록된 것을 또 확인하게 하지 않는다.
+                loadTermRequirement()
+                return true
+            }
+
+            if (error is StaleTermVersionException) {
+                loadTermRequirement()
+                updateState { copy(isSubmitting = false, submitError = REVISED_MESSAGE) }
+            } else {
+                updateState { copy(isSubmitting = false, submitError = AGREEMENT_FAILURE_MESSAGE) }
+            }
+            return false
         }
 
         private fun handleSubmitFailure(error: Throwable) {
@@ -194,9 +246,10 @@ class DraftConsentViewModel
             navigationHelper.navigateToBack()
         }
 
-        private fun initialUiState(): DraftConsentUiState =
-            DraftConsentUiState(
-                isSubmissionAllowed = isSubmissionAllowed,
-                isMapRenderAllowed = isMapRenderAllowed,
-            )
+        private fun initialUiState(): DraftConsentUiState = DraftConsentUiState(isMapRenderAllowed = isMapRenderAllowed)
+
+        private companion object {
+            const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."
+            const val AGREEMENT_FAILURE_MESSAGE = "동의를 기록하지 못했어요. 잠시 후 다시 시도해주세요."
+        }
     }
