@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.terms.TermStageRequirement
 import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
@@ -48,6 +49,15 @@ class DraftConsentViewModel
         private val isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()
         private var activePreparation: DraftConsentPreparation? = null
 
+        /**
+         * 단계별 요구를 따로 들고 있다가 화면 행을 만들 때 합친다.
+         *
+         * 위치약관은 **지금 보낼 항목에 위치가 실려 있을 때만** 필요하다. 사용자가 위치를 빼면
+         * 요구도 사라져야 하므로, 미리 한 줄로 굳혀 두지 않고 그때그때 계산한다.
+         */
+        private var stageRequirement: TermStageRequirement? = null
+        private var locationRequirement: TermStageRequirement? = null
+
         init {
             safeLaunch {
                 sessionStore.preparation.collect { preparation ->
@@ -79,14 +89,39 @@ class DraftConsentViewModel
          * 거절되고 그때 다시 판정한다 — 앱이 여기서 막아 봐야 더 정확해지지 않는다.
          */
         private suspend fun loadTermRequirement() {
-            val requirement = termsCoordinator.requirementOf(TermStage.TIMELINE_FIRST_CREATE).getOrNull()
+            stageRequirement = termsCoordinator.requirementOf(TermStage.TIMELINE_FIRST_CREATE).getOrNull()
+            locationRequirement = termsCoordinator.requirementOf(TermStage.TIMELINE_LOCATION).getOrNull()
+            applyTermRows(resetChecked = true)
+        }
+
+        /**
+         * 지금 보낼 항목을 기준으로 동의 행을 다시 만든다.
+         *
+         * 확인 상태는 지운다·남긴다를 나눈다 — 새 스냅샷이나 재조회면 처음부터 다시 받아야 하고,
+         * 포함 여부만 바꾼 경우라면 이미 확인한 것을 되돌릴 이유가 없다.
+         */
+        private fun applyTermRows(resetChecked: Boolean) {
+            val items =
+                buildList {
+                    stageRequirement?.items?.let(::addAll)
+                    if (submissionCarriesLocation()) locationRequirement?.items?.let(::addAll)
+                }
             updateState {
                 copy(
-                    pendingTerms = requirement?.pending.orEmpty(),
-                    agreedTerms = requirement?.items?.filter { it.isAgreed }?.map { it.document }.orEmpty(),
-                    checkedTerms = emptySet(),
+                    pendingTerms = items.filterNot { it.isAgreed }.map { it.document },
+                    agreedTerms = items.filter { it.isAgreed }.map { it.document },
+                    checkedTerms = if (resetChecked) emptySet() else checkedTerms,
                 )
             }
+        }
+
+        /** 제외를 반영한 실제 전송 목록에 위치정보가 남아 있는지. 서버 판정과 같은 기준이다. */
+        private fun submissionCarriesLocation(): Boolean {
+            val preparation = activePreparation ?: return false
+            return preparation.selection
+                .excluding(state.value.excludedRawIds)
+                .items
+                .any { it.carriesLocation }
         }
 
         override suspend fun handleIntent(intent: DraftConsentUiIntent) {
@@ -121,7 +156,7 @@ class DraftConsentViewModel
             val item = preparation.selection.items.firstOrNull { it.rawId == intent.itemKey } ?: return
             // 사진은 홈 사진 시트 선택이 정본이므로 여기서 제외할 수 없다.
             if (item.itemType == ItemType.PHOTO) return
-            updateState {
+            updateStateAndTermRows {
                 copy(
                     excludedRawIds =
                         if (intent.itemKey in excludedRawIds) {
@@ -144,12 +179,23 @@ class DraftConsentViewModel
             if (state.value.isSubmitting) return
             val locationRawIds = state.value.content?.locationRawIds.orEmpty()
             if (locationRawIds.isEmpty()) return
-            updateState {
+            updateStateAndTermRows {
                 copy(
                     excludedRawIds =
                         if (isLocationIncluded) excludedRawIds + locationRawIds else excludedRawIds - locationRawIds,
                 )
             }
+        }
+
+        /**
+         * 포함 여부를 바꾸고 동의 행을 다시 만든다.
+         *
+         * 위치를 빼면 위치약관 요구가 사라지고, 되돌리면 다시 생긴다. 확인 상태는 남긴다 — 이미
+         * 확인한 항목을 껐다 켰다는 이유로 다시 받을 일이 아니다.
+         */
+        private fun updateStateAndTermRows(reduce: DraftConsentUiState.() -> DraftConsentUiState) {
+            updateState(reduce)
+            applyTermRows(resetChecked = false)
         }
 
         private fun openTypeDetail(intent: DraftConsentUiIntent.OpenTypeDetail) {

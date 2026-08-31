@@ -631,6 +631,70 @@ class DraftConsentViewModelTest {
             assertFalse(viewModel.state.value.isSubmitting)
         }
 
+    @Test
+    fun `위치정보를 보내면 위치약관도 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버는 위치정보가 실제로 실려 나가는 요청에만 위치약관을 요구한다.
+            prepare(listOf(stayItem("stay")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(
+                viewModel.state.value.pendingTerms.any {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
+    @Test
+    fun `위치가 없으면 위치약관을 요구하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 위치를 한 번도 보내지 않을 사용자에게 동의를 받으면 과한 수집이다.
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(
+                viewModel.state.value.pendingTerms.none {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
+    @Test
+    fun `위치를 빼면 위치약관 요구도 사라진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal"), stayItem("stay")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isLocationIncluded)
+            assertTrue(
+                viewModel.state.value.pendingTerms.none {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
+    @Test
+    fun `좌표가 붙은 사진만 있어도 위치약관을 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버 판정 기준이 체류·이동뿐 아니라 좌표가 있는 사진까지다. 여기서 갈리면 앱은
+            // 동의를 안 받았는데 서버는 요구하는 상태가 된다.
+            prepare(listOf(geoPhotoItem(1)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(
+                viewModel.state.value.pendingTerms.any {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
     private fun createViewModel(): DraftConsentViewModel =
         DraftConsentViewModel(
             sessionStore = sessionStore,
@@ -723,6 +787,21 @@ class DraftConsentViewModelTest {
             endAt = null,
             timeZoneId = zone,
             payload = PhotoPayload("$id.jpg", "content://photo/$id", null, null, null),
+            sourceName = SourceName.MEDIA_STORE,
+            sourceKey = id.toString(),
+            collectedAt = instant,
+        )
+    }
+
+    /** 좌표가 붙은 사진. 서버는 이것도 위치정보로 본다. */
+    private fun geoPhotoItem(id: Long): SourceItem {
+        val instant = date.atTime(13, 0).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = "photo-$id",
+            startAt = instant,
+            endAt = null,
+            timeZoneId = zone,
+            payload = PhotoPayload("$id.jpg", "content://photo/$id", 37.5665, 126.9780, null),
             sourceName = SourceName.MEDIA_STORE,
             sourceKey = id.toString(),
             collectedAt = instant,

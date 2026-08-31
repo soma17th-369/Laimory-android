@@ -20,14 +20,14 @@ class TermsRepositoryImplTest {
     @Test
     fun `앱이 모르는 종류는 버리고 나머지를 옮긴다`() =
         runTest {
-            // 서버 catalog 에는 앱이 아직 다루지 않는 종류가 있고 앞으로 더 는다. 하나 때문에
-            // 응답 전체를 잃으면 아는 약관까지 못 보여 준다.
+            // 서버 catalog 에 앱보다 먼저 새 종류가 생길 수 있다. 하나 때문에 응답 전체를 잃으면
+            // 아는 약관까지 못 보여 준다.
             val remote =
                 FakeTermsRemoteDataSource(
                     terms =
                         listOf(
                             termResponse("TERMS_OF_SERVICE"),
-                            termResponse("LOCATION_BASED_SERVICE_TERMS"),
+                            termResponse("MARKETING_CONSENT"),
                         ),
                 )
 
