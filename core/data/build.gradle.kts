@@ -20,11 +20,23 @@ android {
         buildConfigField("String", "BASE_URL", "\"$debugBaseUrl\"")
         // 서버 API 계약의 {applicationVersion} — versionName 처럼 빌드 설정 단일 지점에서 관리한다.
         buildConfigField("String", "API_APP_VERSION", "\"v1\"")
+
+        // 게시된 약관 원문의 정본 위치. **열람 링크에만** 쓰는 임시 대체 경로다.
+        //
+        // 개발 서버 catalog 가 아직 비어 있어 debug 빌드에서는 약관 주소를 받을 수 없다. 원문은
+        // 환경과 무관한 하나의 공개 문서이므로, 이 환경이 빈 응답을 주면 게시된 쪽에서 주소만
+        // 가져온다. 동의 판정·등록은 절대 이 값을 쓰지 않는다 — 동의는 그 환경 DB 의 문서에
+        // 기록되므로 다른 환경의 버전을 보내면 전부 거절된다.
+        //
+        // 개발 catalog 에 seed 가 들어가면 이 필드를 지운다.
+        buildConfigField("String", "PUBLISHED_TERMS_BASE_URL", "\"$releaseBaseUrl\"")
     }
 
     buildTypes {
         release {
             buildConfigField("String", "BASE_URL", "\"$releaseBaseUrl\"")
+            // 운영은 정본과 같은 서버라 대체할 곳이 없다. 빈 값이면 대체 경로가 아예 돌지 않는다.
+            buildConfigField("String", "PUBLISHED_TERMS_BASE_URL", "\"\"")
         }
     }
 

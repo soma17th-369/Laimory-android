@@ -250,6 +250,9 @@ class DefaultTermsAgreementCoordinatorTest {
             return documents.filter { it.termType in types }
         }
 
+        // 판정은 이 환경 catalog 만 본다 — 다른 환경 버전으로 동의를 보내면 전부 거절된다.
+        override suspend fun getPublishedTerms(types: List<TermType>): List<TermDocument> = getCurrentTerms(types)
+
         override suspend fun getMyAgreements(): List<TermAgreement> {
             failure?.let { throw it }
             return recorded.toList()

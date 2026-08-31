@@ -20,7 +20,7 @@ class GetPublicTermLinksUseCase
     ) {
         suspend operator fun invoke(): TermLinks {
             val documents =
-                runCatching { repository.getCurrentTerms(REQUESTED) }
+                runCatching { repository.getPublishedTerms(REQUESTED) }
                     .getOrDefault(emptyList())
                     .associateBy { it.termType }
             return TermLinks(

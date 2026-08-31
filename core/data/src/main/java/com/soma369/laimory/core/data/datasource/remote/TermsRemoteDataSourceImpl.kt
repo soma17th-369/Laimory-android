@@ -18,6 +18,11 @@ class TermsRemoteDataSourceImpl
         override suspend fun getCurrentTerms(termTypes: List<String>): TermListResponse =
             safeApiCall { termsApi.getCurrentTerms(termTypes) }
 
+        override suspend fun getPublishedTerms(
+            url: String,
+            termTypes: List<String>,
+        ): TermListResponse = safeApiCall { termsApi.getPublishedTerms(url, termTypes) }
+
         override suspend fun getMyAgreements(): TermAgreementHistoryResponse = safeApiCall { agreementApi.getMyAgreements() }
 
         // 등록 성공은 공통 envelope 의 body 가 비어 있다.

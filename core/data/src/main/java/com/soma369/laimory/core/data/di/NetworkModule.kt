@@ -241,6 +241,10 @@ object NetworkModule {
         @SensitiveAuthRetrofit retrofit: Retrofit,
     ): PushRegistrationApi = retrofit.create(PushRegistrationApi::class.java)
 
+    @Provides
+    @PublishedTermsBaseUrl
+    fun providePublishedTermsBaseUrl(): String = BuildConfig.PUBLISHED_TERMS_BASE_URL
+
     /** 약관 공개 조회는 인증이 필요 없다 — 로그인 전 화면도 같은 경로로 원문 주소를 얻는다. */
     @Provides
     @Singleton

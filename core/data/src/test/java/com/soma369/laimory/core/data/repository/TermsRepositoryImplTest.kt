@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
@@ -55,6 +56,43 @@ class TermsRepositoryImplTest {
             )
 
             assertEquals(listOf("TERMS_OF_SERVICE"), remote.requestedTypes)
+        }
+
+    @Test
+    fun `이 환경 catalog 가 비면 게시된 정본에서 주소를 가져온다`() =
+        runTest {
+            // 원문은 환경과 무관한 하나의 공개 문서다. 처리방침은 어느 빌드에서든 볼 수 있어야 한다.
+            val remote = FakeTermsRemoteDataSource(terms = emptyList(), published = listOf(termResponse("PRIVACY_POLICY")))
+
+            val documents =
+                TermsRepositoryImpl(remote, publishedBaseUrl = "https://laimory.app/")
+                    .getPublishedTerms(listOf(TermType.PRIVACY_POLICY))
+
+            assertEquals(listOf(TermType.PRIVACY_POLICY), documents.map { it.termType })
+            assertTrue(remote.publishedUrl.orEmpty().endsWith("/api/v1/terms"))
+        }
+
+    @Test
+    fun `이 환경에 문서가 있으면 정본을 다시 묻지 않는다`() =
+        runTest {
+            val remote = FakeTermsRemoteDataSource(terms = listOf(termResponse("PRIVACY_POLICY")))
+
+            TermsRepositoryImpl(remote, publishedBaseUrl = "https://laimory.app/")
+                .getPublishedTerms(listOf(TermType.PRIVACY_POLICY))
+
+            assertNull(remote.publishedUrl)
+        }
+
+    @Test
+    fun `대체 위치가 없으면 대체 조회를 하지 않는다`() =
+        runTest {
+            // 운영 빌드는 정본과 같은 서버라 대체할 곳이 없다.
+            val remote = FakeTermsRemoteDataSource(terms = emptyList(), published = listOf(termResponse("PRIVACY_POLICY")))
+
+            val documents = TermsRepositoryImpl(remote).getPublishedTerms(listOf(TermType.PRIVACY_POLICY))
+
+            assertTrue(documents.isEmpty())
+            assertNull(remote.publishedUrl)
         }
 
     @Test
@@ -109,12 +147,23 @@ class TermsRepositoryImplTest {
         private val terms: List<TermResponse> = emptyList(),
         private val agreements: List<TermAgreementResponse> = emptyList(),
         private val agreeFailure: Throwable? = null,
+        private val published: List<TermResponse> = emptyList(),
     ) : TermsRemoteDataSource {
         var requestedTypes: List<String> = emptyList()
 
         override suspend fun getCurrentTerms(termTypes: List<String>): TermListResponse {
             requestedTypes = termTypes
             return TermListResponse(terms)
+        }
+
+        var publishedUrl: String? = null
+
+        override suspend fun getPublishedTerms(
+            url: String,
+            termTypes: List<String>,
+        ): TermListResponse {
+            publishedUrl = url
+            return TermListResponse(published)
         }
 
         override suspend fun getMyAgreements() = TermAgreementHistoryResponse(agreements)

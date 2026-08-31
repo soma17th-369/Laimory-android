@@ -161,6 +161,8 @@ class LoginViewModelTest {
     private object EmptyTermsRepository : TermsRepository {
         override suspend fun getCurrentTerms(types: List<TermType>) = emptyList<TermDocument>()
 
+        override suspend fun getPublishedTerms(types: List<TermType>) = getCurrentTerms(types)
+
         override suspend fun getMyAgreements() = emptyList<TermAgreement>()
 
         override suspend fun agree(documents: List<TermDocument>) = Unit

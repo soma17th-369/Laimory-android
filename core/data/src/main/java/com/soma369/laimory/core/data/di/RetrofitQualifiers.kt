@@ -47,3 +47,13 @@ annotation class SensitiveAuthenticatedClient
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class S3Client
+
+/**
+ * 게시된 약관 원문의 정본 위치. **열람 링크 전용 임시 값**이다.
+ *
+ * 빈 문자열이면 대체 조회 자체가 돌지 않는다(운영 빌드). 개발 catalog 에 seed 가 들어가면
+ * 이 한정자와 빌드 필드를 함께 지운다.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class PublishedTermsBaseUrl

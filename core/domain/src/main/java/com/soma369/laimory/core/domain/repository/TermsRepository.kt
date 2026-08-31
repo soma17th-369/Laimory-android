@@ -13,6 +13,15 @@ interface TermsRepository {
      */
     suspend fun getCurrentTerms(types: List<TermType>): List<TermDocument>
 
+    /**
+     * **열람 링크 전용** 조회. 동의 판정에 쓰지 않는다.
+     *
+     * 이 환경 catalog 가 비어 있으면 게시된 정본에서 주소만 가져온다 — 원문은 환경과 무관한
+     * 하나의 공개 문서이고, 처리방침은 어느 빌드에서든 볼 수 있어야 한다. 판정·등록이 이 길을
+     * 쓰면 다른 환경의 버전으로 동의를 보내게 되어 전부 거절된다.
+     */
+    suspend fun getPublishedTerms(types: List<TermType>): List<TermDocument>
+
     /** 이 계정의 동의 이력 전부. 없으면 빈 목록이다. */
     suspend fun getMyAgreements(): List<TermAgreement>
 

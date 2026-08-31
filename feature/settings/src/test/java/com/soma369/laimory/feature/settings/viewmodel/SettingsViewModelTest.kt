@@ -456,6 +456,8 @@ class SettingsViewModelTest {
             return emptyList()
         }
 
+        override suspend fun getPublishedTerms(types: List<TermType>) = getCurrentTerms(types)
+
         override suspend fun getMyAgreements() = emptyList<TermAgreement>()
 
         override suspend fun agree(documents: List<TermDocument>) = Unit
