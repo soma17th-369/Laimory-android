@@ -38,12 +38,20 @@ class DataPermissionStatusTest {
     }
 
     @Test
-    fun `이미 허용된 소스도 설정으로 보내 끄거나 좁힐 수 있게 한다`() {
-        // 설정 화면에 들어오는 이유의 절반은 끄려는 것이다. 막다른 길로 두지 않는다.
+    fun `허용된 소스는 앱 설정에서 변경하게 한다`() {
+        // 앱에서 바로 회수하면 프로세스가 종료되므로, 끄기와 범위 변경을 모두 시스템 설정에 맡긴다.
         val subject = state(granted = setOf(DataPermission.PHOTO))
 
         assertEquals(DataSourceStatus.GRANTED, subject.statusOf(DataPermission.PHOTO))
         assertEquals(DataPermissionAction.APP_SETTINGS, subject.actionFor(DataPermission.PHOTO))
+    }
+
+    @Test
+    fun `허용된 알림 읽기는 회수 대상이 아니라 접근 설정으로 보낸다`() {
+        // 런타임 권한이 아니라 특수 접근이라 앱이 회수할 수 없다.
+        val subject = state(granted = setOf(DataPermission.NOTIFICATION_LISTENER))
+
+        assertEquals(DataPermissionAction.LISTENER_SETTINGS, subject.actionFor(DataPermission.NOTIFICATION_LISTENER))
     }
 
     @Test

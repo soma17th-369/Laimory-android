@@ -114,17 +114,20 @@ class DataPermissionState(
      * 지금 누를 수 있는 행동 하나. 버튼 문구를 고르는 근거이며 실행은 [act] 가 맡는다.
      *
      * 이미 허용된 소스도 막다른 길로 두지 않는다 — 사용자가 설정 화면에 들어오는 이유의 절반은
-     * **끄거나 좁히려는 것**이다. 앱은 권한을 회수할 수 없으므로 시스템 설정으로 보낸다.
+     * **끄거나 좁히려는 것**이다. 앱에서 바로 회수하면 프로세스가 종료되므로 시스템 설정에서
+     * 안전하게 바꾸도록 보낸다.
      */
     fun actionFor(permission: DataPermission): DataPermissionAction =
         when (statusOf(permission)) {
             // 열 방법이 없는 기기에서만 아무것도 주지 않는다.
             DataSourceStatus.UNSUPPORTED -> DataPermissionAction.NONE
             DataSourceStatus.GRANTED ->
-                if (permission == DataPermission.HEALTH) {
-                    DataPermissionAction.HEALTH_SETTINGS
-                } else {
-                    DataPermissionAction.APP_SETTINGS
+                when {
+                    // 헬스는 런타임 권한이 아니라 Health Connect 가 관리한다.
+                    permission == DataPermission.HEALTH -> DataPermissionAction.HEALTH_SETTINGS
+                    // 알림 읽기는 특수 접근이라 전용 설정으로 보낸다.
+                    permission == DataPermission.NOTIFICATION_LISTENER -> DataPermissionAction.LISTENER_SETTINGS
+                    else -> DataPermissionAction.APP_SETTINGS
                 }
             DataSourceStatus.LIMITED ->
                 when (permission) {

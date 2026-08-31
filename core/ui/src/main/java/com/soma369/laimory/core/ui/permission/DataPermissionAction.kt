@@ -6,7 +6,7 @@ package com.soma369.laimory.core.ui.permission
  * 시트에 버튼을 하나만 두기 위한 값이다. 소스마다 갈 수 있는 곳이 달라서 — 런타임 다이얼로그,
  * 앱 상세 설정, 알림 접근 설정 — 화면이 그 차이를 알면 소스가 늘 때마다 화면을 고쳐야 한다.
  *
- * 실제 실행은 [DataPermissionState.request] 하나로 통일한다. 여기서는 **버튼 문구를 고르는
+ * 실제 실행은 [DataPermissionState.act] 하나로 통일한다. 여기서는 **버튼 문구를 고르는
  * 근거**만 준다.
  */
 enum class DataPermissionAction {

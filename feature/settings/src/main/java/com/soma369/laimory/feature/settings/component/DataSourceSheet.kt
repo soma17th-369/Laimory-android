@@ -3,9 +3,11 @@ package com.soma369.laimory.feature.settings.component
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -13,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.component.sheet.LaimorySheetDragHandle
@@ -46,64 +49,87 @@ internal fun DataSourceSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
         shape = LaimoryShapes.extraLarge,
         dragHandle = { LaimorySheetDragHandle() },
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(bottom = Spacing.extraLarge2),
-            verticalArrangement = Arrangement.spacedBy(Spacing.medium),
-        ) {
-            LaimorySheetHeader(title = source.label, onClose = onDismiss)
-            Column(
-                modifier = Modifier.padding(horizontal = Spacing.extraLarge),
-                verticalArrangement = Arrangement.spacedBy(Spacing.small),
-            ) {
+        DataSourceSheetContent(
+            source = source,
+            status = status,
+            action = action,
+            onAction = onAction,
+            onDismiss = onDismiss,
+            modifier = Modifier.navigationBarsPadding(),
+        )
+    }
+}
+
+@Composable
+private fun DataSourceSheetContent(
+    source: DataSourceUiModel,
+    status: DataSourceStatus,
+    action: DataPermissionAction,
+    onAction: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 공용 시트와 같은 16dp 좌우 여백과 24dp 섹션 간격을 한 부모에서 적용한다. 헤더와
+    // 버튼에 서로 다른 패딩을 주면 제목은 모서리에 붙고 본문·버튼의 시작선도 어긋난다.
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.large)
+                .padding(bottom = Spacing.extraLarge2),
+        verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2),
+    ) {
+        LaimorySheetHeader(title = source.label, onClose = onDismiss)
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
+            Text(
+                text = source.statusLabel(status),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = source.purpose,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // 켤 방법이 없는 기기에는 안내만 남긴다. 누를 수 없는 버튼을 두면 무엇이 잘못됐는지
+            // 알 수 없고, 없는 화면을 찾아 헤매게 된다.
+            if (status == DataSourceStatus.UNSUPPORTED) {
                 Text(
-                    text = source.statusLabel(status),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = source.purpose,
+                    text = "이 기기에는 해당 설정 화면이 없어 켤 수 없어요.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                // 켤 방법이 없는 기기에는 안내만 남긴다. 누를 수 없는 버튼을 두면 무엇이 잘못됐는지
-                // 알 수 없고, 없는 화면을 찾아 헤매게 된다.
-                if (status == DataSourceStatus.UNSUPPORTED) {
-                    Text(
-                        text = "이 기기에는 해당 설정 화면이 없어 켤 수 없어요.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                // 두 번 거부하면 Android 가 요청을 삼킨다. 왜 다이얼로그가 안 뜨는지 알려 주지
-                // 않으면 사용자는 버튼이 고장난 줄 안다.
-                if (status == DataSourceStatus.DENIED && action == DataPermissionAction.APP_SETTINGS) {
-                    Text(
-                        text = "이 권한은 더 이상 앱에서 물어볼 수 없어요. 설정에서 직접 켜 주세요.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
-            action.buttonLabel(status)?.let { label ->
-                Button(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = Spacing.extraLarge)
-                            .padding(top = Spacing.extraSmall),
-                    onClick = onAction,
-                ) {
-                    Text(text = label, modifier = Modifier.padding(vertical = 6.dp))
-                }
+            // 두 번 거부하면 Android 가 요청을 삼킨다. 왜 다이얼로그가 안 뜨는지 알려 주지
+            // 않으면 사용자는 버튼이 고장난 줄 안다.
+            if (status == DataSourceStatus.DENIED && action == DataPermissionAction.APP_SETTINGS) {
+                Text(
+                    text = "이 권한은 더 이상 앱에서 물어볼 수 없어요. 설정에서 직접 켜 주세요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        action.buttonLabel(status)?.let { label ->
+            Button(
+                modifier = Modifier.fillMaxWidth().height(ActionButtonHeight),
+                onClick = onAction,
+                shape = LaimoryShapes.large,
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                )
             }
         }
     }
@@ -121,6 +147,18 @@ private fun DataSourceSheetLimitedPreview() {
     }
 }
 
+@Preview(name = "DataSourceSheet / 허용됨", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 420)
+@Composable
+private fun DataSourceSheetGrantedPreview() {
+    LaimoryTheme {
+        DataSourceSheetPreviewBody(
+            source = DataSourceUiModel.PHOTO,
+            status = DataSourceStatus.GRANTED,
+            action = DataPermissionAction.APP_SETTINGS,
+        )
+    }
+}
+
 @Preview(name = "DataSourceSheet / 미지원", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 420)
 @Composable
 private fun DataSourceSheetUnsupportedPreview() {
@@ -133,40 +171,21 @@ private fun DataSourceSheetUnsupportedPreview() {
     }
 }
 
-/** ModalBottomSheet 는 Preview 에서 뜨지 않으므로 내용만 같은 배치로 그린다. */
+/** ModalBottomSheet 는 Preview 에서 뜨지 않으므로 실제 시트 내용을 그대로 그린다. */
 @Composable
 private fun DataSourceSheetPreviewBody(
     source: DataSourceUiModel,
     status: DataSourceStatus,
     action: DataPermissionAction,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.extraLarge),
-        verticalArrangement = Arrangement.spacedBy(Spacing.medium),
-    ) {
-        LaimorySheetHeader(title = source.label, onClose = {})
-        Column(
-            modifier = Modifier.padding(horizontal = Spacing.extraLarge),
-            verticalArrangement = Arrangement.spacedBy(Spacing.small),
-        ) {
-            Text(
-                text = source.statusLabel(status),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = source.purpose,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        action.buttonLabel(status)?.let { label ->
-            Button(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.extraLarge),
-                onClick = {},
-            ) {
-                Text(text = label, modifier = Modifier.padding(vertical = 6.dp))
-            }
-        }
-    }
+    DataSourceSheetContent(
+        source = source,
+        status = status,
+        action = action,
+        onAction = {},
+        onDismiss = {},
+        modifier = Modifier.padding(top = Spacing.extraLarge),
+    )
 }
+
+private val ActionButtonHeight = 52.dp
