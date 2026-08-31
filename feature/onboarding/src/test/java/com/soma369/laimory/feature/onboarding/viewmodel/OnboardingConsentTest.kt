@@ -175,6 +175,35 @@ class OnboardingConsentTest {
             assertTrue(coordinator.agreed.isEmpty())
         }
 
+    @Test
+    fun `장을 넘기면 복원 인덱스도 따라 올라간다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 시작 시점 값으로 굳혀 두면 원문을 보러 나갔다 오는 사이 컴포지션이 다시 만들어질 때
+            // Pager 가 그 오래된 자리에서 새로 만들어져 첫 장으로 돌아간다.
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.PageChanged(3))
+            runCurrent()
+
+            assertEquals(3, viewModel.state.value.initialPageIndex)
+        }
+
+    @Test
+    fun `항목을 직접 켜고 끌 수 있다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(TermType.SENSITIVE_INFORMATION_CONSENT))
+            runCurrent()
+            assertEquals(setOf(TermType.SENSITIVE_INFORMATION_CONSENT), viewModel.state.value.checkedConsents)
+
+            viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(TermType.SENSITIVE_INFORMATION_CONSENT))
+            runCurrent()
+            assertTrue(viewModel.state.value.checkedConsents.isEmpty())
+        }
+
     private fun createViewModel(
         coordinator: TermsAgreementCoordinator,
         displayTerms: TermsRepository = EmptyTermsRepository,

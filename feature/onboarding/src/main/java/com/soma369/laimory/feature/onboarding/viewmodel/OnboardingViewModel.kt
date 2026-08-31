@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
@@ -100,10 +101,23 @@ class OnboardingViewModel
 
         override suspend fun handleIntent(intent: OnboardingUiIntent) {
             when (intent) {
-                is OnboardingUiIntent.PageChanged -> saveProgress(intent.pageIndex)
+                is OnboardingUiIntent.PageChanged -> onPageChanged(intent.pageIndex)
+                is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
                 OnboardingUiIntent.Complete -> complete()
                 OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
             }
+        }
+
+        /**
+         * 장을 넘길 때마다 복원 인덱스를 함께 올린다.
+         *
+         * 앱 시작 시점 값으로 굳혀 두면, 원문을 보러 나갔다 오는 사이에 컴포지션이 다시 만들어질 때
+         * Pager 가 그 오래된 자리에서 새로 만들어져 첫 장으로 돌아간다. 저장은 다음 실행을 위한
+         * 것이고, 이 값은 지금 화면을 위한 것이다.
+         */
+        private fun onPageChanged(pageIndex: Int) {
+            updateState { copy(initialPageIndex = pageIndex) }
+            saveProgress(pageIndex)
         }
 
         /** 진행 기록 실패는 알리지 않는다 — 다음에 첫 장부터 볼 뿐 지금 흐름을 막을 이유가 없다. */
@@ -121,6 +135,14 @@ class OnboardingViewModel
          */
         private fun enableLocationTracking() {
             safeLaunch(onError = { }) { setLocationTrackingUseCase(true) }
+        }
+
+        /** 항목을 직접 켜고 끌 수도 있다. 버튼은 남은 것을 마저 채우는 지름길이다. */
+        private fun toggleConsent(termType: TermType) {
+            updateState {
+                val next = if (termType in checkedConsents) checkedConsents - termType else checkedConsents + termType
+                copy(checkedConsents = next, consentErrorMessage = null)
+            }
         }
 
         /**

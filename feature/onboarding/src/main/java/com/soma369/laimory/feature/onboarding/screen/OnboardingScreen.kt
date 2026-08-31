@@ -125,6 +125,7 @@ private fun OnboardingContent(
                 else -> goNext()
             }
         },
+        onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
         onSkipClick = goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
@@ -142,6 +143,7 @@ private fun OnboardingScreen(
     isPageGranted: (OnboardingPageSpec) -> Boolean,
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
+    onConsentToggle: (TermType) -> Unit,
     onOpenTerm: (TermDocument) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -174,6 +176,7 @@ private fun OnboardingScreen(
                                     checked = state.checkedConsents,
                                     isEnabled = !state.isConsentSubmitting,
                                     errorMessage = state.consentErrorMessage,
+                                    onToggle = onConsentToggle,
                                     onOpenTerm = onOpenTerm,
                                 )
                             }
@@ -304,6 +307,7 @@ private fun OnboardingScreenPreview(
             isPageGranted = { false },
             onPrimaryClick = {},
             onSkipClick = {},
+            onConsentToggle = {},
             onOpenTerm = {},
             onBack = {},
         )

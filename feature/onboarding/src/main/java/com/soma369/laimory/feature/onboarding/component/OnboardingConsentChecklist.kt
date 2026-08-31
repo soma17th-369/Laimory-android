@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,6 +14,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
@@ -23,9 +25,8 @@ import com.soma369.laimory.core.ui.theme.Spacing
 /**
  * 동의 장의 필수 항목 목록.
  *
- * 항목마다 체크를 받지 않는다. 무엇에 동의하는지 보여 주는 자리이고, 동의 행위는
- * `모두 동의하고 시작하기` 버튼이 맡는다 — 결과가 분명한 버튼 쪽이 의사가 또렷하다.
- * **기본값은 해제이고**, 체크는 그 버튼을 누른 결과로만 차오른다.
+ * 항목을 하나씩 켜고 끌 수 있고, `모두 동의하고 시작하기` 는 남은 것을 한꺼번에 채운다 —
+ * 어느 쪽이든 결과가 분명하다. **기본값은 해제다.**
  *
  * 항목 이름은 서버가 준 제목을 그대로 쓰고, 원문은 게시된 주소를 연다. 앱이 문구를 따로 들고
  * 있으면 실제 동의한 내용과 화면이 갈린다.
@@ -36,6 +37,7 @@ internal fun OnboardingConsentChecklist(
     checked: Set<TermType>,
     isEnabled: Boolean,
     errorMessage: String?,
+    onToggle: (TermType) -> Unit,
     onOpenTerm: (TermDocument) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -48,6 +50,7 @@ internal fun OnboardingConsentChecklist(
                 document = document,
                 isChecked = document.termType in checked,
                 isEnabled = isEnabled,
+                onToggle = { onToggle(document.termType) },
                 onOpenTerm = { onOpenTerm(document) },
             )
         }
@@ -67,14 +70,24 @@ private fun ConsentRow(
     document: TermDocument,
     isChecked: Boolean,
     isEnabled: Boolean,
+    onToggle: () -> Unit,
     onOpenTerm: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.extraSmall),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                // 글자까지 터치 영역에 넣는다. 체크박스만 누르게 하면 눌러야 할 곳이 너무 작다.
+                .toggleable(
+                    value = isChecked,
+                    enabled = isEnabled,
+                    role = Role.Checkbox,
+                    onValueChange = { onToggle() },
+                ).padding(vertical = Spacing.extraSmall),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
-        // 표시 전용이다. 누를 수 있게 두면 버튼이 다시 채우는 값을 사용자가 되돌리는 꼴이 된다.
+        // 행 전체가 토글이라 체크박스는 그림만 맡는다. 둘 다 누르면 두 번 뒤집힌다.
         Checkbox(checked = isChecked, onCheckedChange = null, enabled = isEnabled)
         Text(
             modifier = Modifier.weight(1f),
@@ -82,7 +95,8 @@ private fun ConsentRow(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        // 원문 열기만 누를 수 있다.
+        // 원문 열기는 별도 버튼이다. 행 전체가 토글이라 여기서 클릭을 잡아 주지 않으면
+        // 읽으려다 동의가 켜진다.
         TextButton(
             onClick = onOpenTerm,
             enabled = isEnabled,
