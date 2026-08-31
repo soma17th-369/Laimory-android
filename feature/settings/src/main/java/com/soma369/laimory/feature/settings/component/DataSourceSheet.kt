@@ -22,6 +22,7 @@ import com.soma369.laimory.core.ui.component.sheet.LaimorySheetDragHandle
 import com.soma369.laimory.core.ui.component.sheet.LaimorySheetHeader
 import com.soma369.laimory.core.ui.permission.DataPermissionAction
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.theme.LaimoryShapes
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -43,6 +44,7 @@ import com.soma369.laimory.feature.settings.model.buttonLabel
 internal fun DataSourceSheet(
     source: DataSourceUiModel,
     status: DataSourceStatus,
+    locationStep: LocationPermissionStep,
     action: DataPermissionAction,
     onAction: () -> Unit,
     onDismiss: () -> Unit,
@@ -57,6 +59,7 @@ internal fun DataSourceSheet(
         DataSourceSheetContent(
             source = source,
             status = status,
+            locationStep = locationStep,
             action = action,
             onAction = onAction,
             onDismiss = onDismiss,
@@ -69,6 +72,7 @@ internal fun DataSourceSheet(
 private fun DataSourceSheetContent(
     source: DataSourceUiModel,
     status: DataSourceStatus,
+    locationStep: LocationPermissionStep,
     action: DataPermissionAction,
     onAction: () -> Unit,
     onDismiss: () -> Unit,
@@ -87,7 +91,7 @@ private fun DataSourceSheetContent(
         LaimorySheetHeader(title = source.label, onClose = onDismiss)
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
             Text(
-                text = source.statusLabel(status),
+                text = source.statusLabel(status, locationStep),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -159,6 +163,19 @@ private fun DataSourceSheetGrantedPreview() {
     }
 }
 
+@Preview(name = "DataSourceSheet / 신체 활동만 남음", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 420)
+@Composable
+private fun DataSourceSheetActivityPreview() {
+    LaimoryTheme {
+        DataSourceSheetPreviewBody(
+            source = DataSourceUiModel.LOCATION,
+            status = DataSourceStatus.LIMITED,
+            action = DataPermissionAction.REQUEST,
+            locationStep = LocationPermissionStep.ACTIVITY,
+        )
+    }
+}
+
 @Preview(name = "DataSourceSheet / 미지원", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 420)
 @Composable
 private fun DataSourceSheetUnsupportedPreview() {
@@ -177,10 +194,12 @@ private fun DataSourceSheetPreviewBody(
     source: DataSourceUiModel,
     status: DataSourceStatus,
     action: DataPermissionAction,
+    locationStep: LocationPermissionStep = LocationPermissionStep.GRANTED,
 ) {
     DataSourceSheetContent(
         source = source,
         status = status,
+        locationStep = locationStep,
         action = action,
         onAction = {},
         onDismiss = {},

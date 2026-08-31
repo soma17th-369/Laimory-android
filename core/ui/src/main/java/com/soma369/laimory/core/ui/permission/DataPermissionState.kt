@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -130,15 +131,15 @@ class DataPermissionState(
                     else -> DataPermissionAction.APP_SETTINGS
                 }
             DataSourceStatus.LIMITED ->
-                when (permission) {
-                    DataPermission.PHOTO -> DataPermissionAction.RESELECT_PHOTOS
-                    DataPermission.LOCATION ->
-                        if (locationStep == LocationPermissionStep.BACKGROUND && needsSettingsForBackgroundLocation) {
-                            DataPermissionAction.APP_SETTINGS
-                        } else {
-                            DataPermissionAction.REQUEST
-                        }
-
+                when {
+                    // 다시 고르는 것 자체가 넓히는 길이라, 시스템이 매번 선택 화면을 띄운다.
+                    permission == DataPermission.PHOTO -> DataPermissionAction.RESELECT_PHOTOS
+                    permission == DataPermission.LOCATION &&
+                        locationStep == LocationPermissionStep.BACKGROUND &&
+                        needsSettingsForBackgroundLocation -> DataPermissionAction.APP_SETTINGS
+                    // 남은 한 단계를 두 번 거부한 경우다. 위치는 `일부 허용` 도 LIMITED 라
+                    // DENIED 분기에 닿지 않으므로, 막힌 판정을 여기서도 똑같이 봐야 한다.
+                    permission in blocked -> DataPermissionAction.APP_SETTINGS
                     else -> DataPermissionAction.REQUEST
                 }
 
@@ -260,7 +261,7 @@ fun rememberDataPermissionState(): DataPermissionState {
     val isPhotoLimited = remember(refreshKey, context) { PhotoPermission.isLimited(context) }
     val hasListenerSettings = remember(refreshKey, context) { NotificationListenerAccess.hasSettings(context) }
 
-    return remember(granted, locationStep, isPhotoLimited, hasListenerSettings, blocked) {
+    return remember(granted, locationStep, isPhotoLimited, hasListenerSettings, isHealthAvailable, blocked) {
         DataPermissionState(
             granted = granted,
             locationStep = locationStep,
@@ -273,7 +274,9 @@ fun rememberDataPermissionState(): DataPermissionState {
                 // 헬스 권한은 앱 설정에 나오지 않는다. Health Connect 앱이 자기 권한 화면을 갖는다.
                 val intent =
                     if (permission == DataPermission.HEALTH) {
-                        Intent(HEALTH_CONNECT_SETTINGS_ACTION)
+                        // 액션 문자열을 직접 쓰지 않는다 — Android 14+ 는 플랫폼 액션으로 이름이
+                        // 바뀌었고, 라이브러리 상수만 SDK 에 맞는 쪽을 골라 준다.
+                        Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
                     } else {
                         appDetailsSettingsIntent(context)
                     }
@@ -304,10 +307,16 @@ fun rememberDataPermissionState(): DataPermissionState {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                                 settingsLauncher.launch(appDetailsSettingsIntent(context))
                             } else {
+                                // 다이얼로그를 띄우는 길에는 반드시 pending 을 남긴다 — 남기지
+                                // 않으면 막혔다는 사실을 결과 콜백이 어디에도 기록하지 못한다.
+                                pending = permission
                                 runtimeLauncher.launch(arrayOf(LocationPermission.background()))
                             }
 
-                        LocationPermissionStep.ACTIVITY -> runtimeLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
+                        LocationPermissionStep.ACTIVITY -> {
+                            pending = permission
+                            runtimeLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
+                        }
                         LocationPermissionStep.GRANTED -> Unit
                     }
                 DataPermission.APP_NOTIFICATION -> {
@@ -331,9 +340,6 @@ fun rememberDataPermissionState(): DataPermissionState {
         }
     }
 }
-
-/** Health Connect 권한 화면. 기기에 그 앱이 없으면 열리지 않으므로 호출부가 실패를 삼킨다. */
-private const val HEALTH_CONNECT_SETTINGS_ACTION = "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
 
 /** 앱 상세 설정. 백그라운드 위치는 Android 11+ 에서 여기서만 켤 수 있다. */
 private fun appDetailsSettingsIntent(context: Context): Intent =

@@ -51,6 +51,7 @@ import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.LocalLaimoryColors
@@ -108,6 +109,7 @@ private fun SettingsContent(
         appVersionName = appVersionName,
         state = state,
         statusOf = permissionState::statusOf,
+        locationStep = permissionState.locationStep,
         onDataSourceClick = { sheetSource = it },
         onIntent = onIntent,
     )
@@ -116,6 +118,7 @@ private fun SettingsContent(
         DataSourceSheet(
             source = source,
             status = permissionState.statusOf(source.permission),
+            locationStep = permissionState.locationStep,
             action = permissionState.actionFor(source.permission),
             onAction = { permissionState.act(source.permission) },
             onDismiss = { sheetSource = null },
@@ -130,6 +133,8 @@ private fun SettingsScreen(
     appVersionName: String,
     state: SettingsUiState,
     statusOf: (DataPermission) -> DataSourceStatus,
+    /** 위치만 단계가 있어 상태 문구가 하나 더 필요하다. */
+    locationStep: LocationPermissionStep,
     onDataSourceClick: (DataSourceUiModel) -> Unit,
     onIntent: (SettingsUiIntent) -> Unit,
 ) {
@@ -175,7 +180,7 @@ private fun SettingsScreen(
                                 SettingsItem(
                                     iconRes = source.iconRes,
                                     title = source.label,
-                                    trailingText = source.statusLabel(status),
+                                    trailingText = source.statusLabel(status, locationStep),
                                     // 열린 줄은 브랜드색, 손볼 줄은 본문색 + 점으로 가른다. 브랜드색은
                                     // 텍스트용 진한 값을 쓴다 — colorScheme.primary 는 배경 대비가
                                     // 2.59:1 이라 이 크기 글씨로는 읽히지 않는다.
@@ -470,6 +475,7 @@ private fun SettingsDefaultPreview() {
             appVersionName = "1.0.0",
             state = SettingsUiState(accountProvider = SocialLoginProvider.GOOGLE),
             statusOf = { PreviewDataSourceStatuses.getValue(it) },
+            locationStep = LocationPermissionStep.GRANTED,
             onDataSourceClick = {},
             onIntent = {},
         )
@@ -502,6 +508,7 @@ private fun SettingsDarkPreview() {
             appVersionName = "1.0.0",
             state = SettingsUiState(accountProvider = SocialLoginProvider.KAKAO),
             statusOf = { PreviewDataSourceStatuses.getValue(it) },
+            locationStep = LocationPermissionStep.GRANTED,
             onDataSourceClick = {},
             onIntent = {},
         )

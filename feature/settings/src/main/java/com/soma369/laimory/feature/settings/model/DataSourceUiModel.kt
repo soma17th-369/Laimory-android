@@ -5,6 +5,7 @@ import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataPermissionAction
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.permission.HealthDataSource
+import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.R as CoreUiR
 
 /**
@@ -57,8 +58,15 @@ enum class DataSourceUiModel(
      *
      * 소스마다 말이 다르다 — 위치의 `앱 사용 중에만` 을 사진과 같은 `일부 허용` 으로 뭉치면
      * 사용자가 무엇을 더 열어야 하는지 알 수 없다.
+     *
+     * 위치는 [status] 만으로 부족하다. `전경만` 과 `신체 활동만 남음` 이 같은
+     * [DataSourceStatus.LIMITED] 라, 단계를 함께 받지 않으면 항상 허용해 둔 사용자에게
+     * `앱 사용 중에만` 이라는 반대말이 뜬다.
      */
-    fun statusLabel(status: DataSourceStatus): String =
+    fun statusLabel(
+        status: DataSourceStatus,
+        locationStep: LocationPermissionStep,
+    ): String =
         when (this) {
             PHOTO ->
                 when (status) {
@@ -68,9 +76,12 @@ enum class DataSourceUiModel(
                 }
 
             LOCATION ->
-                when (status) {
-                    DataSourceStatus.GRANTED -> "항상 허용됨"
-                    DataSourceStatus.LIMITED -> "앱 사용 중에만"
+                when {
+                    status == DataSourceStatus.GRANTED -> "항상 허용됨"
+                    // 위치는 이미 항상 허용이고 이동 수단을 읽을 권한만 없다. 시스템 다이얼로그가
+                    // 쓰는 이름을 그대로 써야 사용자가 무엇을 켜는지 알아본다.
+                    locationStep == LocationPermissionStep.ACTIVITY -> "신체 활동 필요"
+                    status == DataSourceStatus.LIMITED -> "앱 사용 중에만"
                     else -> "허용 안 됨"
                 }
 
