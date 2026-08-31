@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.MessageHelper
@@ -610,6 +611,24 @@ class DraftConsentViewModelTest {
             val state = viewModel.state.value
             assertEquals(listOf(TermType.SENSITIVE_INFORMATION_CONSENT), state.agreedTerms.map { it.termType })
             assertEquals(2, state.pendingTerms.size)
+        }
+
+    @Test
+    fun `서버가 동의를 다시 요구하면 확인 항목을 되살리고 준비는 지키다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 다른 기기에서 개정본이 적용된 경우다. 같은 스냅샷으로 다시 제출할 수 있어야 한다.
+            draftRepository.createFailure = ApiException.UnauthorizedException(errorCode = -3001, rawCode = 403)
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertNotNull(sessionStore.preparation.value)
+            assertNotNull(viewModel.state.value.submitError)
+            assertFalse(viewModel.state.value.isSubmitting)
         }
 
     private fun createViewModel(): DraftConsentViewModel =

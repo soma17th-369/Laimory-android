@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
@@ -220,6 +221,14 @@ class DraftConsentViewModel
         }
 
         private fun handleSubmitFailure(error: Throwable) {
+            // 서버가 이 단계 동의를 다시 요구한다 — 다른 기기에서 개정본이 적용됐거나 판정이
+            // 어긋난 경우다. 서버 이력을 다시 읽어 확인 항목을 되살린다. 같은 스냅샷으로 다시
+            // 제출할 수 있으므로 준비는 폐기하지 않는다.
+            if (error is ApiException && error.errorCode == TERMS_AGREEMENT_REQUIRED) {
+                safeLaunch(onError = { }) { loadTermRequirement() }
+                updateState { copy(isSubmitting = false, submitError = AGREEMENT_REQUIRED_MESSAGE) }
+                return
+            }
             // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 스냅샷 재시도로는 복구되지
             // 않으므로 준비를 폐기하고 홈의 사진 재선택 흐름으로 복귀시킨다.
             if (error is DraftPhotoAccessException) {
@@ -249,7 +258,11 @@ class DraftConsentViewModel
         private fun initialUiState(): DraftConsentUiState = DraftConsentUiState(isMapRenderAllowed = isMapRenderAllowed)
 
         private companion object {
+            /** 서버가 이 단계 동의를 요구할 때 주는 코드. */
+            const val TERMS_AGREEMENT_REQUIRED = -3001
+
             const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."
             const val AGREEMENT_FAILURE_MESSAGE = "동의를 기록하지 못했어요. 잠시 후 다시 시도해주세요."
+            const val AGREEMENT_REQUIRED_MESSAGE = "동의가 다시 필요해요. 아래 항목을 확인해주세요."
         }
     }
