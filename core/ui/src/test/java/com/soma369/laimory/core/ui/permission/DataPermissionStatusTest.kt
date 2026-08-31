@@ -36,11 +36,20 @@ class DataPermissionStatusTest {
     }
 
     @Test
-    fun `사진을 전부 허용하면 더 누를 것이 없다`() {
+    fun `이미 허용된 소스도 설정으로 보내 끄거나 좁힐 수 있게 한다`() {
+        // 설정 화면에 들어오는 이유의 절반은 끄려는 것이다. 막다른 길로 두지 않는다.
         val subject = state(granted = setOf(DataPermission.PHOTO))
 
         assertEquals(DataSourceStatus.GRANTED, subject.statusOf(DataPermission.PHOTO))
-        assertEquals(DataPermissionAction.NONE, subject.actionFor(DataPermission.PHOTO))
+        assertEquals(DataPermissionAction.APP_SETTINGS, subject.actionFor(DataPermission.PHOTO))
+    }
+
+    @Test
+    fun `허용된 헬스는 앱 설정이 아니라 Health Connect 로 보낸다`() {
+        // 헬스 권한은 앱 상세 설정에 나오지 않는다.
+        val subject = state(granted = setOf(DataPermission.HEALTH))
+
+        assertEquals(DataPermissionAction.HEALTH_SETTINGS, subject.actionFor(DataPermission.HEALTH))
     }
 
     @Test

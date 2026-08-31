@@ -14,6 +14,13 @@ import androidx.compose.ui.graphics.Color
  */
 @Immutable
 data class LaimoryColors(
+    /**
+     * 본문에 쓰는 브랜드색.
+     *
+     * `colorScheme.primary`(Primary400)는 배경 대비가 2.59:1 이라 버튼 면색으로는 되어도
+     * 작은 글씨로 쓰면 읽히지 않는다. 텍스트용으로 한 단계 진한 값을 따로 둔다.
+     */
+    val primaryText: Color,
     val success: Color,
     val onSuccess: Color,
     val successContainer: Color,
@@ -45,6 +52,7 @@ data class LaimoryColors(
 
 internal val LightExtendedColors =
     LaimoryColors(
+        primaryText = Primary600,
         success = Success600,
         onSuccess = Neutral0,
         successContainer = Success100,
@@ -76,6 +84,7 @@ internal val LightExtendedColors =
 
 internal val DarkExtendedColors =
     LaimoryColors(
+        primaryText = Primary300,
         success = Success400,
         onSuccess = Success800,
         successContainer = Success800,

@@ -53,6 +53,7 @@ import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
+import com.soma369.laimory.core.ui.theme.LocalLaimoryColors
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.component.DataSourceSheet
 import com.soma369.laimory.feature.settings.model.DataSourceUiModel
@@ -116,7 +117,7 @@ private fun SettingsContent(
             source = source,
             status = permissionState.statusOf(source.permission),
             action = permissionState.actionFor(source.permission),
-            onAction = { permissionState.request(source.permission) },
+            onAction = { permissionState.act(source.permission) },
             onDismiss = { sheetSource = null },
         )
     }
@@ -165,7 +166,7 @@ private fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             AccountSummaryCard(provider = state.accountProvider, nickname = state.nickname)
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.large)) {
                 SettingsSection(title = "데이터 소스") {
                     SettingsGroup(
                         items =
@@ -175,12 +176,14 @@ private fun SettingsScreen(
                                     iconRes = source.iconRes,
                                     title = source.label,
                                     trailingText = source.statusLabel(status),
-                                    // 손봐야 하는 줄만 본문색으로 올린다. 다 열린 줄은 보조색으로 둔다.
+                                    // 열린 줄은 브랜드색, 손볼 줄은 본문색 + 점으로 가른다. 브랜드색은
+                                    // 텍스트용 진한 값을 쓴다 — colorScheme.primary 는 배경 대비가
+                                    // 2.59:1 이라 이 크기 글씨로는 읽히지 않는다.
                                     trailingColor =
                                         if (status.needsAttention) {
                                             MaterialTheme.colorScheme.onSurface
                                         } else {
-                                            Color.Unspecified
+                                            LocalLaimoryColors.current.primaryText
                                         },
                                     // 색만으로 구분하지 않는다 — 색을 구별하지 못해도 점으로 알아볼 수 있어야 한다.
                                     showTrailingDot = status.needsAttention,
@@ -307,6 +310,8 @@ private fun SettingsSection(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall)) {
         Text(
+            // 시안에서 제목만 카드보다 12dp 더 들어간다. 카드 안 아이콘 열과 눈으로 맞물린다.
+            modifier = Modifier.padding(start = Spacing.medium),
             text = title,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

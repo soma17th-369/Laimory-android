@@ -51,6 +51,8 @@ class DataPermissionState(
     private val needsSettingsForBackgroundLocation: Boolean,
     /** Health Connect 를 쓸 수 있는 기기인지. 미설치·업데이트 필요면 요청 자체가 성립하지 않는다. */
     private val isHealthAvailable: Boolean = false,
+    /** 앱이 켜고 끌 수 없는 것을 사용자가 직접 바꾸러 가는 창구. */
+    private val onOpenSettings: (DataPermission) -> Unit = {},
     private val onRequest: (DataPermission) -> Unit,
 ) {
     fun isGranted(permission: DataPermission?): Boolean = permission != null && permission in granted
@@ -100,10 +102,22 @@ class DataPermissionState(
                 if (isGranted(permission)) DataSourceStatus.GRANTED else DataSourceStatus.DENIED
         }
 
-    /** 지금 누를 수 있는 행동 하나. 버튼 문구를 고르는 근거이며 실행은 [request] 가 맡는다. */
+    /**
+     * 지금 누를 수 있는 행동 하나. 버튼 문구를 고르는 근거이며 실행은 [act] 가 맡는다.
+     *
+     * 이미 허용된 소스도 막다른 길로 두지 않는다 — 사용자가 설정 화면에 들어오는 이유의 절반은
+     * **끄거나 좁히려는 것**이다. 앱은 권한을 회수할 수 없으므로 시스템 설정으로 보낸다.
+     */
     fun actionFor(permission: DataPermission): DataPermissionAction =
         when (statusOf(permission)) {
-            DataSourceStatus.GRANTED, DataSourceStatus.UNSUPPORTED -> DataPermissionAction.NONE
+            // 열 방법이 없는 기기에서만 아무것도 주지 않는다.
+            DataSourceStatus.UNSUPPORTED -> DataPermissionAction.NONE
+            DataSourceStatus.GRANTED ->
+                if (permission == DataPermission.HEALTH) {
+                    DataPermissionAction.HEALTH_SETTINGS
+                } else {
+                    DataPermissionAction.APP_SETTINGS
+                }
             DataSourceStatus.LIMITED ->
                 when (permission) {
                     DataPermission.PHOTO -> DataPermissionAction.RESELECT_PHOTOS
@@ -126,6 +140,20 @@ class DataPermissionState(
         }
 
     fun request(permission: DataPermission) = onRequest(permission)
+
+    /**
+     * 지금 상태에 맞는 행동을 실행한다.
+     *
+     * 화면이 [actionFor] 로 분기해 직접 호출부를 고르면, 새 상태가 생길 때마다 화면도 같이
+     * 고쳐야 한다. 어느 창구로 갈지는 여기서 정한다.
+     */
+    fun act(permission: DataPermission) {
+        when (actionFor(permission)) {
+            DataPermissionAction.NONE -> Unit
+            DataPermissionAction.APP_SETTINGS, DataPermissionAction.HEALTH_SETTINGS -> onOpenSettings(permission)
+            else -> onRequest(permission)
+        }
+    }
 }
 
 /**
@@ -213,6 +241,17 @@ fun rememberDataPermissionState(): DataPermissionState {
             hasListenerSettings = hasListenerSettings,
             needsSettingsForBackgroundLocation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
             isHealthAvailable = isHealthAvailable,
+            onOpenSettings = { permission ->
+                // 헬스 권한은 앱 설정에 나오지 않는다. Health Connect 앱이 자기 권한 화면을 갖는다.
+                val intent =
+                    if (permission == DataPermission.HEALTH) {
+                        Intent(HEALTH_CONNECT_SETTINGS_ACTION)
+                    } else {
+                        appDetailsSettingsIntent(context)
+                    }
+                runCatching { settingsLauncher.launch(intent) }
+                    .onFailure { if (it !is ActivityNotFoundException) throw it }
+            },
         ) { permission ->
             when (permission) {
                 DataPermission.PHOTO -> runtimeLauncher.launch(PhotoPermission.required())
@@ -254,6 +293,9 @@ fun rememberDataPermissionState(): DataPermissionState {
         }
     }
 }
+
+/** Health Connect 권한 화면. 기기에 그 앱이 없으면 열리지 않으므로 호출부가 실패를 삼킨다. */
+private const val HEALTH_CONNECT_SETTINGS_ACTION = "androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"
 
 /** 앱 상세 설정. 백그라운드 위치는 Android 11+ 에서 여기서만 켤 수 있다. */
 private fun appDetailsSettingsIntent(context: Context): Intent =

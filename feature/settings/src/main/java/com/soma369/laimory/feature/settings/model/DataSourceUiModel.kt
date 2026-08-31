@@ -23,31 +23,31 @@ enum class DataSourceUiModel(
     PHOTO(
         permission = DataPermission.PHOTO,
         label = "사진",
-        iconRes = CoreUiR.drawable.ico_collection_photo,
+        iconRes = CoreUiR.drawable.ico_setting_datasource_photo,
         purpose = "촬영 시각과 위치로 그날의 순간을 타임라인에 놓아요. 기기에 저장된 사진을 읽기만 합니다.",
     ),
     CALENDAR(
         permission = DataPermission.CALENDAR,
         label = "캘린더",
-        iconRes = CoreUiR.drawable.ico_collection_calendar,
+        iconRes = CoreUiR.drawable.ico_setting_datasource_calendar,
         purpose = "쓰던 캘린더의 일정을 읽어 하루의 계획과 만남을 복원해요.",
     ),
     LOCATION(
         permission = DataPermission.LOCATION,
         label = "위치",
-        iconRes = CoreUiR.drawable.ico_collection_location,
+        iconRes = CoreUiR.drawable.ico_setting_datasource_location,
         purpose = "오간 길과 머문 장소로 하루의 뼈대를 만들어요. 배경에서도 기록하려면 항상 허용이 필요합니다.",
     ),
     NOTIFICATION(
         permission = DataPermission.NOTIFICATION_LISTENER,
         label = "알림",
-        iconRes = CoreUiR.drawable.ico_collection_notification,
+        iconRes = CoreUiR.drawable.ico_setting_datasource_notification,
         purpose = "결제·배송·예약처럼 생활 이벤트가 담긴 알림만 골라 후보로 씁니다. 대화 알림은 읽지 않아요.",
     ),
     HEALTH(
         permission = DataPermission.HEALTH,
         label = "헬스",
-        iconRes = CoreUiR.drawable.ico_collection_health,
+        iconRes = CoreUiR.drawable.ico_setting_datasource_health,
         purpose = "걸음수와 수면으로 하루의 활동과 휴식을 채워요. Health Connect 를 거쳐 읽습니다.",
     ),
     ;
@@ -113,12 +113,19 @@ enum class DataSourceUiModel(
 val DataSourceStatus.needsAttention: Boolean
     get() = this == DataSourceStatus.LIMITED || this == DataSourceStatus.DENIED
 
-/** 시트 기본 버튼 문구. 누를 것이 없으면 null 이다. */
-fun DataPermissionAction.buttonLabel(): String? =
+/**
+ * 시트 기본 버튼 문구. 누를 것이 없으면 null 이다.
+ *
+ * 같은 `앱 설정 열기` 라도 이미 허용된 소스에서는 **끄러 가는 길**이라 문구를 나눈다.
+ */
+fun DataPermissionAction.buttonLabel(status: DataSourceStatus): String? =
     when (this) {
         DataPermissionAction.REQUEST -> "허용하기"
         DataPermissionAction.RESELECT_PHOTOS -> "사진 다시 선택"
-        DataPermissionAction.APP_SETTINGS -> "앱 설정 열기"
+        DataPermissionAction.APP_SETTINGS ->
+            if (status == DataSourceStatus.GRANTED) "설정에서 변경" else "앱 설정 열기"
+
+        DataPermissionAction.HEALTH_SETTINGS -> "Health Connect 에서 변경"
         DataPermissionAction.LISTENER_SETTINGS -> "알림 접근 설정 열기"
         DataPermissionAction.NONE -> null
     }

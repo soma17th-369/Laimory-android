@@ -84,7 +84,7 @@ internal fun DataSourceSheet(
                     )
                 }
             }
-            action.buttonLabel()?.let { label ->
+            action.buttonLabel(status)?.let { label ->
                 Button(
                     modifier =
                         Modifier
@@ -151,7 +151,7 @@ private fun DataSourceSheetPreviewBody(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        action.buttonLabel()?.let { label ->
+        action.buttonLabel(status)?.let { label ->
             Button(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.extraLarge),
                 onClick = {},

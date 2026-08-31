@@ -22,6 +22,9 @@ enum class DataPermissionAction {
     /** 알림 접근 설정으로 보낸다. 이 권한은 다이얼로그가 없다. */
     LISTENER_SETTINGS,
 
-    /** 할 수 있는 것이 없다. 이미 다 받았거나 기기가 지원하지 않는다. */
+    /** Health Connect 의 권한 화면으로 보낸다. 헬스 권한은 앱 설정에 나오지 않는다. */
+    HEALTH_SETTINGS,
+
+    /** 할 수 있는 것이 없다. 기기가 지원하지 않아 열 방법 자체가 없다. */
     NONE,
 }
