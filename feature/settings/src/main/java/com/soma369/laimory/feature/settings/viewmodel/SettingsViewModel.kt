@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
@@ -38,6 +39,7 @@ class SettingsViewModel
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
         private val globalLoadingHelper: GlobalLoadingHelper,
+        private val getPublicTermLinks: GetPublicTermLinksUseCase,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
@@ -57,6 +59,11 @@ class SettingsViewModel
                 }
             }
             observeUserProfile()
+            // 정보 항목이 여는 주소는 서버 catalog 가 정한다. 실패하면 그 항목만 눌리지 않는다.
+            viewModelScope.launch {
+                val links = getPublicTermLinks()
+                updateState { copy(termLinks = links) }
+            }
         }
 
         /**

@@ -34,7 +34,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -45,6 +44,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.domain.model.terms.TermDocument
+import com.soma369.laimory.core.domain.model.terms.TermLinks
+import com.soma369.laimory.core.ui.terms.appendTermLink
+import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
@@ -113,10 +116,13 @@ private fun LoginContent(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val termContentLauncher = rememberTermContentLauncher()
+
     LoginScreen(
         innerPadding = innerPadding,
         state = state,
         onProviderClick = { provider -> onIntent(LoginUiIntent.ProviderClicked(provider)) },
+        onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
     )
 }
 
@@ -125,6 +131,7 @@ private fun LoginScreen(
     innerPadding: PaddingValues,
     state: LoginUiState,
     onProviderClick: (SocialLoginProvider) -> Unit,
+    onOpenTerm: (TermDocument) -> Unit,
 ) {
     Box(
         modifier =
@@ -145,7 +152,7 @@ private fun LoginScreen(
         ) {
             LoginHeader()
             LoginActions(state = state, onProviderClick = onProviderClick)
-            LegalNotice()
+            LegalNotice(links = state.termLinks, onOpenTerm = onOpenTerm)
         }
     }
 }
@@ -312,26 +319,28 @@ private fun SocialLoginButton(
     }
 }
 
+/**
+ * 약관 열람 안내.
+ *
+ * `동의하는 것으로 간주합니다` 라고 쓰지 않는다 — 이용약관 동의는 로그인 뒤 결과가 분명한
+ * 버튼으로 따로 받는다. 여기서 동의를 선언해 버리면 그 동의가 능동적 의사 확인이 아니게 되고,
+ * 실제 기록 시점과도 어긋난다. 이 자리는 **가입 전에 읽어 볼 길**만 연다.
+ */
 @Composable
-private fun LegalNotice() {
-    val linkStyle =
-        SpanStyle(
-            color = MaterialTheme.colorScheme.onSurface,
-            textDecoration = TextDecoration.Underline,
-        )
+private fun LegalNotice(
+    links: TermLinks,
+    onOpenTerm: (TermDocument) -> Unit,
+) {
+    val linkStyle = SpanStyle(color = MaterialTheme.colorScheme.onSurface)
     Text(
         modifier = Modifier.fillMaxWidth(),
         text =
             buildAnnotatedString {
-                append("로그인 시 라이모리의 ")
-                pushStyle(linkStyle)
-                append("이용약관")
-                pop()
-                append(" 및 ")
-                pushStyle(linkStyle)
-                append("개인정보 처리방침")
-                pop()
-                append("에\n동의하는 것으로 간주합니다.")
+                append("시작하기 전에 ")
+                appendTermLink("이용약관", links.termsOfService, linkStyle, onOpenTerm)
+                append("과 ")
+                appendTermLink("개인정보 처리방침", links.privacyPolicy, linkStyle, onOpenTerm)
+                append("을\n확인하실 수 있어요.")
             },
         style = MaterialTheme.typography.bodySmall.copy(fontSize = LegalFontSize, lineHeight = LegalLineHeight),
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SUBTLE_TEXT_ALPHA),
@@ -365,7 +374,7 @@ private const val SUBTLE_TEXT_ALPHA = 0.6f
 private fun LoginLightPreview() {
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
-            LoginScreen(PaddingValues(), LoginUiState(), {})
+            LoginScreen(PaddingValues(), LoginUiState(), {}, {})
         }
     }
 }
@@ -383,6 +392,7 @@ private fun LoginProgressLightPreview() {
                         activeProvider = SocialLoginProvider.GOOGLE,
                     ),
                 onProviderClick = {},
+                onOpenTerm = {},
             )
         }
     }
@@ -397,6 +407,7 @@ private fun LoginFailureLightPreview() {
                 innerPadding = PaddingValues(),
                 state = LoginUiState(errorMessage = "소셜 로그인을 완료하지 못했습니다. 다시 시도해 주세요."),
                 onProviderClick = {},
+                onOpenTerm = {},
             )
         }
     }
@@ -407,7 +418,7 @@ private fun LoginFailureLightPreview() {
 private fun LoginCompactPreview() {
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
-            LoginScreen(PaddingValues(), LoginUiState(), {})
+            LoginScreen(PaddingValues(), LoginUiState(), {}, {})
         }
     }
 }
@@ -421,6 +432,7 @@ private fun LoginLargeFontPreview() {
                 innerPadding = PaddingValues(),
                 state = LoginUiState(errorMessage = "소셜 로그인을 완료하지 못했습니다. 다시 시도해 주세요."),
                 onProviderClick = {},
+                onOpenTerm = {},
             )
         }
     }
@@ -431,7 +443,7 @@ private fun LoginLargeFontPreview() {
 private fun LoginDarkPreview() {
     LaimoryTheme(darkTheme = true) {
         Surface(color = MaterialTheme.colorScheme.background) {
-            LoginScreen(PaddingValues(), LoginUiState(), {})
+            LoginScreen(PaddingValues(), LoginUiState(), {}, {})
         }
     }
 }
@@ -449,6 +461,7 @@ private fun LoginProgressDarkPreview() {
                         activeProvider = SocialLoginProvider.KAKAO,
                     ),
                 onProviderClick = {},
+                onOpenTerm = {},
             )
         }
     }
@@ -463,6 +476,7 @@ private fun LoginFailureDarkPreview() {
                 innerPadding = PaddingValues(),
                 state = LoginUiState(errorMessage = "소셜 로그인을 완료하지 못했습니다. 다시 시도해 주세요."),
                 onProviderClick = {},
+                onOpenTerm = {},
             )
         }
     }

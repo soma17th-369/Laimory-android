@@ -48,11 +48,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
+import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.LocalLaimoryColors
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -102,6 +104,7 @@ private fun SettingsContent(
     // 권한 상태는 저장하지 않고 화면이 뜰 때마다 Android 에 묻는다. 시스템 설정에 다녀오면
     // ON_RESUME 재조회가 목록 문구를 바로 따라오게 한다.
     val permissionState = rememberDataPermissionState()
+    val termContentLauncher = rememberTermContentLauncher()
     var sheetSource by remember { mutableStateOf<DataSourceUiModel?>(null) }
 
     SettingsScreen(
@@ -111,6 +114,7 @@ private fun SettingsContent(
         statusOf = permissionState::statusOf,
         locationStep = permissionState.locationStep,
         onDataSourceClick = { sheetSource = it },
+        onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
         onIntent = onIntent,
     )
 
@@ -136,6 +140,7 @@ private fun SettingsScreen(
     /** 위치만 단계가 있어 상태 문구가 하나 더 필요하다. */
     locationStep: LocationPermissionStep,
     onDataSourceClick: (DataSourceUiModel) -> Unit,
+    onOpenTerm: (TermDocument) -> Unit,
     onIntent: (SettingsUiIntent) -> Unit,
 ) {
     Column(
@@ -202,13 +207,19 @@ private fun SettingsScreen(
                     SettingsGroup(
                         items =
                             listOf(
-                                SettingsItem(
+                                // 게시된 원문은 서버 catalog 가 주소를 정한다. 아직 못 받았으면
+                                // 누를 수 없는 줄로 두는 편이 낫다 — 눌러도 안 열리는 줄은 고장이다.
+                                termItem(
                                     iconRes = CoreUiR.drawable.ico_setting_keyhole,
                                     title = "개인정보 처리방침",
+                                    document = state.termLinks.privacyPolicy,
+                                    onOpenTerm = onOpenTerm,
                                 ),
-                                SettingsItem(
+                                termItem(
                                     iconRes = CoreUiR.drawable.ico_setting_note,
                                     title = "서비스 이용약관",
+                                    document = state.termLinks.termsOfService,
+                                    onOpenTerm = onOpenTerm,
                                 ),
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_info,
@@ -429,6 +440,24 @@ private data class SettingsItem(
     val onClick: (() -> Unit)? = null,
 )
 
+/**
+ * 약관 원문으로 가는 줄.
+ *
+ * 주소를 아직 못 받았으면 잠근다 — 눌러도 아무 데도 가지 않는 줄은 사용자에게 고장으로 보인다.
+ */
+private fun termItem(
+    @DrawableRes iconRes: Int,
+    title: String,
+    document: TermDocument?,
+    onOpenTerm: (TermDocument) -> Unit,
+) = SettingsItem(
+    iconRes = iconRes,
+    title = title,
+    isEnabled = document != null,
+    showChevron = document != null,
+    onClick = document?.let { { onOpenTerm(it) } },
+)
+
 private val SocialLoginProvider?.accountTitle: String
     get() =
         when (this) {
@@ -476,6 +505,7 @@ private fun SettingsDefaultPreview() {
             state = SettingsUiState(accountProvider = SocialLoginProvider.GOOGLE),
             statusOf = { PreviewDataSourceStatuses.getValue(it) },
             locationStep = LocationPermissionStep.GRANTED,
+            onOpenTerm = {},
             onDataSourceClick = {},
             onIntent = {},
         )
@@ -509,6 +539,7 @@ private fun SettingsDarkPreview() {
             state = SettingsUiState(accountProvider = SocialLoginProvider.KAKAO),
             statusOf = { PreviewDataSourceStatuses.getValue(it) },
             locationStep = LocationPermissionStep.GRANTED,
+            onOpenTerm = {},
             onDataSourceClick = {},
             onIntent = {},
         )

@@ -7,14 +7,19 @@ import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginAttempt
 import com.soma369.laimory.core.domain.model.auth.SocialLoginCallback
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.domain.model.terms.TermAgreement
+import com.soma369.laimory.core.domain.model.terms.TermDocument
+import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
+import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.usecase.auth.CancelSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.CompleteSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.IssueAuthTokensUseCase
 import com.soma369.laimory.core.domain.usecase.auth.StartSocialLoginUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.feature.login.state.LoginPhase
 import com.soma369.laimory.feature.login.state.LoginUiIntent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -149,7 +154,17 @@ class LoginViewModelTest {
             cancelSocialLogin = CancelSocialLoginUseCase(socialRepository),
             callbackHandler = callbackHandler,
             navigationHelper = navigationHelper,
+            getPublicTermLinks = GetPublicTermLinksUseCase(EmptyTermsRepository),
         )
+
+    /** 약관 주소는 로그인 흐름과 무관한 곁가지라 조회가 비어도 화면 동작이 달라지지 않는다. */
+    private object EmptyTermsRepository : TermsRepository {
+        override suspend fun getCurrentTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getMyAgreements() = emptyList<TermAgreement>()
+
+        override suspend fun agree(documents: List<TermDocument>) = Unit
+    }
 
     private class FakeSocialLoginRepository : SocialLoginRepository {
         var startCount = 0
