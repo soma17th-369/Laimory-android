@@ -1,7 +1,10 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
+import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
@@ -12,8 +15,14 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
+import com.soma369.laimory.core.domain.model.terms.TermAgreement
+import com.soma369.laimory.core.domain.model.terms.TermDocument
+import com.soma369.laimory.core.domain.model.terms.TermRequirement
+import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.terms.TermStageRequirement
+import com.soma369.laimory.core.domain.model.terms.TermType
+import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
-import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
@@ -23,11 +32,12 @@ import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
-import com.soma369.laimory.feature.home.state.DraftConsentTerm
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import kotlinx.coroutines.CompletableDeferred
@@ -45,6 +55,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -60,6 +71,7 @@ class DraftConsentViewModelTest {
     private val draftRepository = FakeTimelineDraftRepository()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
+    private val termsCoordinator = FakeTermsAgreementCoordinator()
 
     @Test
     fun `새 스냅샷이 들어오면 내용을 구성하고 체크 상태를 초기화한다`() =
@@ -69,9 +81,9 @@ class DraftConsentViewModelTest {
             prepare(listOf(calendarItem("cal")))
             runCurrent()
 
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(DraftConsentTerm.SENSITIVE_INFO))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(TermType.SENSITIVE_INFORMATION_CONSENT))
             runCurrent()
-            assertEquals(setOf(DraftConsentTerm.SENSITIVE_INFO), viewModel.state.value.checkedTerms)
+            assertEquals(setOf(TermType.SENSITIVE_INFORMATION_CONSENT), viewModel.state.value.checkedTerms)
 
             // 뒤로가기 후 재진입 = 같은 데이터라도 새 attemptId → 새 생성 시도로 초기화
             prepare(listOf(calendarItem("cal")))
@@ -100,8 +112,8 @@ class DraftConsentViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(DraftConsentTerm.SENSITIVE_INFO))
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(DraftConsentTerm.THIRD_PARTY_PROVISION))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(TermType.SENSITIVE_INFORMATION_CONSENT))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(TermType.THIRD_PARTY_PROVISION_CONSENT))
             viewModel.sendIntent(DraftConsentUiIntent.Submit)
             runCurrent()
 
@@ -143,7 +155,7 @@ class DraftConsentViewModelTest {
             viewModel.sendIntent(DraftConsentUiIntent.Submit)
             runCurrent()
             viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(DraftConsentTerm.SENSITIVE_INFO))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(TermType.SENSITIVE_INFORMATION_CONSENT))
             runCurrent()
 
             assertEquals(1, draftRepository.createCount)
@@ -486,30 +498,12 @@ class DraftConsentViewModelTest {
         }
 
     @Test
-    fun `제출 가드가 닫혀 있으면 모든 동의에도 제출하지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal")))
-            val viewModel = createViewModel(submissionAllowed = false)
-            runCurrent()
-
-            checkAllTerms(viewModel)
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertTrue(viewModel.state.value.isAllTermsChecked)
-            assertFalse(viewModel.state.value.canSubmit)
-            assertEquals(0, draftRepository.uploadCount)
-            assertEquals(0, draftRepository.createCount)
-            assertFalse(viewModel.state.value.isSubmitting)
-        }
-
-    @Test
     fun `준비 상태가 폐기되면 표시 모델과 체크 상태를 즉시 비운다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(calendarItem("cal"), photoItem(7L)))
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(DraftConsentTerm.SENSITIVE_INFO))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(TermType.SENSITIVE_INFORMATION_CONSENT))
             runCurrent()
             assertNotNull(viewModel.state.value.content)
 
@@ -556,7 +550,155 @@ class DraftConsentViewModelTest {
             assertNotNull(sessionStore.preparation.value)
         }
 
-    private fun createViewModel(submissionAllowed: Boolean = true): DraftConsentViewModel =
+    @Test
+    fun `동의를 먼저 기록하고 나서 초안을 만든다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertEquals(1, termsCoordinator.agreeCount)
+            assertEquals(1, draftRepository.createCount)
+        }
+
+    @Test
+    fun `동의 기록이 실패하면 초안을 만들지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버가 gate 를 들고 있어 어차피 거절당한다. 먼저 실패한 자리에서 멈추는 편이
+            // 사용자에게 무엇이 안 됐는지 정확하다.
+            termsCoordinator.agreeFailure = IllegalStateException("offline")
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertEquals(0, draftRepository.createCount)
+            assertFalse(viewModel.state.value.isSubmitting)
+            assertNotNull(viewModel.state.value.submitError)
+        }
+
+    @Test
+    fun `개정 경쟁이면 확인 상태를 되돌리고 다시 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 새 버전으로 자동 재시도하면 사용자가 읽지 않은 내용에 동의한 기록이 남는다.
+            termsCoordinator.agreeFailure = StaleTermVersionException()
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.checkedTerms.isEmpty())
+            assertEquals(3, viewModel.state.value.pendingTerms.size)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `이미 동의한 항목은 확인 대상에서 빠지고 열람만 남는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 화면에서 해제해도 서버에 철회 API 가 없어 실제로는 아무것도 되돌아가지 않는다.
+            termsCoordinator.markAgreed(TermType.SENSITIVE_INFORMATION_CONSENT)
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(listOf(TermType.SENSITIVE_INFORMATION_CONSENT), state.agreedTerms.map { it.termType })
+            assertEquals(2, state.pendingTerms.size)
+        }
+
+    @Test
+    fun `서버가 동의를 다시 요구하면 확인 항목을 되살리고 준비는 지키다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 다른 기기에서 개정본이 적용된 경우다. 같은 스냅샷으로 다시 제출할 수 있어야 한다.
+            draftRepository.createFailure = ApiException.UnauthorizedException(errorCode = -3001, rawCode = 403)
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            checkAllTerms(viewModel)
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertNotNull(sessionStore.preparation.value)
+            assertNotNull(viewModel.state.value.submitError)
+            assertFalse(viewModel.state.value.isSubmitting)
+        }
+
+    @Test
+    fun `위치정보를 보내면 위치약관도 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버는 위치정보가 실제로 실려 나가는 요청에만 위치약관을 요구한다.
+            prepare(listOf(stayItem("stay")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(
+                viewModel.state.value.pendingTerms.any {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
+    @Test
+    fun `위치가 없으면 위치약관을 요구하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 위치를 한 번도 보내지 않을 사용자에게 동의를 받으면 과한 수집이다.
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(
+                viewModel.state.value.pendingTerms.none {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
+    @Test
+    fun `위치를 빼면 위치약관 요구도 사라진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(calendarItem("cal"), stayItem("stay")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isLocationIncluded)
+            assertTrue(
+                viewModel.state.value.pendingTerms.none {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
+    @Test
+    fun `좌표가 붙은 사진만 있어도 위치약관을 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버 판정 기준이 체류·이동뿐 아니라 좌표가 있는 사진까지다. 여기서 갈리면 앱은
+            // 동의를 안 받았는데 서버는 요구하는 상태가 된다.
+            prepare(listOf(geoPhotoItem(1)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(
+                viewModel.state.value.pendingTerms.any {
+                    it.termType == TermType.LOCATION_BASED_SERVICE_TERMS
+                },
+            )
+        }
+
+    private fun createViewModel(): DraftConsentViewModel =
         DraftConsentViewModel(
             sessionStore = sessionStore,
             loadingSessionStore = loadingSessionStore,
@@ -567,13 +709,14 @@ class DraftConsentViewModelTest {
                 ),
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
-            submissionGate = DraftConsentSubmissionGate { submissionAllowed },
+            termsCoordinator = termsCoordinator,
+            getDisplayTerms = GetDisplayTermsUseCase(EmptyTermsRepository),
             mapRenderGate = LocationMapRenderGate { false },
         )
 
     private fun checkAllTerms(viewModel: DraftConsentViewModel) {
-        DraftConsentTerm.entries.forEach { term ->
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(term))
+        viewModel.state.value.pendingTerms.forEach { document ->
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleTerm(document.termType))
         }
     }
 
@@ -654,6 +797,21 @@ class DraftConsentViewModelTest {
         )
     }
 
+    /** 좌표가 붙은 사진. 서버는 이것도 위치정보로 본다. */
+    private fun geoPhotoItem(id: Long): SourceItem {
+        val instant = date.atTime(13, 0).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = "photo-$id",
+            startAt = instant,
+            endAt = null,
+            timeZoneId = zone,
+            payload = PhotoPayload("$id.jpg", "content://photo/$id", 37.5665, 126.9780, null),
+            sourceName = SourceName.MEDIA_STORE,
+            sourceKey = id.toString(),
+            collectedAt = instant,
+        )
+    }
+
     private data object NoOpMessageHelper : MessageHelper {
         override fun send(message: UserMessage) = Unit
     }
@@ -725,6 +883,58 @@ class DraftConsentViewModelTest {
             discardCount++
             mutableState.value = DraftTaskTrackingState.Idle
         }
+    }
+
+    /** catalog 가 있는 환경을 가정한다 — 대체 조회는 돌지 않는다. */
+    private object EmptyTermsRepository : TermsRepository {
+        override suspend fun getCurrentTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getPublishedTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getMyAgreements() = emptyList<TermAgreement>()
+
+        override suspend fun agree(documents: List<TermDocument>) = Unit
+    }
+
+    /** 세 종류를 모두 받아야 하는 상태로 시작한다. 서버 판정과 같은 집합이다. */
+    private class FakeTermsAgreementCoordinator : TermsAgreementCoordinator {
+        var agreeFailure: Throwable? = null
+        var agreeCount = 0
+        private val agreed = mutableSetOf<TermType>()
+
+        fun markAgreed(type: TermType) {
+            agreed += type
+        }
+
+        override val loginGate: StateFlow<TermsGateState> = MutableStateFlow(TermsGateState.Satisfied)
+
+        override fun refresh() = Unit
+
+        override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> =
+            Result.success(
+                TermStageRequirement(
+                    stage = stage,
+                    items = stage.requiredTypes.map { TermRequirement(document(it), isAgreed = it in agreed) },
+                ),
+            )
+
+        override suspend fun documentOf(type: TermType): TermDocument = document(type)
+
+        override suspend fun agree(documents: List<TermDocument>): Result<Unit> {
+            agreeCount++
+            agreeFailure?.let { return Result.failure(it) }
+            agreed += documents.map { it.termType }
+            return Result.success(Unit)
+        }
+
+        private fun document(type: TermType) =
+            TermDocument(
+                termType = type,
+                version = "1.0",
+                title = type.name,
+                contentUrl = "https://laimory.app/terms/${type.name}/1.0",
+                effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
+            )
     }
 
     private class RecordingNavigationHelper : NavigationHelper {

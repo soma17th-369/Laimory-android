@@ -11,16 +11,21 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.domain.model.terms.TermAgreement
+import com.soma369.laimory.core.domain.model.terms.TermDocument
+import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
+import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.UserRepository
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RequestAccountWithdrawalUseCase
@@ -54,6 +59,23 @@ class SettingsViewModelTest {
     private val globalLoadingHelper = RecordingGlobalLoadingHelper()
     private val userProfileCoordinator = FakeUserProfileCoordinator()
     private val userRepository = FakeUserRepository()
+
+    @Test
+    fun `약관 주소를 못 받으면 화면이 뜰 때마다 다시 묻는다`() =
+        runTest {
+            // 한 번만 물으면 첫 조회가 실패한 세션 내내 눌리지 않는 줄로 남는다. 처리방침은
+            // 설정에서 볼 수 있어야 하는 문서라 그렇게 막히면 안 된다.
+            EmptyTermsRepository.fetchCount = 0
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshTermLinks)
+            runCurrent()
+            viewModel.sendIntent(SettingsUiIntent.RefreshTermLinks)
+            runCurrent()
+
+            assertEquals(2, EmptyTermsRepository.fetchCount)
+        }
 
     @Test
     fun `저장된 로그인 제공자를 화면 상태에 반영한다`() =
@@ -422,7 +444,24 @@ class SettingsViewModelTest {
             navigationHelper = navigationHelper,
             messageHelper = messageHelper,
             globalLoadingHelper = globalLoadingHelper,
+            getPublicTermLinks = GetPublicTermLinksUseCase(EmptyTermsRepository),
         )
+
+    /** 약관 주소는 정보 항목이 여는 곁가지라 조회가 비어도 계정 동작이 달라지지 않는다. */
+    private object EmptyTermsRepository : TermsRepository {
+        var fetchCount = 0
+
+        override suspend fun getCurrentTerms(types: List<TermType>): List<TermDocument> {
+            fetchCount++
+            return emptyList()
+        }
+
+        override suspend fun getPublishedTerms(types: List<TermType>) = getCurrentTerms(types)
+
+        override suspend fun getMyAgreements() = emptyList<TermAgreement>()
+
+        override suspend fun agree(documents: List<TermDocument>) = Unit
+    }
 
     private class FakeMessageHelper : MessageHelper {
         val dialogRequests = mutableListOf<DialogRequest.TwoButton>()

@@ -10,6 +10,8 @@ import com.soma369.laimory.core.data.datasource.remote.OnboardingRemoteDataSourc
 import com.soma369.laimory.core.data.datasource.remote.OnboardingRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.PushRegistrationRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.PushRegistrationRemoteDataSourceImpl
+import com.soma369.laimory.core.data.datasource.remote.TermsRemoteDataSource
+import com.soma369.laimory.core.data.datasource.remote.TermsRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSource
@@ -80,4 +82,8 @@ abstract class DataSourceModule {
     @Binds
     @Singleton
     abstract fun bindUserRemoteDataSource(impl: UserRemoteDataSourceImpl): UserRemoteDataSource
+
+    @Binds
+    @Singleton
+    abstract fun bindTermsRemoteDataSource(impl: TermsRemoteDataSourceImpl): TermsRemoteDataSource
 }

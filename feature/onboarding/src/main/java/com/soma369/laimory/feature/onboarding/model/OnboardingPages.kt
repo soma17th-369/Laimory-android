@@ -66,10 +66,14 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             permission = DataPermission.APP_NOTIFICATION,
             primaryCta = "알림 받기",
         ),
+        // 필수 동의를 마지막 장에 둔다. 소스별로 무엇을 읽어 무엇에 쓰는지 다 읽은 뒤라야
+        // 무엇을 보내는지 알고 판단할 수 있다 — 첫 장에 두면 아무것도 연결하지 않은 상태에서
+        // 민감정보·제3자 제공·국외 이전·위치를 묻게 된다.
         OnboardingPageSpec(
             key = "done",
             title = "준비됐어요",
             description = "지금 켜 두지 않은 것도 설정에서 언제든 바꿀 수 있어요.",
+            showsConsents = true,
             primaryCta = "Laimory 시작하기",
         ),
     )

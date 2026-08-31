@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
@@ -38,6 +39,7 @@ class SettingsViewModel
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
         private val globalLoadingHelper: GlobalLoadingHelper,
+        private val getPublicTermLinks: GetPublicTermLinksUseCase,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
@@ -60,6 +62,19 @@ class SettingsViewModel
         }
 
         /**
+         * 약관 주소를 다시 받아 온다. 이미 받았으면 아무것도 하지 않는다.
+         *
+         * 닉네임과 같은 이유로 화면이 뜰 때마다 부른다 — ViewModel 이 Activity 수명이라 init 에서
+         * 한 번만 부르면 첫 조회가 실패한 세션 내내 눌리지 않는 줄로 남는다. 게시된 문서는 앱이
+         * 도는 동안 바뀌지 않으므로 한 번 받으면 다시 묻지 않는다.
+         */
+        private suspend fun refreshTermLinks() {
+            if (state.value.hasTermLinks) return
+            val links = getPublicTermLinks()
+            updateState { copy(termLinks = links) }
+        }
+
+        /**
          * 공용 회원 정보를 계정 카드에 반영한다.
          *
          * 닉네임 비우기는 coordinator 가 세션 전이에서 하므로 여기서 따로 지우지 않는다 — 로그아웃하면
@@ -79,6 +94,7 @@ class SettingsViewModel
                 // 화면이 뜰 때마다 부른다. ViewModel 이 Activity 수명이라 init 에서 한 번만 부르면
                 // 첫 조회가 실패한 세션 내내 제공자 문구로 남는다.
                 SettingsUiIntent.RefreshProfile -> refreshUserProfileUseCase()
+                SettingsUiIntent.RefreshTermLinks -> refreshTermLinks()
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit
                 SettingsUiIntent.LogoutConfirmed -> logout()

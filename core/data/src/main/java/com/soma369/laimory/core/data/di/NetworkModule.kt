@@ -8,12 +8,15 @@ import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.api.OnboardingApi
 import com.soma369.laimory.core.data.network.api.PushRegistrationApi
+import com.soma369.laimory.core.data.network.api.TermAgreementApi
+import com.soma369.laimory.core.data.network.api.TermsApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.api.UserApi
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenAuthenticator
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenInterceptor
 import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
+import com.soma369.laimory.core.data.network.interceptor.TermsGateInterceptor
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -75,10 +78,12 @@ object NetworkModule {
     @AuthenticatedClient
     internal fun provideAuthenticatedOkHttpClient(
         tokenInterceptor: AuthTokenInterceptor,
+        termsGateInterceptor: TermsGateInterceptor,
         tokenAuthenticator: AuthTokenAuthenticator,
     ): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(tokenInterceptor)
+            .addInterceptor(termsGateInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(MockInterceptor())
@@ -104,10 +109,12 @@ object NetworkModule {
     @SensitiveAuthenticatedClient
     internal fun provideSensitiveAuthenticatedOkHttpClient(
         tokenInterceptor: AuthTokenInterceptor,
+        termsGateInterceptor: TermsGateInterceptor,
         tokenAuthenticator: AuthTokenAuthenticator,
     ): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(tokenInterceptor)
+            .addInterceptor(termsGateInterceptor)
             .apply {
                 if (BuildConfig.DEBUG) addInterceptor(MockInterceptor())
             }.authenticator(tokenAuthenticator)
@@ -233,4 +240,21 @@ object NetworkModule {
     fun providePushRegistrationApi(
         @SensitiveAuthRetrofit retrofit: Retrofit,
     ): PushRegistrationApi = retrofit.create(PushRegistrationApi::class.java)
+
+    @Provides
+    @PublishedTermsBaseUrl
+    fun providePublishedTermsBaseUrl(): String = BuildConfig.PUBLISHED_TERMS_BASE_URL
+
+    /** 약관 공개 조회는 인증이 필요 없다 — 로그인 전 화면도 같은 경로로 원문 주소를 얻는다. */
+    @Provides
+    @Singleton
+    fun provideTermsApi(
+        @PublicRetrofit retrofit: Retrofit,
+    ): TermsApi = retrofit.create(TermsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideTermAgreementApi(
+        @AuthRetrofit retrofit: Retrofit,
+    ): TermAgreementApi = retrofit.create(TermAgreementApi::class.java)
 }

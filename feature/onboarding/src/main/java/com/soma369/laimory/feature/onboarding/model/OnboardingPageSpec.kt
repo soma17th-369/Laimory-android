@@ -27,6 +27,13 @@ data class OnboardingPageSpec(
      * 이 장의 CTA 가 요청할 권한. `null` 이면 안내 전용 장이라 CTA 가 다음으로만 넘긴다.
      */
     val permission: DataPermission? = null,
+    /**
+     * 이 장에 초안 생성 필수 동의 목록을 함께 그릴지.
+     *
+     * 받을 것이 없으면(이미 동의했거나 catalog 가 아직 없으면) 목록만 비고 장은 그대로 남는다 —
+     * 마지막 장은 동의 유무와 무관하게 온보딩을 끝내는 자리라 사라지면 안 된다.
+     */
+    val showsConsents: Boolean = false,
     val primaryCta: String,
     /** `나중에` 를 함께 둘지. 안내 전용 장에는 건너뛸 것이 없다. */
     val isSkippable: Boolean = permission != null,

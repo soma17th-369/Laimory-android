@@ -32,21 +32,24 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.domain.model.terms.TermDocument
+import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
+import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.onboarding.component.OnboardingConsentChecklist
 import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
-import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import com.soma369.laimory.feature.onboarding.viewmodel.OnboardingViewModel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 
 @Composable
 fun OnboardingRoute(
@@ -58,7 +61,6 @@ fun OnboardingRoute(
         innerPadding = innerPadding,
         state = state,
         onIntent = viewModel::sendIntent,
-        sideEffectFlow = viewModel.sideEffect,
     )
 }
 
@@ -73,21 +75,13 @@ private fun OnboardingContent(
     innerPadding: PaddingValues,
     state: OnboardingUiState,
     onIntent: (OnboardingUiIntent) -> Unit,
-    sideEffectFlow: Flow<OnboardingUiSideEffect>,
 ) {
     val permissionState = rememberDataPermissionState()
-    val pagerState = rememberPagerState(pageCount = { state.pages.size })
+    // 복원 인덱스가 정해진 뒤에 Pager 를 만든다. 먼저 만들고 나중에 스크롤시키면 첫 장이 한 번
+    // 보였다 튀고, 컴포지션이 다시 만들어질 때마다 그 튐이 되풀이된다.
+    val initialPage = state.initialPageIndex ?: return
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { state.pages.size })
     val scope = rememberCoroutineScope()
-
-    // 마지막으로 본 장으로 되돌린다. 상태의 인덱스를 pagerState 초기값으로 쓸 수 없다 —
-    // pagerState 는 첫 컴포지션에 만들어지고 복원 값은 그 뒤에 도착한다.
-    LaunchedEffect(Unit) {
-        sideEffectFlow.collect { effect ->
-            when (effect) {
-                is OnboardingUiSideEffect.RestorePage -> pagerState.scrollToPage(effect.pageIndex)
-            }
-        }
-    }
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }
@@ -109,13 +103,17 @@ private fun OnboardingContent(
     // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
     // 일어나지 않은 것처럼 보이기 때문이다.
     val needsRequest = currentPage?.permission != null && !permissionState.isGranted(currentPage.permission)
+    // 받을 문서가 남아 있는 동의 장인지. 비어 있으면 마지막 장은 평범한 마무리 장이다.
+    val needsConsent = currentPage?.showsConsents == true && state.consentDocuments.isNotEmpty()
+    val termContentLauncher = rememberTermContentLauncher()
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 
     OnboardingScreen(
         innerPadding = innerPadding,
         state = state,
         pagerState = pagerState,
-        ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, permissionState.locationStep),
+        ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, needsConsent, permissionState.locationStep),
+        isPrimaryEnabled = !state.isCompleting,
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
@@ -127,6 +125,8 @@ private fun OnboardingContent(
                 else -> goNext()
             }
         },
+        onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
+        onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
         onSkipClick = goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
     )
@@ -138,10 +138,13 @@ private fun OnboardingScreen(
     state: OnboardingUiState,
     pagerState: PagerState,
     ctaLabel: String,
+    isPrimaryEnabled: Boolean,
     showsSkip: Boolean,
     isPageGranted: (OnboardingPageSpec) -> Boolean,
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
+    onConsentToggle: (TermType) -> Unit,
+    onOpenTerm: (TermDocument) -> Unit,
     onBack: () -> Unit,
 ) {
     // 첫 장에서는 뒤로 갈 곳이 없다. 앱 루트라 뒤로가기로 빠져나가면 빈 화면이 남는다.
@@ -163,6 +166,21 @@ private fun OnboardingScreen(
                     page = spec,
                     nickname = state.nickname,
                     isGranted = isPageGranted(spec),
+                    extra =
+                        if (!spec.showsConsents || state.consentDocuments.isEmpty()) {
+                            null
+                        } else {
+                            {
+                                OnboardingConsentChecklist(
+                                    documents = state.consentDocuments,
+                                    checked = state.checkedConsents,
+                                    isEnabled = !state.isConsentSubmitting,
+                                    errorMessage = state.consentErrorMessage,
+                                    onToggle = onConsentToggle,
+                                    onOpenTerm = onOpenTerm,
+                                )
+                            }
+                        },
                 )
             }
         }
@@ -197,11 +215,11 @@ private fun OnboardingScreen(
 
             Button(
                 onClick = onPrimaryClick,
-                enabled = !state.isCompleting,
+                enabled = isPrimaryEnabled,
                 modifier = Modifier.fillMaxWidth().height(CTA_HEIGHT),
                 shape = MaterialTheme.shapes.medium,
             ) {
-                if (state.isCompleting) {
+                if (state.isCompleting || state.isConsentSubmitting) {
                     CircularProgressIndicator(modifier = Modifier.height(CTA_SPINNER_SIZE), strokeWidth = 2.dp)
                 } else {
                     Text(text = ctaLabel, style = MaterialTheme.typography.titleSmall)
@@ -221,9 +239,13 @@ private fun ctaLabel(
     page: OnboardingPageSpec?,
     needsRequest: Boolean,
     isLastPage: Boolean,
+    needsConsent: Boolean,
     locationStep: LocationPermissionStep,
 ): String =
     when {
+        // 무엇을 누르는지 버튼이 말한다. `시작하기` 만으로는 동의가 함께 일어나는 줄 알 수 없다.
+        needsConsent -> "모두 동의하고 시작하기"
+
         page?.permission == DataPermission.LOCATION && locationStep != LocationPermissionStep.GRANTED ->
             when (locationStep) {
                 LocationPermissionStep.BACKGROUND -> "'항상 허용'으로 바꾸기"
@@ -272,19 +294,53 @@ private fun OnboardingScreenPreview(
     showsSkip: Boolean = false,
     ctaLabel: String = "시작하기",
     darkTheme: Boolean = false,
+    state: OnboardingUiState = OnboardingUiState(nickname = "김소마"),
 ) {
-    val state = OnboardingUiState(nickname = "김소마")
     LaimoryTheme(darkTheme = darkTheme) {
         OnboardingScreen(
             innerPadding = PaddingValues(),
             state = state,
             pagerState = rememberPagerState(initialPage = pageIndex, pageCount = { state.pages.size }),
             ctaLabel = ctaLabel,
+            isPrimaryEnabled = true,
             showsSkip = showsSkip,
             isPageGranted = { false },
             onPrimaryClick = {},
             onSkipClick = {},
+            onConsentToggle = {},
+            onOpenTerm = {},
             onBack = {},
         )
     }
 }
+
+@Preview(name = "Onboarding / 동의", showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun OnboardingConsentPreview() {
+    val state =
+        OnboardingUiState(
+            nickname = "김소마",
+            consentDocuments =
+                listOf(
+                    previewTerm(TermType.SENSITIVE_INFORMATION_CONSENT, "민감정보 처리 동의"),
+                    previewTerm(TermType.THIRD_PARTY_PROVISION_CONSENT, "개인정보 제3자 제공 동의"),
+                    previewTerm(TermType.CROSS_BORDER_TRANSFER_CONSENT, "개인정보 국외 이전 동의"),
+                ),
+        )
+    OnboardingScreenPreview(
+        pageIndex = state.pages.indexOfFirst { it.showsConsents },
+        ctaLabel = "모두 동의하고 시작하기",
+        state = state,
+    )
+}
+
+private fun previewTerm(
+    type: TermType,
+    title: String,
+) = TermDocument(
+    termType = type,
+    version = "1.0",
+    title = title,
+    contentUrl = "https://laimory.app/terms/preview/1.0",
+    effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
+)

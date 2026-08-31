@@ -7,6 +7,7 @@ import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
 import com.soma369.laimory.core.data.repository.OnboardingRepositoryImpl
 import com.soma369.laimory.core.data.repository.PushRegistrationRepositoryImpl
 import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
+import com.soma369.laimory.core.data.repository.TermsRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineDraftRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordSessionRepositoryImpl
@@ -18,6 +19,7 @@ import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
+import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
@@ -74,4 +76,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindUserRepository(impl: UserRepositoryImpl): UserRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindTermsRepository(impl: TermsRepositoryImpl): TermsRepository
 }

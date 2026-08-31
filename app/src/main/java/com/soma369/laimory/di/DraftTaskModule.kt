@@ -5,13 +5,14 @@ import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultAutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultDraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultOnboardingCompletionCoordinator
+import com.soma369.laimory.core.domain.coordinator.DefaultTermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.DefaultUserProfileCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.OnboardingCompletionCoordinator
+import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
-import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
@@ -46,6 +47,11 @@ abstract class DraftTaskBindingModule {
     @Binds
     @Singleton
     abstract fun bindOnboardingCompletionCoordinator(impl: DefaultOnboardingCompletionCoordinator): OnboardingCompletionCoordinator
+
+    /** 약관 catalog·동의 이력을 세션당 한 번 읽어 루트 gate 와 초안 생성 동의가 나눠 쓰는 조율자. */
+    @Binds
+    @Singleton
+    abstract fun bindTermsAgreementCoordinator(impl: DefaultTermsAgreementCoordinator): TermsAgreementCoordinator
 
     /** 일정·건강 자동 수집을 앱 전경 진입·초안 설정·최종 생성이 함께 쓰는 조율자. */
     @Binds
@@ -82,14 +88,6 @@ object DraftTaskRuntimeModule {
     @Provides
     @Singleton
     fun provideDraftSourceItemSelectionPolicy(): DraftSourceItemSelectionPolicy = DraftSourceItemSelectionPolicy()
-
-    /**
-     * 동의 문구가 법무 확정 전 임시 문구인 동안의 배포 가드 — 릴리즈 빌드에서는 실제 제출을
-     * 차단하고 디버그에서만 허용한다(#231 배포 조건). 문구 확정 시 상시 허용으로 전환한다.
-     */
-    @Provides
-    @Singleton
-    fun provideDraftConsentSubmissionGate(): DraftConsentSubmissionGate = DraftConsentSubmissionGate { BuildConfig.DEBUG }
 
     /**
      * 수집 실험실 접근 허용 여부. 개발 도구라 debug 에서만 연다.

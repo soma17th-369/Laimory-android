@@ -31,4 +31,19 @@ data class SourceItem(
     val collectedAt: Instant,
 ) {
     val itemType: ItemType get() = payload.itemType
+
+    /**
+     * 이 항목이 위치정보를 실어 나르는지.
+     *
+     * 서버가 위치기반서비스 약관을 요구할지 정하는 기준과 같게 둔다 — 체류·이동은 그 자체가
+     * 위치이고, 사진은 좌표가 붙어 있을 때만이다. 판정이 갈리면 앱은 동의를 안 받았는데 서버는
+     * 요구하는 상태가 생긴다.
+     */
+    val carriesLocation: Boolean
+        get() =
+            when (val current = payload) {
+                is StayPayload, is MovementPayload -> true
+                is PhotoPayload -> current.latitude != null && current.longitude != null
+                else -> false
+            }
 }

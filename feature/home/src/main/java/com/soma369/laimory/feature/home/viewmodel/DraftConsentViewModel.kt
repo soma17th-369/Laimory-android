@@ -1,14 +1,20 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
+import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
-import com.soma369.laimory.core.domain.model.timeline.DraftConsentSubmissionGate
+import com.soma369.laimory.core.domain.model.terms.TermDocument
+import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.terms.TermStageRequirement
 import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
@@ -37,17 +43,31 @@ class DraftConsentViewModel
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
-        submissionGate: DraftConsentSubmissionGate,
+        private val termsCoordinator: TermsAgreementCoordinator,
+        private val getDisplayTerms: GetDisplayTermsUseCase,
         mapRenderGate: LocationMapRenderGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
-            DraftConsentUiState(
-                isSubmissionAllowed = submissionGate.isSubmissionAllowed(),
-                isMapRenderAllowed = mapRenderGate.isMapRenderAllowed(),
-            ),
+            DraftConsentUiState(isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()),
         ) {
-        private val isSubmissionAllowed = submissionGate.isSubmissionAllowed()
         private val isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()
         private var activePreparation: DraftConsentPreparation? = null
+
+        /**
+         * 단계별 요구를 따로 들고 있다가 화면 행을 만들 때 합친다.
+         *
+         * 위치약관은 **지금 보낼 항목에 위치가 실려 있을 때만** 필요하다. 사용자가 위치를 빼면
+         * 요구도 사라져야 하므로, 미리 한 줄로 굳혀 두지 않고 그때그때 계산한다.
+         */
+        private var stageRequirement: TermStageRequirement? = null
+        private var locationRequirement: TermStageRequirement? = null
+
+        /**
+         * 이 환경 catalog 가 통째로 비었을 때 화면만 채우는 문서.
+         *
+         * 등록 대상이 아니다 — 그 환경 DB 에 없는 행을 보내면 전부 거절되고, 서버도 catalog 가
+         * 없는 단계는 강제하지 않는다(fail-open). 개발 catalog 에 seed 가 들어가면 비어 있게 된다.
+         */
+        private var displayOnlyDocuments: List<TermDocument> = emptyList()
 
         init {
             safeLaunch {
@@ -63,10 +83,60 @@ class DraftConsentViewModel
                         preparation.attemptId != activePreparation?.attemptId -> {
                             activePreparation = preparation
                             updateState { initialUiState().copy(content = preparation.toConsentContent()) }
+                            loadTermRequirement()
                         }
                     }
                 }
             }
+        }
+
+        /**
+         * 서버 이력으로 이 계정이 아직 받아야 할 동의를 가른다.
+         *
+         * 이미 동의한 것은 확인 대상에서 빼고 원문 열람만 남긴다 — 화면에서 해제해도 서버에
+         * 철회 API 가 없어 실제로 철회되지 않으므로, 되돌릴 수 없는 것을 되돌릴 수 있게 보이면 안 된다.
+         *
+         * 조회에 실패하면 요구를 세우지 않는다. 서버가 gate 를 들고 있어 실제로 미동의면 제출이
+         * 거절되고 그때 다시 판정한다 — 앱이 여기서 막아 봐야 더 정확해지지 않는다.
+         */
+        private suspend fun loadTermRequirement() {
+            stageRequirement = termsCoordinator.requirementOf(TermStage.TIMELINE_FIRST_CREATE).getOrNull()
+            locationRequirement = termsCoordinator.requirementOf(TermStage.TIMELINE_LOCATION).getOrNull()
+
+            val hasCatalog = listOfNotNull(stageRequirement, locationRequirement).any { it.items.isNotEmpty() }
+            displayOnlyDocuments = if (hasCatalog) emptyList() else getDisplayTerms(TermStage.TIMELINE_FIRST_CREATE.requiredTypes)
+            applyTermRows(resetChecked = true)
+        }
+
+        /**
+         * 지금 보낼 항목을 기준으로 동의 행을 다시 만든다.
+         *
+         * 확인 상태는 지운다·남긴다를 나눈다 — 새 스냅샷이나 재조회면 처음부터 다시 받아야 하고,
+         * 포함 여부만 바꾼 경우라면 이미 확인한 것을 되돌릴 이유가 없다.
+         */
+        private fun applyTermRows(resetChecked: Boolean) {
+            val items =
+                buildList {
+                    stageRequirement?.items?.let(::addAll)
+                    if (submissionCarriesLocation()) locationRequirement?.items?.let(::addAll)
+                }
+            updateState {
+                copy(
+                    // catalog 가 비면 보여 줄 것만 남는다. 등록 대상은 items 쪽이라 비어 있다.
+                    pendingTerms = items.filterNot { it.isAgreed }.map { it.document } + displayOnlyDocuments,
+                    agreedTerms = items.filter { it.isAgreed }.map { it.document },
+                    checkedTerms = if (resetChecked) emptySet() else checkedTerms,
+                )
+            }
+        }
+
+        /** 제외를 반영한 실제 전송 목록에 위치정보가 남아 있는지. 서버 판정과 같은 기준이다. */
+        private fun submissionCarriesLocation(): Boolean {
+            val preparation = activePreparation ?: return false
+            return preparation.selection
+                .excluding(state.value.excludedRawIds)
+                .items
+                .any { it.carriesLocation }
         }
 
         override suspend fun handleIntent(intent: DraftConsentUiIntent) {
@@ -76,8 +146,6 @@ class DraftConsentViewModel
                 DraftConsentUiIntent.ToggleLocationInclusion -> toggleLocationInclusion()
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
-                is DraftConsentUiIntent.OpenTermsDetail -> updateState { copy(openTermsDetail = intent.term) }
-                DraftConsentUiIntent.CloseTermsDetail -> updateState { copy(openTermsDetail = null) }
                 DraftConsentUiIntent.Submit -> submit()
                 DraftConsentUiIntent.NavigateBack -> navigateBack()
             }
@@ -88,7 +156,11 @@ class DraftConsentViewModel
             updateState {
                 copy(
                     checkedTerms =
-                        if (intent.term in checkedTerms) checkedTerms - intent.term else checkedTerms + intent.term,
+                        if (intent.termType in checkedTerms) {
+                            checkedTerms - intent.termType
+                        } else {
+                            checkedTerms + intent.termType
+                        },
                 )
             }
         }
@@ -99,7 +171,7 @@ class DraftConsentViewModel
             val item = preparation.selection.items.firstOrNull { it.rawId == intent.itemKey } ?: return
             // 사진은 홈 사진 시트 선택이 정본이므로 여기서 제외할 수 없다.
             if (item.itemType == ItemType.PHOTO) return
-            updateState {
+            updateStateAndTermRows {
                 copy(
                     excludedRawIds =
                         if (intent.itemKey in excludedRawIds) {
@@ -122,12 +194,23 @@ class DraftConsentViewModel
             if (state.value.isSubmitting) return
             val locationRawIds = state.value.content?.locationRawIds.orEmpty()
             if (locationRawIds.isEmpty()) return
-            updateState {
+            updateStateAndTermRows {
                 copy(
                     excludedRawIds =
                         if (isLocationIncluded) excludedRawIds + locationRawIds else excludedRawIds - locationRawIds,
                 )
             }
+        }
+
+        /**
+         * 포함 여부를 바꾸고 동의 행을 다시 만든다.
+         *
+         * 위치를 빼면 위치약관 요구가 사라지고, 되돌리면 다시 생긴다. 확인 상태는 남긴다 — 이미
+         * 확인한 항목을 껐다 켰다는 이유로 다시 받을 일이 아니다.
+         */
+        private fun updateStateAndTermRows(reduce: DraftConsentUiState.() -> DraftConsentUiState) {
+            updateState(reduce)
+            applyTermRows(resetChecked = false)
         }
 
         private fun openTypeDetail(intent: DraftConsentUiIntent.OpenTypeDetail) {
@@ -143,6 +226,7 @@ class DraftConsentViewModel
             val submission = preparation.selection.excluding(state.value.excludedRawIds)
             updateState { copy(isSubmitting = true, submitError = null) }
             safeLaunch(onError = ::handleSubmitFailure) {
+                if (!recordAgreements()) return@safeLaunch
                 if (preparation.discardActiveTask) draftTaskCoordinator.discard()
                 val result =
                     createTimelineDraftUseCase(
@@ -167,7 +251,46 @@ class DraftConsentViewModel
             }
         }
 
+        /**
+         * 남은 필수 동의를 먼저 기록한다. 실패하면 초안 생성으로 넘어가지 않는다.
+         *
+         * 개정 경쟁이면 새 버전으로 자동 재시도하지 않는다 — 사용자가 읽지 않은 내용에 동의한
+         * 기록이 서버에 남는다. 다시 조회해 바뀐 문서를 싣고 확인 상태를 되돌린다.
+         *
+         * **성공한 동의는 초안 생성이 실패해도 되돌리지 않는다.** 같은 스냅샷으로 다시 제출할 때
+         * 이미 기록된 동의는 확인 대상에서 빠진다.
+         */
+        private suspend fun recordAgreements(): Boolean {
+            // 화면에만 있는 문서는 보내지 않는다. 이 환경 요구에서 나온 것만 등록 대상이다.
+            val pending = state.value.pendingTerms - displayOnlyDocuments.toSet()
+            if (pending.isEmpty()) return true
+
+            val error = termsCoordinator.agree(pending).exceptionOrNull()
+            if (error == null) {
+                // 기록된 동의를 화면에도 반영한다. 초안 생성이 실패해 다시 제출하더라도 이미
+                // 기록된 것을 또 확인하게 하지 않는다.
+                loadTermRequirement()
+                return true
+            }
+
+            if (error is StaleTermVersionException) {
+                loadTermRequirement()
+                updateState { copy(isSubmitting = false, submitError = REVISED_MESSAGE) }
+            } else {
+                updateState { copy(isSubmitting = false, submitError = AGREEMENT_FAILURE_MESSAGE) }
+            }
+            return false
+        }
+
         private fun handleSubmitFailure(error: Throwable) {
+            // 서버가 이 단계 동의를 다시 요구한다 — 다른 기기에서 개정본이 적용됐거나 판정이
+            // 어긋난 경우다. 서버 이력을 다시 읽어 확인 항목을 되살린다. 같은 스냅샷으로 다시
+            // 제출할 수 있으므로 준비는 폐기하지 않는다.
+            if (error is ApiException && error.errorCode == TERMS_AGREEMENT_REQUIRED) {
+                safeLaunch(onError = { }) { loadTermRequirement() }
+                updateState { copy(isSubmitting = false, submitError = AGREEMENT_REQUIRED_MESSAGE) }
+                return
+            }
             // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 스냅샷 재시도로는 복구되지
             // 않으므로 준비를 폐기하고 홈의 사진 재선택 흐름으로 복귀시킨다.
             if (error is DraftPhotoAccessException) {
@@ -194,9 +317,14 @@ class DraftConsentViewModel
             navigationHelper.navigateToBack()
         }
 
-        private fun initialUiState(): DraftConsentUiState =
-            DraftConsentUiState(
-                isSubmissionAllowed = isSubmissionAllowed,
-                isMapRenderAllowed = isMapRenderAllowed,
-            )
+        private fun initialUiState(): DraftConsentUiState = DraftConsentUiState(isMapRenderAllowed = isMapRenderAllowed)
+
+        private companion object {
+            /** 서버가 이 단계 동의를 요구할 때 주는 코드. */
+            const val TERMS_AGREEMENT_REQUIRED = -3001
+
+            const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."
+            const val AGREEMENT_FAILURE_MESSAGE = "동의를 기록하지 못했어요. 잠시 후 다시 시도해주세요."
+            const val AGREEMENT_REQUIRED_MESSAGE = "동의가 다시 필요해요. 아래 항목을 확인해주세요."
+        }
     }

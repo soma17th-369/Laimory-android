@@ -37,6 +37,9 @@ dependencies {
     // 판정도 여기에 둔다 — 화면마다 Health Connect 를 따로 물으면 답이 갈린다.
     implementation(libs.health.connect)
 
+    // 약관 원문은 게시된 HTML 이라 브라우저가 정본 뷰어다. 확대 가능 요구도 그대로 만족한다.
+    implementation(libs.androidx.browser)
+
     implementation(libs.lifecycle.viewmodel)
     implementation(libs.coroutines.android)
 

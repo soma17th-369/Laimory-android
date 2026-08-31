@@ -21,6 +21,7 @@ import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingCompletionUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
+import com.soma369.laimory.core.domain.usecase.terms.ObserveTermsGateUseCase
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.navigation.LaimoryNavGraph
@@ -55,6 +56,9 @@ class MainActivity : ComponentActivity() {
     lateinit var observeOnboardingCompletion: ObserveOnboardingCompletionUseCase
 
     @Inject
+    lateinit var observeTermsGate: ObserveTermsGateUseCase
+
+    @Inject
     lateinit var draftCompletionPushHandler: DraftCompletionPushHandler
 
     @Inject
@@ -81,6 +85,7 @@ class MainActivity : ComponentActivity() {
                         LaimoryNavGraph(
                             messages = messageHelper.messages,
                             onboardingCompletions = observeOnboardingCompletion(),
+                            termsGateStates = observeTermsGate(),
                             navigationFlow = navigationHelper.navigationFlow,
                             authSessionStates = authSessionStates,
                             pendingDraftCompletions = draftTaskCoordinator.pendingCompletion,
