@@ -59,11 +59,19 @@ class SettingsViewModel
                 }
             }
             observeUserProfile()
-            // 정보 항목이 여는 주소는 서버 catalog 가 정한다. 실패하면 그 항목만 눌리지 않는다.
-            viewModelScope.launch {
-                val links = getPublicTermLinks()
-                updateState { copy(termLinks = links) }
-            }
+        }
+
+        /**
+         * 약관 주소를 다시 받아 온다. 이미 받았으면 아무것도 하지 않는다.
+         *
+         * 닉네임과 같은 이유로 화면이 뜰 때마다 부른다 — ViewModel 이 Activity 수명이라 init 에서
+         * 한 번만 부르면 첫 조회가 실패한 세션 내내 눌리지 않는 줄로 남는다. 게시된 문서는 앱이
+         * 도는 동안 바뀌지 않으므로 한 번 받으면 다시 묻지 않는다.
+         */
+        private suspend fun refreshTermLinks() {
+            if (state.value.hasTermLinks) return
+            val links = getPublicTermLinks()
+            updateState { copy(termLinks = links) }
         }
 
         /**
@@ -86,6 +94,7 @@ class SettingsViewModel
                 // 화면이 뜰 때마다 부른다. ViewModel 이 Activity 수명이라 init 에서 한 번만 부르면
                 // 첫 조회가 실패한 세션 내내 제공자 문구로 남는다.
                 SettingsUiIntent.RefreshProfile -> refreshUserProfileUseCase()
+                SettingsUiIntent.RefreshTermLinks -> refreshTermLinks()
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit
                 SettingsUiIntent.LogoutConfirmed -> logout()

@@ -44,11 +44,18 @@ class LoginViewModel
                     sendIntent(LoginUiIntent.CallbackReceived(callback))
                 }
             }
-            // 약관 주소는 로그인과 무관한 곁가지다. 실패해도 링크만 비고 로그인은 그대로 된다.
-            viewModelScope.launch {
-                val links = getPublicTermLinks()
-                updateState { copy(termLinks = links) }
-            }
+        }
+
+        /**
+         * 약관 주소를 받아 온다. 이미 받았으면 아무것도 하지 않는다.
+         *
+         * 로그인과 무관한 곁가지라 실패해도 링크만 비고 로그인은 그대로 된다.
+         */
+        private suspend fun refreshTermLinks() {
+            val current = state.value.termLinks
+            if (current.termsOfService != null && current.privacyPolicy != null) return
+            val links = getPublicTermLinks()
+            updateState { copy(termLinks = links) }
         }
 
         override suspend fun handleIntent(intent: LoginUiIntent) {
@@ -58,6 +65,7 @@ class LoginViewModel
                     is LoginUiIntent.CallbackReceived -> completeLogin(intent.callback)
                     LoginUiIntent.BrowserReturnedWithoutCallback -> scheduleCancellationCheck()
                     LoginUiIntent.AuthorizationLaunchFailed -> handleAuthorizationLaunchFailure()
+                    LoginUiIntent.RefreshTermLinks -> refreshTermLinks()
                 }
             } catch (error: CancellationException) {
                 throw error

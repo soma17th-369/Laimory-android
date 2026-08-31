@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
@@ -87,6 +88,10 @@ private fun LoginContent(
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var browserWasOpened by rememberSaveable { mutableStateOf(false) }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        onIntent(LoginUiIntent.RefreshTermLinks)
+    }
 
     LaunchedEffect(sideEffectFlow) {
         sideEffectFlow.collect { effect ->

@@ -61,6 +61,23 @@ class SettingsViewModelTest {
     private val userRepository = FakeUserRepository()
 
     @Test
+    fun `약관 주소를 못 받으면 화면이 뜰 때마다 다시 묻는다`() =
+        runTest {
+            // 한 번만 물으면 첫 조회가 실패한 세션 내내 눌리지 않는 줄로 남는다. 처리방침은
+            // 설정에서 볼 수 있어야 하는 문서라 그렇게 막히면 안 된다.
+            EmptyTermsRepository.fetchCount = 0
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshTermLinks)
+            runCurrent()
+            viewModel.sendIntent(SettingsUiIntent.RefreshTermLinks)
+            runCurrent()
+
+            assertEquals(2, EmptyTermsRepository.fetchCount)
+        }
+
+    @Test
     fun `저장된 로그인 제공자를 화면 상태에 반영한다`() =
         runTest {
             repository.account.value = SignedInAccount(SocialLoginProvider.KAKAO)
@@ -432,7 +449,12 @@ class SettingsViewModelTest {
 
     /** 약관 주소는 정보 항목이 여는 곁가지라 조회가 비어도 계정 동작이 달라지지 않는다. */
     private object EmptyTermsRepository : TermsRepository {
-        override suspend fun getCurrentTerms(types: List<TermType>) = emptyList<TermDocument>()
+        var fetchCount = 0
+
+        override suspend fun getCurrentTerms(types: List<TermType>): List<TermDocument> {
+            fetchCount++
+            return emptyList()
+        }
 
         override suspend fun getMyAgreements() = emptyList<TermAgreement>()
 

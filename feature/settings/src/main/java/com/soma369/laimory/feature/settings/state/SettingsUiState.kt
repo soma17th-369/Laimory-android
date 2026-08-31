@@ -17,4 +17,8 @@ data class SettingsUiState(
 ) : UiState {
     /** 계정 관련 동작 하나가 진행 중이면 나머지 항목도 잠근다. */
     val isAccountActionInProgress: Boolean get() = isLoggingOut || isWithdrawing
+
+    /** 두 주소를 다 받았는지. 하나라도 없으면 다시 묻는다. */
+    val hasTermLinks: Boolean
+        get() = termLinks.termsOfService != null && termLinks.privacyPolicy != null
 }

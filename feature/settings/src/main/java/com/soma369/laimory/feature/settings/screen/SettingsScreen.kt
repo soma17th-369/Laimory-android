@@ -76,6 +76,7 @@ fun SettingsRoute(
 ) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.sendIntent(SettingsUiIntent.RefreshProfile)
+        viewModel.sendIntent(SettingsUiIntent.RefreshTermLinks)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     SettingsContent(
@@ -214,12 +215,14 @@ private fun SettingsScreen(
                                     title = "개인정보 처리방침",
                                     document = state.termLinks.privacyPolicy,
                                     onOpenTerm = onOpenTerm,
+                                    onRetry = { onIntent(SettingsUiIntent.RefreshTermLinks) },
                                 ),
                                 termItem(
                                     iconRes = CoreUiR.drawable.ico_setting_note,
                                     title = "서비스 이용약관",
                                     document = state.termLinks.termsOfService,
                                     onOpenTerm = onOpenTerm,
+                                    onRetry = { onIntent(SettingsUiIntent.RefreshTermLinks) },
                                 ),
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_info,
@@ -443,19 +446,22 @@ private data class SettingsItem(
 /**
  * 약관 원문으로 가는 줄.
  *
- * 주소를 아직 못 받았으면 잠근다 — 눌러도 아무 데도 가지 않는 줄은 사용자에게 고장으로 보인다.
+ * 주소를 아직 못 받았을 때 줄을 조용히 잠그지 않는다. 왜 눌리지 않는지 알 수 없는 줄이 되고,
+ * 처리방침은 설정에서 볼 수 있어야 하는 문서라 세션 내내 막혀 있으면 안 된다. 대신 무엇이
+ * 안 됐는지 적고, 누르면 다시 물어보게 한다.
  */
 private fun termItem(
     @DrawableRes iconRes: Int,
     title: String,
     document: TermDocument?,
     onOpenTerm: (TermDocument) -> Unit,
+    onRetry: () -> Unit,
 ) = SettingsItem(
     iconRes = iconRes,
     title = title,
-    isEnabled = document != null,
+    trailingText = if (document == null) "불러오지 못함" else null,
     showChevron = document != null,
-    onClick = document?.let { { onOpenTerm(it) } },
+    onClick = if (document == null) onRetry else ({ onOpenTerm(document) }),
 )
 
 private val SocialLoginProvider?.accountTitle: String
