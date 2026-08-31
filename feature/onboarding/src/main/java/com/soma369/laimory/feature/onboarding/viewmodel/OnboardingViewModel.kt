@@ -85,7 +85,6 @@ class OnboardingViewModel
                 OnboardingUiIntent.Complete -> complete()
                 OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
                 is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
-                OnboardingUiIntent.SkipConsent -> markCompleted()
             }
         }
 

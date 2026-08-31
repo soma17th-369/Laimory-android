@@ -127,10 +127,7 @@ private fun OnboardingContent(
         isPrimaryEnabled = if (needsConsent) state.canSubmitConsent else !state.isCompleting,
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
-        // 마지막 장의 동의도 건너뛸 수 있다 — 서버 gate 가 초안 생성에만 걸려 있어, 거부해도
-        // 열람과 편집은 그대로 쓸 수 있다. 건너뛰면 초안 생성 화면이 다시 받는다.
-        showsSkip = (currentPage?.isSkippable == true && needsRequest && !isLastPage) || needsConsent,
-        skipLabel = if (needsConsent) "동의하지 않고 시작하기" else "나중에",
+        showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
         isPageGranted = { page -> permissionState.isGranted(page.permission) },
         onPrimaryClick = {
             when {
@@ -141,7 +138,7 @@ private fun OnboardingContent(
         },
         onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
-        onSkipClick = if (needsConsent) ({ onIntent(OnboardingUiIntent.SkipConsent) }) else goNext,
+        onSkipClick = goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
     )
 }
@@ -154,7 +151,6 @@ private fun OnboardingScreen(
     ctaLabel: String,
     isPrimaryEnabled: Boolean,
     showsSkip: Boolean,
-    skipLabel: String,
     isPageGranted: (OnboardingPageSpec) -> Boolean,
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
@@ -223,7 +219,7 @@ private fun OnboardingScreen(
 
                     showsSkip ->
                         TextButton(onClick = onSkipClick, enabled = !state.isCompleting) {
-                            Text(text = skipLabel, style = MaterialTheme.typography.bodyMedium)
+                            Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
                         }
                 }
             }
@@ -319,7 +315,6 @@ private fun OnboardingScreenPreview(
             ctaLabel = ctaLabel,
             isPrimaryEnabled = true,
             showsSkip = showsSkip,
-            skipLabel = "나중에",
             isPageGranted = { false },
             onPrimaryClick = {},
             onSkipClick = {},
@@ -345,7 +340,6 @@ private fun OnboardingConsentPreview() {
         )
     OnboardingScreenPreview(
         pageIndex = state.pages.indexOfFirst { it.showsConsents },
-        showsSkip = true,
         ctaLabel = "모두 동의하고 시작하기",
         state = state,
     )

@@ -95,7 +95,7 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `기본은 모두 해제이고 하나라도 빠지면 보낼 수 없다`() =
+    fun `하나라도 빠지면 온보딩을 끝낼 수 없다`() =
         runTest(UnconfinedTestDispatcher()) {
             // 미리 체크된 동의는 능동적 의사 확인이 아니다.
             val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
@@ -125,20 +125,6 @@ class OnboardingConsentTest {
 
             assertEquals(allFour, coordinator.agreed)
             assertNull(viewModel.state.value.consentErrorMessage)
-        }
-
-    @Test
-    fun `동의하지 않고 시작하면 기록하지 않고 완료한다`() =
-        runTest(UnconfinedTestDispatcher()) {
-            // 서버 gate 가 초안 생성에만 걸려 있어 거부해도 열람·편집은 그대로 쓸 수 있다.
-            val coordinator = FakeTermsCoordinator(pending = allFour)
-            val viewModel = createViewModel(coordinator)
-            runCurrent()
-
-            viewModel.sendIntent(OnboardingUiIntent.SkipConsent)
-            runCurrent()
-
-            assertTrue(coordinator.agreed.isEmpty())
         }
 
     @Test

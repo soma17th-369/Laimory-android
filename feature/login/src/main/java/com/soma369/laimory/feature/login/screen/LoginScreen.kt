@@ -325,11 +325,13 @@ private fun SocialLoginButton(
 }
 
 /**
- * 약관 열람 안내.
+ * 약관 안내.
  *
- * `동의하는 것으로 간주합니다` 라고 쓰지 않는다 — 이용약관 동의는 로그인 뒤 결과가 분명한
- * 버튼으로 따로 받는다. 여기서 동의를 선언해 버리면 그 동의가 능동적 의사 확인이 아니게 되고,
- * 실제 기록 시점과도 어긋난다. 이 자리는 **가입 전에 읽어 볼 길**만 연다.
+ * `동의하는 것으로 간주합니다` 라고 쓰지 않는다. 이유가 둘이다 — 능동적 의사 확인이 아닌 동의는
+ * 무효이고, 로그인만으로는 서버에 아무것도 기록되지 않아 문구와 동작이 어긋난다. 동의는 로그인
+ * 뒤 결과가 분명한 버튼으로 따로 받는다.
+ *
+ * 대신 **다음에 무엇이 오는지**를 말한다. 그냥 링크만 두면 왜 여기 있는지 알 수 없다.
  */
 @Composable
 private fun LegalNotice(
@@ -341,11 +343,11 @@ private fun LegalNotice(
         modifier = Modifier.fillMaxWidth(),
         text =
             buildAnnotatedString {
-                append("시작하기 전에 ")
+                append("로그인하면 이용약관 동의를 한 번 받아요.\n")
                 appendTermLink("이용약관", links.termsOfService, linkStyle, onOpenTerm)
                 append("과 ")
                 appendTermLink("개인정보 처리방침", links.privacyPolicy, linkStyle, onOpenTerm)
-                append("을\n확인하실 수 있어요.")
+                append("은 지금도 보실 수 있어요.")
             },
         style = MaterialTheme.typography.bodySmall.copy(fontSize = LegalFontSize, lineHeight = LegalLineHeight),
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SUBTLE_TEXT_ALPHA),
