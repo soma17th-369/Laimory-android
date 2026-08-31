@@ -22,14 +22,13 @@ data class OnboardingUiState(
      * 없는 것을 되돌릴 수 있는 것처럼 보여 주지 않는다.
      */
     val consentDocuments: List<TermDocument> = emptyList(),
+    /**
+     * 체크 표시 상태. 사용자가 켜는 것이 아니라 **`모두 동의하고 시작하기` 를 누르면 채워진다.**
+     *
+     * 목록은 무엇에 동의하는지 보여 주는 자리이고 동의 행위는 버튼이다 — 결과가 분명한 버튼으로
+     * 받는 편이 항목마다 체크를 요구하는 것보다 의사가 또렷하다.
+     */
     val checkedConsents: Set<TermType> = emptySet(),
     val isConsentSubmitting: Boolean = false,
     val consentErrorMessage: String? = null,
-) : UiState {
-    /** 필수 동의는 하나도 빠질 수 없다. 서버가 세 종류를 모두 요구한다. */
-    val canSubmitConsent: Boolean
-        get() =
-            consentDocuments.isNotEmpty() &&
-                !isConsentSubmitting &&
-                consentDocuments.all { it.termType in checkedConsents }
-}
+) : UiState

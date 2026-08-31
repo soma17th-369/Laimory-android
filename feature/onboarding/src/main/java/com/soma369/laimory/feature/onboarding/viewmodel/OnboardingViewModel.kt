@@ -4,7 +4,6 @@ import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermStage
-import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
@@ -17,6 +16,7 @@ import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -41,12 +41,10 @@ class OnboardingViewModel
         private var recordableConsents: List<TermDocument> = emptyList()
 
         init {
-            // 동의 장이 목록에 남는지 먼저 정한다. 목록이 바뀐 뒤에 복원해야 저장해 둔 장 키가
-            // 가리키는 자리가 어긋나지 않는다.
-            safeLaunch(onError = { }) {
-                prepareConsentPage()
-                restoreLastPage()
-            }
+            // 복원을 약관 조회 뒤로 미루지 않는다. 장 목록은 조회 결과와 무관하게 고정이고,
+            // 조회는 네트워크를 두 번 탈 수 있어 그동안 화면이 첫 장에 묶인다.
+            safeLaunch(onError = { }) { restoreLastPage() }
+            safeLaunch(onError = { }) { prepareConsentPage() }
             observeNickname()
         }
 
@@ -82,12 +80,13 @@ class OnboardingViewModel
          *
          * 계속 관찰하면 사용자가 장을 넘길 때마다 저장 → 방출 → 복원이 되돌아와 Pager 가 제자리에
          * 묶인다. 복원은 화면에 들어올 때 한 번이면 된다.
+         *
+         * 값을 상태로만 준다. 효과로 밀어 스크롤시키면 Pager 는 이미 첫 장으로 만들어진 뒤라,
+         * 복원이 늦거나 컴포지션이 다시 만들어지는 사이에 첫 장이 보였다 튄다.
          */
         private suspend fun restoreLastPage() {
             val savedPageKey = observeOnboardingProgressUseCase().first()
-            val index = state.value.pages.indexOfKeyOrFirst(savedPageKey)
-            updateState { copy(initialPageIndex = index) }
-            sendEffect(OnboardingUiSideEffect.RestorePage(index))
+            updateState { copy(initialPageIndex = pages.indexOfKeyOrFirst(savedPageKey)) }
         }
 
         /** 닉네임은 있으면 인사말에 쓰고, 없거나 조회가 실패해도 온보딩을 막지 않는다. */
@@ -104,7 +103,6 @@ class OnboardingViewModel
                 is OnboardingUiIntent.PageChanged -> saveProgress(intent.pageIndex)
                 OnboardingUiIntent.Complete -> complete()
                 OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
-                is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
             }
         }
 
@@ -123,13 +121,6 @@ class OnboardingViewModel
          */
         private fun enableLocationTracking() {
             safeLaunch(onError = { }) { setLocationTrackingUseCase(true) }
-        }
-
-        private fun toggleConsent(termType: TermType) {
-            updateState {
-                val next = if (termType in checkedConsents) checkedConsents - termType else checkedConsents + termType
-                copy(checkedConsents = next, consentErrorMessage = null)
-            }
         }
 
         /**
@@ -159,9 +150,18 @@ class OnboardingViewModel
          * 바뀐다. 저장 전에 넘기면 그 사이 앱이 죽었을 때 다음 실행에서 온보딩을 처음부터 다시 본다.
          */
         private suspend fun complete() {
+            val documents = state.value.consentDocuments
+            if (documents.isNotEmpty()) {
+                // 무엇에 동의하고 넘어가는지 눈으로 확인할 틈을 준다. 버튼 문구가 `모두 동의하고
+                // 시작하기` 라 결과는 이미 분명하지만, 체크가 차오르는 것을 보지 못하면 무엇이
+                // 일어났는지 모른 채 화면이 바뀐다.
+                updateState { copy(checkedConsents = documents.mapTo(mutableSetOf()) { it.termType }) }
+                delay(CONSENT_REVEAL_MILLIS)
+            }
+
             updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
             if (!recordConsents()) {
-                updateState { copy(isCompleting = false) }
+                updateState { copy(isCompleting = false, checkedConsents = emptySet()) }
                 return
             }
             markCompleted()
@@ -179,6 +179,9 @@ class OnboardingViewModel
             val CONSENT_STAGES = listOf(TermStage.TIMELINE_FIRST_CREATE, TermStage.TIMELINE_LOCATION)
 
             val CONSENT_TYPES = CONSENT_STAGES.flatMap { it.requiredTypes }
+
+            /** 체크가 차오르는 것을 보여 주는 시간. 넘기기 전에 한 박자만 둔다. */
+            const val CONSENT_REVEAL_MILLIS = 400L
 
             const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."
             const val FAILURE_MESSAGE = "동의를 기록하지 못했어요. 잠시 후 다시 시도해 주세요."

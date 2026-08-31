@@ -45,10 +45,8 @@ import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
-import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import com.soma369.laimory.feature.onboarding.viewmodel.OnboardingViewModel
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -63,7 +61,6 @@ fun OnboardingRoute(
         innerPadding = innerPadding,
         state = state,
         onIntent = viewModel::sendIntent,
-        sideEffectFlow = viewModel.sideEffect,
     )
 }
 
@@ -78,21 +75,13 @@ private fun OnboardingContent(
     innerPadding: PaddingValues,
     state: OnboardingUiState,
     onIntent: (OnboardingUiIntent) -> Unit,
-    sideEffectFlow: Flow<OnboardingUiSideEffect>,
 ) {
     val permissionState = rememberDataPermissionState()
-    val pagerState = rememberPagerState(pageCount = { state.pages.size })
+    // 복원 인덱스가 정해진 뒤에 Pager 를 만든다. 먼저 만들고 나중에 스크롤시키면 첫 장이 한 번
+    // 보였다 튀고, 컴포지션이 다시 만들어질 때마다 그 튐이 되풀이된다.
+    val initialPage = state.initialPageIndex ?: return
+    val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { state.pages.size })
     val scope = rememberCoroutineScope()
-
-    // 마지막으로 본 장으로 되돌린다. 상태의 인덱스를 pagerState 초기값으로 쓸 수 없다 —
-    // pagerState 는 첫 컴포지션에 만들어지고 복원 값은 그 뒤에 도착한다.
-    LaunchedEffect(Unit) {
-        sideEffectFlow.collect { effect ->
-            when (effect) {
-                is OnboardingUiSideEffect.RestorePage -> pagerState.scrollToPage(effect.pageIndex)
-            }
-        }
-    }
 
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }
@@ -124,7 +113,7 @@ private fun OnboardingContent(
         state = state,
         pagerState = pagerState,
         ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, needsConsent, permissionState.locationStep),
-        isPrimaryEnabled = if (needsConsent) state.canSubmitConsent else !state.isCompleting,
+        isPrimaryEnabled = !state.isCompleting,
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
@@ -136,7 +125,6 @@ private fun OnboardingContent(
                 else -> goNext()
             }
         },
-        onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
         onSkipClick = goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
@@ -154,7 +142,6 @@ private fun OnboardingScreen(
     isPageGranted: (OnboardingPageSpec) -> Boolean,
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
-    onConsentToggle: (TermType) -> Unit,
     onOpenTerm: (TermDocument) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -187,7 +174,6 @@ private fun OnboardingScreen(
                                     checked = state.checkedConsents,
                                     isEnabled = !state.isConsentSubmitting,
                                     errorMessage = state.consentErrorMessage,
-                                    onToggle = onConsentToggle,
                                     onOpenTerm = onOpenTerm,
                                 )
                             }
@@ -318,7 +304,6 @@ private fun OnboardingScreenPreview(
             isPageGranted = { false },
             onPrimaryClick = {},
             onSkipClick = {},
-            onConsentToggle = {},
             onOpenTerm = {},
             onBack = {},
         )

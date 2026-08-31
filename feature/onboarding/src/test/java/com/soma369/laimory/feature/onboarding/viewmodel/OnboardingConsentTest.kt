@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -98,20 +99,20 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `하나라도 빠지면 온보딩을 끝낼 수 없다`() =
+    fun `시작 버튼이 체크를 채운 뒤 동의를 기록한다`() =
         runTest(UnconfinedTestDispatcher()) {
-            // 미리 체크된 동의는 능동적 의사 확인이 아니다.
-            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
+            // 항목마다 체크를 받지 않는다. 결과가 분명한 버튼 쪽이 의사가 또렷하다.
+            val coordinator = FakeTermsCoordinator(pending = allFour)
+            val viewModel = createViewModel(coordinator)
             runCurrent()
 
             assertTrue(viewModel.state.value.checkedConsents.isEmpty())
-            assertFalse(viewModel.state.value.canSubmitConsent)
 
-            viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(TermType.SENSITIVE_INFORMATION_CONSENT))
-            viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(TermType.THIRD_PARTY_PROVISION_CONSENT))
-            runCurrent()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            advanceUntilIdle()
 
-            assertFalse(viewModel.state.value.canSubmitConsent)
+            assertEquals(allFour.map { it.termType }.toSet(), viewModel.state.value.checkedConsents)
+            assertEquals(allFour, coordinator.agreed)
         }
 
     @Test
@@ -120,11 +121,8 @@ class OnboardingConsentTest {
             val coordinator = FakeTermsCoordinator(pending = allFour)
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
-            runCurrent()
-
             viewModel.sendIntent(OnboardingUiIntent.Complete)
-            runCurrent()
+            advanceUntilIdle()
 
             assertEquals(allFour, coordinator.agreed)
             assertNull(viewModel.state.value.consentErrorMessage)
@@ -136,11 +134,8 @@ class OnboardingConsentTest {
             val coordinator = FakeTermsCoordinator(pending = allFour, agreeFailure = IllegalStateException("offline"))
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
-            runCurrent()
-
             viewModel.sendIntent(OnboardingUiIntent.Complete)
-            runCurrent()
+            advanceUntilIdle()
 
             assertFalse(viewModel.state.value.isCompleting)
             assertFalse(viewModel.state.value.consentErrorMessage.isNullOrBlank())
@@ -155,11 +150,8 @@ class OnboardingConsentTest {
                 FakeTermsCoordinator(pending = allFour, agreeFailure = StaleTermVersionException(), revised = revised)
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
-            runCurrent()
-
             viewModel.sendIntent(OnboardingUiIntent.Complete)
-            runCurrent()
+            advanceUntilIdle()
 
             assertTrue(viewModel.state.value.checkedConsents.isEmpty())
             assertEquals(revised, viewModel.state.value.consentDocuments)
@@ -175,13 +167,10 @@ class OnboardingConsentTest {
             val viewModel =
                 createViewModel(coordinator, displayTerms = PublishedTermsRepository(allFour))
             runCurrent()
-            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
-            runCurrent()
-
             assertEquals(allFour, viewModel.state.value.consentDocuments)
 
             viewModel.sendIntent(OnboardingUiIntent.Complete)
-            runCurrent()
+            advanceUntilIdle()
 
             assertTrue(coordinator.agreed.isEmpty())
         }
