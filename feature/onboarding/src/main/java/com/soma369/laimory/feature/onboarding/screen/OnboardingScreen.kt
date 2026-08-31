@@ -90,8 +90,6 @@ private fun OnboardingContent(
         sideEffectFlow.collect { effect ->
             when (effect) {
                 is OnboardingUiSideEffect.RestorePage -> pagerState.scrollToPage(effect.pageIndex)
-                // 동의가 기록됐을 때만 넘어간다. 위치를 아는 쪽은 화면이라 여기서 옮긴다.
-                OnboardingUiSideEffect.ConsentAccepted -> pagerState.animateScrollToPage(pagerState.currentPage + 1)
             }
         }
     }
@@ -116,9 +114,8 @@ private fun OnboardingContent(
     // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
     // 일어나지 않은 것처럼 보이기 때문이다.
     val needsRequest = currentPage?.permission != null && !permissionState.isGranted(currentPage.permission)
-    // 받을 문서가 남아 있을 때만 동의 장으로 다룬다. 비면 목록에서 이미 빠졌지만, 그 사이의
-    // 리컴포지션에서 빈 장이 CTA 만 남기고 서 있지 않게 한 번 더 본다.
-    val needsConsent = currentPage?.consentStage != null && state.consentDocuments.isNotEmpty()
+    // 받을 문서가 남아 있는 동의 장인지. 비어 있으면 마지막 장은 평범한 마무리 장이다.
+    val needsConsent = currentPage?.showsConsents == true && state.consentDocuments.isNotEmpty()
     val termContentLauncher = rememberTermContentLauncher()
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 
@@ -126,17 +123,17 @@ private fun OnboardingContent(
         innerPadding = innerPadding,
         state = state,
         pagerState = pagerState,
-        ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, permissionState.locationStep),
+        ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, needsConsent, permissionState.locationStep),
         isPrimaryEnabled = if (needsConsent) state.canSubmitConsent else !state.isCompleting,
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
-        // 동의 장은 건너뛸 수 있다 — 서버 gate 가 초안 생성에만 걸려 있어, 거부해도 열람과
-        // 편집은 그대로 쓸 수 있다. 건너뛰면 초안 생성 화면이 다시 받는다.
-        showsSkip = currentPage?.isSkippable == true && (needsRequest || needsConsent) && !isLastPage,
+        // 마지막 장의 동의도 건너뛸 수 있다 — 서버 gate 가 초안 생성에만 걸려 있어, 거부해도
+        // 열람과 편집은 그대로 쓸 수 있다. 건너뛰면 초안 생성 화면이 다시 받는다.
+        showsSkip = (currentPage?.isSkippable == true && needsRequest && !isLastPage) || needsConsent,
+        skipLabel = if (needsConsent) "동의하지 않고 시작하기" else "나중에",
         isPageGranted = { page -> permissionState.isGranted(page.permission) },
         onPrimaryClick = {
             when {
-                needsConsent -> onIntent(OnboardingUiIntent.SubmitConsent)
                 needsRequest -> currentPage?.permission?.let(permissionState::request)
                 isLastPage -> onIntent(OnboardingUiIntent.Complete)
                 else -> goNext()
@@ -144,7 +141,7 @@ private fun OnboardingContent(
         },
         onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
-        onSkipClick = goNext,
+        onSkipClick = if (needsConsent) ({ onIntent(OnboardingUiIntent.SkipConsent) }) else goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
     )
 }
@@ -157,6 +154,7 @@ private fun OnboardingScreen(
     ctaLabel: String,
     isPrimaryEnabled: Boolean,
     showsSkip: Boolean,
+    skipLabel: String,
     isPageGranted: (OnboardingPageSpec) -> Boolean,
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
@@ -184,7 +182,7 @@ private fun OnboardingScreen(
                     nickname = state.nickname,
                     isGranted = isPageGranted(spec),
                     extra =
-                        if (spec.consentStage == null) {
+                        if (!spec.showsConsents || state.consentDocuments.isEmpty()) {
                             null
                         } else {
                             {
@@ -225,7 +223,7 @@ private fun OnboardingScreen(
 
                     showsSkip ->
                         TextButton(onClick = onSkipClick, enabled = !state.isCompleting) {
-                            Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
+                            Text(text = skipLabel, style = MaterialTheme.typography.bodyMedium)
                         }
                 }
             }
@@ -256,9 +254,13 @@ private fun ctaLabel(
     page: OnboardingPageSpec?,
     needsRequest: Boolean,
     isLastPage: Boolean,
+    needsConsent: Boolean,
     locationStep: LocationPermissionStep,
 ): String =
     when {
+        // 무엇을 누르는지 버튼이 말한다. `시작하기` 만으로는 동의가 함께 일어나는 줄 알 수 없다.
+        needsConsent -> "모두 동의하고 시작하기"
+
         page?.permission == DataPermission.LOCATION && locationStep != LocationPermissionStep.GRANTED ->
             when (locationStep) {
                 LocationPermissionStep.BACKGROUND -> "'항상 허용'으로 바꾸기"
@@ -317,6 +319,7 @@ private fun OnboardingScreenPreview(
             ctaLabel = ctaLabel,
             isPrimaryEnabled = true,
             showsSkip = showsSkip,
+            skipLabel = "나중에",
             isPageGranted = { false },
             onPrimaryClick = {},
             onSkipClick = {},
@@ -341,9 +344,9 @@ private fun OnboardingConsentPreview() {
                 ),
         )
     OnboardingScreenPreview(
-        pageIndex = state.pages.indexOfFirst { it.consentStage != null },
+        pageIndex = state.pages.indexOfFirst { it.showsConsents },
         showsSkip = true,
-        ctaLabel = "동의하고 계속하기",
+        ctaLabel = "모두 동의하고 시작하기",
         state = state,
     )
 }

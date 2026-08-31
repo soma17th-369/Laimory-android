@@ -1,6 +1,5 @@
 package com.soma369.laimory.feature.onboarding.model
 
-import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.ui.permission.DataPermission
 
 /**
@@ -67,22 +66,14 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             permission = DataPermission.APP_NOTIFICATION,
             primaryCta = "알림 받기",
         ),
-        // 소스별로 무엇을 읽어 무엇에 쓰는지 다 읽은 **뒤**에 둔다. 첫 장에 두면 아무것도
-        // 연결하지 않은 상태에서 민감정보·제3자 제공·국외 이전을 묻게 돼 판단할 근거가 없다.
-        OnboardingPageSpec(
-            key = "data_consent",
-            label = "AI",
-            title = "모은 기록을\nAI 가 읽어도 될까요",
-            description =
-                "고른 기록만 AI 에 보내 하루로 정리해요.\n" +
-                    "지금 동의하지 않아도 앱은 그대로 쓸 수 있고, 타임라인을 만들 때 다시 여쭤봐요.",
-            consentStage = TermStage.TIMELINE_FIRST_CREATE,
-            primaryCta = "동의하고 계속하기",
-        ),
+        // 필수 동의를 마지막 장에 둔다. 소스별로 무엇을 읽어 무엇에 쓰는지 다 읽은 뒤라야
+        // 무엇을 보내는지 알고 판단할 수 있다 — 첫 장에 두면 아무것도 연결하지 않은 상태에서
+        // 민감정보·제3자 제공·국외 이전·위치를 묻게 된다.
         OnboardingPageSpec(
             key = "done",
             title = "준비됐어요",
             description = "지금 켜 두지 않은 것도 설정에서 언제든 바꿀 수 있어요.",
+            showsConsents = true,
             primaryCta = "Laimory 시작하기",
         ),
     )

@@ -45,7 +45,8 @@ class OnboardingConsentTest {
     private val sensitive = document(TermType.SENSITIVE_INFORMATION_CONSENT)
     private val thirdParty = document(TermType.THIRD_PARTY_PROVISION_CONSENT)
     private val crossBorder = document(TermType.CROSS_BORDER_TRANSFER_CONSENT)
-    private val allThree = listOf(sensitive, thirdParty, crossBorder)
+    private val location = document(TermType.LOCATION_BASED_SERVICE_TERMS)
+    private val allFour = listOf(sensitive, thirdParty, crossBorder, location)
 
     @Before
     fun setUp() {
@@ -58,43 +59,46 @@ class OnboardingConsentTest {
     }
 
     @Test
-    fun `받을 동의가 있으면 동의 장을 남긴다`() =
+    fun `마지막 장에서 위치약관까지 네 종류를 받는다`() =
         runTest(UnconfinedTestDispatcher()) {
-            val viewModel = createViewModel(FakeTermsCoordinator(pending = allThree))
+            // 온보딩 시점에는 앞으로 무엇을 보낼지 알 수 없어 위치 조건을 판정할 수 없다.
+            // 미리 받아 두면 초안 생성 화면이 다시 묻지 않는다.
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
 
             runCurrent()
 
-            assertEquals(allThree, viewModel.state.value.consentDocuments)
-            assertTrue(viewModel.state.value.pages.any { it.consentStage != null })
+            assertEquals(allFour, viewModel.state.value.consentDocuments)
+            assertTrue(viewModel.state.value.pages.last().showsConsents)
         }
 
     @Test
-    fun `이미 동의했으면 동의 장을 통째로 뺀다`() =
+    fun `이미 동의했으면 목록만 비고 마지막 장은 남는다`() =
         runTest(UnconfinedTestDispatcher()) {
-            // 확인할 것이 없는 장은 무엇을 하라는 화면인지 알 수 없다.
+            // 마지막 장은 동의와 무관하게 온보딩을 끝내는 자리라 사라지면 안 된다.
             val viewModel = createViewModel(FakeTermsCoordinator(pending = emptyList()))
 
             runCurrent()
 
-            assertTrue(viewModel.state.value.pages.none { it.consentStage != null })
+            assertTrue(viewModel.state.value.consentDocuments.isEmpty())
+            assertTrue(viewModel.state.value.pages.last().showsConsents)
         }
 
     @Test
-    fun `조회에 실패해도 동의 장을 빼고 온보딩을 막지 않는다`() =
+    fun `조회에 실패해도 온보딩을 막지 않는다`() =
         runTest(UnconfinedTestDispatcher()) {
             // 동의는 초안 생성 화면이 다시 받는다. 여기서 막아 온보딩을 못 끝내게 할 이유가 없다.
             val viewModel = createViewModel(FakeTermsCoordinator(failure = IllegalStateException("offline")))
 
             runCurrent()
 
-            assertTrue(viewModel.state.value.pages.none { it.consentStage != null })
+            assertTrue(viewModel.state.value.consentDocuments.isEmpty())
         }
 
     @Test
     fun `기본은 모두 해제이고 하나라도 빠지면 보낼 수 없다`() =
         runTest(UnconfinedTestDispatcher()) {
             // 미리 체크된 동의는 능동적 의사 확인이 아니다.
-            val viewModel = createViewModel(FakeTermsCoordinator(pending = allThree))
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
             runCurrent()
 
             assertTrue(viewModel.state.value.checkedConsents.isEmpty())
@@ -108,19 +112,49 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `세 항목을 모두 확인하면 등록한다`() =
+    fun `모두 확인하고 시작하면 동의를 기록한 뒤 완료한다`() =
         runTest(UnconfinedTestDispatcher()) {
-            val coordinator = FakeTermsCoordinator(pending = allThree)
+            val coordinator = FakeTermsCoordinator(pending = allFour)
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            allThree.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
+            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
             runCurrent()
 
-            viewModel.sendIntent(OnboardingUiIntent.SubmitConsent)
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             runCurrent()
 
-            assertEquals(allThree, coordinator.agreed)
+            assertEquals(allFour, coordinator.agreed)
             assertNull(viewModel.state.value.consentErrorMessage)
+        }
+
+    @Test
+    fun `동의하지 않고 시작하면 기록하지 않고 완료한다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 서버 gate 가 초안 생성에만 걸려 있어 거부해도 열람·편집은 그대로 쓸 수 있다.
+            val coordinator = FakeTermsCoordinator(pending = allFour)
+            val viewModel = createViewModel(coordinator)
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.SkipConsent)
+            runCurrent()
+
+            assertTrue(coordinator.agreed.isEmpty())
+        }
+
+    @Test
+    fun `동의 기록이 실패하면 온보딩을 끝내지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val coordinator = FakeTermsCoordinator(pending = allFour, agreeFailure = IllegalStateException("offline"))
+            val viewModel = createViewModel(coordinator)
+            runCurrent()
+            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isCompleting)
+            assertFalse(viewModel.state.value.consentErrorMessage.isNullOrBlank())
         }
 
     @Test
@@ -129,13 +163,13 @@ class OnboardingConsentTest {
             // 새 버전으로 자동 재시도하면 사용자가 읽지 않은 내용에 동의한 기록이 남는다.
             val revised = listOf(document(TermType.SENSITIVE_INFORMATION_CONSENT, version = "2.0"))
             val coordinator =
-                FakeTermsCoordinator(pending = allThree, agreeFailure = StaleTermVersionException(), revised = revised)
+                FakeTermsCoordinator(pending = allFour, agreeFailure = StaleTermVersionException(), revised = revised)
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            allThree.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
+            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
             runCurrent()
 
-            viewModel.sendIntent(OnboardingUiIntent.SubmitConsent)
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             runCurrent()
 
             assertTrue(viewModel.state.value.checkedConsents.isEmpty())
@@ -179,7 +213,7 @@ class OnboardingConsentTest {
 
         override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> {
             failure?.let { return Result.failure(it) }
-            val documents = if (hasFailedOnce) revised else pending
+            val documents = (if (hasFailedOnce) revised else pending).filter { it.termType in stage.requiredTypes }
             return Result.success(
                 TermStageRequirement(stage, documents.map { TermRequirement(it, isAgreed = false) }),
             )

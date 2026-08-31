@@ -40,26 +40,21 @@ class OnboardingViewModel
         }
 
         /**
-         * 동의 장에 실제로 받을 것이 있는지 확인한다.
+         * 마지막 장에서 받을 필수 동의를 모은다.
          *
-         * 이미 동의했거나 서버 catalog 가 아직 활성화되지 않았으면 장을 통째로 뺀다 — 확인할
-         * 것이 없는 장은 무엇을 하라는 화면인지 알 수 없다. 조회에 실패해도 뺀다. 동의는 초안
-         * 생성 화면이 다시 받으므로, 여기서 막아 온보딩을 못 끝내게 할 이유가 없다.
+         * 위치약관까지 **네 종류를 한 자리에서** 받는다. 서버는 위치정보가 실린 요청에만 위치약관을
+         * 요구하지만, 온보딩 시점에는 앞으로 무엇을 보낼지 알 수 없어 조건을 판정할 수 없다.
+         * 여기서 미리 받아 두면 나중에 초안 생성 화면이 다시 묻지 않는다.
+         *
+         * 이미 동의했거나 catalog 가 아직 활성화되지 않았으면 목록만 빈다 — 장은 그대로 둔다.
+         * 마지막 장은 동의와 무관하게 온보딩을 끝내는 자리라 사라지면 안 된다. 조회 실패도 같다.
          */
         private suspend fun prepareConsentPage() {
             val pending =
-                termsCoordinator
-                    .requirementOf(TermStage.TIMELINE_FIRST_CREATE)
-                    .getOrNull()
-                    ?.pending
-                    .orEmpty()
-            updateState {
-                if (pending.isEmpty()) {
-                    copy(pages = pages.filter { it.consentStage == null })
-                } else {
-                    copy(consentDocuments = pending)
-                }
-            }
+                CONSENT_STAGES
+                    .flatMap { stage -> termsCoordinator.requirementOf(stage).getOrNull()?.pending.orEmpty() }
+                    .distinctBy { it.termType }
+            updateState { copy(consentDocuments = pending) }
         }
 
         /**
@@ -90,7 +85,7 @@ class OnboardingViewModel
                 OnboardingUiIntent.Complete -> complete()
                 OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
                 is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
-                OnboardingUiIntent.SubmitConsent -> submitConsent()
+                OnboardingUiIntent.SkipConsent -> markCompleted()
             }
         }
 
@@ -119,55 +114,51 @@ class OnboardingViewModel
         }
 
         /**
-         * 동의를 등록한다. 성공해야 다음 장으로 넘어간다.
+         * 남은 필수 동의를 기록한다. 실패하면 온보딩을 끝내지 않는다.
          *
-         * 개정 경쟁이면 새 버전으로 자동 재시도하지 않는다 — 사용자가 읽지 않은 내용에 동의한
-         * 기록이 서버에 남는다. 다시 조회해 바뀐 문서를 싣고 확인 상태를 모두 되돌린다.
+         * 개정 경쟁이면 새 버전으로 자동 재시도하지 않는다 — 사용자가 열람하지 않은 내용에
+         * 동의한 기록이 서버에 남는다. 다시 조회해 바뀐 문서를 싣고 확인 상태를 모두 되돌린다.
          */
-        private suspend fun submitConsent() {
+        private suspend fun recordConsents(): Boolean {
             val documents = state.value.consentDocuments
-            if (!state.value.canSubmitConsent) return
-            updateState { copy(isConsentSubmitting = true, consentErrorMessage = null) }
+            if (documents.isEmpty()) return true
 
-            val error = termsCoordinator.agree(documents).exceptionOrNull()
-            if (error == null) {
-                updateState { copy(isConsentSubmitting = false, consentErrorMessage = null) }
-                sendEffect(OnboardingUiSideEffect.ConsentAccepted)
-                return
-            }
+            val error = termsCoordinator.agree(documents).exceptionOrNull() ?: return true
             if (error is StaleTermVersionException) {
-                val revised =
-                    termsCoordinator
-                        .requirementOf(TermStage.TIMELINE_FIRST_CREATE)
-                        .getOrNull()
-                        ?.pending
-                        .orEmpty()
-                updateState {
-                    copy(
-                        isConsentSubmitting = false,
-                        consentDocuments = revised.ifEmpty { consentDocuments },
-                        checkedConsents = emptySet(),
-                        consentErrorMessage = REVISED_MESSAGE,
-                    )
-                }
-                return
+                prepareConsentPage()
+                updateState { copy(checkedConsents = emptySet(), consentErrorMessage = REVISED_MESSAGE) }
+            } else {
+                updateState { copy(consentErrorMessage = FAILURE_MESSAGE) }
             }
-            updateState { copy(isConsentSubmitting = false, consentErrorMessage = FAILURE_MESSAGE) }
+            return false
         }
 
         /**
-         * 완료를 저장한 뒤에야 Home 으로 간다.
+         * 필수 동의를 기록한 뒤 완료를 저장한다.
          *
          * 화면 전환을 여기서 직접 하지 않는다 — 저장이 반영되면 앱 루트가 스스로 Home 으로
          * 바뀐다. 저장 전에 넘기면 그 사이 앱이 죽었을 때 다음 실행에서 온보딩을 처음부터 다시 본다.
          */
         private suspend fun complete() {
+            updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
+            if (!recordConsents()) {
+                updateState { copy(isCompleting = false) }
+                return
+            }
+            markCompleted()
+        }
+
+        /** 동의를 건드리지 않고 완료만 저장한다. */
+        private suspend fun markCompleted() {
             updateState { copy(isCompleting = true, hasCompletionFailed = false) }
             runCatching { completeOnboardingUseCase() }
                 .onFailure { updateState { copy(isCompleting = false, hasCompletionFailed = true) } }
         }
 
         private companion object {
+            /** 마지막 장에서 한 번에 받는 필수 동의. 서버 단계 정의를 그대로 쓴다. */
+            val CONSENT_STAGES = listOf(TermStage.TIMELINE_FIRST_CREATE, TermStage.TIMELINE_LOCATION)
+
             const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."
             const val FAILURE_MESSAGE = "동의를 기록하지 못했어요. 잠시 후 다시 시도해 주세요."
         }
