@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
+import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermRequirement
 import com.soma369.laimory.core.domain.model.terms.TermStage
@@ -14,10 +15,12 @@ import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
+import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import kotlinx.coroutines.Dispatchers
@@ -163,15 +166,38 @@ class OnboardingConsentTest {
             assertFalse(viewModel.state.value.consentErrorMessage.isNullOrBlank())
         }
 
-    private fun createViewModel(coordinator: TermsAgreementCoordinator) =
-        OnboardingViewModel(
-            observeOnboardingProgressUseCase = ObserveOnboardingProgressUseCase(FakeOnboardingRepository),
-            observeUserProfileUseCase = ObserveUserProfileUseCase(FakeUserProfileCoordinator),
-            saveOnboardingProgressUseCase = SaveOnboardingProgressUseCase(FakeOnboardingRepository),
-            completeOnboardingUseCase = CompleteOnboardingUseCase(FakeOnboardingCompletionCoordinator),
-            setLocationTrackingUseCase = SetLocationTrackingUseCase(FakeLocationTrackingRepository),
-            termsCoordinator = coordinator,
-        )
+    @Test
+    fun `이 환경 catalog 가 비면 게시된 정본을 보여 주되 등록하지는 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 그 환경 DB 에 없는 행을 보내면 전부 거절되고, 서버도 catalog 가 없는 단계는
+            // 강제하지 않는다. 화면만 채우고 아무것도 보내지 않는 편이 서버 판정과 맞는다.
+            val coordinator = FakeTermsCoordinator(pending = emptyList())
+            val viewModel =
+                createViewModel(coordinator, displayTerms = PublishedTermsRepository(allFour))
+            runCurrent()
+            allFour.forEach { viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(it.termType)) }
+            runCurrent()
+
+            assertEquals(allFour, viewModel.state.value.consentDocuments)
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            runCurrent()
+
+            assertTrue(coordinator.agreed.isEmpty())
+        }
+
+    private fun createViewModel(
+        coordinator: TermsAgreementCoordinator,
+        displayTerms: TermsRepository = EmptyTermsRepository,
+    ) = OnboardingViewModel(
+        observeOnboardingProgressUseCase = ObserveOnboardingProgressUseCase(FakeOnboardingRepository),
+        observeUserProfileUseCase = ObserveUserProfileUseCase(FakeUserProfileCoordinator),
+        saveOnboardingProgressUseCase = SaveOnboardingProgressUseCase(FakeOnboardingRepository),
+        completeOnboardingUseCase = CompleteOnboardingUseCase(FakeOnboardingCompletionCoordinator),
+        setLocationTrackingUseCase = SetLocationTrackingUseCase(FakeLocationTrackingRepository),
+        termsCoordinator = coordinator,
+        getDisplayTerms = GetDisplayTermsUseCase(displayTerms),
+    )
 
     private fun document(
         type: TermType,
@@ -215,6 +241,30 @@ class OnboardingConsentTest {
             agreed += documents
             return Result.success(Unit)
         }
+    }
+
+    /** 이 환경에는 문서가 없고 게시된 정본에만 있는 상태. */
+    private class PublishedTermsRepository(
+        private val published: List<TermDocument>,
+    ) : TermsRepository {
+        override suspend fun getCurrentTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getPublishedTerms(types: List<TermType>) = published.filter { it.termType in types }
+
+        override suspend fun getMyAgreements() = emptyList<TermAgreement>()
+
+        override suspend fun agree(documents: List<TermDocument>) = Unit
+    }
+
+    /** catalog 가 있는 환경을 가정한다 — 대체 조회는 돌지 않는다. */
+    private object EmptyTermsRepository : TermsRepository {
+        override suspend fun getCurrentTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getPublishedTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getMyAgreements() = emptyList<TermAgreement>()
+
+        override suspend fun agree(documents: List<TermDocument>) = Unit
     }
 
     private object FakeOnboardingRepository : OnboardingRepository {

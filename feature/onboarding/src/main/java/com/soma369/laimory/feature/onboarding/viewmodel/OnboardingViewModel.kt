@@ -2,12 +2,14 @@ package com.soma369.laimory.feature.onboarding.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
+import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.onboarding.model.indexOfKeyOrFirst
@@ -28,7 +30,16 @@ class OnboardingViewModel
         private val completeOnboardingUseCase: CompleteOnboardingUseCase,
         private val setLocationTrackingUseCase: SetLocationTrackingUseCase,
         private val termsCoordinator: TermsAgreementCoordinator,
+        private val getDisplayTerms: GetDisplayTermsUseCase,
     ) : BaseMviViewModel<OnboardingUiState, OnboardingUiIntent, OnboardingUiSideEffect>(OnboardingUiState()) {
+        /**
+         * 실제로 서버에 보낼 문서. 화면에 보이는 목록과 다를 수 있다.
+         *
+         * 이 환경 catalog 가 비어 있으면 화면은 게시된 정본을 보여 주지만 등록 대상은 없다 —
+         * 그 환경 DB 에 없는 행을 보내면 전부 거절되고, 서버도 그 단계를 강제하지 않는다.
+         */
+        private var recordableConsents: List<TermDocument> = emptyList()
+
         init {
             // 동의 장이 목록에 남는지 먼저 정한다. 목록이 바뀐 뒤에 복원해야 저장해 둔 장 키가
             // 가리키는 자리가 어긋나지 않는다.
@@ -42,19 +53,28 @@ class OnboardingViewModel
         /**
          * 마지막 장에서 받을 필수 동의를 모은다.
          *
-         * 위치약관까지 **네 종류를 한 자리에서** 받는다. 서버는 위치정보가 실린 요청에만 위치약관을
-         * 요구하지만, 온보딩 시점에는 앞으로 무엇을 보낼지 알 수 없어 조건을 판정할 수 없다.
-         * 여기서 미리 받아 두면 나중에 초안 생성 화면이 다시 묻지 않는다.
+         * 위치약관까지 네 종류를 한 자리에서 받는다. 서버는 위치정보가 실린 요청에만 위치약관을
+         * 요구하지만, 온보딩 시점에는 앞으로 무엇을 보낼지 알 수 없어 그 조건을 판정할 수 없다.
+         * 미리 받아 두면 초안 생성 화면이 다시 묻지 않는다.
          *
-         * 이미 동의했거나 catalog 가 아직 활성화되지 않았으면 목록만 빈다 — 장은 그대로 둔다.
-         * 마지막 장은 동의와 무관하게 온보딩을 끝내는 자리라 사라지면 안 된다. 조회 실패도 같다.
+         * **보여 줄 목록과 보낼 목록을 나눈다.** 이 환경 catalog 가 통째로 비어 있으면 화면은
+         * 게시된 정본을 보여 주되 등록 대상은 비운다 — 그 환경 DB 에 없는 행을 보내면 전부
+         * 거절되고, 서버도 catalog 가 없는 단계는 강제하지 않는다(fail-open).
+         *
+         * 문서가 하나라도 있는 환경에서는 그 판정이 정본이다. 이미 다 동의했으면 목록이 비고
+         * 체크리스트도 그리지 않는다. 조회 실패도 같다 — 여기서 막아 온보딩을 못 끝내게 할
+         * 이유가 없고, 동의는 초안 생성 화면이 다시 받는다.
          */
         private suspend fun prepareConsentPage() {
-            val pending =
-                CONSENT_STAGES
-                    .flatMap { stage -> termsCoordinator.requirementOf(stage).getOrNull()?.pending.orEmpty() }
-                    .distinctBy { it.termType }
-            updateState { copy(consentDocuments = pending) }
+            val requirements = CONSENT_STAGES.mapNotNull { termsCoordinator.requirementOf(it).getOrNull() }
+            val pending = requirements.flatMap { it.pending }.distinctBy { it.termType }
+            recordableConsents = pending
+
+            // 이 환경에 문서가 하나라도 있으면 그 판정이 정본이다. 이미 다 동의했으면 목록이 비고
+            // 체크리스트도 그리지 않는다.
+            val hasCatalog = requirements.any { it.items.isNotEmpty() }
+            val display = if (hasCatalog) pending else getDisplayTerms(CONSENT_TYPES)
+            updateState { copy(consentDocuments = display) }
         }
 
         /**
@@ -119,7 +139,7 @@ class OnboardingViewModel
          * 동의한 기록이 서버에 남는다. 다시 조회해 바뀐 문서를 싣고 확인 상태를 모두 되돌린다.
          */
         private suspend fun recordConsents(): Boolean {
-            val documents = state.value.consentDocuments
+            val documents = recordableConsents
             if (documents.isEmpty()) return true
 
             val error = termsCoordinator.agree(documents).exceptionOrNull() ?: return true
@@ -157,6 +177,8 @@ class OnboardingViewModel
         private companion object {
             /** 마지막 장에서 한 번에 받는 필수 동의. 서버 단계 정의를 그대로 쓴다. */
             val CONSENT_STAGES = listOf(TermStage.TIMELINE_FIRST_CREATE, TermStage.TIMELINE_LOCATION)
+
+            val CONSENT_TYPES = CONSENT_STAGES.flatMap { it.requiredTypes }
 
             const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."
             const val FAILURE_MESSAGE = "동의를 기록하지 못했어요. 잠시 후 다시 시도해 주세요."

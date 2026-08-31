@@ -7,12 +7,14 @@ import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.terms.TermStageRequirement
 import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
@@ -42,6 +44,7 @@ class DraftConsentViewModel
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
+        private val getDisplayTerms: GetDisplayTermsUseCase,
         mapRenderGate: LocationMapRenderGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
             DraftConsentUiState(isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()),
@@ -57,6 +60,14 @@ class DraftConsentViewModel
          */
         private var stageRequirement: TermStageRequirement? = null
         private var locationRequirement: TermStageRequirement? = null
+
+        /**
+         * 이 환경 catalog 가 통째로 비었을 때 화면만 채우는 문서.
+         *
+         * 등록 대상이 아니다 — 그 환경 DB 에 없는 행을 보내면 전부 거절되고, 서버도 catalog 가
+         * 없는 단계는 강제하지 않는다(fail-open). 개발 catalog 에 seed 가 들어가면 비어 있게 된다.
+         */
+        private var displayOnlyDocuments: List<TermDocument> = emptyList()
 
         init {
             safeLaunch {
@@ -91,6 +102,9 @@ class DraftConsentViewModel
         private suspend fun loadTermRequirement() {
             stageRequirement = termsCoordinator.requirementOf(TermStage.TIMELINE_FIRST_CREATE).getOrNull()
             locationRequirement = termsCoordinator.requirementOf(TermStage.TIMELINE_LOCATION).getOrNull()
+
+            val hasCatalog = listOfNotNull(stageRequirement, locationRequirement).any { it.items.isNotEmpty() }
+            displayOnlyDocuments = if (hasCatalog) emptyList() else getDisplayTerms(TermStage.TIMELINE_FIRST_CREATE.requiredTypes)
             applyTermRows(resetChecked = true)
         }
 
@@ -108,7 +122,8 @@ class DraftConsentViewModel
                 }
             updateState {
                 copy(
-                    pendingTerms = items.filterNot { it.isAgreed }.map { it.document },
+                    // catalog 가 비면 보여 줄 것만 남는다. 등록 대상은 items 쪽이라 비어 있다.
+                    pendingTerms = items.filterNot { it.isAgreed }.map { it.document } + displayOnlyDocuments,
                     agreedTerms = items.filter { it.isAgreed }.map { it.document },
                     checkedTerms = if (resetChecked) emptySet() else checkedTerms,
                 )
@@ -246,7 +261,8 @@ class DraftConsentViewModel
          * 이미 기록된 동의는 확인 대상에서 빠진다.
          */
         private suspend fun recordAgreements(): Boolean {
-            val pending = state.value.pendingTerms
+            // 화면에만 있는 문서는 보내지 않는다. 이 환경 요구에서 나온 것만 등록 대상이다.
+            val pending = state.value.pendingTerms - displayOnlyDocuments.toSet()
             if (pending.isEmpty()) return true
 
             val error = termsCoordinator.agree(pending).exceptionOrNull()

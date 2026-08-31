@@ -15,6 +15,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
+import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermRequirement
 import com.soma369.laimory.core.domain.model.terms.TermStage
@@ -31,8 +32,10 @@ import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
@@ -707,6 +710,7 @@ class DraftConsentViewModelTest {
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
             termsCoordinator = termsCoordinator,
+            getDisplayTerms = GetDisplayTermsUseCase(EmptyTermsRepository),
             mapRenderGate = LocationMapRenderGate { false },
         )
 
@@ -879,6 +883,17 @@ class DraftConsentViewModelTest {
             discardCount++
             mutableState.value = DraftTaskTrackingState.Idle
         }
+    }
+
+    /** catalog 가 있는 환경을 가정한다 — 대체 조회는 돌지 않는다. */
+    private object EmptyTermsRepository : TermsRepository {
+        override suspend fun getCurrentTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getPublishedTerms(types: List<TermType>) = emptyList<TermDocument>()
+
+        override suspend fun getMyAgreements() = emptyList<TermAgreement>()
+
+        override suspend fun agree(documents: List<TermDocument>) = Unit
     }
 
     /** 세 종류를 모두 받아야 하는 상태로 시작한다. 서버 판정과 같은 집합이다. */
