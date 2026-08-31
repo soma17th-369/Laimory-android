@@ -3,6 +3,7 @@ package com.soma369.laimory.core.domain.coordinator
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.terms.TermStageRequirement
+import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import kotlinx.coroutines.flow.StateFlow
 
@@ -21,6 +22,14 @@ interface TermsAgreementCoordinator {
 
     /** 한 단계의 요구 상태. 조회에 실패하면 실패를 그대로 돌려준다. */
     suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement>
+
+    /**
+     * 이미 읽어 둔 문서 하나를 꺼낸다. **열람 링크용**이라 동의 판정과 무관하다.
+     *
+     * 처리방침처럼 동의 대상이 아닌 문서도 여기서 나온다 — 판정에 필요한 종류만 읽으면 화면이
+     * 링크 하나 때문에 서버를 또 부르게 된다.
+     */
+    suspend fun documentOf(type: TermType): TermDocument?
 
     /**
      * 동의를 등록한다. 성공하면 세션 판정에 즉시 반영한다.

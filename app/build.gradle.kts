@@ -89,6 +89,7 @@ dependencies {
     implementation(project(":feature:login"))
     implementation(project(":feature:onboarding"))
     implementation(project(":feature:settings"))
+    implementation(project(":feature:terms"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(project(":core:collection"))

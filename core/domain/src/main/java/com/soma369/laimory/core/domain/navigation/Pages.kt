@@ -22,6 +22,19 @@ data object LoginPage : Page {
 }
 
 /**
+ * 이용약관 동의.
+ *
+ * 서버가 인증 API 대부분을 이용약관 동의 여부로 막으므로 **온보딩보다 앞선 앱 루트**다.
+ * 온보딩과 층위는 같지만 상태를 섞지 않는다 — 온보딩은 설치 단위이고 약관 동의는 계정 단위라,
+ * 이미 온보딩을 마친 계정도 미동의면 여기부터 지나야 한다.
+ */
+data object TermsPage : Page {
+    const val PATH = "/terms"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+/**
  * 로그인 직후 한 번 보여 주는 데이터 권한 온보딩.
  *
  * Login·Home 과 같은 층위의 **앱 루트**다. 밀어 넣는 화면이 아니라, 인증과 온보딩 완료 여부로

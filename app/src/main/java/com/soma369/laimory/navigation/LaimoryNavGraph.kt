@@ -23,12 +23,14 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
+import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NavSignal
 import com.soma369.laimory.core.domain.navigation.OnboardingPage
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
@@ -55,6 +57,7 @@ fun LaimoryNavGraph(
     navigationFlow: Flow<NavSignal> = emptyFlow(),
     authSessionStates: Flow<AuthSessionState> = flowOf(AuthSessionState.Authenticated),
     onboardingCompletions: Flow<Boolean?> = flowOf(true),
+    termsGateStates: Flow<TermsGateState> = flowOf(TermsGateState.Satisfied),
     pendingDraftCompletions: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null),
     onDraftCompletionConsumed: suspend (String) -> Boolean = { false },
     onAuthRootReplaced: () -> Unit = {},
@@ -63,7 +66,10 @@ fun LaimoryNavGraph(
     // 아직 읽기 전이면 null 이다. 온보딩 상태를 모르는 채로 Home 을 먼저 그리면, 온보딩이 필요한
     // 사용자에게 홈이 한 프레임 번쩍인 뒤 화면이 갈린다.
     val onboardingCompleted by onboardingCompletions.collectAsStateWithLifecycle(initialValue = null)
-    val rootPage = rootPage(sessionState, onboardingCompleted)
+    // 약관 판정도 같은 이유로 정해지기 전에는 루트를 고르지 않는다. 이용약관에 동의하지 않으면
+    // 서버가 인증 API 대부분을 막으므로, 모른 채 홈을 그리면 오류만 뜨는 화면이 먼저 보인다.
+    val termsGate by termsGateStates.collectAsStateWithLifecycle(initialValue = TermsGateState.Unknown)
+    val rootPage = rootPage(sessionState, termsGate, onboardingCompleted)
     if (rootPage == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -169,16 +175,23 @@ private const val COMPLETION_REVEAL_MILLIS = 800L
  */
 internal fun rootPage(
     session: AuthSessionState,
+    termsGate: TermsGateState,
     onboardingCompleted: Boolean?,
 ): Page? =
     when (session) {
         AuthSessionState.Loading -> null
         AuthSessionState.Unauthenticated -> LoginPage
         AuthSessionState.Authenticated ->
-            when (onboardingCompleted) {
-                null -> null
-                true -> HomePage
-                false -> OnboardingPage
+            when (termsGate) {
+                TermsGateState.Unknown -> null
+                // 조회 실패도 약관 화면이 받는다. 그 화면이 다시 시도와 로그아웃을 함께 갖는다.
+                is TermsGateState.Required, TermsGateState.Failed -> TermsPage
+                TermsGateState.Satisfied ->
+                    when (onboardingCompleted) {
+                        null -> null
+                        true -> HomePage
+                        false -> OnboardingPage
+                    }
             }
     }
 

@@ -71,6 +71,8 @@ class DefaultTermsAgreementCoordinator
                 it.requirementOf(stage)
             }
 
+        override suspend fun documentOf(type: TermType): TermDocument? = loadSnapshot(force = false).getOrNull()?.documents?.get(type)
+
         override suspend fun agree(documents: List<TermDocument>): Result<Unit> {
             if (documents.isEmpty()) return Result.success(Unit)
             val epoch = mutex.withLock { sessionEpoch }
