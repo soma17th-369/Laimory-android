@@ -2,10 +2,13 @@ package com.soma369.laimory.feature.onboarding.component
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -20,6 +24,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.soma369.laimory.core.ui.greeting.GreetingEmphasis
 import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -49,36 +54,54 @@ internal fun OnboardingPageContent(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.large)
                 .padding(top = CONTENT_TOP_PADDING),
-        verticalArrangement = Arrangement.spacedBy(Spacing.medium),
+        verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
     ) {
-        if (page.showsGreeting) {
-            NicknameGreeting(nickname = nickname)
+        // 라벨 줄은 높이를 고정하고 아래로 붙인다. 첫 장의 인사말(titleLarge)과 나머지 장의
+        // 라벨(labelLarge)은 글자 크기가 달라, 그대로 두면 장마다 제목이 다른 높이에서 시작한다.
+        Box(
+            modifier = Modifier.fillMaxWidth().height(LABEL_SLOT_HEIGHT),
+            contentAlignment = Alignment.BottomStart,
+        ) {
+            when {
+                page.showsGreeting -> NicknameGreeting(nickname = nickname)
+                page.brandLabel != null ->
+                    Text(
+                        text = page.brandLabel,
+                        style = MaterialTheme.typography.labelLarge.copy(letterSpacing = BRAND_LABEL_LETTER_SPACING),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+
+                page.label != null ->
+                    Text(
+                        text = if (isGranted) "${page.label} · 연결됨" else page.label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+            }
         }
-        page.label?.let { label ->
-            Text(
-                text = if (isGranted) "$label · 연결됨" else label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (isGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        // 제목은 두 줄 자리를 늘 차지한다. 한 줄짜리 장에서 아래가 올라오면 넘길 때마다
+        // 이미지와 설명이 위아래로 튄다.
         Text(
             text = page.title,
+            modifier = Modifier.fillMaxWidth().heightIn(min = TITLE_SLOT_MIN_HEIGHT),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
         )
+        // 이미지는 제목과 설명 사이에 온다 — 글을 다 읽기 전에 무엇을 연결하는 화면인지 보여 준다.
+        // 아직 에셋이 없는 장은 자리를 접는다. 빈 상자를 남기면 이미지를 못 불러온 것처럼 보인다.
+        page.image?.let { image ->
+            Image(
+                painter = painterResource(image),
+                contentDescription = null,
+                modifier = Modifier.fillMaxWidth().height(IMAGE_HEIGHT),
+                contentScale = ContentScale.Fit,
+            )
+        }
         Text(
             text = page.description,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        page.image?.let { image ->
-            Image(
-                painter = painterResource(image),
-                contentDescription = null,
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.FillWidth,
-            )
-        }
         extra?.invoke(this)
     }
 }
@@ -112,3 +135,15 @@ private fun NicknameGreeting(nickname: String?) {
  * 가운데를 잡을 수 없고, 장마다 글이 길이가 달라 가운데 정렬이면 제목이 위아래로 흔들린다.
  */
 private val CONTENT_TOP_PADDING = 48.dp
+
+/** 라벨 줄 높이. 인사말(20/28)이 들어가도 잘리지 않는 값이다. */
+private val LABEL_SLOT_HEIGHT = 28.dp
+
+/** 제목이 늘 차지하는 최소 높이. headlineMedium 두 줄(30 x 2). */
+private val TITLE_SLOT_MIN_HEIGHT = 60.dp
+
+/** 이미지 자리. 에셋이 들어오기 전에는 이 높이를 쓰지 않는다(장이 자리를 접는다). */
+private val IMAGE_HEIGHT = 200.dp
+
+/** 브랜드 라벨만 자간을 넓혀 권한 라벨과 결을 다르게 둔다. */
+private val BRAND_LABEL_LETTER_SPACING = 0.4.sp

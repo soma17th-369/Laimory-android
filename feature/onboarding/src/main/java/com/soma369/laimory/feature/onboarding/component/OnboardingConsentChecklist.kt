@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +19,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -83,16 +85,21 @@ private fun ConsentRow(
                     enabled = isEnabled,
                     role = Role.Checkbox,
                     onValueChange = { onToggle() },
-                ).padding(vertical = Spacing.extraSmall),
+                ).padding(vertical = CONSENT_ROW_VERTICAL_PADDING),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
         // 행 전체가 토글이라 체크박스는 그림만 맡는다. 둘 다 누르면 두 번 뒤집힌다.
-        Checkbox(checked = isChecked, onCheckedChange = null, enabled = isEnabled)
+        Checkbox(
+            modifier = Modifier.size(CONSENT_CHECKBOX_SIZE),
+            checked = isChecked,
+            onCheckedChange = null,
+            enabled = isEnabled,
+        )
         Text(
             modifier = Modifier.weight(1f),
             text = "[필수] ${document.title}",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
         // 원문 열기는 별도 버튼이다. 행 전체가 토글이라 여기서 클릭을 잡아 주지 않으면
@@ -111,3 +118,15 @@ private fun ConsentRow(
         }
     }
 }
+
+/**
+ * 동의 한 줄의 상하 여백.
+ *
+ * 마지막 장은 이미지·설명·동의 네 줄이 한 화면에 들어가야 한다. 이 목록은 읽을거리가 아니라
+ * 확인하고 넘기는 줄이라 본문만큼 클 이유가 없다. 다만 터치 영역은 행 전체가 토글이라
+ * 여백을 줄여도 누를 곳은 넉넉하다.
+ */
+private val CONSENT_ROW_VERTICAL_PADDING = 5.dp
+
+/** 기본 48dp 터치 영역을 그대로 두면 네 줄만으로 화면을 넘긴다. 그림만 줄이고 터치는 행이 받는다. */
+private val CONSENT_CHECKBOX_SIZE = 18.dp

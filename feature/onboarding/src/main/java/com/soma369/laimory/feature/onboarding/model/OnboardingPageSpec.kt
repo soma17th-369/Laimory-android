@@ -20,6 +20,14 @@ data class OnboardingPageSpec(
     val key: String,
     /** 제목 위 작은 라벨(`PHOTO`). 없으면 그리지 않는다. */
     val label: String? = null,
+    /**
+     * 권한 라벨 대신 놓는 브랜드 라벨.
+     *
+     * [label] 과 나누는 이유는 규칙이 다르기 때문이다 — 권한 라벨은 허용되면 `PHOTO · 연결됨`
+     * 으로 바뀌고 색도 강조로 바뀌는데, 브랜드 라벨에는 연결할 권한이 없어 그 규칙이 성립하지
+     * 않는다. 같은 필드에 담으면 마지막 장이 `LAIMORY · 연결됨` 이 된다.
+     */
+    val brandLabel: String? = null,
     val title: String,
     val description: String,
     @DrawableRes val image: Int? = null,
