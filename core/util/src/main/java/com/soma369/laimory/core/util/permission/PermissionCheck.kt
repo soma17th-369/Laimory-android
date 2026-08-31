@@ -9,4 +9,4 @@ import android.content.pm.PackageManager
  * 이 모듈의 판정은 모두 이 한 줄을 거친다 — 화면마다 `checkSelfPermission` 을 다시 부르면
  * 같은 권한을 두고 판정이 갈라진다.
  */
-internal fun Context.isGranted(permission: String): Boolean = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+fun Context.isGranted(permission: String): Boolean = checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
