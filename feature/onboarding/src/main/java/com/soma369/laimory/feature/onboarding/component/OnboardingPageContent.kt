@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.onboarding.component
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -38,6 +39,8 @@ internal fun OnboardingPageContent(
     nickname: String?,
     isGranted: Boolean = false,
     modifier: Modifier = Modifier,
+    /** 설명 아래에 장이 따로 붙이는 것. 동의 장의 확인 목록이 여기로 들어온다. */
+    extra: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     Column(
         modifier =
@@ -76,6 +79,7 @@ internal fun OnboardingPageContent(
                 contentScale = ContentScale.FillWidth,
             )
         }
+        extra?.invoke(this)
     }
 }
 

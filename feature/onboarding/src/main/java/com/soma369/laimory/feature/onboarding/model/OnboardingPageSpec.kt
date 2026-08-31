@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.onboarding.model
 
 import androidx.annotation.DrawableRes
+import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.ui.permission.DataPermission
 
 /**
@@ -27,9 +28,16 @@ data class OnboardingPageSpec(
      * 이 장의 CTA 가 요청할 권한. `null` 이면 안내 전용 장이라 CTA 가 다음으로만 넘긴다.
      */
     val permission: DataPermission? = null,
+    /**
+     * 이 장에서 받을 약관 동의 단계. `null` 이면 약관과 무관한 장이다.
+     *
+     * 받을 것이 없으면(이미 동의했거나 catalog 가 아직 없으면) 이 장은 목록에서 빠진다 —
+     * 확인할 것이 없는 장을 보여 주면 무엇을 하라는 화면인지 알 수 없다.
+     */
+    val consentStage: TermStage? = null,
     val primaryCta: String,
     /** `나중에` 를 함께 둘지. 안내 전용 장에는 건너뛸 것이 없다. */
-    val isSkippable: Boolean = permission != null,
+    val isSkippable: Boolean = permission != null || consentStage != null,
     /**
      * 닉네임 인사말을 제목 위에 둘지.
      *

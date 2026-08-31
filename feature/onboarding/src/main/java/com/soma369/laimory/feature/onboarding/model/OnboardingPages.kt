@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.onboarding.model
 
+import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.ui.permission.DataPermission
 
 /**
@@ -65,6 +66,18 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             description = "타임라인이 완성됐을 때와 기록을 남길 시간에만 알려요.",
             permission = DataPermission.APP_NOTIFICATION,
             primaryCta = "알림 받기",
+        ),
+        // 소스별로 무엇을 읽어 무엇에 쓰는지 다 읽은 **뒤**에 둔다. 첫 장에 두면 아무것도
+        // 연결하지 않은 상태에서 민감정보·제3자 제공·국외 이전을 묻게 돼 판단할 근거가 없다.
+        OnboardingPageSpec(
+            key = "data_consent",
+            label = "AI",
+            title = "모은 기록을\nAI 가 읽어도 될까요",
+            description =
+                "고른 기록만 AI 에 보내 하루로 정리해요.\n" +
+                    "지금 동의하지 않아도 앱은 그대로 쓸 수 있고, 타임라인을 만들 때 다시 여쭤봐요.",
+            consentStage = TermStage.TIMELINE_FIRST_CREATE,
+            primaryCta = "동의하고 계속하기",
         ),
         OnboardingPageSpec(
             key = "done",
