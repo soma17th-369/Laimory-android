@@ -37,6 +37,8 @@ import com.soma369.laimory.core.ui.theme.Spacing
 internal fun OnboardingConsentChecklist(
     documents: List<TermDocument>,
     checked: Set<TermType>,
+    /** 이미 동의해 되돌릴 수 없는 항목. 체크된 채로 두되 끄지는 못한다. */
+    locked: Set<TermType>,
     isEnabled: Boolean,
     errorMessage: String?,
     onToggle: (TermType) -> Unit,
@@ -51,7 +53,7 @@ internal fun OnboardingConsentChecklist(
             ConsentRow(
                 document = document,
                 isChecked = document.termType in checked,
-                isEnabled = isEnabled,
+                isEnabled = isEnabled && document.termType !in locked,
                 onToggle = { onToggle(document.termType) },
                 onOpenTerm = { onOpenTerm(document) },
             )

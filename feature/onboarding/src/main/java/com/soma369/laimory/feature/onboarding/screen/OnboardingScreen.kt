@@ -103,8 +103,11 @@ private fun OnboardingContent(
     // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
     // 일어나지 않은 것처럼 보이기 때문이다.
     val needsRequest = currentPage?.permission != null && !permissionState.isGranted(currentPage.permission)
-    // 받을 문서가 남아 있는 동의 장인지. 비어 있으면 마지막 장은 평범한 마무리 장이다.
-    val needsConsent = currentPage?.showsConsents == true && state.consentDocuments.isNotEmpty()
+    // 아직 받을 동의가 남아 있는 장인지. 이미 다 동의한 사용자에게는 목록이 체크된 채로 보이되
+    // 받을 것이 없으므로 마지막 장은 평범한 마무리 장이다.
+    val needsConsent =
+        currentPage?.showsConsents == true &&
+            state.consentDocuments.any { it.termType !in state.lockedConsents }
     val termContentLauncher = rememberTermContentLauncher()
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 
@@ -174,6 +177,7 @@ private fun OnboardingScreen(
                                 OnboardingConsentChecklist(
                                     documents = state.consentDocuments,
                                     checked = state.checkedConsents,
+                                    locked = state.lockedConsents,
                                     isEnabled = !state.isConsentSubmitting,
                                     errorMessage = state.consentErrorMessage,
                                     onToggle = onConsentToggle,

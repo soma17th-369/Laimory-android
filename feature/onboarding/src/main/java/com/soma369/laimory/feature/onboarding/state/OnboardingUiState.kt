@@ -29,6 +29,14 @@ data class OnboardingUiState(
      * 받는 편이 항목마다 체크를 요구하는 것보다 의사가 또렷하다.
      */
     val checkedConsents: Set<TermType> = emptySet(),
+    /**
+     * 이미 동의해 되돌릴 수 없는 항목.
+     *
+     * 화면에서 지우지 않고 **체크된 채로 남긴다** — 목록에서 빼면 무엇에 동의하고 시작하는지
+     * 알 수 없고, 처음 보는 사용자와 다시 온 사용자가 서로 다른 화면을 보게 된다. 앱이 동의를
+     * 철회시킬 수는 없으므로 끄지는 못한다.
+     */
+    val lockedConsents: Set<TermType> = emptySet(),
     val isConsentSubmitting: Boolean = false,
     val consentErrorMessage: String? = null,
 ) : UiState
