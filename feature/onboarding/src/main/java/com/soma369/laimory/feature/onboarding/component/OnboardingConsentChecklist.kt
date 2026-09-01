@@ -53,7 +53,10 @@ internal fun OnboardingConsentChecklist(
             ConsentRow(
                 document = document,
                 isChecked = document.termType in checked,
-                isEnabled = isEnabled && document.termType !in locked,
+                isEnabled = isEnabled,
+                // 잠긴 항목은 체크만 막는다. 원문 보기까지 함께 끄면 무엇에 동의했는지
+                // 확인할 길이 사라진다 — 되돌릴 수 없는 동의일수록 읽을 수 있어야 한다.
+                isToggleable = document.termType !in locked,
                 onToggle = { onToggle(document.termType) },
                 onOpenTerm = { onOpenTerm(document) },
             )
@@ -74,6 +77,7 @@ private fun ConsentRow(
     document: TermDocument,
     isChecked: Boolean,
     isEnabled: Boolean,
+    isToggleable: Boolean,
     onToggle: () -> Unit,
     onOpenTerm: () -> Unit,
 ) {
@@ -84,7 +88,7 @@ private fun ConsentRow(
                 // 글자까지 터치 영역에 넣는다. 체크박스만 누르게 하면 눌러야 할 곳이 너무 작다.
                 .toggleable(
                     value = isChecked,
-                    enabled = isEnabled,
+                    enabled = isEnabled && isToggleable,
                     role = Role.Checkbox,
                     onValueChange = { onToggle() },
                 ).padding(vertical = CONSENT_ROW_VERTICAL_PADDING),
@@ -96,7 +100,7 @@ private fun ConsentRow(
             modifier = Modifier.size(CONSENT_CHECKBOX_SIZE),
             checked = isChecked,
             onCheckedChange = null,
-            enabled = isEnabled,
+            enabled = isEnabled && isToggleable,
         )
         Text(
             modifier = Modifier.weight(1f),

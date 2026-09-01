@@ -184,8 +184,13 @@ class OnboardingViewModel
          * 바뀐다. 저장 전에 넘기면 그 사이 앱이 죽었을 때 다음 실행에서 온보딩을 처음부터 다시 본다.
          */
         private suspend fun complete() {
+            // 누른 즉시 잠근다. 연출을 먼저 하면 그 사이 버튼이 살아 있어 두 번 눌린다.
+            updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
+
             val documents = state.value.consentDocuments
-            if (documents.isNotEmpty()) {
+            // 이미 다 동의한 사용자에게는 채울 체크가 없다. 그때도 기다리면 화면은 그대로인 채
+            // 버튼만 잠시 먹통이 된다.
+            if (recordableConsents.isNotEmpty()) {
                 // 무엇에 동의하고 넘어가는지 눈으로 확인할 틈을 준다. 버튼 문구가 `모두 동의하고
                 // 시작하기` 라 결과는 이미 분명하지만, 체크가 차오르는 것을 보지 못하면 무엇이
                 // 일어났는지 모른 채 화면이 바뀐다.
@@ -193,7 +198,6 @@ class OnboardingViewModel
                 delay(CONSENT_REVEAL_MILLIS)
             }
 
-            updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
             if (!recordConsents()) {
                 updateState { copy(isCompleting = false, checkedConsents = lockedConsents) }
                 return

@@ -91,7 +91,11 @@ internal fun OnboardingPageContent(
         // 아직 에셋이 없는 장은 자리를 접는다. 빈 상자를 남기면 이미지를 못 불러온 것처럼 보인다.
         page.image?.let { image ->
             if (page.scrollsImage) {
-                AutoScrollingImage(image = image, viewportHeight = SCROLLING_IMAGE_HEIGHT)
+                AutoScrollingImage(
+                    image = image,
+                    viewportHeight = SCROLLING_IMAGE_HEIGHT,
+                    imageWidth = SCROLLING_IMAGE_WIDTH,
+                )
             } else {
                 Image(
                     painter = painterResource(image),
@@ -147,8 +151,11 @@ private val LABEL_SLOT_HEIGHT = 28.dp
 /** 제목이 늘 차지하는 최소 높이. headlineMedium 두 줄(30 x 2). */
 private val TITLE_SLOT_MIN_HEIGHT = 60.dp
 
-/** 흘려 보여 주는 그림이 차지하는 창 높이. 그림 자체는 이보다 길다. */
-private val SCROLLING_IMAGE_HEIGHT = 320.dp
+/** 흘려 보여 주는 그림의 창. 시안의 image-wrap 328x300 을 그대로 쓴다. 그림 자체는 이보다 길다. */
+private val SCROLLING_IMAGE_HEIGHT = 300.dp
+
+/** 창 안에서 그림이 차지하는 폭. 시안이 창(328)보다 좁게 두고 가운데 정렬한다. */
+private val SCROLLING_IMAGE_WIDTH = 280.dp
 
 /** 브랜드 라벨만 자간을 넓혀 권한 라벨과 결을 다르게 둔다. */
 private val BRAND_LABEL_LETTER_SPACING = 0.4.sp
