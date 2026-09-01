@@ -32,6 +32,13 @@ data class OnboardingPageSpec(
     val description: String,
     @DrawableRes val image: Int? = null,
     /**
+     * 이미지를 세로로 흘려 보여 줄지.
+     *
+     * 첫 장의 타임라인 예시처럼 화면보다 긴 그림에 쓴다. 한 번에 다 보여 줄 수 없는 그림을
+     * 축소해 넣으면 글자가 뭉개져 무엇을 만드는 화면인지 되레 알 수 없다.
+     */
+    val scrollsImage: Boolean = false,
+    /**
      * 이 장의 CTA 가 요청할 권한. `null` 이면 안내 전용 장이라 CTA 가 다음으로만 넘긴다.
      */
     val permission: DataPermission? = null,

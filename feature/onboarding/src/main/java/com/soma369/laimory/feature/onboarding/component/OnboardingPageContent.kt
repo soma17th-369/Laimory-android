@@ -90,12 +90,17 @@ internal fun OnboardingPageContent(
         // 이미지는 제목과 설명 사이에 온다 — 글을 다 읽기 전에 무엇을 연결하는 화면인지 보여 준다.
         // 아직 에셋이 없는 장은 자리를 접는다. 빈 상자를 남기면 이미지를 못 불러온 것처럼 보인다.
         page.image?.let { image ->
-            Image(
-                painter = painterResource(image),
-                contentDescription = null,
-                modifier = Modifier.fillMaxWidth().height(IMAGE_HEIGHT),
-                contentScale = ContentScale.Fit,
-            )
+            if (page.scrollsImage) {
+                AutoScrollingImage(image = image, viewportHeight = SCROLLING_IMAGE_HEIGHT)
+            } else {
+                Image(
+                    painter = painterResource(image),
+                    contentDescription = null,
+                    // 원본 비율 그대로 둔다. 예시 그림이라 잘리면 무엇을 보여 주는지 알 수 없다.
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth,
+                )
+            }
         }
         Text(
             text = page.description,
@@ -142,8 +147,8 @@ private val LABEL_SLOT_HEIGHT = 28.dp
 /** 제목이 늘 차지하는 최소 높이. headlineMedium 두 줄(30 x 2). */
 private val TITLE_SLOT_MIN_HEIGHT = 60.dp
 
-/** 이미지 자리. 에셋이 들어오기 전에는 이 높이를 쓰지 않는다(장이 자리를 접는다). */
-private val IMAGE_HEIGHT = 200.dp
+/** 흘려 보여 주는 그림이 차지하는 창 높이. 그림 자체는 이보다 길다. */
+private val SCROLLING_IMAGE_HEIGHT = 320.dp
 
 /** 브랜드 라벨만 자간을 넓혀 권한 라벨과 결을 다르게 둔다. */
 private val BRAND_LABEL_LETTER_SPACING = 0.4.sp

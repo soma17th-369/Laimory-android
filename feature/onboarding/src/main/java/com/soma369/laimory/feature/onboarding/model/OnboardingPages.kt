@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.onboarding.model
 
 import com.soma369.laimory.core.ui.permission.DataPermission
+import com.soma369.laimory.feature.onboarding.R
 
 /**
  * 온보딩에 실제로 띄우는 장의 순서.
@@ -18,6 +19,8 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             description =
                 "캘린더·사진·위치를 연결해 오늘의 타임라인을 만들어요.\n" +
                     "무엇을 연결할지는 다음 화면에서 하나씩 고르실 수 있어요.",
+            image = R.drawable.img_onboarding_intro_timeline,
+            scrollsImage = true,
             primaryCta = "시작하기",
             showsGreeting = true,
         ),
@@ -28,6 +31,7 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             description =
                 "찍은 사진에서 시각과 위치만 읽어 하루의 순간을 채워요.\n" +
                     "전체가 부담스러우면 고른 사진만 허용해도 돼요.",
+            image = R.drawable.img_onboarding_photo,
             permission = DataPermission.PHOTO,
             primaryCta = "사진 연결하기",
         ),
@@ -38,6 +42,7 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             description =
                 "이미 적어 둔 일정을 그대로 가져와 하루의 뼈대를 세워요.\n" +
                     "읽기만 하고 일정을 바꾸지 않아요.",
+            image = R.drawable.img_onboarding_calendar,
             permission = DataPermission.CALENDAR,
             primaryCta = "캘린더 연결하기",
         ),
@@ -48,6 +53,7 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             description =
                 "머문 곳과 이동한 구간만 남겨 하루의 흐름을 세워요.\n" +
                     "주머니에 넣고 다닌 구간까지 이으려면 '항상 허용'이 필요해요.",
+            image = R.drawable.img_onboarding_location,
             permission = DataPermission.LOCATION,
             primaryCta = "위치 연결하기",
         ),
@@ -58,6 +64,7 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             description =
                 "결제·배송·예약처럼 생활 이벤트를 알리는 알림만 읽어요.\n" +
                     "개인 대화와 광고 알림은 수집하지 않아요.",
+            image = R.drawable.img_onboarding_notification,
             permission = DataPermission.NOTIFICATION_LISTENER,
             primaryCta = "알림 접근 켜기",
         ),
@@ -66,6 +73,7 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             label = "REMINDER",
             title = "하루가 정리되면 알려드릴게요",
             description = "타임라인이 완성됐을 때와 기록을 남길 시간에만 알려요.",
+            image = R.drawable.img_onboarding_reminder,
             permission = DataPermission.APP_NOTIFICATION,
             primaryCta = "알림 받기",
         ),
