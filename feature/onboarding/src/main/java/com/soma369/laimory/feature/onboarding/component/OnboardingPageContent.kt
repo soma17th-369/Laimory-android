@@ -84,7 +84,7 @@ internal fun OnboardingPageContent(
         Text(
             text = page.title,
             modifier = Modifier.fillMaxWidth().heightIn(min = TITLE_SLOT_MIN_HEIGHT),
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground,
         )
         // 이미지는 제목과 설명 사이에 온다 — 글을 다 읽기 전에 무엇을 연결하는 화면인지 보여 준다.
@@ -106,11 +106,13 @@ internal fun OnboardingPageContent(
                 )
             }
         }
-        Text(
-            text = page.description,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        page.description?.takeIf(String::isNotBlank)?.let { description ->
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         extra?.invoke(this)
     }
 }
@@ -148,8 +150,8 @@ private val CONTENT_TOP_PADDING = 48.dp
 /** 라벨 줄 높이. 인사말(20/28)이 들어가도 잘리지 않는 값이다. */
 private val LABEL_SLOT_HEIGHT = 28.dp
 
-/** 제목이 늘 차지하는 최소 높이. headlineMedium 두 줄(30 x 2). */
-private val TITLE_SLOT_MIN_HEIGHT = 60.dp
+/** 제목이 늘 차지하는 최소 높이. titleLarge 두 줄(28 x 2). */
+private val TITLE_SLOT_MIN_HEIGHT = 56.dp
 
 /** 흘려 보여 주는 그림의 창. 시안의 image-wrap 328x300 을 그대로 쓴다. 그림 자체는 이보다 길다. */
 private val SCROLLING_IMAGE_HEIGHT = 300.dp

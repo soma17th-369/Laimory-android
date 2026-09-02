@@ -29,7 +29,10 @@ data class OnboardingPageSpec(
      */
     val brandLabel: String? = null,
     val title: String,
-    val description: String,
+    /**
+     * 제목 아래 설명. 없는 장도 있다 — 첫 장은 타임라인 예시가 설명을 대신한다.
+     */
+    val description: String? = null,
     @DrawableRes val image: Int? = null,
     /**
      * 이미지를 세로로 흘려 보여 줄지.
