@@ -1,6 +1,11 @@
-package com.soma369.laimory.core.ui.permission
+package com.soma369.laimory.feature.settings.model
 
 import androidx.annotation.DrawableRes
+import com.soma369.laimory.core.ui.permission.DataPermission
+import com.soma369.laimory.core.ui.permission.DataPermissionAction
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.permission.HealthDataSource
+import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.R as CoreUiR
 
 /**

@@ -1,7 +1,6 @@
 package com.soma369.laimory.feature.onboarding.component
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,18 +18,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soma369.laimory.core.ui.greeting.GreetingEmphasis
 import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
-import com.soma369.laimory.core.ui.theme.LaimoryShapes
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 
@@ -47,8 +43,6 @@ internal fun OnboardingPageContent(
     page: OnboardingPageSpec,
     nickname: String?,
     isGranted: Boolean = false,
-    /** 권한을 자세히 설명하는 시트를 여는 창구. 없으면 버튼을 그리지 않는다. */
-    onDetailsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     /** 설명 아래에 장이 따로 붙이는 것. 동의 장의 확인 목록이 여기로 들어온다. */
     extra: (@Composable ColumnScope.() -> Unit)? = null,
@@ -117,21 +111,6 @@ internal fun OnboardingPageContent(
                 text = description,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        // 무엇을 읽고 무엇을 읽지 않는지는 시트가 맡는다. 이 자리에 다 적으면 장마다 문단이
-        // 길어져, 정작 읽어야 할 사람은 안 읽고 넘긴다.
-        onDetailsClick?.let { onClick ->
-            Text(
-                modifier =
-                    Modifier
-                        .clip(LaimoryShapes.small)
-                        .clickable(onClick = onClick)
-                        .padding(vertical = Spacing.extraSmall),
-                text = "무엇을 읽나요?",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                textDecoration = TextDecoration.Underline,
             )
         }
         extra?.invoke(this)

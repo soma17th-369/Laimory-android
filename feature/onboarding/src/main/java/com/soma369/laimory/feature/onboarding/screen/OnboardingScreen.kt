@@ -35,8 +35,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.permission.DataPermission
-import com.soma369.laimory.core.ui.permission.DataSourceSheet
-import com.soma369.laimory.core.ui.permission.DataSourceUiModel
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
@@ -111,8 +109,6 @@ private fun OnboardingContent(
         currentPage?.showsConsents == true &&
             state.consentDocuments.any { it.termType !in state.lockedConsents }
     val termContentLauncher = rememberTermContentLauncher()
-    // 무엇을 읽는지 묻는 사용자에게만 여는 시트. 장 문구는 값을 말하고, 이 시트가 범위를 말한다.
-    var detailsSource by remember { mutableStateOf<DataSourceUiModel?>(null) }
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 
     OnboardingScreen(
@@ -134,22 +130,9 @@ private fun OnboardingContent(
         },
         onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
-        onDetailsClick = { source -> detailsSource = source },
         onSkipClick = goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
     )
-
-    detailsSource?.let { source ->
-        DataSourceSheet(
-            source = source,
-            status = permissionState.statusOf(source.permission),
-            locationStep = permissionState.locationStep,
-            action = permissionState.actionFor(source.permission),
-            // 시트에서 바로 허용할 수 있게 둔다. 읽고 나서 닫고 다시 CTA 를 찾게 하면 한 번 더 묻는 셈이다.
-            onAction = { permissionState.act(source.permission) },
-            onDismiss = { detailsSource = null },
-        )
-    }
 }
 
 @Composable
@@ -164,7 +147,6 @@ private fun OnboardingScreen(
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
     onConsentToggle: (TermType) -> Unit,
-    onDetailsClick: (DataSourceUiModel) -> Unit,
     onOpenTerm: (TermDocument) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -187,8 +169,6 @@ private fun OnboardingScreen(
                     page = spec,
                     nickname = state.nickname,
                     isGranted = isPageGranted(spec),
-                    // 데이터 소스 장에서만 연다. 앱 알림은 우리 알림이라 따로 설명할 것이 없다.
-                    onDetailsClick = dataSourceOf(spec)?.let { source -> { onDetailsClick(source) } },
                     extra =
                         if (!spec.showsConsents || state.consentDocuments.isEmpty()) {
                             null
@@ -332,7 +312,6 @@ private fun OnboardingScreenPreview(
             onPrimaryClick = {},
             onSkipClick = {},
             onConsentToggle = {},
-            onDetailsClick = {},
             onOpenTerm = {},
             onBack = {},
         )
@@ -369,12 +348,3 @@ private fun previewTerm(
     contentUrl = "https://laimory.app/terms/preview/1.0",
     effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
 )
-
-/**
- * 이 장이 설명할 데이터 소스. 없으면 시트를 열 것이 없다.
- *
- * 앱 알림(리마인더)은 우리가 보내는 알림이라 무엇을 읽는지 설명할 것이 없고, 소개·완료 장은
- * 권한을 다루지 않는다.
- */
-private fun dataSourceOf(page: OnboardingPageSpec): DataSourceUiModel? =
-    page.permission?.let { permission -> DataSourceUiModel.entries.firstOrNull { it.permission == permission } }

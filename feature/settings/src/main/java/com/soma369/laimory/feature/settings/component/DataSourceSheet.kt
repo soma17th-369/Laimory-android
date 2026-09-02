@@ -1,4 +1,4 @@
-package com.soma369.laimory.core.ui.permission
+package com.soma369.laimory.feature.settings.component
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,9 +20,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.component.sheet.LaimorySheetDragHandle
 import com.soma369.laimory.core.ui.component.sheet.LaimorySheetHeader
+import com.soma369.laimory.core.ui.permission.DataPermissionAction
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.theme.LaimoryShapes
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.settings.model.DataSourceUiModel
+import com.soma369.laimory.feature.settings.model.buttonLabel
 
 /**
  * 데이터 소스 하나의 상태와 다음 행동을 보여주는 시트.
@@ -36,7 +41,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DataSourceSheet(
+internal fun DataSourceSheet(
     source: DataSourceUiModel,
     status: DataSourceStatus,
     locationStep: LocationPermissionStep,
