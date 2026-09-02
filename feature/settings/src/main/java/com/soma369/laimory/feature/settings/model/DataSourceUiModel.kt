@@ -20,36 +20,70 @@ enum class DataSourceUiModel(
     @DrawableRes val iconRes: Int,
     /** 시트에서 이 데이터를 무엇에 쓰는지 설명하는 한 줄. 온보딩 문구와 같은 말을 쓴다. */
     val purpose: String,
+    /**
+     * 허용 범위에 대한 설명.
+     *
+     * 무엇을 읽고 무엇을 읽지 않는지, 무엇이 더 필요한지를 여기서만 말한다 — 온보딩 장 문구는
+     * 그 데이터가 하루의 무엇이 되는지를 말하는 자리라 범위까지 적으면 문단이 길어져 정작
+     * 읽어야 할 사람이 넘긴다.
+     */
+    val details: List<String>,
 ) {
     PHOTO(
         permission = DataPermission.PHOTO,
         label = "사진",
         iconRes = CoreUiR.drawable.ico_setting_datasource_photo,
         purpose = "촬영 시각과 위치로 그날의 순간을 타임라인에 놓아요. 기기에 저장된 사진을 읽기만 합니다.",
+        details =
+            listOf(
+                "전체 허용이 부담스러우면 고른 사진만 허용해도 돼요.",
+                "허용해도 어떤 사진을 기록에 넣을지는 직접 고를 수 있어요.",
+            ),
     ),
     CALENDAR(
         permission = DataPermission.CALENDAR,
         label = "캘린더",
         iconRes = CoreUiR.drawable.ico_setting_datasource_calendar,
         purpose = "쓰던 캘린더의 일정을 읽어 하루의 계획과 만남을 복원해요.",
+        details =
+            listOf(
+                "일정을 읽기만 하고 새로 만들거나 바꾸지 않아요.",
+                "기기에 등록된 캘린더만 봐요. 계정을 따로 연결하지 않아요.",
+            ),
     ),
     LOCATION(
         permission = DataPermission.LOCATION,
         label = "위치",
         iconRes = CoreUiR.drawable.ico_setting_datasource_location,
         purpose = "오간 길과 머문 장소로 하루의 뼈대를 만들어요. 배경에서도 기록하려면 항상 허용이 필요합니다.",
+        details =
+            listOf(
+                "앱을 보고 있지 않은 동안에도 이으려면 `항상 허용`이 필요해요.",
+                "정확한 위치 대신 대략적인 위치만 허용해도 기록은 이어져요.",
+            ),
     ),
     NOTIFICATION(
         permission = DataPermission.NOTIFICATION_LISTENER,
         label = "알림",
         iconRes = CoreUiR.drawable.ico_setting_datasource_notification,
         purpose = "결제·배송·예약처럼 생활 이벤트가 담긴 알림만 골라 후보로 씁니다. 대화 알림은 읽지 않아요.",
+        details =
+            listOf(
+                "결제·배송·예약처럼 생활 이벤트를 알리는 알림만 골라요.",
+                "개인 대화와 광고 알림은 읽지 않아요.",
+                "켠 뒤에 오는 알림부터 읽어요. 지난 알림은 가져오지 않아요.",
+            ),
     ),
     HEALTH(
         permission = DataPermission.HEALTH,
         label = "헬스",
         iconRes = CoreUiR.drawable.ico_setting_datasource_health,
         purpose = "걸음수와 수면으로 하루의 활동과 휴식을 채워요. Health Connect 를 거쳐 읽습니다.",
+        details =
+            listOf(
+                "걸음수와 수면만 읽어요.",
+                "Health Connect 앱을 거치며, 거기서 언제든 되돌릴 수 있어요.",
+            ),
     ),
     ;
 

@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.settings.component
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -100,6 +101,24 @@ private fun DataSourceSheetContent(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // 허용 범위는 줄로 나눠 적는다. 한 문단으로 이으면 어디까지가 읽는 것이고 어디부터가
+            // 읽지 않는 것인지 눈으로 갈리지 않는다.
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
+                source.details.forEach { detail ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
+                        Text(
+                            text = "·",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = detail,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             // 켤 방법이 없는 기기에는 안내만 남긴다. 누를 수 없는 버튼을 두면 무엇이 잘못됐는지
             // 알 수 없고, 없는 화면을 찾아 헤매게 된다.
             if (status == DataSourceStatus.UNSUPPORTED) {

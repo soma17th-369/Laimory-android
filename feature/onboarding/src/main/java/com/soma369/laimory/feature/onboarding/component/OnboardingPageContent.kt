@@ -153,8 +153,12 @@ private val LABEL_SLOT_HEIGHT = 28.dp
 /** 제목이 늘 차지하는 최소 높이. titleLarge 두 줄(28 x 2). */
 private val TITLE_SLOT_MIN_HEIGHT = 56.dp
 
-/** 흘려 보여 주는 그림의 창. 시안의 image-wrap 328x300 을 그대로 쓴다. 그림 자체는 이보다 길다. */
-private val SCROLLING_IMAGE_HEIGHT = 300.dp
+/**
+ * 흘려 보여 주는 그림의 창. 개편된 시안의 첫 장 image-wrap 이 328x400 이다.
+ *
+ * 권한 장의 그림(300)보다 큰 값이다 — 첫 장은 설명 문장이 없어 그 자리를 예시가 대신한다.
+ */
+private val SCROLLING_IMAGE_HEIGHT = 400.dp
 
 /** 창 안에서 그림이 차지하는 폭. 시안이 창(328)보다 좁게 두고 가운데 정렬한다. */
 private val SCROLLING_IMAGE_WIDTH = 280.dp
