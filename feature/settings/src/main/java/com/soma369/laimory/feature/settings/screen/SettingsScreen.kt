@@ -217,6 +217,12 @@ private fun SettingsScreen(
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.NotificationSettingsClicked) },
                                 ),
+                                SettingsItem(
+                                    iconRes = CoreUiR.drawable.ico_setting_app_theme,
+                                    title = "테마",
+                                    showChevron = true,
+                                    onClick = { onIntent(SettingsUiIntent.ThemeSettingsClicked) },
+                                ),
                             ),
                     )
                 }

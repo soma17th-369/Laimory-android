@@ -164,6 +164,13 @@ data object NotificationSettingsPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/** 설정 > 앱 설정 > 테마. */
+data object ThemeSettingsPage : Page {
+    const val PATH = "/settings/theme"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object CalendarPage : Page {
     const val PATH = "/calendar"
 

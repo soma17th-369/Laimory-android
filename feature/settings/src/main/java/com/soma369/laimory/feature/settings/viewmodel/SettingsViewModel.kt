@@ -11,6 +11,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
+import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
@@ -98,6 +99,8 @@ class SettingsViewModel
                 SettingsUiIntent.RefreshTermLinks -> refreshTermLinks()
                 SettingsUiIntent.NotificationSettingsClicked ->
                     navigationHelper.navigateTo(NotificationSettingsPage)
+                SettingsUiIntent.ThemeSettingsClicked ->
+                    navigationHelper.navigateTo(ThemeSettingsPage)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit
                 SettingsUiIntent.LogoutConfirmed -> logout()

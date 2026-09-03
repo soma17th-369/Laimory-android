@@ -21,6 +21,7 @@ import com.soma369.laimory.core.domain.navigation.OnboardingPage
 import com.soma369.laimory.core.domain.navigation.ReflectionPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
 import com.soma369.laimory.core.domain.navigation.TermsPage
+import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
 import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
@@ -34,6 +35,7 @@ import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.onboarding.screen.OnboardingRoute
 import com.soma369.laimory.feature.settings.screen.NotificationSettingsRoute
 import com.soma369.laimory.feature.settings.screen.SettingsRoute
+import com.soma369.laimory.feature.settings.screen.ThemeSettingsRoute
 import com.soma369.laimory.feature.terms.screen.TermsRoute
 import com.soma369.laimory.feature.timeline.screen.CalendarRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineEventCreateRoute
@@ -154,6 +156,10 @@ val appRoutes: List<AppRoute> =
         AppRoute(
             path = NotificationSettingsPage.PATH,
             render = { innerPadding, _ -> NotificationSettingsRoute(innerPadding = innerPadding) },
+        ),
+        AppRoute(
+            path = ThemeSettingsPage.PATH,
+            render = { innerPadding, _ -> ThemeSettingsRoute(innerPadding = innerPadding) },
         ),
         // 아래는 바텀바에 노출하지 않는 non-tab 루트(테스트/디버그 진입점 보존).
         AppRoute(
