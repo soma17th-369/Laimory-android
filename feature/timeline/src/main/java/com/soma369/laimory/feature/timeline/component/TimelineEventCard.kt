@@ -189,7 +189,7 @@ private fun EventTimeRow(
                     onClick = onEditClick,
                 )
                 EventActionButton(
-                    iconRes = UiR.drawable.ico_setting_trash,
+                    iconRes = UiR.drawable.ico_timeline_tool_delete,
                     contentDescription = "이벤트 삭제",
                     onClick = onDeleteClick,
                 )

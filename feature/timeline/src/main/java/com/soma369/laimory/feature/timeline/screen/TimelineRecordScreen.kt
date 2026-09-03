@@ -242,7 +242,7 @@ private fun TimelineRecordScreen(
                                 }
                                 LaimoryDropdownMenuItem(
                                     label = "삭제하기",
-                                    leadingIcon = painterResource(UiR.drawable.ico_setting_trash),
+                                    leadingIcon = painterResource(UiR.drawable.ico_timeline_tool_delete),
                                     style = LaimoryDropdownMenuItemStyle.Destructive,
                                     onClick = {
                                         isRecordMenuExpanded = false
