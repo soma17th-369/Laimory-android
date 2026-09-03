@@ -212,7 +212,7 @@ private fun SettingsScreen(
                         items =
                             listOf(
                                 SettingsItem(
-                                    iconRes = CoreUiR.drawable.ico_setting_datasource_notification,
+                                    iconRes = CoreUiR.drawable.ico_setting_app_notification,
                                     title = "알림",
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.NotificationSettingsClicked) },
