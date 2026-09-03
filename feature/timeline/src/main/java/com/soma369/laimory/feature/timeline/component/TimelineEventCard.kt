@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -187,13 +186,11 @@ private fun EventTimeRow(
                 EventActionButton(
                     iconRes = UiR.drawable.ico_timeline_tool_edit,
                     contentDescription = "이벤트 편집",
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     onClick = onEditClick,
                 )
                 EventActionButton(
                     iconRes = UiR.drawable.ico_setting_trash,
                     contentDescription = "이벤트 삭제",
-                    containerColor = MaterialTheme.colorScheme.surface,
                     onClick = onDeleteClick,
                 )
             }
@@ -201,18 +198,23 @@ private fun EventTimeRow(
     }
 }
 
+/**
+ * 시각 줄의 편집·삭제 버튼.
+ *
+ * 삭제도 편집과 같은 `surfaceVariant` 바탕이다. 시안의 `Mode=Delete` 변형은 바깥 프레임의 흰
+ * 채움이 꺼진 채 같은 바탕의 버튼을 감싸고 있어, 겉으로는 두 버튼이 같은 색이다.
+ */
 @Composable
 private fun EventActionButton(
     iconRes: Int,
     contentDescription: String,
-    containerColor: Color,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
         modifier = Modifier.size(ACTION_BUTTON_SIZE),
         shape = MaterialTheme.shapes.small,
-        color = containerColor,
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
