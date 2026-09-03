@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.repository.ActiveDraftTaskRepositoryImpl
+import com.soma369.laimory.core.data.repository.AppThemeRepositoryImpl
 import com.soma369.laimory.core.data.repository.AuthRepositoryImpl
 import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
@@ -14,6 +15,7 @@ import com.soma369.laimory.core.data.repository.TimelineRecordRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordSessionRepositoryImpl
 import com.soma369.laimory.core.data.repository.UserRepositoryImpl
 import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
+import com.soma369.laimory.core.domain.repository.AppThemeRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.IntroRepository
@@ -66,6 +68,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindPushSettingsRepository(impl: PushSettingsRepositoryImpl): PushSettingsRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindAppThemeRepository(impl: AppThemeRepositoryImpl): AppThemeRepository
 
     @Binds
     @Singleton
