@@ -169,7 +169,7 @@ private fun NotificationToggleList(
         )
         NotificationToggleRow(
             title = "일일 리마인더",
-            description = "하루를 기록할 시간에 알려드려요.",
+            description = "하루를 기록할 시간에 알려드려요. (21시)",
             isChecked = settings.isDailyReminderEnabled,
             // 전체가 꺼져 있으면 눌러도 오지 않는 알림이라 잠근다. 서버 값은 그대로 둔다.
             isEnabled = settings.isPushEnabled && !state.isUpdating(NotificationToggle.DAILY_REMINDER),
@@ -271,7 +271,7 @@ private fun DeviceNotificationNotice(onOpenSystemSettings: () -> Unit) {
     ) {
         Text(
             text = "이 기기에서는 알림이 표시되지 않아요",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
