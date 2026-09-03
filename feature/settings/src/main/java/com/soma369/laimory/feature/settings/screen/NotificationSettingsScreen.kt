@@ -153,7 +153,12 @@ private fun NotificationToggleList(
     // 카드로 감싸지 않는다. 설정 화면은 여러 갈래를 나눠 보여 줘야 해서 구획이 필요하지만,
     // 여기는 한 갈래로 들어온 화면이라 목록 하나뿐이다 — 나눌 것이 없는데 테를 두르면 무엇과
     // 무엇을 가르는 선인지 알 수 없다.
-    Column(modifier = Modifier.fillMaxWidth().padding(top = Spacing.small)) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = LIST_TOP_PADDING, bottom = LIST_BOTTOM_PADDING),
+    ) {
         NotificationToggleRow(
             title = "전체 알림",
             description = "끄면 아래 알림도 오지 않아요.",
@@ -212,14 +217,17 @@ private fun NotificationToggleRow(
                     role = Role.Checkbox
                     toggleableState = if (isChecked) ToggleableState.On else ToggleableState.Off
                     // 누를 수 있는 영역은 화면 폭 전체다. 여백은 글자 자리를 잡을 뿐이다.
-                }.padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = Spacing.medium),
+                }.padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = ROW_VERTICAL_PADDING),
         horizontalArrangement = Arrangement.spacedBy(Spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(LABEL_GAP),
+        ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = contentColor,
             )
             Text(
@@ -324,10 +332,24 @@ private fun NotificationSettingsLoadFailed(onRetryClick: () -> Unit) {
     }
 }
 
-private val ROW_MIN_HEIGHT = 56.dp
+private val ROW_MIN_HEIGHT = 64.dp
+private val ROW_VERTICAL_PADDING = 4.dp
 
-/** 카드가 없으므로 줄이 직접 화면 여백을 진다. 설정 화면 본문과 같은 값이다. */
-private val ROW_HORIZONTAL_PADDING = 20.dp
+/** 제목과 설명 사이. */
+private val LABEL_GAP = 2.dp
+
+/**
+ * 줄의 가로 여백.
+ *
+ * 시안은 목록에 20, 줄에 4 를 나눠 뒀다. 코드에서는 둘을 합쳐 줄 안에 둔다 — 글자가 시작하는
+ * 자리는 같고, 누를 수 있는 영역만 화면 폭 전체로 남는다. 목록 바깥에 여백을 두면 가장자리를
+ * 눌렀을 때 아무 일도 일어나지 않는다.
+ */
+private val ROW_HORIZONTAL_PADDING = 24.dp
+
+/** 목록 위·아래 여백. 시안 값. */
+private val LIST_TOP_PADDING = 8.dp
+private val LIST_BOTTOM_PADDING = 24.dp
 private val CHECK_SIZE = 24.dp
 private val SPINNER_SIZE = 16.dp
 
