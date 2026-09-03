@@ -4,23 +4,29 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
+import com.soma369.laimory.core.domain.model.settings.AppThemeMode
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingCompletionUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
+import com.soma369.laimory.core.domain.usecase.settings.ObserveAppThemeModeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.ObserveTermsGateUseCase
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
@@ -29,6 +35,7 @@ import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
 import com.soma369.laimory.ui.GlobalUiHost
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -67,8 +74,22 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var draftConsentSessionStore: DraftConsentSessionStore
 
+    @Inject
+    lateinit var observeAppThemeMode: ObserveAppThemeModeUseCase
+
+    /**
+     * 저장된 화면 모드. `null` 은 아직 읽기 전이다.
+     *
+     * 값을 읽을 때까지 스플래시를 붙잡는다 — DataStore 는 비동기라 그냥 그리면 첫 프레임이
+     * 기본값으로 나온 뒤 바뀌어, 다크를 골라 둔 사용자에게 흰 화면이 한 번 번쩍인다.
+     */
+    private val themeMode = MutableStateFlow<AppThemeMode?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { themeMode.value == null }
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch { observeAppThemeMode().collect { mode -> themeMode.value = mode } }
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
@@ -76,7 +97,10 @@ class MainActivity : ComponentActivity() {
         // 요청은 온보딩의 알림 장 CTA 가 맡는다.
         val authSessionStates = observeAuthSession()
         setContent {
-            LaimoryTheme {
+            val mode by themeMode.collectAsStateWithLifecycle()
+            // 값을 읽기 전에는 그리지 않는다. 스플래시가 그동안 화면을 덮고 있다.
+            val currentMode = mode ?: return@setContent
+            LaimoryTheme(darkTheme = currentMode.isDark()) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -164,3 +188,16 @@ class MainActivity : ComponentActivity() {
         const val ACTIVE_TASK_RESTORE_TIMEOUT_MILLIS = 3_000L
     }
 }
+
+/**
+ * OS 설정을 따를지, 고른 값을 따를지.
+ *
+ * `SYSTEM` 만 `isSystemInDarkTheme()` 을 읽으므로 실행 중 OS 가 바뀌면 그때만 함께 바뀐다.
+ */
+@androidx.compose.runtime.Composable
+private fun AppThemeMode.isDark(): Boolean =
+    when (this) {
+        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+        AppThemeMode.LIGHT -> false
+        AppThemeMode.DARK -> true
+    }

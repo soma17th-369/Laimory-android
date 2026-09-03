@@ -1,3 +1,15 @@
 <resources>
     <style name="Theme.Laimory" parent="Theme.AppCompat.Light.NoActionBar" />
+
+    <!--
+        런처가 띄우는 시작 테마.
+
+        저장된 화면 모드를 DataStore 에서 읽을 때까지 스플래시를 붙잡아, 저장값과 반대되는 테마가
+        첫 프레임에 노출되지 않게 한다. 스플래시 배경만은 값을 읽기 전이라 OS 설정을 따른다
+        (values-night).
+    -->
+    <style name="Theme.Laimory.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="postSplashScreenTheme">@style/Theme.Laimory</item>
+    </style>
 </resources>
