@@ -10,6 +10,7 @@ import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
+import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
@@ -95,6 +96,8 @@ class SettingsViewModel
                 // 첫 조회가 실패한 세션 내내 제공자 문구로 남는다.
                 SettingsUiIntent.RefreshProfile -> refreshUserProfileUseCase()
                 SettingsUiIntent.RefreshTermLinks -> refreshTermLinks()
+                SettingsUiIntent.NotificationSettingsClicked ->
+                    navigationHelper.navigateTo(NotificationSettingsPage)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit
                 SettingsUiIntent.LogoutConfirmed -> logout()

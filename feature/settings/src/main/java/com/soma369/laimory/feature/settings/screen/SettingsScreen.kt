@@ -204,6 +204,22 @@ private fun SettingsScreen(
                             },
                     )
                 }
+                // 시안의 `앱 설정` 섹션. 두 줄 모두 값을 여기서 바꾸지 않고 각자 화면으로 넘어간다 —
+                // 알림은 서버 조회가 필요한 값이라, 여기에 현재 값을 그리면 설정을 여는 것만으로
+                // 네트워크를 타게 된다.
+                SettingsSection(title = "앱 설정") {
+                    SettingsGroup(
+                        items =
+                            listOf(
+                                SettingsItem(
+                                    iconRes = CoreUiR.drawable.ico_setting_datasource_notification,
+                                    title = "알림",
+                                    showChevron = true,
+                                    onClick = { onIntent(SettingsUiIntent.NotificationSettingsClicked) },
+                                ),
+                            ),
+                    )
+                }
                 SettingsSection(title = "정보") {
                     SettingsGroup(
                         items =

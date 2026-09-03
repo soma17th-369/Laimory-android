@@ -14,6 +14,9 @@ sealed interface SettingsUiIntent : UiIntent {
      */
     data object RefreshTermLinks : SettingsUiIntent
 
+    /** `앱 설정 > 알림`. 값을 이 화면에서 바꾸지 않고 알림 화면으로 넘어간다. */
+    data object NotificationSettingsClicked : SettingsUiIntent
+
     data object LogoutClicked : SettingsUiIntent
 
     data object LogoutDismissed : SettingsUiIntent
