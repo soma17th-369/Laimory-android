@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
@@ -186,17 +185,13 @@ private fun TimelineMemoEditor(
                 }
             },
         )
+        // 앵커는 하단 바 자체다. 아래에 빈 Spacer 를 두면 그만큼 버튼 밑이 벌어지는데,
+        // 시안의 편집 상태는 버튼 줄에서 끝난다.
         MemoEditorBottomBar(
             editor = editor,
             onCancel = onCancel,
             onConfirm = onConfirm,
-        )
-        Spacer(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(Spacing.small)
-                    .bringIntoViewRequester(editorBottomBringIntoViewRequester),
+            modifier = Modifier.bringIntoViewRequester(editorBottomBringIntoViewRequester),
         )
     }
 }
@@ -214,11 +209,12 @@ private fun MemoEditorBottomBar(
     editor: TimelineMemoEditorState,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val locale = LocalLocale.current.platformLocale
     Row(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .padding(start = QUOTE_RULE_WIDTH + QUOTE_RULE_GAP),
         verticalAlignment = Alignment.CenterVertically,

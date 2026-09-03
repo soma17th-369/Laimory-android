@@ -75,6 +75,7 @@ class TimelineRecordViewModel
         private var modeAppliedFor: LocalDate? = null
         private var loadJob: Job? = null
         private var saveJob: Job? = null
+        private var eventDeleteJob: Job? = null
 
         init {
             safeLaunch {
@@ -232,6 +233,7 @@ class TimelineRecordViewModel
                 current.isSavingRecord ||
                 saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden ||
                 current.memoEditor != null
             ) {
                 return
@@ -365,6 +367,7 @@ class TimelineRecordViewModel
             if (current.isSavingRecord ||
                 saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden ||
                 current.memoEditor != null
             ) {
                 return
@@ -538,19 +541,26 @@ class TimelineRecordViewModel
          *
          * 대상은 다이얼로그 상태가 들고 있는 값을 쓴다 — 목록은 그사이에도 갱신되므로 화면에서
          * 다시 찾으면 다른 이벤트를 지울 수 있다.
+         *
+         * 요청은 별도 Job 에서 돈다. 직렬 Intent 루프에서 응답을 기다리면 그동안 들어온 Intent 가
+         * 가드를 거치지 못한 채 큐에 쌓였다가, 삭제가 끝나 상태가 풀린 뒤에 실행된다 — 삭제 중
+         * 눌린 이벤트 추가가 삭제 직후에 열린다.
          */
-        private suspend fun deleteEvent() {
+        private fun deleteEvent() {
             val target = state.value.eventDeleteDialogState as? TimelineEventDeleteDialogState.Active ?: return
-            if (target is TimelineEventDeleteDialogState.Deleting) return
+            if (target is TimelineEventDeleteDialogState.Deleting || eventDeleteJob?.isActive == true) return
 
             updateState {
                 copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Deleting(target.timelineEventId))
             }
-            deleteTimelineEventUseCase(target.timelineEventId)
-                .onSuccess {
-                    // 목록 갱신은 UseCase 가 세션에서 Event 를 빼는 것으로 이미 일어난다.
-                    updateState { copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Hidden) }
-                }.onFailure { error -> handleEventDeleteFailure(target.timelineEventId, error) }
+            eventDeleteJob =
+                safeLaunch(onError = { error -> handleEventDeleteFailure(target.timelineEventId, error) }) {
+                    deleteTimelineEventUseCase(target.timelineEventId)
+                        .onSuccess {
+                            // 목록 갱신은 UseCase 가 세션에서 Event 를 빼는 것으로 이미 일어난다.
+                            updateState { copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Hidden) }
+                        }.onFailure { error -> handleEventDeleteFailure(target.timelineEventId, error) }
+                }
         }
 
         private fun dismissEventDelete() {

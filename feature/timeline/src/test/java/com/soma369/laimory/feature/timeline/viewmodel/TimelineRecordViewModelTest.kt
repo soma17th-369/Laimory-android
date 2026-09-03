@@ -1185,6 +1185,56 @@ class TimelineRecordViewModelTest {
             assertEquals(listOf(RECORD_DATE, RECORD_DATE), recordRepository.requestedRecordDates)
         }
 
+    @Test
+    fun `삭제 응답을 기다리는 동안 들어온 Intent 는 삭제가 끝난 뒤에도 실행되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    timeline(events = listOf(event(), event(timelineEventId = 2L))),
+                )
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.deleteEventGate = gate
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            runCurrent()
+            assertTrue(viewModel.state.value.eventDeleteDialogState is TimelineEventDeleteDialogState.Deleting)
+
+            // 삭제가 도는 동안 들어온 요청들. 직렬 루프를 점유하면 이것들이 큐에 쌓였다가
+            // 삭제가 끝나 상태가 풀린 뒤 실행된다.
+            viewModel.sendIntent(TimelineRecordUiIntent.AddEvent)
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(1L))
+            runCurrent()
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(TimelineEventDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+            assertTrue(navigationHelper.pages.isEmpty())
+            assertNull(viewModel.state.value.memoEditor)
+        }
+
+    @Test
+    fun `삭제 확인 창이 떠 있으면 감정 시트도 저장도 시작하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(1L))
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.emotionSheet)
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(
+                TimelineEventDeleteDialogState.Confirmation(1L),
+                viewModel.state.value.eventDeleteDialogState,
+            )
+        }
+
     private fun createViewModel() =
         TimelineRecordViewModel(
             observeTimelineRecordUseCase = ObserveTimelineRecordUseCase(repository),
@@ -1390,6 +1440,7 @@ class TimelineRecordViewModelTest {
         val deletedRecordDates = mutableListOf<LocalDate>()
         val deletedEventIds = mutableListOf<Long>()
         var deleteEventFailure: ApiException? = null
+        var deleteEventGate: CompletableDeferred<Unit>? = null
         val savedRecordDates = mutableListOf<LocalDate>()
         val savedEmotions = mutableListOf<TimelineEmotion>()
         val updatedEmotions = mutableListOf<Pair<LocalDate, TimelineEmotion>>()
@@ -1443,6 +1494,10 @@ class TimelineRecordViewModelTest {
 
         override suspend fun deleteEvent(timelineEventId: Long) {
             deletedEventIds += timelineEventId
+            deleteEventGate?.let { gate ->
+                deleteEventGate = null
+                gate.await()
+            }
             deleteEventFailure?.let { throw it }
         }
 
