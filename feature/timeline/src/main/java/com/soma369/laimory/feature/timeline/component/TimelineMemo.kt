@@ -253,11 +253,11 @@ private fun MemoEditorBottomBar(
                     CircularProgressIndicator(
                         modifier = Modifier.size(MEMO_ACTION_PROGRESS_SIZE),
                         strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     Icon(
-                        painter = painterResource(UiR.drawable.ico_default_check),
+                        painter = painterResource(UiR.drawable.ico_default_check_filled),
                         contentDescription = null,
                         modifier = Modifier.size(MEMO_ACTION_ICON_SIZE),
                     )
@@ -297,7 +297,8 @@ private fun TimelineMemoActionButton(
         enabled = enabled,
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        // 시안은 primaryContainer 바탕 위에 본문 보조색 아이콘을 얹는다.
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -351,7 +352,14 @@ private val QUOTE_RULE_GAP = 10.dp
 private val QUOTE_TOP_PADDING = 2.dp
 
 private val MEMO_ACTION_BUTTON_SIZE = 28.dp
-private val MEMO_ACTION_ICON_SIZE = 16.dp
+
+/**
+ * 아이콘이 버튼과 같은 크기다.
+ *
+ * 시안의 두 아이콘은 28 버튼 안에서 각각 18x18(X)·22x16(체크)을 차지한다. 에셋의 여백까지
+ * 그 비율로 그려져 있어, 버튼 크기 그대로 두면 시안과 같은 글리프 크기가 나온다.
+ */
+private val MEMO_ACTION_ICON_SIZE = MEMO_ACTION_BUTTON_SIZE
 private val MEMO_ACTION_PROGRESS_SIZE = 16.dp
 
 /** 한 줄 높이. 빈 입력칸이 접히지 않게 잡아 둔다. */
