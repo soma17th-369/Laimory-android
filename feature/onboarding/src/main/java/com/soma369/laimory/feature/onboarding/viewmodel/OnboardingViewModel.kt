@@ -72,8 +72,18 @@ class OnboardingViewModel
             // 이 환경에 문서가 하나라도 있으면 그 판정이 정본이다. 이미 다 동의했으면 목록이 비고
             // 체크리스트도 그리지 않는다.
             val hasCatalog = requirements.any { it.items.isNotEmpty() }
-            val display = if (hasCatalog) pending else getDisplayTerms(CONSENT_TYPES)
-            updateState { copy(consentDocuments = display) }
+            val required = requirements.flatMap { it.items }.distinctBy { it.document.termType }
+            val display = if (hasCatalog) required.map { it.document } else getDisplayTerms(CONSENT_TYPES)
+            // 이미 동의한 항목은 목록에서 빼지 않고 체크된 채로 잠근다. 빼 버리면 다시 온
+            // 사용자에게는 목록이 통째로 사라져, 무엇에 동의하고 시작하는지 알 수 없다.
+            val locked = required.filter { it.isAgreed }.map { it.document.termType }.toSet()
+            updateState {
+                copy(
+                    consentDocuments = display,
+                    lockedConsents = locked,
+                    checkedConsents = checkedConsents + locked,
+                )
+            }
         }
 
         /**
@@ -140,6 +150,8 @@ class OnboardingViewModel
         /** 항목을 직접 켜고 끌 수도 있다. 버튼은 남은 것을 마저 채우는 지름길이다. */
         private fun toggleConsent(termType: TermType) {
             updateState {
+                // 이미 기록된 동의는 앱이 되돌릴 수 없다. 끄는 시늉만 하면 다음 조회에서 도로 켜진다.
+                if (termType in lockedConsents) return@updateState this
                 val next = if (termType in checkedConsents) checkedConsents - termType else checkedConsents + termType
                 copy(checkedConsents = next, consentErrorMessage = null)
             }
@@ -158,7 +170,7 @@ class OnboardingViewModel
             val error = termsCoordinator.agree(documents).exceptionOrNull() ?: return true
             if (error is StaleTermVersionException) {
                 prepareConsentPage()
-                updateState { copy(checkedConsents = emptySet(), consentErrorMessage = REVISED_MESSAGE) }
+                updateState { copy(checkedConsents = lockedConsents, consentErrorMessage = REVISED_MESSAGE) }
             } else {
                 updateState { copy(consentErrorMessage = FAILURE_MESSAGE) }
             }
@@ -172,8 +184,13 @@ class OnboardingViewModel
          * 바뀐다. 저장 전에 넘기면 그 사이 앱이 죽었을 때 다음 실행에서 온보딩을 처음부터 다시 본다.
          */
         private suspend fun complete() {
+            // 누른 즉시 잠근다. 연출을 먼저 하면 그 사이 버튼이 살아 있어 두 번 눌린다.
+            updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
+
             val documents = state.value.consentDocuments
-            if (documents.isNotEmpty()) {
+            // 이미 다 동의한 사용자에게는 채울 체크가 없다. 그때도 기다리면 화면은 그대로인 채
+            // 버튼만 잠시 먹통이 된다.
+            if (recordableConsents.isNotEmpty()) {
                 // 무엇에 동의하고 넘어가는지 눈으로 확인할 틈을 준다. 버튼 문구가 `모두 동의하고
                 // 시작하기` 라 결과는 이미 분명하지만, 체크가 차오르는 것을 보지 못하면 무엇이
                 // 일어났는지 모른 채 화면이 바뀐다.
@@ -181,9 +198,8 @@ class OnboardingViewModel
                 delay(CONSENT_REVEAL_MILLIS)
             }
 
-            updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
             if (!recordConsents()) {
-                updateState { copy(isCompleting = false, checkedConsents = emptySet()) }
+                updateState { copy(isCompleting = false, checkedConsents = lockedConsents) }
                 return
             }
             markCompleted()

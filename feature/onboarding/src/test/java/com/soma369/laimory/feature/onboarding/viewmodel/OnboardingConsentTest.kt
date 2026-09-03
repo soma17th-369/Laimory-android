@@ -76,14 +76,52 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `이미 동의했으면 목록만 비고 마지막 장은 남는다`() =
+    fun `이미 동의한 항목은 체크된 채로 남고 끄이지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 목록에서 빼면 다시 온 사용자에게만 화면이 통째로 사라져, 무엇에 동의하고
+            // 시작하는지 알 수 없다.
+            val viewModel = createViewModel(FakeTermsCoordinator(alreadyAgreed = allFour))
+
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(allFour, state.consentDocuments)
+            assertEquals(allFour.map { it.termType }.toSet(), state.checkedConsents)
+            assertEquals(allFour.map { it.termType }.toSet(), state.lockedConsents)
+            assertTrue(state.pages.last().showsConsents)
+
+            // 앱은 이미 기록된 동의를 되돌릴 수 없다. 끄는 시늉만 하면 다음 조회에서 도로 켜진다.
+            viewModel.sendIntent(OnboardingUiIntent.ConsentToggled(TermType.SENSITIVE_INFORMATION_CONSENT))
+            runCurrent()
+
+            assertEquals(allFour.map { it.termType }.toSet(), viewModel.state.value.checkedConsents)
+        }
+
+    @Test
+    fun `이미 다 동의했으면 연출 없이 곧바로 완료한다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 채울 체크가 없는데 기다리면 화면은 그대로인 채 버튼만 잠시 먹통이 된다.
+            val coordinator = FakeTermsCoordinator(alreadyAgreed = allFour)
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel = createViewModel(coordinator, completion = completion)
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            runCurrent()
+
+            // 가상 시간을 넘기지 않았는데도 완료가 저장됐다 — 연출 지연을 타지 않았다는 뜻이다.
+            assertEquals(1, completion.markedCount)
+            assertTrue(coordinator.agreed.isEmpty())
+        }
+
+    @Test
+    fun `catalog 가 비면 목록도 빈 채로 마지막 장만 남는다`() =
         runTest(UnconfinedTestDispatcher()) {
             // 마지막 장은 동의와 무관하게 온보딩을 끝내는 자리라 사라지면 안 된다.
             val viewModel = createViewModel(FakeTermsCoordinator(pending = emptyList()))
 
             runCurrent()
 
-            assertTrue(viewModel.state.value.consentDocuments.isEmpty())
             assertTrue(viewModel.state.value.pages.last().showsConsents)
         }
 
@@ -207,11 +245,12 @@ class OnboardingConsentTest {
     private fun createViewModel(
         coordinator: TermsAgreementCoordinator,
         displayTerms: TermsRepository = EmptyTermsRepository,
+        completion: FakeOnboardingCompletionCoordinator = FakeOnboardingCompletionCoordinator(),
     ) = OnboardingViewModel(
         observeOnboardingProgressUseCase = ObserveOnboardingProgressUseCase(FakeOnboardingRepository),
         observeUserProfileUseCase = ObserveUserProfileUseCase(FakeUserProfileCoordinator),
         saveOnboardingProgressUseCase = SaveOnboardingProgressUseCase(FakeOnboardingRepository),
-        completeOnboardingUseCase = CompleteOnboardingUseCase(FakeOnboardingCompletionCoordinator),
+        completeOnboardingUseCase = CompleteOnboardingUseCase(completion),
         setLocationTrackingUseCase = SetLocationTrackingUseCase(FakeLocationTrackingRepository),
         termsCoordinator = coordinator,
         getDisplayTerms = GetDisplayTermsUseCase(displayTerms),
@@ -230,6 +269,8 @@ class OnboardingConsentTest {
 
     private class FakeTermsCoordinator(
         private val pending: List<TermDocument> = emptyList(),
+        /** 이 환경 catalog 에 있으나 이미 동의를 마친 문서. */
+        private val alreadyAgreed: List<TermDocument> = emptyList(),
         private val failure: Throwable? = null,
         private val agreeFailure: Throwable? = null,
         private val revised: List<TermDocument> = emptyList(),
@@ -244,8 +285,13 @@ class OnboardingConsentTest {
         override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> {
             failure?.let { return Result.failure(it) }
             val documents = (if (hasFailedOnce) revised else pending).filter { it.termType in stage.requiredTypes }
+            val agreedDocuments = alreadyAgreed.filter { it.termType in stage.requiredTypes }
             return Result.success(
-                TermStageRequirement(stage, documents.map { TermRequirement(it, isAgreed = false) }),
+                TermStageRequirement(
+                    stage,
+                    documents.map { TermRequirement(it, isAgreed = false) } +
+                        agreedDocuments.map { TermRequirement(it, isAgreed = true) },
+                ),
             )
         }
 
@@ -311,12 +357,17 @@ class OnboardingConsentTest {
         override fun refresh() = Unit
     }
 
-    private object FakeOnboardingCompletionCoordinator : OnboardingCompletionCoordinator {
+    private class FakeOnboardingCompletionCoordinator : OnboardingCompletionCoordinator {
+        var markedCount = 0
+            private set
+
         override val completed: StateFlow<Boolean?> = MutableStateFlow(false)
 
         override fun refresh() = Unit
 
-        override suspend fun markCompleted() = Unit
+        override suspend fun markCompleted() {
+            markedCount++
+        }
 
         override suspend fun resetForCurrentSession() = Unit
     }
