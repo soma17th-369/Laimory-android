@@ -1,6 +1,8 @@
 package com.soma369.laimory
 
+import android.app.UiModeManager
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.content.getSystemService
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -89,7 +92,12 @@ class MainActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition { themeMode.value == null }
         super.onCreate(savedInstanceState)
-        lifecycleScope.launch { observeAppThemeMode().collect { mode -> themeMode.value = mode } }
+        lifecycleScope.launch {
+            observeAppThemeMode().collect { mode ->
+                themeMode.value = mode
+                syncSystemNightMode(mode)
+            }
+        }
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
@@ -135,6 +143,33 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
+    }
+
+    /**
+     * 고른 화면 모드를 시스템에도 알린다.
+     *
+     * 콜드 스타트의 스플래시는 **우리 프로세스가 뜨기 전에** 시스템이 액티비티 테마로 그린다.
+     * 그래서 앱 안에서 무엇을 하든 그 한 프레임의 색은 바꿀 수 없다 — 시스템이 미리 알고 있어야
+     * 한다. API 31+ 는 앱별 야간 모드를 시스템에 저장할 수 있어, 여기에 값을 넘겨 두면 다음
+     * 실행부터 스플래시가 고른 테마로 뜬다.
+     *
+     * 28~30 에는 같은 저장소가 없어 스플래시가 OS 설정을 따른다. 앱 화면 자체는 어느 버전에서도
+     * 반대 테마로 그려지지 않는다 — 저장값을 읽을 때까지 스플래시가 화면을 덮고 있기 때문이다.
+     *
+     * 앱의 색을 정하는 것은 여전히 [LaimoryTheme] 에 넘기는 값이다. 이 호출은 시스템이 그리는
+     * 자리(스플래시·작업 전환 미리보기)의 색만 맞춘다.
+     */
+    private fun syncSystemNightMode(mode: AppThemeMode) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        val uiModeManager = getSystemService<UiModeManager>() ?: return
+        val nightMode =
+            when (mode) {
+                AppThemeMode.SYSTEM -> UiModeManager.MODE_NIGHT_AUTO
+                AppThemeMode.LIGHT -> UiModeManager.MODE_NIGHT_NO
+                AppThemeMode.DARK -> UiModeManager.MODE_NIGHT_YES
+            }
+        // 같은 값이면 시스템이 무시한다. 다를 때만 구성 변경이 한 번 일어난다.
+        uiModeManager.setApplicationNightMode(nightMode)
     }
 
     private fun consumeSocialLoginCallback(intent: Intent) {
