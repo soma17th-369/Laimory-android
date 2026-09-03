@@ -15,6 +15,7 @@ import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
@@ -28,6 +29,7 @@ import com.soma369.laimory.feature.timeline.model.toUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetPurpose
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
+import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordDeleteTarget
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
@@ -54,6 +56,7 @@ class TimelineRecordViewModel
         private val updateDailyRecordEmotionUseCase: UpdateDailyRecordEmotionUseCase,
         private val updateTimelineEventMemoUseCase: UpdateTimelineEventMemoUseCase,
         private val deleteDailyRecordUseCase: DeleteDailyRecordUseCase,
+        private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
@@ -72,6 +75,7 @@ class TimelineRecordViewModel
         private var modeAppliedFor: LocalDate? = null
         private var loadJob: Job? = null
         private var saveJob: Job? = null
+        private var eventDeleteJob: Job? = null
 
         init {
             safeLaunch {
@@ -120,6 +124,9 @@ class TimelineRecordViewModel
                 TimelineRecordUiIntent.ConfirmDelete -> deleteRecord()
                 TimelineRecordUiIntent.DismissDelete -> dismissDelete()
                 TimelineRecordUiIntent.FinishDelete -> finishDelete()
+                is TimelineRecordUiIntent.RequestEventDelete -> requestEventDelete(intent.timelineEventId)
+                TimelineRecordUiIntent.ConfirmEventDelete -> deleteEvent()
+                TimelineRecordUiIntent.DismissEventDelete -> dismissEventDelete()
                 is TimelineRecordUiIntent.SelectEvent ->
                     if (state.value.mode.isEditing && state.value.isModeSwitchable) {
                         navigationHelper.navigateTo(TimelineEventEditorPage(intent.timelineEventId))
@@ -226,6 +233,7 @@ class TimelineRecordViewModel
                 current.isSavingRecord ||
                 saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden ||
                 current.memoEditor != null
             ) {
                 return
@@ -359,6 +367,7 @@ class TimelineRecordViewModel
             if (current.isSavingRecord ||
                 saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
+                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden ||
                 current.memoEditor != null
             ) {
                 return
@@ -421,7 +430,8 @@ class TimelineRecordViewModel
             val record = (state.value.content as? TimelineRecordUiContent.Record)?.value ?: return
             if (state.value.deleteDialogState != TimelineDeleteDialogState.Hidden ||
                 state.value.isSavingRecord ||
-                state.value.memoEditor != null
+                state.value.memoEditor != null ||
+                state.value.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden
             ) {
                 return
             }
@@ -503,6 +513,85 @@ class TimelineRecordViewModel
         private fun showRetryableDeleteError(message: String) {
             updateState {
                 copy(deleteDialogState = TimelineDeleteDialogState.RetryableError(message))
+            }
+        }
+
+        /**
+         * 카드의 휴지통 — 지울 이벤트를 정하고 확인 창을 연다.
+         *
+         * 읽기 모드에서는 버튼이 없지만 Intent 경로도 막는다. 화면 밖에서 들어온 요청이 읽는
+         * 화면의 내용을 지우면 안 된다.
+         */
+        private fun requestEventDelete(timelineEventId: Long) {
+            val current = state.value
+            if (!current.mode.isEditing || !current.isModeSwitchable) return
+            val exists =
+                current
+                    .record()
+                    ?.events
+                    ?.any { it.timelineEventId == timelineEventId } == true
+            if (!exists) return
+            updateState {
+                copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Confirmation(timelineEventId))
+            }
+        }
+
+        /**
+         * 확인·재시도 모두 이 경로다.
+         *
+         * 대상은 다이얼로그 상태가 들고 있는 값을 쓴다 — 목록은 그사이에도 갱신되므로 화면에서
+         * 다시 찾으면 다른 이벤트를 지울 수 있다.
+         *
+         * 요청은 별도 Job 에서 돈다. 직렬 Intent 루프에서 응답을 기다리면 그동안 들어온 Intent 가
+         * 가드를 거치지 못한 채 큐에 쌓였다가, 삭제가 끝나 상태가 풀린 뒤에 실행된다 — 삭제 중
+         * 눌린 이벤트 추가가 삭제 직후에 열린다.
+         */
+        private fun deleteEvent() {
+            val target = state.value.eventDeleteDialogState as? TimelineEventDeleteDialogState.Active ?: return
+            if (target is TimelineEventDeleteDialogState.Deleting || eventDeleteJob?.isActive == true) return
+
+            updateState {
+                copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Deleting(target.timelineEventId))
+            }
+            eventDeleteJob =
+                safeLaunch(onError = { error -> handleEventDeleteFailure(target.timelineEventId, error) }) {
+                    deleteTimelineEventUseCase(target.timelineEventId)
+                        .onSuccess {
+                            // 목록 갱신은 UseCase 가 세션에서 Event 를 빼는 것으로 이미 일어난다.
+                            updateState { copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Hidden) }
+                        }.onFailure { error -> handleEventDeleteFailure(target.timelineEventId, error) }
+                }
+        }
+
+        private fun dismissEventDelete() {
+            if (state.value.eventDeleteDialogState is TimelineEventDeleteDialogState.Deleting) return
+            updateState { copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Hidden) }
+        }
+
+        private fun handleEventDeleteFailure(
+            timelineEventId: Long,
+            error: Throwable,
+        ) {
+            when (val action = error.toTimelineDeleteFailureAction()) {
+                // 지우려던 이벤트가 이미 없는 경우다. 하루 기록은 멀쩡하므로 화면 전체를 닫지 않고
+                // 목록만 서버 기준으로 되돌린다.
+                TimelineDeleteFailureAction.TargetUnavailable -> {
+                    updateState { copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Hidden) }
+                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
+                    requestedRecordDate?.let(::loadRecord)
+                }
+                TimelineDeleteFailureAction.AlreadyHandled ->
+                    updateState { copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Hidden) }
+                is TimelineDeleteFailureAction.Retryable ->
+                    updateState {
+                        copy(
+                            eventDeleteDialogState =
+                                TimelineEventDeleteDialogState.RetryableError(
+                                    timelineEventId = timelineEventId,
+                                    message = action.message,
+                                ),
+                        )
+                    }
             }
         }
 

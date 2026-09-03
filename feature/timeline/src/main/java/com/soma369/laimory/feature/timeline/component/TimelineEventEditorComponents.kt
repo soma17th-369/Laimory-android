@@ -437,7 +437,7 @@ private fun TimelineEditorPhoto(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        painter = painterResource(UiR.drawable.ico_setting_trash),
+                        painter = painterResource(UiR.drawable.ico_timeline_tool_delete),
                         contentDescription = removeContentDescription,
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.inverseOnSurface,

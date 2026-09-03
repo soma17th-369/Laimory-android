@@ -22,12 +22,14 @@ import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
+import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
@@ -37,6 +39,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -1073,6 +1076,165 @@ class TimelineRecordViewModelTest {
     /** 기록 날짜([RECORD_DATE])가 "오늘"이 되도록 고정한다 — 안내 문구 검증에 기준 시각이 필요하다. */
     private var clock: Clock = Clock.fixed(Instant.parse("2026-05-08T12:00:00Z"), ZoneOffset.UTC)
 
+    @Test
+    fun `편집 모드에서 이벤트를 지우면 목록에서 빠진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    timeline(events = listOf(event(), event(timelineEventId = 2L))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(2L))
+            advanceUntilIdle()
+            assertEquals(
+                TimelineEventDeleteDialogState.Confirmation(2L),
+                viewModel.state.value.eventDeleteDialogState,
+            )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            assertEquals(listOf(2L), recordRepository.deletedEventIds)
+            assertEquals(TimelineEventDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+            val record = (viewModel.state.value.content as TimelineRecordUiContent.Record).value
+            assertEquals(listOf(1L), record.events.map { it.timelineEventId })
+        }
+
+    @Test
+    fun `마지막 이벤트를 지우면 기록은 남고 타임라인만 빈다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            val record = (viewModel.state.value.content as TimelineRecordUiContent.Record).value
+            assertTrue(record.events.isEmpty())
+        }
+
+    @Test
+    fun `읽기 모드에서는 이벤트 삭제 요청을 받지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(timeline(status = DailyRecordStatus.SAVED))
+            assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(1L))
+            advanceUntilIdle()
+
+            assertEquals(TimelineEventDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+            assertTrue(recordRepository.deletedEventIds.isEmpty())
+        }
+
+    @Test
+    fun `삭제 확인 창이 떠 있는 동안에는 메모 편집과 모드 전환을 막는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(timeline(status = DailyRecordStatus.SAVED))
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(1L))
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ExitEditMode)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.memoEditor)
+            assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
+        }
+
+    @Test
+    fun `이벤트 삭제에 실패하면 같은 이벤트로 다시 시도한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    timeline(events = listOf(event(), event(timelineEventId = 2L))),
+                )
+            recordRepository.deleteEventFailure = ApiException.NetworkException()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            val failed = viewModel.state.value.eventDeleteDialogState
+            assertTrue(failed is TimelineEventDeleteDialogState.RetryableError)
+            assertEquals(2L, (failed as TimelineEventDeleteDialogState.Active).timelineEventId)
+
+            recordRepository.deleteEventFailure = null
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            assertEquals(listOf(2L, 2L), recordRepository.deletedEventIds)
+            assertEquals(TimelineEventDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+        }
+
+    @Test
+    fun `지우려던 이벤트가 이미 없으면 기록을 다시 조회한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+            recordRepository.deleteEventFailure = ApiException.ClientException(errorCode = -404, rawCode = 404)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            assertEquals(TimelineEventDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+            // 하루 기록 자체는 살아 있다 — 화면을 닫지 않고 목록만 서버 기준으로 되돌린다.
+            assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
+            assertEquals(listOf(RECORD_DATE, RECORD_DATE), recordRepository.requestedRecordDates)
+        }
+
+    @Test
+    fun `삭제 응답을 기다리는 동안 들어온 Intent 는 삭제가 끝난 뒤에도 실행되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    timeline(events = listOf(event(), event(timelineEventId = 2L))),
+                )
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.deleteEventGate = gate
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            runCurrent()
+            assertTrue(viewModel.state.value.eventDeleteDialogState is TimelineEventDeleteDialogState.Deleting)
+
+            // 삭제가 도는 동안 들어온 요청들. 직렬 루프를 점유하면 이것들이 큐에 쌓였다가
+            // 삭제가 끝나 상태가 풀린 뒤 실행된다.
+            viewModel.sendIntent(TimelineRecordUiIntent.AddEvent)
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(1L))
+            runCurrent()
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(TimelineEventDeleteDialogState.Hidden, viewModel.state.value.eventDeleteDialogState)
+            assertTrue(navigationHelper.pages.isEmpty())
+            assertNull(viewModel.state.value.memoEditor)
+        }
+
+    @Test
+    fun `삭제 확인 창이 떠 있으면 감정 시트도 저장도 시작하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(1L))
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.emotionSheet)
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(
+                TimelineEventDeleteDialogState.Confirmation(1L),
+                viewModel.state.value.eventDeleteDialogState,
+            )
+        }
+
     private fun createViewModel() =
         TimelineRecordViewModel(
             observeTimelineRecordUseCase = ObserveTimelineRecordUseCase(repository),
@@ -1102,6 +1264,12 @@ class TimelineRecordViewModelTest {
                 ),
             deleteDailyRecordUseCase =
                 DeleteDailyRecordUseCase(
+                    repository = recordRepository,
+                    sessionRepository = repository,
+                    messageHelper = NoOpMessageHelper,
+                ),
+            deleteTimelineEventUseCase =
+                DeleteTimelineEventUseCase(
                     repository = recordRepository,
                     sessionRepository = repository,
                     messageHelper = NoOpMessageHelper,
@@ -1215,18 +1383,20 @@ class TimelineRecordViewModelTest {
         status = status,
     )
 
-    private fun event(memo: String? = null) =
-        TimelineEvent(
-            timelineEventId = 1L,
-            eventType = TimelineEventType.WORK,
-            startAt = LocalDateTime.of(2026, 5, 8, 9, 0),
-            endAt = null,
-            title = "업무",
-            subtitle = null,
-            memo = memo,
-            question = null,
-            items = emptyList(),
-        )
+    private fun event(
+        memo: String? = null,
+        timelineEventId: Long = 1L,
+    ) = TimelineEvent(
+        timelineEventId = timelineEventId,
+        eventType = TimelineEventType.WORK,
+        startAt = LocalDateTime.of(2026, 5, 8, 9, 0),
+        endAt = null,
+        title = "업무",
+        subtitle = null,
+        memo = memo,
+        question = null,
+        items = emptyList(),
+    )
 
     private class FakeTimelineRecordSessionRepository : TimelineRecordSessionRepository {
         private val mutableTimeline = MutableStateFlow<DailyTimeline?>(null)
@@ -1249,7 +1419,11 @@ class TimelineRecordViewModelTest {
                 )
         }
 
-        override fun removeEvent(timelineEventId: Long) = Unit
+        override fun removeEvent(timelineEventId: Long) {
+            mutableTimeline.update { current ->
+                current?.copy(events = current.events.filterNot { it.timelineEventId == timelineEventId })
+            }
+        }
 
         override fun removeEventItem(
             timelineEventId: Long,
@@ -1264,6 +1438,9 @@ class TimelineRecordViewModelTest {
     private class RecordingTimelineRecordRepository : TimelineRecordRepository {
         val requestedRecordDates = mutableListOf<LocalDate>()
         val deletedRecordDates = mutableListOf<LocalDate>()
+        val deletedEventIds = mutableListOf<Long>()
+        var deleteEventFailure: ApiException? = null
+        var deleteEventGate: CompletableDeferred<Unit>? = null
         val savedRecordDates = mutableListOf<LocalDate>()
         val savedEmotions = mutableListOf<TimelineEmotion>()
         val updatedEmotions = mutableListOf<Pair<LocalDate, TimelineEmotion>>()
@@ -1315,7 +1492,14 @@ class TimelineRecordViewModelTest {
             )
         }
 
-        override suspend fun deleteEvent(timelineEventId: Long) = error("사용하지 않음")
+        override suspend fun deleteEvent(timelineEventId: Long) {
+            deletedEventIds += timelineEventId
+            deleteEventGate?.let { gate ->
+                deleteEventGate = null
+                gate.await()
+            }
+            deleteEventFailure?.let { throw it }
+        }
 
         override suspend fun deleteEventPhoto(
             timelineEventId: Long,
