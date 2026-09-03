@@ -58,11 +58,13 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEmotionSheet
 import com.soma369.laimory.feature.timeline.component.TimelineEventCard
+import com.soma369.laimory.feature.timeline.component.TimelineEventDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelinePhotoViewerDialog
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
@@ -149,6 +151,12 @@ private fun TimelineRecordContent(
         onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmDelete) },
         onDismiss = { onIntent(TimelineRecordUiIntent.DismissDelete) },
         onFinish = { onIntent(TimelineRecordUiIntent.FinishDelete) },
+    )
+
+    TimelineEventDeleteDialog(
+        state = state.eventDeleteDialogState,
+        onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmEventDelete) },
+        onDismiss = { onIntent(TimelineRecordUiIntent.DismissEventDelete) },
     )
 }
 
@@ -266,6 +274,7 @@ private fun TimelineRecordScreen(
                             memoEditor = state.memoEditor,
                             mode = state.mode,
                             onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
+                            onEventDeleteClick = { onIntent(TimelineRecordUiIntent.RequestEventDelete(it)) },
                             onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
                             onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
                             onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
@@ -297,7 +306,8 @@ private fun TimelineRecordScreen(
                             enabled =
                                 !state.isSavingRecord &&
                                     state.emotionSheet == null &&
-                                    state.deleteDialogState == TimelineDeleteDialogState.Hidden,
+                                    state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                                    state.eventDeleteDialogState == TimelineEventDeleteDialogState.Hidden,
                             isLoading = state.isSavingRecord,
                             onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
                         )
@@ -395,6 +405,7 @@ private fun TimelineRecordBody(
     mode: TimelineRecordMode,
     memoEditor: TimelineMemoEditorState?,
     onEventClick: (Long) -> Unit,
+    onEventDeleteClick: (Long) -> Unit,
     onMemoClick: (Long) -> Unit,
     onMemoChange: (String) -> Unit,
     onMemoCancel: () -> Unit,
@@ -420,6 +431,7 @@ private fun TimelineRecordBody(
             TimelineEventCard(
                 event = event,
                 onEditClick = { onEventClick(event.timelineEventId) },
+                onDeleteClick = { onEventDeleteClick(event.timelineEventId) },
                 onPhotoClick = onPhotoClick,
                 isEditable = mode.isEditing,
                 isLast = index == record.events.lastIndex,

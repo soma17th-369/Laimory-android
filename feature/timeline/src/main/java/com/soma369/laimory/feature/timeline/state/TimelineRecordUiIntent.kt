@@ -45,6 +45,15 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object FinishDelete : TimelineRecordUiIntent
 
+    /** 카드의 휴지통. 편집 모드에서만 받는다. */
+    data class RequestEventDelete(
+        val timelineEventId: Long,
+    ) : TimelineRecordUiIntent
+
+    data object ConfirmEventDelete : TimelineRecordUiIntent
+
+    data object DismissEventDelete : TimelineRecordUiIntent
+
     data class SelectEvent(
         val timelineEventId: Long,
     ) : TimelineRecordUiIntent

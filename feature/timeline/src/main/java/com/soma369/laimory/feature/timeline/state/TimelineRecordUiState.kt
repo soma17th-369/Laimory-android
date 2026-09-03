@@ -14,6 +14,8 @@ data class TimelineRecordUiState(
     val memoEditor: TimelineMemoEditorState? = null,
     val deleteTarget: TimelineRecordDeleteTarget? = null,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
+    /** 이벤트 삭제. 하루 기록 삭제와 대상도 성공 처리도 달라 상태를 나눠 둔다. */
+    val eventDeleteDialogState: TimelineEventDeleteDialogState = TimelineEventDeleteDialogState.Hidden,
     val emotionSheet: TimelineEmotionSheetState? = null,
     val isSavingRecord: Boolean = false,
 ) : UiState {
@@ -25,12 +27,16 @@ data class TimelineRecordUiState(
      *
      * 편집 모드를 닫는 `X` 와 모드 전환에 함께 쓴다 — 저장·삭제·메모 저장이 도는 중에 모드를 끄면
      * 결과를 받을 화면이 사라진다.
+     *
+     * 이벤트 삭제는 다이얼로그가 떠 있는 동안 전부 막는다. 삭제 중만 막으면 확인 창을 띄워 둔 채
+     * 뒤에서 편집이 진행돼, 무엇을 지우는지 정한 화면과 확인을 누른 뒤의 화면이 달라진다.
      */
     val isModeSwitchable: Boolean
         get() =
             memoEditor == null &&
                 !isSavingRecord &&
-                deleteDialogState == TimelineDeleteDialogState.Hidden
+                deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                eventDeleteDialogState == TimelineEventDeleteDialogState.Hidden
 }
 
 @Immutable
