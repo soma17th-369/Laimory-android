@@ -6,6 +6,7 @@ import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
 import com.soma369.laimory.core.data.repository.OnboardingRepositoryImpl
 import com.soma369.laimory.core.data.repository.PushRegistrationRepositoryImpl
+import com.soma369.laimory.core.data.repository.PushSettingsRepositoryImpl
 import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
 import com.soma369.laimory.core.data.repository.TermsRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineDraftRepositoryImpl
@@ -18,6 +19,7 @@ import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
+import com.soma369.laimory.core.domain.repository.PushSettingsRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
@@ -60,6 +62,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindPushRegistrationRepository(impl: PushRegistrationRepositoryImpl): PushRegistrationRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindPushSettingsRepository(impl: PushSettingsRepositoryImpl): PushSettingsRepository
 
     @Binds
     @Singleton
