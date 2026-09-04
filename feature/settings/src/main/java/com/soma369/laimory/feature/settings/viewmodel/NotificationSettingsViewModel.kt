@@ -39,6 +39,10 @@ import javax.inject.Inject
  * **모으는 것은 아직 보내지 않은 누름까지다.** 한 번 나간 요청은 취소하지 않고([commitLock]),
  * 그 뒤에 온 누름은 줄을 서서 다시 보낸다 — 끊으면 서버에 닿았는지 모르는 채 남고, 그사이 화면이
  * 원래 값으로 돌아와 있으면 보낼 것이 없다고 판단해 서버만 반대로 켜진 채 갈라진다.
+ *
+ * 고른 값을 **대신 거두는 자리는 두지 않는다.** 화면값을 서버로 보내는 경로 밖에서 되돌리면, 이미
+ * 나간 요청이 성공했을 때 서버는 켜고 화면은 꺼진 채로 남는다. 화면값을 바꾸는 것은 사용자의
+ * 누름과 서버의 거절뿐이다.
  */
 @HiltViewModel
 class NotificationSettingsViewModel
@@ -109,13 +113,10 @@ class NotificationSettingsViewModel
             if (isEnabled == shown.isEnabled(toggle)) return
 
             showSettings(shown.with(toggle, isEnabled))
-            // 전체를 끄면 하위 줄은 눌러도 오지 않는 알림이 된다. 아직 보내지 않은 변경은 사용자가
-            // 더 볼 수 없는 값이므로 여기서 버린다.
-            if (toggle == NotificationToggle.PUSH && !isEnabled) {
-                discardPending(NotificationToggle.DAILY_REMINDER)
-            }
 
-            // 취소하는 것은 **기다리는 중**인 누름뿐이다.
+            // 취소하는 것은 **기다리는 중**인 누름뿐이다. 줄마다 따로 세므로 전체 알림을 끄는 것이
+            // 하위 줄의 대기를 건드리지 않는다 — 방금 고른 값은 잠긴 줄에 그대로 남고 서버에도
+            // 그대로 간다. 다시 켰을 때 종전 선택이 살아 있어야 하는 것이 이 화면의 규칙이다.
             debounceJobs[toggle]?.cancel()
             // safeLaunch 는 취소까지 runCatching 으로 잡아 실패로 알린다. 취소는 다음 누름이
             // 이어받았다는 뜻이라 알릴 것이 없으므로 직접 띄운다.
@@ -151,12 +152,6 @@ class NotificationSettingsViewModel
                     if (state.value.settings?.isEnabled(toggle) == isEnabled) revertToConfirmed(toggle)
                     handleUpdateFailure(error)
                 }
-        }
-
-        /** 아직 보내지 않은 변경을 거둔다. */
-        private fun discardPending(toggle: NotificationToggle) {
-            debounceJobs.remove(toggle)?.cancel()
-            revertToConfirmed(toggle)
         }
 
         /** 화면을 서버가 확인해 준 값으로 되돌린다. */

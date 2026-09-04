@@ -177,8 +177,9 @@ class NotificationSettingsViewModelTest {
         }
 
     @Test
-    fun `전체 알림을 끄면 아직 보내지 않은 일일 리마인더 변경을 버린다`() =
+    fun `전체 알림을 꺼도 방금 고른 일일 리마인더 값은 지켜진다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            // 잠기는 것은 줄이지 값이 아니다. 다시 켰을 때 종전 선택이 그대로 살아 있어야 한다.
             repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
 
@@ -191,9 +192,43 @@ class NotificationSettingsViewModelTest {
             )
             advanceUntilIdle()
 
-            // 전체를 끈 뒤에는 사용자가 볼 수 없는 값이다. 서버에 남기지 않는다.
-            assertTrue(repository.dailyReminderUpdates.isEmpty())
-            assertFalse(viewModel.state.value.settings!!.isDailyReminderEnabled)
+            assertEquals(listOf(true), repository.dailyReminderUpdates)
+            assertEquals(listOf(false), repository.pushUpdates)
+            val settings = viewModel.state.value.settings!!
+            assertTrue(settings.isDailyReminderEnabled)
+            assertFalse(settings.isPushEnabled)
+            assertEquals(viewModel.state.value.confirmedSettings, settings)
+        }
+
+    @Test
+    fun `일일 리마인더를 보내는 중에 전체 알림을 꺼도 화면과 서버가 갈리지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 나간 요청은 끊기지 않는다. 그 값을 화면에서만 되돌리면 서버는 켜고 화면은 꺼진 채로
+            // 남고, 전체 알림을 다시 켜도 아무도 그 차이를 보내지 않아 그대로 굳는다.
+            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            val viewModel = createLoadedViewModel()
+            val gate = CompletableDeferred<Unit>()
+            repository.updateGate = gate
+
+            viewModel.sendIntent(
+                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
+            )
+            advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
+            runCurrent()
+            assertEquals(listOf(true), repository.dailyReminderUpdates)
+
+            // 응답을 기다리는 사이 전체를 끈다.
+            viewModel.sendIntent(
+                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.PUSH, false),
+            )
+            runCurrent()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            val settings = viewModel.state.value.settings!!
+            assertEquals(viewModel.state.value.confirmedSettings, settings)
+            assertTrue(settings.isDailyReminderEnabled)
+            assertFalse(settings.isPushEnabled)
             assertEquals(listOf(false), repository.pushUpdates)
         }
 
