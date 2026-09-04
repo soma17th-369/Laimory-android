@@ -8,6 +8,7 @@ import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.api.OnboardingApi
 import com.soma369.laimory.core.data.network.api.PushRegistrationApi
+import com.soma369.laimory.core.data.network.api.PushSettingsApi
 import com.soma369.laimory.core.data.network.api.TermAgreementApi
 import com.soma369.laimory.core.data.network.api.TermsApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
@@ -240,6 +241,13 @@ object NetworkModule {
     fun providePushRegistrationApi(
         @SensitiveAuthRetrofit retrofit: Retrofit,
     ): PushRegistrationApi = retrofit.create(PushRegistrationApi::class.java)
+
+    /** 푸시 수신 설정은 boolean 뿐이라 민감 전용 클라이언트를 쓰지 않는다. */
+    @Provides
+    @Singleton
+    fun providePushSettingsApi(
+        @AuthRetrofit retrofit: Retrofit,
+    ): PushSettingsApi = retrofit.create(PushSettingsApi::class.java)
 
     @Provides
     @PublishedTermsBaseUrl

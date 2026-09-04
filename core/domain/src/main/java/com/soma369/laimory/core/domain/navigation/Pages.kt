@@ -157,6 +157,20 @@ data object SettingsPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/** 설정 > 앱 설정 > 알림. 설정 화면 안에서 값을 바꾸지 않고 별도 화면으로 나온다. */
+data object NotificationSettingsPage : Page {
+    const val PATH = "/settings/notification"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+/** 설정 > 앱 설정 > 테마. */
+data object ThemeSettingsPage : Page {
+    const val PATH = "/settings/theme"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object CalendarPage : Page {
     const val PATH = "/calendar"
 

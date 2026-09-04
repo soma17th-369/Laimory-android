@@ -9,9 +9,13 @@ import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.OnboardingPage
+import com.soma369.laimory.core.domain.navigation.SettingsPage
 import com.soma369.laimory.core.domain.navigation.TermsPage
+import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 
@@ -46,12 +50,31 @@ class AuthNavigationTest {
                 GenericNavKey("/collection"),
             )
 
-        backStack.syncRoot(HomePage)
+        backStack.syncRoot(HomePage, appliedRootPath = HomePage.PATH)
 
         assertEquals(
             listOf(GenericNavKey(HomePage.PATH), GenericNavKey("/collection")),
             backStack.toList(),
         )
+    }
+
+    @Test
+    fun `홈이 아닌 탭에서 구성 변경이 나도 백스택을 보존한다`() {
+        // 탭 전환은 백스택 바닥을 탭 루트로 갈아끼운다. 바닥으로 경계를 판별하면 화면 모드를
+        // 고르는 순간(구성 변경) 설정 탭이 홈 한 건으로 날아간다.
+        val backStack = NavBackStack<NavKey>(GenericNavKey(HomePage.PATH))
+        backStack.switchTab(SettingsPage.PATH)
+        backStack.navigateTo(ThemeSettingsPage.toRoute())
+        var rootReplaced = false
+
+        backStack.syncRoot(HomePage, appliedRootPath = HomePage.PATH, onRootReplaced = { rootReplaced = true })
+
+        assertEquals(
+            listOf(GenericNavKey(SettingsPage.PATH), GenericNavKey(ThemeSettingsPage.PATH)),
+            backStack.toList(),
+        )
+        // 계정이 그대로인데 정리가 돌면 활성 Dialog와 동의 스냅샷까지 사라진다.
+        assertFalse(rootReplaced)
     }
 
     @Test
@@ -63,18 +86,31 @@ class AuthNavigationTest {
                 GenericNavKey("/collection"),
             )
 
-        loginBackStack.syncRoot(HomePage)
-        authenticatedBackStack.syncRoot(LoginPage)
+        loginBackStack.syncRoot(HomePage, appliedRootPath = LoginPage.PATH)
+        authenticatedBackStack.syncRoot(LoginPage, appliedRootPath = HomePage.PATH)
 
         assertEquals(listOf(GenericNavKey(HomePage.PATH)), loginBackStack.toList())
         assertEquals(listOf(GenericNavKey(LoginPage.PATH)), authenticatedBackStack.toList())
     }
 
     @Test
-    fun `루트가 셋이어도 바닥 경로가 같으면 백스택을 보존한다`() {
+    fun `화면이 먼저 루트를 세워 뒀어도 경계가 바뀌면 정리한다`() {
+        // 로그아웃은 화면 쪽이 먼저 루트를 갈아 끼우고 세션 흐름이 뒤따라온다. 스택이 이미
+        // 목표 루트라도 이전 계정의 Dialog·동의 스냅샷을 정리할 자리는 여기뿐이다.
+        val backStack = NavBackStack<NavKey>(GenericNavKey(LoginPage.PATH))
+        var rootReplaced = false
+
+        backStack.syncRoot(LoginPage, appliedRootPath = HomePage.PATH, onRootReplaced = { rootReplaced = true })
+
+        assertTrue(rootReplaced)
+        assertEquals(listOf(GenericNavKey(LoginPage.PATH)), backStack.toList())
+    }
+
+    @Test
+    fun `루트가 셋이어도 같은 경계면 백스택을 보존한다`() {
         val onboardingBackStack = NavBackStack<NavKey>(GenericNavKey(OnboardingPage.PATH))
 
-        onboardingBackStack.syncRoot(OnboardingPage)
+        onboardingBackStack.syncRoot(OnboardingPage, appliedRootPath = OnboardingPage.PATH)
 
         assertEquals(listOf(GenericNavKey(OnboardingPage.PATH)), onboardingBackStack.toList())
     }
@@ -83,7 +119,7 @@ class AuthNavigationTest {
     fun `온보딩에서 홈으로 넘어갈 때 루트를 교체한다`() {
         val backStack = NavBackStack<NavKey>(GenericNavKey(OnboardingPage.PATH))
 
-        backStack.syncRoot(HomePage)
+        backStack.syncRoot(HomePage, appliedRootPath = OnboardingPage.PATH)
 
         assertEquals(listOf(GenericNavKey(HomePage.PATH)), backStack.toList())
     }

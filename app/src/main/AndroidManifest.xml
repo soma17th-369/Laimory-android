@@ -49,10 +49,17 @@
             </intent-filter>
         </service>
 
+        <!--
+            uiMode 는 우리가 직접 받는다. OS 의 다크 모드가 바뀌면 Compose 가 그 값을 읽어 다시
+            그리므로 액티비티를 새로 만들 이유가 없다. 재생성하면 보고 있던 화면이 사라지고 화면이
+            한 번 번쩍인다.
+        -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="uiMode"
             android:exported="true"
             android:launchMode="singleTask"
+            android:theme="@style/Theme.Laimory.Starting"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
