@@ -1,7 +1,6 @@
 package com.soma369.laimory.feature.settings.screen
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,23 +10,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.toggleableState
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -48,7 +42,6 @@ import com.soma369.laimory.feature.settings.state.NotificationSettingsUiState
 import com.soma369.laimory.feature.settings.state.NotificationToggle
 import com.soma369.laimory.feature.settings.viewmodel.NotificationSettingsViewModel
 import kotlinx.coroutines.flow.Flow
-import com.soma369.laimory.core.ui.R as CoreUiR
 
 @Composable
 fun NotificationSettingsRoute(
@@ -131,7 +124,6 @@ private fun NotificationSettingsScreen(
             is NotificationSettingsUiContent.Settings ->
                 NotificationToggleList(
                     settings = content.value,
-                    state = state,
                     isDeviceNotificationBlocked = isDeviceNotificationBlocked,
                     onOpenSystemSettings = onOpenSystemSettings,
                     onToggle = { toggle, isEnabled ->
@@ -145,7 +137,6 @@ private fun NotificationSettingsScreen(
 @Composable
 private fun NotificationToggleList(
     settings: PushSettings,
-    state: NotificationSettingsUiState,
     isDeviceNotificationBlocked: Boolean,
     onOpenSystemSettings: () -> Unit,
     onToggle: (NotificationToggle, Boolean) -> Unit,
@@ -163,20 +154,16 @@ private fun NotificationToggleList(
             title = "전체 알림",
             description = "끄면 아래 알림도 오지 않아요.",
             isChecked = settings.isPushEnabled,
-            isEnabled = !state.isUpdating(NotificationToggle.PUSH),
-            isUpdating = state.isUpdating(NotificationToggle.PUSH),
-            onClick = { onToggle(NotificationToggle.PUSH, !settings.isPushEnabled) },
+            isEnabled = true,
+            onCheckedChange = { isEnabled -> onToggle(NotificationToggle.PUSH, isEnabled) },
         )
         NotificationToggleRow(
             title = "일일 리마인더",
             description = "하루를 기록할 시간에 알려드려요. (21시)",
             isChecked = settings.isDailyReminderEnabled,
             // 전체가 꺼져 있으면 눌러도 오지 않는 알림이라 잠근다. 서버 값은 그대로 둔다.
-            isEnabled = settings.isPushEnabled && !state.isUpdating(NotificationToggle.DAILY_REMINDER),
-            isUpdating = state.isUpdating(NotificationToggle.DAILY_REMINDER),
-            onClick = {
-                onToggle(NotificationToggle.DAILY_REMINDER, !settings.isDailyReminderEnabled)
-            },
+            isEnabled = settings.isPushEnabled,
+            onCheckedChange = { isEnabled -> onToggle(NotificationToggle.DAILY_REMINDER, isEnabled) },
         )
         // 서버가 보내기로 돼 있는데 기기가 띄우지 못하는 상태. 여기만 앱에서 해결할 수 없어
         // 시스템 설정으로 보낸다.
@@ -187,10 +174,17 @@ private fun NotificationToggleList(
 }
 
 /**
- * 체크 한 줄.
+ * 스위치 한 줄.
  *
- * 스위치 대신 체크로 둔다 — 시스템의 같은 성격 화면과 결을 맞추고, 목록이 값 하나를 고르는
- * 자리라는 것을 모양으로 알린다. 접근성에는 체크박스로 알린다.
+ * 줄마다 서로 다른 알림을 각각 켜고 끄는 자리라 스위치로 둔다 — 체크는 여러 후보 중 하나를
+ * 고르는 모양이라(테마 화면이 그렇다) 무엇 하나를 골라야 하는 것처럼 읽힌다. 값은 그 자리에서
+ * 바로 적용되므로 저장 버튼도 없다.
+ *
+ * 조작은 줄 전체가 받는다. 스위치에는 [Switch] 의 `onCheckedChange` 를 주지 않아 별도 초점이
+ * 생기지 않고, 접근성에는 줄 하나가 스위치로 읽힌다.
+ *
+ * 보내는 중이라는 표시는 두지 않는다. 스위치는 누른 즉시 움직이고, 서버가 거절한 경우에만
+ * 되돌아가며 그때 안내가 뜬다.
  */
 @Composable
 private fun NotificationToggleRow(
@@ -198,8 +192,7 @@ private fun NotificationToggleRow(
     description: String,
     isChecked: Boolean,
     isEnabled: Boolean,
-    isUpdating: Boolean,
-    onClick: () -> Unit,
+    onCheckedChange: (Boolean) -> Unit,
 ) {
     val contentColor =
         if (isEnabled) {
@@ -212,12 +205,13 @@ private fun NotificationToggleRow(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = ROW_MIN_HEIGHT)
-                .clickable(enabled = isEnabled, onClick = onClick)
-                .semantics {
-                    role = Role.Checkbox
-                    toggleableState = if (isChecked) ToggleableState.On else ToggleableState.Off
-                    // 누를 수 있는 영역은 화면 폭 전체다. 여백은 글자 자리를 잡을 뿐이다.
-                }.padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = ROW_VERTICAL_PADDING),
+                // 누를 수 있는 영역은 화면 폭 전체다. 여백은 글자 자리를 잡을 뿐이다.
+                .toggleable(
+                    value = isChecked,
+                    enabled = isEnabled,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange,
+                ).padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = ROW_VERTICAL_PADDING),
         horizontalArrangement = Arrangement.spacedBy(Spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -236,26 +230,12 @@ private fun NotificationToggleRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Box(
-            modifier = Modifier.size(CHECK_SIZE),
-            contentAlignment = Alignment.Center,
-        ) {
-            when {
-                isUpdating ->
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(SPINNER_SIZE),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                isChecked ->
-                    Icon(
-                        painter = painterResource(CoreUiR.drawable.ico_default_check_filled),
-                        contentDescription = null,
-                        modifier = Modifier.size(CHECK_SIZE),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-            }
-        }
+        Switch(
+            checked = isChecked,
+            // 줄 전체가 이미 조작을 받는다. 여기에 또 주면 초점이 둘로 갈린다.
+            onCheckedChange = null,
+            enabled = isEnabled,
+        )
     }
 }
 
@@ -350,8 +330,6 @@ private val ROW_HORIZONTAL_PADDING = 24.dp
 /** 목록 위·아래 여백. 시안 값. */
 private val LIST_TOP_PADDING = 8.dp
 private val LIST_BOTTOM_PADDING = 24.dp
-private val CHECK_SIZE = 24.dp
-private val SPINNER_SIZE = 16.dp
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 640)
 @Composable
