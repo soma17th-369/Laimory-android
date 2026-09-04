@@ -49,8 +49,14 @@
             </intent-filter>
         </service>
 
+        <!--
+            uiMode 는 우리가 직접 받는다. 화면 모드는 앱이 저장값으로 정하고 Compose 가 그 값을 따라
+            다시 그리므로 액티비티를 새로 만들 이유가 없다. 재생성하면 테마를 고르는 순간 보고 있던
+            화면이 사라지고 화면이 한 번 번쩍인다.
+        -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="uiMode"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Laimory.Starting"

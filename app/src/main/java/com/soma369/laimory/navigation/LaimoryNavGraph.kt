@@ -11,8 +11,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +82,9 @@ fun LaimoryNavGraph(
 
     val context = LocalContext.current
     val backStack = rememberNavBackStack(GenericNavKey(rootPage.toRoute().path))
+    // 이 백스택이 마지막으로 세운 경계 루트. 백스택과 함께 저장·복원돼야 구성 변경을 경계 변화로
+    // 오인하지 않는다. 첫 구성에서는 백스택도 같은 루트로 만들어지므로 둘이 서로 맞는다.
+    var appliedRootPath by rememberSaveable { mutableStateOf(rootPage.toRoute().path) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // 바텀바 노출·선택 상태는 별도 상태 없이 backStack top 의 path 에서 파생한다.
@@ -135,7 +141,8 @@ fun LaimoryNavGraph(
     }
 
     LaunchedEffect(rootPage) {
-        backStack.syncRoot(rootPage, onRootReplaced = onAuthRootReplaced)
+        backStack.syncRoot(rootPage, appliedRootPath, onRootReplaced = onAuthRootReplaced)
+        appliedRootPath = rootPage.toRoute().path
     }
 
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
@@ -196,20 +203,26 @@ internal fun rootPage(
     }
 
 /**
- * 루트가 실제로 바뀐 경우에만 경계를 교체하고, 같은 경계의 복원된 백스택은 보존한다.
+ * 경계가 실제로 바뀐 경우에만 루트를 교체하고, 같은 경계의 복원된 백스택은 보존한다.
  *
- * 루트가 셋(Login·Onboarding·Home)이라 "로그인 화면인가" 같은 불리언으로는 가를 수 없다.
- * 현재 백스택 바닥의 경로와 목표 경로를 직접 비교하면 루트가 더 늘어도 그대로 쓴다.
+ * [appliedRootPath]는 이 백스택이 마지막으로 세운 경계 루트의 경로다. 백스택 바닥으로 판별하지
+ * 않는다 — 탭 전환이 바닥을 탭 루트로 갈아끼우므로([switchTab]) 홈이 아닌 탭에 있으면 바닥은
+ * `/settings`다. 구성 변경(화면 모드·회전·글꼴 크기)으로 이 함수가 다시 돌 때 그것을 경계 변화로
+ * 읽으면, 보고 있던 화면이 홈 한 건으로 날아가고 [onRootReplaced]까지 헛돌아 활성 Dialog가 사라진다.
  *
- * [onRootReplaced]는 실제 경계 교체 순간에만 호출된다 — 구성 변경으로 같은 Root가 다시
- * 구성될 때는 호출되지 않아 활성 Dialog가 유지되고, 교체 뒤에는 오래된 요청이 정리된다.
+ * 루트가 셋(Login·Onboarding·Home)이라 "로그인 화면인가" 같은 불리언으로는 가를 수 없다. 경로를
+ * 직접 비교하면 루트가 더 늘어도 그대로 쓴다.
+ *
+ * [onRootReplaced]는 경계가 바뀌는 순간에만 호출된다. 화면 쪽이 흐름보다 먼저 루트를 갈아 끼운
+ * 뒤(로그아웃·로그인 성공)라 스택이 이미 목표 루트여도, 경계가 바뀐 것은 사실이므로 호출된다 —
+ * 이전 계정의 Dialog와 동의 스냅샷을 정리할 자리가 거기 한 곳뿐이다.
  */
 internal fun NavBackStack<NavKey>.syncRoot(
     targetRoot: Page,
+    appliedRootPath: String,
     onRootReplaced: () -> Unit = {},
 ) {
-    val currentRootPath = (firstOrNull() as? GenericNavKey)?.path
-    if (currentRootPath == targetRoot.toRoute().path) return
+    if (appliedRootPath == targetRoot.toRoute().path) return
     onRootReplaced()
     replaceRoot(targetRoot.toRoute())
 }
