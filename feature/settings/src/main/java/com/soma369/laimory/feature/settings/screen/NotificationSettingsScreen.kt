@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -30,9 +31,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.push.PushSettings
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
-import com.soma369.laimory.core.ui.permission.DataPermission
-import com.soma369.laimory.core.ui.permission.DataSourceStatus
-import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
+import com.soma369.laimory.core.ui.permission.openAppNotificationSettings
+import com.soma369.laimory.core.ui.permission.rememberAppNotificationsEnabled
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiContent
@@ -77,15 +77,19 @@ private fun NotificationSettingsContent(
         }
     }
 
-    // 권한은 사용자가 시스템 설정에서 바꾸는 값이라 저장하지 않고 화면이 뜰 때마다 다시 묻는다.
-    val permissionState = rememberDataPermissionState()
+    // 기기가 알림을 띄울 수 있는지는 런타임 권한이 아니라 시스템 상태로 본다. 권한만 보면
+    // Android 12 이하에서는 늘 허용으로 나와, 설정에서 앱 알림을 끈 기기를 영영 알 수 없다.
+    // 사용자가 시스템 설정에서 바꾸는 값이라 저장하지 않고 화면이 다시 보일 때마다 묻는다.
+    val context = LocalContext.current
+    val areNotificationsEnabled = rememberAppNotificationsEnabled()
 
     NotificationSettingsScreen(
         innerPadding = innerPadding,
         state = state,
-        isDeviceNotificationBlocked =
-            permissionState.statusOf(DataPermission.APP_NOTIFICATION) != DataSourceStatus.GRANTED,
-        onOpenSystemSettings = { permissionState.act(DataPermission.APP_NOTIFICATION) },
+        isDeviceNotificationBlocked = !areNotificationsEnabled,
+        // 런타임 요청은 한 번 거부되면 다시 뜨지 않고 12 이하에는 요청 자체가 없다. 켤 수 있는
+        // 자리는 알림 설정 화면뿐이라 그곳을 직접 연다.
+        onOpenSystemSettings = { openAppNotificationSettings(context) },
         onIntent = onIntent,
     )
 }
@@ -255,12 +259,12 @@ private fun DeviceNotificationNotice(onOpenSystemSettings: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurface,
         )
         Text(
-            text = "알림은 켜져 있지만 기기의 알림 표시가 꺼져 있어요. 시스템 설정에서 켤 수 있어요.",
+            text = "알림은 켜져 있지만 기기의 알림 표시가 꺼져 있어요. 알림 설정에서 켤 수 있어요.",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedButton(onClick = onOpenSystemSettings) {
-            Text("시스템 설정 열기")
+            Text("알림 설정 열기")
         }
     }
 }

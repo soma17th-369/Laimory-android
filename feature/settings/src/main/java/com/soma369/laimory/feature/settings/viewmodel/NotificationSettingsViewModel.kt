@@ -18,8 +18,12 @@ import com.soma369.laimory.feature.settings.state.isEnabled
 import com.soma369.laimory.feature.settings.state.with
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
@@ -31,6 +35,10 @@ import javax.inject.Inject
  *
  * 연타는 마지막 값 하나로 모아 보낸다([COMMIT_DEBOUNCE_MILLIS]). 중간 값까지 보내면 켰다 껐다가
  * 그대로 서버에 가고, 응답이 보낸 순서대로 온다는 보장이 없어 화면과 서버가 어긋날 수 있다.
+ *
+ * **모으는 것은 아직 보내지 않은 누름까지다.** 한 번 나간 요청은 취소하지 않고([commitLock]),
+ * 그 뒤에 온 누름은 줄을 서서 다시 보낸다 — 끊으면 서버에 닿았는지 모르는 채 남고, 그사이 화면이
+ * 원래 값으로 돌아와 있으면 보낼 것이 없다고 판단해 서버만 반대로 켜진 채 갈라진다.
  */
 @HiltViewModel
 class NotificationSettingsViewModel
@@ -44,26 +52,39 @@ class NotificationSettingsViewModel
             NotificationSettingsUiState(),
         ) {
         /** 줄마다 하나. 같은 줄을 다시 누르면 취소하고 처음부터 다시 센다. */
-        private val commitJobs = mutableMapOf<NotificationToggle, Job>()
+        private val debounceJobs = mutableMapOf<NotificationToggle, Job>()
+
+        /**
+         * 서버로 나가는 일을 한 줄로 세운다.
+         *
+         * 보내는 중에 다음 요청이 끼어들면 응답 순서가 보낸 순서와 달라져 나중 값이 먼저 확정될 수
+         * 있다. 조회도 같은 줄에 세운다 — 겹치면 방금 보낸 값이 빠진 응답으로 화면을 덮는다.
+         */
+        private val commitLock = Mutex()
 
         override suspend fun handleIntent(intent: NotificationSettingsUiIntent) {
             when (intent) {
-                NotificationSettingsUiIntent.Initialize -> loadIfNeeded()
+                NotificationSettingsUiIntent.Initialize -> load()
                 NotificationSettingsUiIntent.RetryLoad -> load()
                 NotificationSettingsUiIntent.NavigateBack -> navigationHelper.navigateToBack()
                 is NotificationSettingsUiIntent.ToggleChanged -> onToggleChanged(intent.toggle, intent.isEnabled)
             }
         }
 
-        /** 화면 복귀마다 다시 묻지 않는다. 값을 이미 들고 있으면 그대로 쓴다. */
-        private suspend fun loadIfNeeded() {
-            if (state.value.content is NotificationSettingsUiContent.Settings) return
-            load()
-        }
-
+        /**
+         * 화면에 들어올 때마다 서버에 다시 묻는다.
+         *
+         * 들고 있던 값을 그대로 쓰지 않는다. 이 ViewModel 은 화면이 아니라 **Activity 에 매여
+         * 있어**(NavDisplay 의 기본 구성에는 entry 별 ViewModelStore 가 없다) 로그아웃하고 다른
+         * 계정으로 들어와도 살아 있다. 그때 이전 계정의 설정을 보여 주면, 사용자는 그것이 지금
+         * 계정의 값인 줄 알고 그 위에서 바꾼다. 다른 기기에서 바꾼 값도 같은 이유로 여기서 따라온다.
+         *
+         * 아직 보내지 않은 변경은 이 조회가 정리한다 — 화면값이 서버 값으로 갈리므로, 뒤늦게 깨어난
+         * 디바운스는 보낼 것을 찾지 못한다.
+         */
         private suspend fun load() {
             updateState { copy(content = NotificationSettingsUiContent.Loading) }
-            getPushSettingsUseCase()
+            commitLock.withLock { getPushSettingsUseCase() }
                 .onSuccess { settings ->
                     updateState {
                         copy(
@@ -91,20 +112,23 @@ class NotificationSettingsViewModel
             // 전체를 끄면 하위 줄은 눌러도 오지 않는 알림이 된다. 아직 보내지 않은 변경은 사용자가
             // 더 볼 수 없는 값이므로 여기서 버린다.
             if (toggle == NotificationToggle.PUSH && !isEnabled) {
-                dropPending(NotificationToggle.DAILY_REMINDER)
+                discardPending(NotificationToggle.DAILY_REMINDER)
             }
 
-            commitJobs[toggle]?.cancel()
+            // 취소하는 것은 **기다리는 중**인 누름뿐이다.
+            debounceJobs[toggle]?.cancel()
             // safeLaunch 는 취소까지 runCatching 으로 잡아 실패로 알린다. 취소는 다음 누름이
             // 이어받았다는 뜻이라 알릴 것이 없으므로 직접 띄운다.
-            commitJobs[toggle] =
+            debounceJobs[toggle] =
                 viewModelScope.launch {
                     delay(COMMIT_DEBOUNCE_MILLIS)
-                    commit(toggle)
+                    // 대기를 넘긴 뒤에는 취소되지 않는다. 다음 누름은 이 요청이 끝난 뒤 줄을 서서
+                    // 마지막 값을 다시 보낸다.
+                    withContext(NonCancellable) { commitLock.withLock { commit(toggle) } }
                 }
         }
 
-        /** 손이 멈춘 뒤 마지막 값 하나만 보낸다. */
+        /** 화면에 떠 있는 값과 서버가 확인해 준 값이 다르면 그 차이를 보낸다. */
         private suspend fun commit(toggle: NotificationToggle) {
             val current = state.value
             val shown = current.settings ?: return
@@ -122,14 +146,21 @@ class NotificationSettingsViewModel
                 .onSuccess {
                     updateState { copy(confirmedSettings = confirmedSettings?.with(toggle, isEnabled)) }
                 }.onFailure { error ->
-                    dropPending(toggle)
+                    // 보내는 사이 사용자가 다시 눌렀으면 그 값이 최신이다. 되돌리면 방금 한 조작을
+                    // 뒤엎게 되고, 뒤이어 줄 서 있는 요청이 어차피 그 값을 보낸다.
+                    if (state.value.settings?.isEnabled(toggle) == isEnabled) revertToConfirmed(toggle)
                     handleUpdateFailure(error)
                 }
         }
 
-        /** 보내지 않기로 한 변경을 거두고 화면을 서버 값으로 되돌린다. */
-        private fun dropPending(toggle: NotificationToggle) {
-            commitJobs.remove(toggle)?.cancel()
+        /** 아직 보내지 않은 변경을 거둔다. */
+        private fun discardPending(toggle: NotificationToggle) {
+            debounceJobs.remove(toggle)?.cancel()
+            revertToConfirmed(toggle)
+        }
+
+        /** 화면을 서버가 확인해 준 값으로 되돌린다. */
+        private fun revertToConfirmed(toggle: NotificationToggle) {
             updateState {
                 val shown = settings ?: return@updateState this
                 val confirmed = confirmedSettings ?: return@updateState this

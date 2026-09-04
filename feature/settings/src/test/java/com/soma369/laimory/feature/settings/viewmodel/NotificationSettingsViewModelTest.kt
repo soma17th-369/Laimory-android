@@ -14,9 +14,11 @@ import com.soma369.laimory.feature.settings.state.NotificationSettingsUiContent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiIntent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiSideEffect
 import com.soma369.laimory.feature.settings.state.NotificationToggle
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -195,6 +197,84 @@ class NotificationSettingsViewModelTest {
             assertEquals(listOf(false), repository.pushUpdates)
         }
 
+    @Test
+    fun `보내는 중에 되돌리면 앞 요청을 끊지 않고 뒤이어 다시 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 끊으면 그 요청이 서버에 닿았는지 모르는 채 남는다. 그사이 화면이 원래 값으로 돌아와
+            // 있으면 보낼 것이 없다고 판단해, 서버만 켜진 채 화면과 갈라진다.
+            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            val viewModel = createLoadedViewModel()
+            val gate = CompletableDeferred<Unit>()
+            repository.updateGate = gate
+
+            viewModel.sendIntent(
+                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
+            )
+            advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
+            runCurrent()
+            assertEquals(listOf(true), repository.dailyReminderUpdates)
+
+            // 응답이 오기 전에 되돌린다.
+            viewModel.sendIntent(
+                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, false),
+            )
+            advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
+            runCurrent()
+            // 앞 요청이 끝나기 전에는 줄을 서 있는다.
+            assertEquals(listOf(true), repository.dailyReminderUpdates)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(true, false), repository.dailyReminderUpdates)
+            assertFalse(viewModel.state.value.settings!!.isDailyReminderEnabled)
+            assertFalse(viewModel.state.value.confirmedSettings!!.isDailyReminderEnabled)
+        }
+
+    @Test
+    fun `보내는 사이 다시 누른 값은 앞 요청이 실패해도 되돌리지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            val viewModel = createLoadedViewModel()
+            val gate = CompletableDeferred<Unit>()
+            repository.updateGate = gate
+            repository.updateFailure = ApiException.NetworkException()
+
+            viewModel.sendIntent(
+                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
+            )
+            advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
+            runCurrent()
+            viewModel.sendIntent(
+                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, false),
+            )
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            // 실패한 값은 사용자가 이미 지나온 값이다. 되돌리면 방금 한 조작을 뒤엎는다.
+            assertFalse(viewModel.state.value.settings!!.isDailyReminderEnabled)
+            // 되돌린 값이 서버 값과 같아져 보낼 것이 없다.
+            assertEquals(listOf(true), repository.dailyReminderUpdates)
+        }
+
+    @Test
+    fun `화면에 다시 들어오면 서버에 다시 묻는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 이 ViewModel 은 Activity 에 매여 있어 로그아웃 뒤 다른 계정으로 들어와도 살아 있다.
+            // 들고 있던 값을 그대로 쓰면 이전 계정의 설정을 지금 계정의 값으로 보여 준다.
+            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            val viewModel = createLoadedViewModel()
+
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = true)
+            viewModel.sendIntent(NotificationSettingsUiIntent.Initialize)
+            advanceUntilIdle()
+
+            assertEquals(
+                PushSettings(isPushEnabled = false, isDailyReminderEnabled = true),
+                viewModel.state.value.settings,
+            )
+        }
+
     private fun TestScope.createLoadedViewModel(): NotificationSettingsViewModel {
         val viewModel =
             NotificationSettingsViewModel(
@@ -209,10 +289,16 @@ class NotificationSettingsViewModelTest {
         return viewModel
     }
 
+    private companion object {
+        /** 디바운스(400ms)를 확실히 넘기는 시간. */
+        const val DEBOUNCE_MARGIN_MILLIS = 1_000L
+    }
+
     private class FakePushSettingsRepository : PushSettingsRepository {
         var settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
         var getFailure: ApiException? = null
         var updateFailure: ApiException? = null
+        var updateGate: CompletableDeferred<Unit>? = null
         val pushUpdates = mutableListOf<Boolean>()
         val dailyReminderUpdates = mutableListOf<Boolean>()
 
@@ -223,12 +309,22 @@ class NotificationSettingsViewModelTest {
 
         override suspend fun updatePushEnabled(isEnabled: Boolean) {
             pushUpdates += isEnabled
+            awaitGate()
             updateFailure?.let { throw it }
         }
 
         override suspend fun updateDailyReminderEnabled(isEnabled: Boolean) {
             dailyReminderUpdates += isEnabled
+            awaitGate()
             updateFailure?.let { throw it }
+        }
+
+        /** 첫 변경 요청 하나만 붙잡는다. 보내는 중에 일어나는 일을 시험할 때 쓴다. */
+        private suspend fun awaitGate() {
+            updateGate?.let { gate ->
+                updateGate = null
+                gate.await()
+            }
         }
     }
 
