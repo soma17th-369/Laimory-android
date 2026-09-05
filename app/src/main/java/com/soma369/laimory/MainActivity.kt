@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
@@ -34,6 +38,11 @@ import com.soma369.laimory.navigation.LaimoryNavGraph
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
 import com.soma369.laimory.ui.GlobalUiHost
+import com.soma369.laimory.update.AppUpdateGate
+import com.soma369.laimory.update.AppUpdateGateHost
+import com.soma369.laimory.update.AppUpdateGateState
+import com.soma369.laimory.update.AppUpdateHost
+import com.soma369.laimory.update.StoreLink
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -77,6 +86,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var observeAppThemeMode: ObserveAppThemeModeUseCase
 
+    @Inject
+    lateinit var appUpdateGate: AppUpdateGate
+
     /**
      * 저장된 화면 모드. `null` 은 아직 읽기 전이다.
      *
@@ -97,6 +109,11 @@ class MainActivity : ComponentActivity() {
         splashScreen.setKeepOnScreenCondition { themeMode.value == null }
         super.onCreate(savedInstanceState)
         lifecycleScope.launch { observeAppThemeMode().collect { mode -> themeMode.value = mode } }
+        // 콜드 스타트와 포그라운드 복귀마다 하한선을 확인한다. 실제 조회 여부와 간격은 게이트가
+        // 정한다 — 화면이 몇 번 오갔는지가 아니라 마지막 시도로부터 얼마나 지났는지가 기준이다.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) { appUpdateGate.refreshIfStale() }
+        }
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
@@ -107,29 +124,59 @@ class MainActivity : ComponentActivity() {
             val mode by themeMode.collectAsStateWithLifecycle()
             // 값을 읽기 전에는 그리지 않는다. 스플래시가 그동안 화면을 덮고 있다.
             val currentMode = mode ?: return@setContent
+            val context = LocalContext.current
+            val gateState by appUpdateGate.state.collectAsStateWithLifecycle()
+            val recommendation by appUpdateGate.recommendation.collectAsStateWithLifecycle()
+            val activeDialog by messageHelper.activeDialog.collectAsStateWithLifecycle()
+
+            // 강제 화면 동안 발행된 이동 신호는 버린다. NavGraph 가 컴포즈되지 않는 사이 신호가
+            // 버퍼에 쌓였다가, 게이트가 풀리는 순간 한꺼번에 재생된다. 평상시 수집자는 NavGraph
+            // 하나여야 하므로 막혀 있는 동안만 여기서 받아 버린다.
+            if (gateState == AppUpdateGateState.BLOCKED) {
+                LaunchedEffect(Unit) {
+                    navigationHelper.navigationFlow.collect { }
+                }
+            }
+
             LaimoryTheme(darkTheme = currentMode.isDark()) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        LaimoryNavGraph(
-                            messages = messageHelper.messages,
-                            onboardingCompletions = observeOnboardingCompletion(),
-                            termsGateStates = observeTermsGate(),
-                            navigationFlow = navigationHelper.navigationFlow,
-                            authSessionStates = authSessionStates,
-                            pendingDraftCompletions = draftTaskCoordinator.pendingCompletion,
-                            onDraftCompletionConsumed = draftTaskCoordinator::consumeCompletion,
-                            onAuthRootReplaced = {
-                                // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
-                                messageHelper.clearDialogs()
-                                draftConsentSessionStore.clearAll()
-                            },
-                        )
+                        AppUpdateGateHost(
+                            state = gateState,
+                            onUpdateClick = { StoreLink.open(context) },
+                        ) {
+                            LaimoryNavGraph(
+                                messages = messageHelper.messages,
+                                onboardingCompletions = observeOnboardingCompletion(),
+                                termsGateStates = observeTermsGate(),
+                                navigationFlow = navigationHelper.navigationFlow,
+                                authSessionStates = authSessionStates,
+                                pendingDraftCompletions = draftTaskCoordinator.pendingCompletion,
+                                onDraftCompletionConsumed = draftTaskCoordinator::consumeCompletion,
+                                onAuthRootReplaced = {
+                                    // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
+                                    messageHelper.clearDialogs()
+                                    draftConsentSessionStore.clearAll()
+                                },
+                            )
+                        }
                         GlobalUiHost(
                             messageHelper = messageHelper,
                             loadingHelper = globalLoadingHelper,
+                        )
+                        AppUpdateHost(
+                            version = recommendation,
+                            isGlobalDialogVisible = activeDialog != null,
+                            onLater = { version -> lifecycleScope.launch { appUpdateGate.dismissRecommendation(version) } },
+                            onUpdate = { version ->
+                                // 스토어로 떠난 것도 그 버전을 미룬 것으로 본다. 업데이트하지 않고
+                                // 돌아올 때마다 다시 뜨면 반복이 심하다.
+                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version) }
+                                StoreLink.open(context)
+                            },
                         )
                     }
                 }
