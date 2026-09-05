@@ -10,6 +10,7 @@ import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.usecase.GetIntroInfoUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -18,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.io.IOException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -143,6 +145,44 @@ class AppUpdateGateTest {
         }
 
     @Test
+    fun `응답 전에 취소된 시도는 재조회를 막지 않는다`() =
+        runTest {
+            // 시작 조회는 Activity 생명주기에 매여 있어 백그라운드로 가면 취소된다. 그 시도를
+            // 시도로 세면 돌아와도 1시간 동안 다시 묻지 않아 판정 화면에 갇힌다.
+            introRepository.gate = CompletableDeferred()
+            val gate = createGate(installedVersion = 1)
+
+            val attempt = launch { gate.refreshIfStale() }
+            advanceTimeBy(1_000)
+            runCurrent()
+            attempt.cancelAndJoin()
+            assertEquals(AppUpdateGateState.CHECKING, gate.state.value)
+
+            // 복귀. 시간은 거의 흐르지 않았지만 앞 시도가 끝나지 못했으므로 다시 물어야 한다.
+            introRepository.gate = null
+            introRepository.info = IntroInfo(minAppVersion = 1, recommendAppVersion = 1, debugTestMessage = "")
+            gate.refreshIfStale()
+
+            assertEquals(AppUpdateGateState.OPEN, gate.state.value)
+        }
+
+    @Test
+    fun `보류를 저장하지 못해도 안내는 닫는다`() =
+        runTest {
+            // 저장 공간이 부족하다고 누른 버튼이 듣지 않으면, 앱을 쓰려고 눌렀는데 아무 일도
+            // 일어나지 않는 자리가 된다. 기록이 없으면 다음 실행에서 한 번 더 뜰 뿐이다.
+            introRepository.info = IntroInfo(minAppVersion = 1, recommendAppVersion = 7, debugTestMessage = "")
+            val gate = createGate(installedVersion = 6)
+            gate.refreshIfStale()
+            assertEquals(7, gate.recommendation.value)
+
+            updateRepository.writeFailure = IOException("no space left")
+            gate.dismissRecommendation(version = 7)
+
+            assertNull(gate.recommendation.value)
+        }
+
+    @Test
     fun `미뤄 둔 권장은 안내하지 않는다`() =
         runTest {
             introRepository.info = IntroInfo(minAppVersion = 1, recommendAppVersion = 7, debugTestMessage = "")
@@ -208,6 +248,7 @@ class AppUpdateGateTest {
 
     private class FakeAppUpdateRepository : AppUpdateRepository {
         var dismissed: DismissedRecommendation? = null
+        var writeFailure: Throwable? = null
 
         override suspend fun dismissedRecommendation(): DismissedRecommendation? = dismissed
 
@@ -215,6 +256,7 @@ class AppUpdateGateTest {
             version: Int,
             at: Instant,
         ) {
+            writeFailure?.let { throw it }
             dismissed = DismissedRecommendation(version = version, at = at)
         }
     }

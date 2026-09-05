@@ -64,14 +64,35 @@ class AppUpdateGate
                 val last = lastAttemptAt
                 if (last != null && Duration.between(last, now) < REFRESH_INTERVAL) return
                 lastAttemptAt = now
-                refresh(now)
+                try {
+                    refresh(now)
+                } catch (e: CancellationException) {
+                    // 끝내지 못한 시도는 시도로 치지 않는다. 이 호출은 Activity 생명주기에 매여
+                    // 있어 백그라운드로 가면 취소되는데, 그대로 두면 돌아와도 1시간 동안 다시 묻지
+                    // 않아 판정 화면에 갇힌다.
+                    lastAttemptAt = last
+                    throw e
+                }
             }
         }
 
-        /** 사용자가 `나중에` 를 누르거나 스토어로 떠난 경우. 그 버전을 [REFRESH_INTERVAL] 만큼 미룬다. */
+        /**
+         * 사용자가 `나중에` 를 누르거나 스토어로 떠난 경우. 그 버전을 24시간 미룬다.
+         *
+         * **저장에 실패해도 안내는 닫는다.** 저장 공간이 부족해 기록을 남기지 못했다고 사용자가
+         * 누른 버튼이 듣지 않으면, 앱을 쓰려고 눌렀는데 아무 일도 일어나지 않는 자리가 된다.
+         * 기록이 없으면 다음 실행에서 한 번 더 뜰 뿐이다.
+         */
         suspend fun dismissRecommendation(version: Int) {
-            appUpdateRepository.dismissRecommendation(version = version, at = clock.instant())
-            _recommendation.value = null
+            try {
+                appUpdateRepository.dismissRecommendation(version = version, at = clock.instant())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(LogDomain.REPOSITORY, "권장 업데이트 보류를 저장하지 못했다(${e::class.simpleName})")
+            } finally {
+                _recommendation.value = null
+            }
         }
 
         private suspend fun refresh(now: Instant) {
