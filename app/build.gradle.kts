@@ -97,8 +97,6 @@ android {
             buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${devBaseUrl.toAppLinkHost()}\"")
             buildConfigField("int", "SOURCE_ITEM_RETENTION_DAYS", "365")
             buildConfigField("String", "APP_LOG_LEVEL", "\"VERBOSE\"")
-            // 아직 만들지 않은 화면이라 개발 빌드에서만 자리를 지킨다.
-            buildConfigField("boolean", "SHOW_REFLECTION_TAB", "true")
             manifestPlaceholders["authCallbackHost"] = devBaseUrl.toAppLinkHost()
         }
 
@@ -110,7 +108,6 @@ android {
             buildConfigField("String", "AUTH_CALLBACK_HOST", "\"${prodBaseUrl.toAppLinkHost()}\"")
             buildConfigField("int", "SOURCE_ITEM_RETENTION_DAYS", "30")
             buildConfigField("String", "APP_LOG_LEVEL", "\"WARN\"")
-            buildConfigField("boolean", "SHOW_REFLECTION_TAB", "false")
             manifestPlaceholders["authCallbackHost"] = prodBaseUrl.toAppLinkHost()
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
