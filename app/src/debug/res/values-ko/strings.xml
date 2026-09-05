@@ -9,5 +9,5 @@
     기기에서는 덮이지 않은 values-ko 가 이겨 세 빌드가 모두 같은 이름으로 보인다.
 -->
 <resources>
-    <string name="app_name">Laimory-qa</string>
+    <string name="app_name">라이모리-debug</string>
 </resources>

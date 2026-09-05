@@ -68,11 +68,15 @@ keytool -list -v -keystore ~/.android/debug.keystore \
 
 ## 빌드 타입
 
-| 빌드 타입 | 서버 | R8 | applicationId | 런처 라벨 | 쓰임 |
+| 빌드 타입 | 서버 | R8 | applicationId | 런처 라벨 (ko / 기본) | 쓰임 |
 | --- | --- | --- | --- | --- | --- |
-| `debug` | dev | ✗ | `com.soma369.laimory.debug` | 라이모리 Debug | 일상 개발 |
-| `qa` | prod | ✓ | `com.soma369.laimory.qa` | 라이모리 QA | QA 검증 (Firebase App Distribution) |
-| `release` | prod | ✓ | `com.soma369.laimory` | Laimory | 스토어 |
+| `debug` | dev | ✗ | `com.soma369.laimory.debug` | 라이모리-debug / Laimory-debug | 일상 개발 |
+| `qa` | prod | ✓ | `com.soma369.laimory.qa` | 라이모리-qa / Laimory-qa | QA 검증 (Firebase App Distribution) |
+| `release` | prod | ✓ | `com.soma369.laimory` | 라이모리 / Laimory | 스토어 |
+
+라벨은 buildType 소스셋의 `strings.xml` 로 덮습니다. `buildTypes` 의 `resValue` 로 넣으면 main 의 `app_name`
+과 중복 리소스 오류가 납니다. **qualifier 마다 덮어야 합니다** — main 에 `values-ko` 가 있으므로 기본
+`values` 만 덮으면 한국어 기기에서는 세 빌드가 모두 `라이모리` 로 보입니다.
 
 `qa` 는 `initWith(release)` 로 릴리즈 설정을 상속받고 **다른 것만** 덮습니다. 난독화를 끄지 않고 디버그 가능
 플래그도 켜지 않습니다 — R8 은 런타임에 터지므로, 조건이 다르면 QA 를 통과한 빌드가 출시본에서만 터집니다.
