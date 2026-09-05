@@ -32,6 +32,29 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
+/**
+ * 이 빌드에서 쓸 HTTP 로깅 인터셉터. 끄기로 한 빌드에서는 `null` 이라 아예 붙지 않는다.
+ *
+ * 레벨을 buildType 이 정한다(`HTTP_LOG_LEVEL`). `BuildConfig.DEBUG` 로 가르지 않는 이유는 QA 가
+ * debug 가 아니면서도 로그를 봐야 하는 빌드이기 때문이다. QA 는 **운영 서버**를 보므로 `BASIC`
+ * 까지만 남긴다 — `BODY` 는 실사용자의 사진·위치·건강 데이터를 logcat 에 통째로 남기고, 응답을
+ * 버퍼링해 메모리·타이밍까지 릴리즈와 달라진다.
+ *
+ * [MockInterceptor] 는 여기 묶이지 않는다. 목은 dev 를 겨눈 개발 빌드에서만 붙어야 한다.
+ */
+private fun httpLogging(configure: HttpLoggingInterceptor.() -> Unit = {}): HttpLoggingInterceptor? {
+    val level =
+        when (BuildConfig.HTTP_LOG_LEVEL) {
+            "BODY" -> HttpLoggingInterceptor.Level.BODY
+            "BASIC" -> HttpLoggingInterceptor.Level.BASIC
+            else -> return null
+        }
+    return HttpLoggingInterceptor().apply {
+        configure()
+        this.level = level
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
@@ -51,14 +74,8 @@ object NetworkModule {
     fun providePublicOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
             .apply {
-                if (BuildConfig.DEBUG) {
-                    addInterceptor(MockInterceptor())
-                    addInterceptor(
-                        HttpLoggingInterceptor().apply {
-                            level = HttpLoggingInterceptor.Level.BODY
-                        },
-                    )
-                }
+                if (BuildConfig.DEBUG) addInterceptor(MockInterceptor())
+                httpLogging()?.let(::addInterceptor)
             }
             .build()
 
@@ -86,15 +103,8 @@ object NetworkModule {
             .addInterceptor(tokenInterceptor)
             .addInterceptor(termsGateInterceptor)
             .apply {
-                if (BuildConfig.DEBUG) {
-                    addInterceptor(MockInterceptor())
-                    addInterceptor(
-                        HttpLoggingInterceptor().apply {
-                            redactHeader(AuthTokenInterceptor.AUTHORIZATION)
-                            level = HttpLoggingInterceptor.Level.BODY
-                        },
-                    )
-                }
+                if (BuildConfig.DEBUG) addInterceptor(MockInterceptor())
+                httpLogging { redactHeader(AuthTokenInterceptor.AUTHORIZATION) }?.let(::addInterceptor)
             }
             .authenticator(tokenAuthenticator)
             .build()

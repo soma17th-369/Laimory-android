@@ -18,7 +18,6 @@ import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.navigation.OnboardingPage
-import com.soma369.laimory.core.domain.navigation.ReflectionPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
 import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
@@ -41,7 +40,6 @@ import com.soma369.laimory.feature.timeline.screen.CalendarRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineEventCreateRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineEventEditorRoute
 import com.soma369.laimory.feature.timeline.screen.TimelineRecordRoute
-import com.soma369.laimory.ui.PlaceholderScreen
 import com.soma369.laimory.core.ui.R as UiR
 
 /**
@@ -93,6 +91,10 @@ private val collectionLabRoutes: List<AppRoute> =
 
 /**
  * 앱의 모든 페이지 메타데이터. 새 화면은 여기에 한 줄 추가한다.
+ *
+ * 회고 탭은 화면이 생길 때까지 여기 없다. 자리 표시자만 있는 탭을 남겨 두면 어느 빌드에서든
+ * 눌러서 빈 화면을 보게 된다. 아이콘(`ico_bot_nav_*_reflection`)과 [ReflectionPage] 는 그대로
+ * 두었으므로 화면이 생기면 다른 탭과 같은 모양으로 한 줄만 넣으면 된다.
  */
 val appRoutes: List<AppRoute> =
     listOf(
@@ -127,16 +129,6 @@ val appRoutes: List<AppRoute> =
                     inactiveIcon = UiR.drawable.ico_bot_nav_inactive_calendar,
                 ),
             render = { innerPadding, _ -> CalendarRoute(innerPadding = innerPadding) },
-        ),
-        AppRoute(
-            path = ReflectionPage.PATH,
-            tab =
-                BottomTab(
-                    label = "회고",
-                    activeIcon = UiR.drawable.ico_bot_nav_active_reflection,
-                    inactiveIcon = UiR.drawable.ico_bot_nav_inactive_reflection,
-                ),
-            render = { innerPadding, _ -> PlaceholderScreen(title = "회고", innerPadding = innerPadding) },
         ),
         AppRoute(
             path = SettingsPage.PATH,

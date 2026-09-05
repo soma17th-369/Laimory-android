@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    런처 라벨. 세 빌드가 한 기기에 함께 깔리므로 구분돼야 한다.
+
+    buildTypes 의 resValue 로 넣으면 main 소스셋의 app_name 과 중복 리소스 오류가 난다. 리소스
+    병합이 buildType 소스셋을 우선하므로 여기서 덮는다.
+
+    **qualifier 마다 덮어야 한다.** main 에 values-ko 가 있는데 기본 values 만 덮으면, 한국어
+    기기에서는 덮이지 않은 values-ko 가 이겨 세 빌드가 모두 같은 이름으로 보인다.
+-->
+<resources>
+    <string name="app_name">Laimory-debug</string>
+</resources>

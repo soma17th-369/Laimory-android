@@ -78,6 +78,27 @@ internal fun NavBackStack<NavKey>.navigateTo(route: NavRoute) {
     add(key)
 }
 
+/**
+ * 복원된 백스택에서 **지금 빌드가 열 수 없는 경로**를 걷는다.
+ *
+ * 등록되지 않은 path 는 [AppNavHost] 가 홈으로 대신 그려 주지만 **백스택은 그대로 남는다.**
+ * 바텀바 노출과 선택은 최상단 path 에서 파생되므로([appRouteByPath] 조회), 그대로 두면 홈이
+ * 보이는데 탭이 하나도 없는 화면에 갇힌다 — 다른 탭으로 갈 길이 없다.
+ *
+ * 빌드에서 빠진 화면(회고·수집 실험실)이나 구버전이 남긴 경로가 여기로 온다. 화면을 걷어낼 때마다
+ * 같은 일이 생기므로 경로 표를 믿고 한 곳에서 거른다.
+ *
+ * 남는 것이 없으면 [fallbackRoot] 를 **먼저** 넣는다. 스택이 순간이라도 비면 [NavDisplay] 가
+ * 크래시한다.
+ */
+internal fun NavBackStack<NavKey>.dropUnknownRoutes(fallbackRoot: NavRoute) {
+    val isUnknown = { key: NavKey -> appRouteByPath[(key as? GenericNavKey)?.path] == null }
+    if (none(isUnknown)) return
+    Logger.w(LogDomain.NAVIGATION, "복원된 백스택에서 등록되지 않은 경로를 걷는다: ${count(isUnknown)}건")
+    if (all(isUnknown)) add(GenericNavKey.of(fallbackRoot))
+    removeAll(isUnknown)
+}
+
 /** 최상단이 초안 생성 로딩 화면인지. 완료 시 자동 이동과 스낵바를 가르는 기준이다. */
 internal fun NavBackStack<NavKey>.isShowingDraftLoading(): Boolean = (lastOrNull() as? GenericNavKey)?.path == DraftLoadingPage.PATH
 
