@@ -140,6 +140,11 @@ fun LaimoryNavGraph(
         }
     }
 
+    // 복원된 백스택이 지금 빌드에 없는 화면을 가리킬 수 있다. 경로 표를 믿고 한 번 거른다.
+    LaunchedEffect(Unit) {
+        backStack.dropUnknownRoutes(rootPage.toRoute())
+    }
+
     LaunchedEffect(rootPage) {
         backStack.syncRoot(rootPage, appliedRootPath, onRootReplaced = onAuthRootReplaced)
         appliedRootPath = rootPage.toRoute().path

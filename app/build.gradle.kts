@@ -46,11 +46,15 @@ val mapsApiKey: String = secret("laimory.mapsApiKey") ?: ""
  * 로 떨어질 뿐 configuration 단계가 깨지지 않아야 한다(지도 키와 같은 방침).
  *
  * `~` 는 셸이 풀어 주는 것이라 properties 파일에 그대로 적히면 경로가 맞지 않는다. 여기서 푼다.
+ *
+ * 상대 경로는 `rootProject.file` 로 푼다. `File(path)` 는 JVM 작업 디렉터리를 기준으로 삼는데
+ * 그것은 데몬이 어디서 떴는지에 달려 있어, 다른 디렉터리에서 `gradlew -p <저장소>` 로 돌리면
+ * 저장소 안에 키가 있어도 못 찾고 **조용히 unsigned 로 떨어진다.**
  */
 val uploadKeystore: File? =
     secret("laimory.uploadStoreFile")
         ?.replaceFirst(Regex("^~"), System.getProperty("user.home"))
-        ?.let(::File)
+        ?.let(rootProject::file)
         ?.takeIf(File::exists)
 
 fun String.toAppLinkHost(): String =
@@ -136,6 +140,13 @@ android {
 
     buildFeatures {
         buildConfig = true
+    }
+
+    testOptions {
+        // 내비게이션 로직이 Logger 를 거치는데 그 안이 android.util.Log 다. 단위 테스트에는
+        // android.jar 구현이 없어 호출만으로 예외가 나므로, 로그 한 줄 때문에 검증 경로가
+        // 막히지 않게 한다. core:data 가 같은 이유로 같은 설정을 쓴다.
+        unitTests.isReturnDefaultValues = true
     }
 
     kotlin {
