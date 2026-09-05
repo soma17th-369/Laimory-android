@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    런처 라벨. 세 빌드가 한 기기에 함께 깔리므로 구분돼야 한다.
+
+    buildTypes 의 resValue 로 넣으면 main 소스셋의 app_name 과 중복 리소스 오류가 난다.
+    리소스 병합이 buildType 소스셋을 우선하므로 여기서 덮는다(현지화도 그대로 유지된다).
+-->
+<resources>
+    <string name="app_name">라이모리 Debug</string>
+</resources>
