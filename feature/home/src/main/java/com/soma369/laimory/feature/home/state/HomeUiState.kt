@@ -31,7 +31,13 @@ data class HomeUiState(
     val pendingPhotoIds: Set<Long> = emptySet(),
     val isPhotoLoading: Boolean = false,
     val isPhotoAccessLimited: Boolean = false,
-    val isDraftSheetVisible: Boolean = false,
+    /**
+     * 사진 접근을 거부당한 채로 시트를 연 상태.
+     *
+     * 거부됐다고 시트를 안 열면 초안 만들기를 눌렀는데 아무 일도 일어나지 않는다. 열어서
+     * 왜 비었는지 알리고, 설정으로 나가거나 사진 없이 이어 가도록 둔다.
+     */
+    val isPhotoAccessDenied: Boolean = false,
     val isPhotoSheetVisible: Boolean = false,
     val isDatePickerVisible: Boolean = false,
     val timeSheet: HomeTimeSheetState? = null,

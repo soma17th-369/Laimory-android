@@ -184,17 +184,17 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `제출 결과가 없는 복귀는 시트 상태를 바꾸지 않는다`() =
+    fun `제출 결과가 없는 복귀는 화면 상태를 바꾸지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
             runCurrent()
 
-            assertTrue(viewModel.state.value.isDraftSheetVisible)
+            val state = viewModel.state.value
+            assertEquals(DraftCreationStatus.IDLE, state.draftStatus)
+            assertFalse(state.isPhotoSheetVisible)
         }
 
     @Test
@@ -202,8 +202,6 @@ class HomeViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("first"))
             val viewModel = createViewModel()
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
             runCurrent()
             sessionStore.markPhotoReselectionNeeded()
             val effects = async { viewModel.sideEffect.take(2).toList() }
@@ -213,7 +211,6 @@ class HomeViewModelTest {
             runCurrent()
 
             val state = viewModel.state.value
-            assertFalse(state.isDraftSheetVisible)
             assertEquals(DraftCreationStatus.FAILED, state.draftStatus)
             assertEquals(
                 listOf(
@@ -269,16 +266,60 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `사진 권한을 거절하면 선택 화면을 열거나 MediaStore를 조회하지 않는다`() =
+    fun `사진 권한을 거절하면 거부 상태로 시트를 열되 MediaStore를 조회하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            // 시트를 안 열면 초안 만들기를 눌렀는데 아무 일도 일어나지 않는 것으로 보인다.
             val viewModel = createViewModel()
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
             runCurrent()
 
-            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            val state = viewModel.state.value
+            assertTrue(state.isPhotoSheetVisible)
+            assertTrue(state.isPhotoAccessDenied)
+            assertFalse(state.isPhotoLoading)
             assertTrue(photoSource.requestedWindows.isEmpty())
+        }
+
+    @Test
+    fun `사진 없이 계속하면 선택을 비운 채 동의 화면으로 이동한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ContinueWithoutPhotos)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertFalse(state.isPhotoSheetVisible)
+            assertEquals(emptySet<Long>(), state.selectedPhotoIds)
+            assertEquals(listOf<Page>(DraftConsentPage), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `사진 선택을 확정하면 곧바로 동의 화면으로 이어진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 확정과 생성 사이에 홈으로 돌아가는 단계를 두지 않는다 — 만들기 흐름의 한 걸음이다.
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            assertEquals(setOf(1L), viewModel.state.value.selectedPhotoIds)
+            assertEquals(listOf<Page>(DraftConsentPage), navigationHelper.destinations)
         }
 
     @Test
@@ -402,11 +443,10 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
-            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
             photoSource.unavailableIds = setOf(1L)
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
 
             assertNull(sessionStore.preparation.value)
@@ -866,14 +906,15 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `기본 날짜로 생성 설정을 열어도 미리 수집한다`() =
+    fun `기본 날짜로 사진 선택을 열어도 미리 수집한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 오늘을 그대로 쓰면 날짜 확정을 거치지 않아 선행 수집 기회가 없다.
+            // 오늘을 그대로 쓰면 날짜 확정을 거치지 않아 선행 수집 기회가 없다. 사진을 고르는
+            // 동안 수집이 돌아야 확인 화면에서 기다리는 시간이 짧다.
             val viewModel = createViewModel()
             runCurrent()
             val before = autoCollectionCoordinator.refreshCount
 
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            viewModel.sendIntent(HomeUiIntent.OpenPhotoSheet)
             runCurrent()
 
             assertTrue(autoCollectionCoordinator.refreshCount > before)

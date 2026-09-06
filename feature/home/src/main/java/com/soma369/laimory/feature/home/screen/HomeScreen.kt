@@ -1,5 +1,8 @@
 package com.soma369.laimory.feature.home.screen
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -43,7 +46,6 @@ import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DateHeaderCard
-import com.soma369.laimory.feature.home.component.DraftSettingsSheet
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
 import com.soma369.laimory.feature.home.component.PastRecordCard
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
@@ -134,17 +136,22 @@ private fun HomeContent(
 
     HomeScreen(innerPadding = innerPadding, state = state, onIntent = onIntent)
 
-    if (state.isDraftSheetVisible) {
-        DraftSettingsSheet(
-            state = state,
-            onIntent = onIntent,
-        )
-    }
-
     if (state.isPhotoSheetVisible) {
         PhotoSelectionSheet(
             state = state,
             onIntent = onIntent,
+            onOpenAppSettings = {
+                // 앱 상세 설정. 한 번 거부한 뒤에는 시스템이 요청 대화상자를 다시 띄우지 않으므로
+                // 여기 말고는 사진 접근을 되살릴 자리가 없다.
+                runCatching {
+                    context.startActivity(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null),
+                        ),
+                    )
+                }
+            },
         )
     }
 
@@ -243,11 +250,13 @@ private fun HomeScreen(
                             DraftCreationStatus.PROCESSING,
                             DraftCreationStatus.LONG_RUNNING,
                             -> HomeUiIntent.OpenDraftLoading
-                            DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.OpenDraftSheet
+                            // 초안 만들기는 사진 선택으로 들어간다. 고른 사진만 초안에 실리므로
+                            // 만들기 흐름의 첫 단계다.
+                            DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.OpenPhotoSheet
                         },
                     )
                 },
-                onPhotoClick = { onIntent(HomeUiIntent.OpenPhotoSheet) },
+                onTimeRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
             )
         }
 

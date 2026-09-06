@@ -10,10 +10,12 @@ sealed interface HomeUiIntent : UiIntent {
 
     data object NavigateToCollection : HomeUiIntent
 
-    data object OpenDraftSheet : HomeUiIntent
-
-    data object DismissDraftSheet : HomeUiIntent
-
+    /**
+     * 초안 만들기의 시작. 사진 선택 시트를 연다.
+     *
+     * 사진은 고른 것만 초안에 실리므로 만들기 흐름의 첫 단계다 — 홈에 따로 떨어져 있으면
+     * 옆길처럼 보여 사진 없는 초안이 만들어진다.
+     */
     data object OpenPhotoSheet : HomeUiIntent
 
     data object RequestAdditionalPhotoAccess : HomeUiIntent
@@ -40,7 +42,16 @@ sealed interface HomeUiIntent : UiIntent {
 
     data object ToggleAllPhotos : HomeUiIntent
 
+    /** 고른 사진으로 확정하고 데이터 확인 화면으로 넘어간다. */
     data object ConfirmPhotoSelection : HomeUiIntent
+
+    /**
+     * 사진 없이 이어서 만든다.
+     *
+     * 0장 선택 후 확인과 나누는 이유는 의사가 다르기 때문이다 — 아무것도 고르지 않은 확인이
+     * 실수인지 의도인지 구분되지 않는다.
+     */
+    data object ContinueWithoutPhotos : HomeUiIntent
 
     data object ShowDatePicker : HomeUiIntent
 

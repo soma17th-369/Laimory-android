@@ -115,19 +115,20 @@ class HomeViewModel
                 // 버튼만 숨기지 않고 호출 경계에서도 막는다 — release 에는 라우트 자체가 없다.
                 HomeUiIntent.NavigateToCollection ->
                     if (state.value.isCollectionLabAccessible) navigationHelper.navigateTo(CollectionPage) else Unit
-                HomeUiIntent.OpenDraftSheet -> openDraftSheet()
-                HomeUiIntent.DismissDraftSheet -> updateState { copy(isDraftSheetVisible = false) }
-                HomeUiIntent.OpenPhotoSheet -> requestPhotoSheet()
+                HomeUiIntent.OpenPhotoSheet -> startPhotoSelection()
                 HomeUiIntent.RequestAdditionalPhotoAccess ->
                     sendEffect(HomeUiSideEffect.RequestPhotoAccess(force = true))
                 is HomeUiIntent.ResolvePhotoAccess -> resolvePhotoAccess(intent.granted, intent.limited)
                 is HomeUiIntent.RefreshPhotos -> refreshPhotos(intent.hasAccess, intent.limited)
                 HomeUiIntent.DismissPhotoSheet ->
-                    updateState { copy(isPhotoSheetVisible = false, pendingPhotoIds = emptySet()) }
+                    updateState {
+                        copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet())
+                    }
                 is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
                 is HomeUiIntent.TogglePhotoDate -> togglePhotoDate(intent.date)
                 HomeUiIntent.ToggleAllPhotos -> toggleAllPhotos()
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
+                HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
                 HomeUiIntent.ShowDatePicker -> updateState { copy(isDatePickerVisible = true) }
                 HomeUiIntent.DismissDatePicker -> updateState { copy(isDatePickerVisible = false) }
                 is HomeUiIntent.SelectDate -> selectDate(intent.date)
@@ -175,12 +176,6 @@ class HomeViewModel
                 }
             }
 
-        private fun openDraftSheet() {
-            updateState { copy(isDraftSheetVisible = true) }
-            // 기본 날짜(오늘)를 그대로 쓰면 날짜 확정을 거치지 않으므로 여기서도 선행 수집을 건다.
-            startAutoCollectionAhead()
-        }
-
         /**
          * 최종 생성 전에 미리 수집을 시작한다. 결과를 기다리지 않는다.
          *
@@ -191,8 +186,15 @@ class HomeViewModel
             safeLaunch(onError = { }) { autoCollectionCoordinator.refresh() }
         }
 
-        private fun requestPhotoSheet() {
+        /**
+         * 초안 만들기의 시작. 사진 선택 시트를 연다.
+         *
+         * 기본 날짜(오늘)를 그대로 쓰면 날짜 확정을 거치지 않으므로 여기서 선행 수집을 건다 —
+         * 사진을 고르는 동안 수집이 돌아, 확인 화면에서 기다리는 시간이 짧아진다.
+         */
+        private fun startPhotoSelection() {
             if (state.value.draftStatus.isInputLocked) return
+            startAutoCollectionAhead()
             sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
 
@@ -202,12 +204,22 @@ class HomeViewModel
         ) {
             photoAccessGranted = granted
             if (!granted) {
-                sendEffect(HomeUiSideEffect.ShowSnackbar("사진을 선택하려면 사진 접근 권한이 필요해요."))
+                // 거부됐다고 시트를 안 열면 초안 만들기를 눌렀는데 아무 일도 일어나지 않는다.
+                // 열어서 왜 비었는지 알리고 설정으로 나가거나 사진 없이 이어 가게 둔다.
+                updateState {
+                    copy(
+                        isPhotoSheetVisible = true,
+                        isPhotoAccessDenied = true,
+                        isPhotoLoading = false,
+                        pendingPhotoIds = emptySet(),
+                    )
+                }
                 return
             }
             updateState {
                 copy(
                     isPhotoSheetVisible = true,
+                    isPhotoAccessDenied = false,
                     pendingPhotoIds = selectedPhotoIds,
                     isPhotoLoading = true,
                     isPhotoAccessLimited = limited,
@@ -282,19 +294,27 @@ class HomeViewModel
             if (idsToAdd.size < datePhotoIds.count { it !in current.pendingPhotoIds }) showPhotoLimitMessage()
         }
 
-        private fun confirmPhotoSelection() {
+        /** 고른 사진으로 확정하고 곧장 데이터 확인으로 넘어간다. */
+        private fun confirmPhotoSelection() = closePhotoSheetAndPrepare { pendingPhotoIds }
+
+        /** 사진 없이 이어 간다. 이전에 고른 것이 있어도 이번 초안에는 싣지 않는다. */
+        private fun continueWithoutPhotos() = closePhotoSheetAndPrepare { emptySet() }
+
+        private fun closePhotoSheetAndPrepare(selected: HomeUiState.() -> Set<Long>) {
             if (state.value.draftStatus.isInputLocked) return
             preparedPhotoCache = null
             updateState {
                 copy(
-                    selectedPhotoIds = pendingPhotoIds,
+                    selectedPhotoIds = selected(),
                     pendingPhotoIds = emptySet(),
                     isPhotoSheetVisible = false,
+                    isPhotoAccessDenied = false,
                     draftStatus = DraftCreationStatus.IDLE,
                     draftRetryMode = null,
                     draftMessage = null,
                 ).refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
+            prepareDraftConsent()
         }
 
         private fun selectDate(date: LocalDate) {
@@ -463,7 +483,6 @@ class HomeViewModel
                         draftStatus = DraftCreationStatus.FAILED,
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
                         draftMessage = message,
-                        isDraftSheetVisible = false,
                     )
                 }
                 sendEffect(HomeUiSideEffect.ShowSnackbar(message))
@@ -509,7 +528,6 @@ class HomeViewModel
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
                     draftMessage = message,
-                    isDraftSheetVisible = false,
                     isPhotoSheetVisible = true,
                 ).refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
@@ -524,7 +542,6 @@ class HomeViewModel
                         draftStatus = DraftCreationStatus.FAILED,
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
                         draftMessage = message,
-                        isDraftSheetVisible = false,
                         isPhotoSheetVisible = true,
                         pendingPhotoIds = selectedPhotoIds,
                     )
@@ -711,7 +728,6 @@ class HomeViewModel
                         draftStatus = DraftCreationStatus.SUCCESS,
                         draftRetryMode = null,
                         draftMessage = "초안이 준비됐어요.",
-                        isDraftSheetVisible = false,
                     )
 
                 is DraftTaskTrackingState.Failed ->
