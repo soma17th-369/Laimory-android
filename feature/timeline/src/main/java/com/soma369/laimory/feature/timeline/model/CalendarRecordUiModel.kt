@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.model
 
 import androidx.compose.runtime.Immutable
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.Emotion
@@ -9,7 +10,7 @@ import java.time.LocalDate
 /**
  * 캘린더 날짜 셀 한 칸이 쓰는 최소 표시 모델.
  *
- * 셀은 기록 유무와 감정만 보여주므로 월별 응답 원본을 화면 상태에 그대로 들이지 않는다.
+ * 셀은 기록 유무와 감정, 초안 여부만 보여주므로 월별 응답 원본을 화면 상태에 그대로 들이지 않는다.
  * 실제 기록은 날짜를 선택할 때 단건 조회로 다시 받는다 — 이 모델은 정본이 아니다.
  */
 @Immutable
@@ -17,6 +18,13 @@ data class CalendarRecordUiModel(
     val recordDate: LocalDate,
     /** 서버 감정을 표시 팔레트로 옮긴 값. 감정이 없거나 미지 literal 이면 null(중립 표시). */
     val emotion: Emotion?,
+    /**
+     * 아직 작성 중인 초안인지.
+     *
+     * 서버 `status` 가 `DRAFT` 일 때만 참이다. **상태를 모르면(필드 누락·미지 literal) 거짓**이다 —
+     * 모르는 값을 초안으로 읽으면 이미 있는 기록 위에 새 초안을 만들려 들게 된다.
+     */
+    val isDraft: Boolean,
 )
 
 /**
@@ -31,5 +39,6 @@ internal fun List<MonthlyDailyRecord>.toCalendarRecordsByDate(): Map<LocalDate, 
             CalendarRecordUiModel(
                 recordDate = record.recordDate,
                 emotion = record.emotion?.toUiEmotionOrNull(),
+                isDraft = record.status == DailyRecordStatus.DRAFT,
             )
     }
