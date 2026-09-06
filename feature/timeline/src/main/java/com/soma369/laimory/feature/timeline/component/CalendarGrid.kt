@@ -1,6 +1,5 @@
 package com.soma369.laimory.feature.timeline.component
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -268,14 +266,7 @@ private fun RowScope.CalendarDayCell(
     Box(
         modifier =
             cellModifier
-                .clickable(
-                    onClickLabel =
-                        when {
-                            record == null -> "날짜 선택"
-                            record.isDraft -> "초안 열기"
-                            else -> "기록 열기"
-                        },
-                ) { onClick(date) }
+                .clickable(onClickLabel = if (record != null) "기록 열기" else "날짜 선택") { onClick(date) }
                 .semantics {
                     contentDescription = dayCellDescription(date, record, isToday)
                     // 선택 날짜는 테두리·색으로만 구분돼 접근성 서비스에는 보이지 않는다.
@@ -321,20 +312,6 @@ private fun CalendarDayCellContent(
         ) {
             if (record != null) {
                 EmotionIcon(emotion = record.emotion)
-                // 초안 표시는 **형태**로 준다. 셀은 이미 감정을 색으로 쓰고 있어, 상태까지 색으로
-                // 나누면 한 칸에서 두 축이 겹쳐 무엇을 가리키는 색인지 알 수 없다.
-                if (record.isDraft) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                // 아이콘 위에 얹히므로 바탕색 테두리로 한 겹 띄운다.
-                                .border(DraftDotRingWidth, MaterialTheme.colorScheme.surface, CircleShape)
-                                .padding(DraftDotRingWidth)
-                                .size(DraftDotSize)
-                                .background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
-                    )
-                }
             }
         }
     }
@@ -352,22 +329,13 @@ private fun dayCellDescription(
         if (isToday) append(", 오늘")
         append(", ")
         append(
-            when {
-                record == null -> "기록 없음"
-                // 초안과 저장된 기록은 여는 화면이 같아도 사용자에게는 다른 것이다.
-                record.isDraft -> "작성 중인 초안, 감정 ${record.emotion.displayLabel()}"
-                else -> "저장된 기록, 감정 ${record.emotion.displayLabel()}"
-            },
+            if (record == null) "기록 없음" else "기록 있음, 감정 ${record.emotion.displayLabel()}",
         )
     }
 
 private val WEEK_DAYS: List<DayOfWeek> = List(DAYS_IN_WEEK) { index -> DayOfWeek.SUNDAY.plus(index.toLong()) }
 
 private val DayNumberBoxSize = 32.dp
-
-/** 감정 아이콘 모서리에 얹는 초안 표시. 셀 높이를 늘리지 않도록 아이콘 자리 안에 둔다. */
-private val DraftDotSize = 6.dp
-private val DraftDotRingWidth = 1.dp
 private val CellBorderWidth = 0.5.dp
 private val SelectedCellBorderWidth = 1.5.dp
 private val SelectedCellCornerRadius = 8.dp

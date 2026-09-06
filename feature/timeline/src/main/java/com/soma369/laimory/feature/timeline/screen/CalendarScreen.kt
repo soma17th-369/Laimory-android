@@ -253,7 +253,6 @@ private fun previewMonths(): Map<YearMonth, MonthlyRecordsUiContent> {
             date to CalendarRecordUiModel(recordDate = date, emotion = emotion, isDraft = false)
         } +
             LocalDate.of(2026, 5, 10).let { date ->
-                // 감정이 아직 없는 초안. 감정 축과 상태 축이 따로 논다는 것을 시안에서도 보여 준다.
                 date to CalendarRecordUiModel(recordDate = date, emotion = null, isDraft = true)
             }
     return mapOf(PREVIEW_MONTH to MonthlyRecordsUiContent.Records(records))
