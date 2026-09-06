@@ -1,13 +1,8 @@
 package com.soma369.laimory.feature.home.state
 
-import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.base.UiIntent
 
 sealed interface DraftConsentUiIntent : UiIntent {
-    data class ToggleTerm(
-        val termType: TermType,
-    ) : DraftConsentUiIntent
-
     /** 유형 상세 화면으로 이동한다. 전송 0건 유형은 무시된다. */
     data class OpenTypeDetail(
         val group: DraftConsentTypeGroup,

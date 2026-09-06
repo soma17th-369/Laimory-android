@@ -126,14 +126,61 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `조회에 실패해도 온보딩을 막지 않는다`() =
+    fun `조회에 실패하면 온보딩을 끝낼 수 없다`() =
         runTest(UnconfinedTestDispatcher()) {
-            // 동의는 초안 생성 화면이 다시 받는다. 여기서 막아 온보딩을 못 끝내게 할 이유가 없다.
-            val viewModel = createViewModel(FakeTermsCoordinator(failure = IllegalStateException("offline")))
-
+            // 초안 생성 화면에서 동의 목록을 걷어냈으므로 여기가 마지막 자리다. 통과시키면
+            // 사용자는 앱을 쓰다가 초안 생성에서만 막히고 이유를 알 수 없다.
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel =
+                createViewModel(
+                    FakeTermsCoordinator(failure = IllegalStateException("offline")),
+                    completion = completion,
+                )
             runCurrent()
 
-            assertTrue(viewModel.state.value.consentDocuments.isEmpty())
+            assertTrue(viewModel.state.value.hasConsentLoadFailed)
+            assertFalse(viewModel.state.value.consentErrorMessage.isNullOrBlank())
+
+            viewModel.confirmAgeAndComplete()
+            advanceUntilIdle()
+
+            assertEquals(0, completion.markedCount)
+        }
+
+    @Test
+    fun `다시 시도해 목록을 받으면 완료할 수 있다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val coordinator = FakeTermsCoordinator(failure = IllegalStateException("offline"))
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel = createViewModel(coordinator, completion = completion)
+            runCurrent()
+
+            coordinator.recover()
+            viewModel.sendIntent(OnboardingUiIntent.RetryConsentLoad)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.hasConsentLoadFailed)
+
+            viewModel.confirmAgeAndComplete()
+            advanceUntilIdle()
+
+            assertEquals(1, completion.markedCount)
+        }
+
+    @Test
+    fun `catalog 가 비어 있는 것은 조회 실패가 아니다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 서버도 catalog 가 없는 단계는 강제하지 않는다(fail-open). 막을 이유가 없다.
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel = createViewModel(FakeTermsCoordinator(), completion = completion)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.hasConsentLoadFailed)
+
+            viewModel.confirmAgeAndComplete()
+            advanceUntilIdle()
+
+            assertEquals(1, completion.markedCount)
         }
 
     @Test
@@ -313,7 +360,7 @@ class OnboardingConsentTest {
         private val pending: List<TermDocument> = emptyList(),
         /** 이 환경 catalog 에 있으나 이미 동의를 마친 문서. */
         private val alreadyAgreed: List<TermDocument> = emptyList(),
-        private val failure: Throwable? = null,
+        private var failure: Throwable? = null,
         private val agreeFailure: Throwable? = null,
         private val revised: List<TermDocument> = emptyList(),
     ) : TermsAgreementCoordinator {
@@ -323,6 +370,11 @@ class OnboardingConsentTest {
         override val loginGate: StateFlow<TermsGateState> = MutableStateFlow(TermsGateState.Satisfied)
 
         override fun refresh() = Unit
+
+        /** 조회 실패를 걷어 다시 시도가 성공하게 만든다. */
+        fun recover() {
+            failure = null
+        }
 
         override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> {
             failure?.let { return Result.failure(it) }

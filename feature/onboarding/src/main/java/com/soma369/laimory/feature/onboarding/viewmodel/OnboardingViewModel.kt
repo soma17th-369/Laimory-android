@@ -61,11 +61,16 @@ class OnboardingViewModel
          * 거절되고, 서버도 catalog 가 없는 단계는 강제하지 않는다(fail-open).
          *
          * 문서가 하나라도 있는 환경에서는 그 판정이 정본이다. 이미 다 동의했으면 목록이 비고
-         * 체크리스트도 그리지 않는다. 조회 실패도 같다 — 여기서 막아 온보딩을 못 끝내게 할
-         * 이유가 없고, 동의는 초안 생성 화면이 다시 받는다.
+         * 체크리스트도 그리지 않는다.
+         *
+         * **조회에 실패하면 온보딩을 끝낼 수 없다.** 예전에는 통과시키고 초안 생성 화면이 동의를
+         * 다시 받아 주었는데, 그 화면에서 동의 목록을 걷어냈으므로 여기가 마지막 자리다. 통과시키면
+         * 사용자는 앱을 쓰다가 초안 생성에서만 막히고 이유를 알 수 없다. catalog 가 비어 있는 것과
+         * 구분한다 — 그쪽은 서버도 강제하지 않는(fail-open) 정상 상태다.
          */
         private suspend fun prepareConsentPage() {
-            val requirements = CONSENT_STAGES.mapNotNull { termsCoordinator.requirementOf(it).getOrNull() }
+            val results = CONSENT_STAGES.map { termsCoordinator.requirementOf(it) }
+            val requirements = results.mapNotNull { it.getOrNull() }
             val pending = requirements.flatMap { it.pending }.distinctBy { it.termType }
             recordableConsents = pending
 
@@ -82,6 +87,9 @@ class OnboardingViewModel
                     consentDocuments = display,
                     lockedConsents = locked,
                     checkedConsents = checkedConsents + locked,
+                    hasConsentLoadFailed = results.any { it.isFailure },
+                    // 버튼만 `다시 시도` 로 바뀌면 무엇이 잘못됐는지 알 수 없다.
+                    consentErrorMessage = if (results.any { it.isFailure }) LOAD_FAILURE_MESSAGE else null,
                 )
             }
         }
@@ -114,6 +122,7 @@ class OnboardingViewModel
                 is OnboardingUiIntent.PageChanged -> onPageChanged(intent.pageIndex)
                 is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
                 OnboardingUiIntent.AgeConfirmationToggled -> updateState { copy(isAgeConfirmed = !isAgeConfirmed) }
+                OnboardingUiIntent.RetryConsentLoad -> retryConsentLoad()
                 OnboardingUiIntent.Complete -> complete()
                 OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
             }
@@ -178,6 +187,13 @@ class OnboardingViewModel
             return false
         }
 
+        /** 조회 실패 뒤의 다시 시도. 성공하면 실패 표시가 내려가 완료 버튼이 살아난다. */
+        private suspend fun retryConsentLoad() {
+            updateState { copy(isConsentSubmitting = true, consentErrorMessage = null) }
+            prepareConsentPage()
+            updateState { copy(isConsentSubmitting = false) }
+        }
+
         /**
          * 필수 동의를 기록한 뒤 완료를 저장한다.
          *
@@ -185,6 +201,10 @@ class OnboardingViewModel
          * 바뀐다. 저장 전에 넘기면 그 사이 앱이 죽었을 때 다음 실행에서 온보딩을 처음부터 다시 본다.
          */
         private suspend fun complete() {
+            // 목록을 불러오지 못한 채로 끝내면 동의 없이 완료된 계정이 남는다. 그 계정은 앱을
+            // 쓰다가 초안 생성에서만 막히고 이유를 알 수 없다.
+            if (state.value.hasConsentLoadFailed) return
+
             // 화면이 이미 버튼을 잠그지만 여기서도 막는다 — 연령 확인은 완료와 같은 쓰기에 담기므로,
             // 확인 없이 이 자리에 오면 확인하지 않은 사용자가 확인한 것으로 기록된다.
             if (!state.value.isAgeConfirmed) return
@@ -226,6 +246,7 @@ class OnboardingViewModel
             /** 체크가 차오르는 것을 보여 주는 시간. 넘기기 전에 한 박자만 둔다. */
             const val CONSENT_REVEAL_MILLIS = 400L
 
+            const val LOAD_FAILURE_MESSAGE = "약관을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요."
             const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."
             const val FAILURE_MESSAGE = "동의를 기록하지 못했어요. 잠시 후 다시 시도해 주세요."
         }

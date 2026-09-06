@@ -10,6 +10,9 @@ sealed interface OnboardingUiIntent : UiIntent {
     /** 동의 항목 하나를 켜고 끈다. 버튼을 누르면 남은 것이 한꺼번에 채워진다. */
     data class ConsentToggled(val termType: TermType) : OnboardingUiIntent
 
+    /** 동의 목록 조회 실패 뒤의 다시 시도. */
+    data object RetryConsentLoad : OnboardingUiIntent
+
     /** 마지막 장의 `만 14세 이상입니다` 확인을 켜고 끈다. */
     data object AgeConfirmationToggled : OnboardingUiIntent
 

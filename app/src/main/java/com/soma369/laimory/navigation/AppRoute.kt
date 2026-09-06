@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import com.soma369.laimory.BuildConfig
+import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.navigation.CalendarPage
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
@@ -19,6 +20,7 @@ import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.navigation.OnboardingPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
+import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
 import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
@@ -105,6 +107,18 @@ val appRoutes: List<AppRoute> =
         AppRoute(
             path = TermsPage.PATH,
             render = { innerPadding, _ -> TermsRoute(innerPadding = innerPadding) },
+        ),
+        AppRoute(
+            path = StageTermsPage.PATH,
+            render = { innerPadding, args ->
+                TermsRoute(
+                    innerPadding = innerPadding,
+                    stages =
+                        StageTermsPage.stagesFrom(args).mapNotNull { raw ->
+                            TermStage.entries.firstOrNull { it.name == raw }
+                        },
+                )
+            },
         ),
         AppRoute(
             path = OnboardingPage.PATH,

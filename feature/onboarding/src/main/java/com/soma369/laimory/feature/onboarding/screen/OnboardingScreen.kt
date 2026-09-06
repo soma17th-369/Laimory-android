@@ -115,10 +115,24 @@ private fun OnboardingContent(
         innerPadding = innerPadding,
         state = state,
         pagerState = pagerState,
-        ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, needsConsent, permissionState.locationStep),
+        ctaLabel =
+            ctaLabel(
+                page = currentPage,
+                needsRequest = needsRequest,
+                isLastPage = isLastPage,
+                needsConsent = needsConsent,
+                hasConsentLoadFailed = state.hasConsentLoadFailed,
+                locationStep = permissionState.locationStep,
+            ),
         // 마지막 장은 연령 확인 없이 끝낼 수 없다. 확인은 완료와 같은 쓰기에 담기므로
         // 여기서 막지 않으면 확인하지 않은 사용자가 확인한 것으로 기록된다.
-        isPrimaryEnabled = !state.isCompleting && (!isLastPage || state.isAgeConfirmed),
+        //
+        // 동의 목록을 불러오지 못한 상태에서는 버튼이 완료가 아니라 다시 시도라서, 연령 확인
+        // 여부와 무관하게 눌릴 수 있어야 한다.
+        isPrimaryEnabled =
+            !state.isCompleting &&
+                !state.isConsentSubmitting &&
+                (!isLastPage || state.hasConsentLoadFailed || state.isAgeConfirmed),
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
@@ -126,6 +140,8 @@ private fun OnboardingContent(
         onPrimaryClick = {
             when {
                 needsRequest -> currentPage?.permission?.let(permissionState::request)
+                // 불러오지 못한 채로 끝낼 수 없다. 같은 자리에서 다시 시도한다.
+                isLastPage && state.hasConsentLoadFailed -> onIntent(OnboardingUiIntent.RetryConsentLoad)
                 isLastPage -> onIntent(OnboardingUiIntent.Complete)
                 else -> goNext()
             }
@@ -252,9 +268,13 @@ private fun ctaLabel(
     needsRequest: Boolean,
     isLastPage: Boolean,
     needsConsent: Boolean,
+    hasConsentLoadFailed: Boolean,
     locationStep: LocationPermissionStep,
 ): String =
     when {
+        // 불러오지 못한 목록을 두고 `시작하기` 라고 쓰면, 눌러도 아무 일이 없는 버튼이 된다.
+        isLastPage && hasConsentLoadFailed -> "다시 시도"
+
         // 무엇을 누르는지 버튼이 말한다. `시작하기` 만으로는 동의가 함께 일어나는 줄 알 수 없다.
         needsConsent -> "모두 동의하고 시작하기"
 

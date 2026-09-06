@@ -35,6 +35,41 @@ data object TermsPage : Page {
 }
 
 /**
+ * 초안 생성 단계 동의를 받는 자리. 로그인 단계와 **같은 화면**을 쓰되 경로를 나눈다.
+ *
+ * 정상 경로에서는 열리지 않는다 — 온보딩 마지막 장이 단계 동의를 모두 받고, 받지 못하면 완료로
+ * 치지 않기 때문이다. 약관이 개정됐거나 그 게이트 이전 버전으로 온보딩을 마친 계정만 서버의
+ * 403 `-3001` 을 받고 여기로 온다.
+ *
+ * 경로를 [TermsPage] 와 나누는 이유는 그 경로가 **앱 루트**이기 때문이다. 같은 경로에 인자를
+ * 얹으면 루트 판정(`appliedRootPath`)이 상황마다 다른 문자열을 보게 된다.
+ *
+ * 어느 단계가 비었는지는 서버 오류가 알려 주지 않으므로 호출부가 **후보 단계를 모두** 싣고,
+ * 화면이 다시 조회해 실제로 남은 것만 받는다.
+ */
+data class StageTermsPage(
+    val stages: List<String>,
+) : Page {
+    override fun toRoute(): NavRoute =
+        NavRoute(
+            path = PATH,
+            args = mapOf(STAGES_ARG to stages.joinToString(STAGE_SEPARATOR)),
+        )
+
+    companion object {
+        const val PATH = "/terms/stage"
+        const val STAGES_ARG = "stages"
+        private const val STAGE_SEPARATOR = ","
+
+        fun stagesFrom(args: Map<String, String>): List<String> =
+            args[STAGES_ARG]
+                ?.split(STAGE_SEPARATOR)
+                .orEmpty()
+                .filter(String::isNotBlank)
+    }
+}
+
+/**
  * 로그인 직후 한 번 보여 주는 데이터 권한 온보딩.
  *
  * Login·Home 과 같은 층위의 **앱 루트**다. 밀어 넣는 화면이 아니라, 인증과 온보딩 완료 여부로
