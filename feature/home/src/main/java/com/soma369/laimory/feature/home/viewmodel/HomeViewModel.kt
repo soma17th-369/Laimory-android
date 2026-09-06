@@ -720,7 +720,7 @@ class HomeViewModel
                         draftRetryMode = null,
                         draftMessage =
                             "초안 생성 시작 후 ${trackingState.elapsedSeconds / 60}분이 지났어요. " +
-                                "계속 기다리거나 새로 만들 수 있어요.",
+                                "계속 기다리거나 다시 만들 수 있어요.",
                     )
 
                 is DraftTaskTrackingState.Success ->
@@ -750,8 +750,8 @@ class HomeViewModel
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
                         draftMessage =
                             when (trackingState.reason) {
-                                DraftTaskUnavailableReason.TASK -> "초안 작업 정보를 찾을 수 없어요. 새로 만들어주세요."
-                                DraftTaskUnavailableReason.RESULT -> "완료된 초안 결과를 찾을 수 없어요. 새로 만들어주세요."
+                                DraftTaskUnavailableReason.TASK -> "초안 작업 정보를 찾을 수 없어요. 다시 만들어주세요."
+                                DraftTaskUnavailableReason.RESULT -> "완료된 초안 결과를 찾을 수 없어요. 다시 만들어주세요."
                             },
                     )
             }

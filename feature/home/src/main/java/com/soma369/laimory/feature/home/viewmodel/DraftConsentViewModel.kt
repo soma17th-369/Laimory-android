@@ -168,6 +168,13 @@ class DraftConsentViewModel
                 navigationHelper.navigateTo(StageTermsPage(DRAFT_CONSENT_STAGES.map(TermStage::name)))
                 return
             }
+            // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 서버는 초안이 있는 날짜의
+            // 생성을 덮어쓰기가 아니라 **이어 붙이기**로 처리하므로, 새로 더할 것이 없으면
+            // 409 `-1013` 으로 거절한다. 실패로만 보이면 사용자는 이유를 알 수 없다.
+            if (error is ApiException && error.errorCode == APPEND_NO_NEW_ITEMS) {
+                updateState { copy(isSubmitting = false, submitError = NO_NEW_ITEMS_MESSAGE) }
+                return
+            }
             // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 스냅샷 재시도로는 복구되지
             // 않으므로 준비를 폐기하고 홈의 사진 재선택 흐름으로 복귀시킨다.
             if (error is DraftPhotoAccessException) {
@@ -208,6 +215,10 @@ class DraftConsentViewModel
              */
             val DRAFT_CONSENT_STAGES = listOf(TermStage.TIMELINE_FIRST_CREATE, TermStage.TIMELINE_LOCATION)
 
+            /** 이어 붙일 새 항목이 없을 때 서버가 주는 코드. */
+            const val APPEND_NO_NEW_ITEMS = -1013
+
             const val AGREEMENT_REQUIRED_MESSAGE = "동의가 다시 필요해요."
+            const val NO_NEW_ITEMS_MESSAGE = "이미 이 날 기록에 담긴 항목이에요. 새로 추가할 것이 없어요."
         }
     }

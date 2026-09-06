@@ -520,6 +520,25 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `새로 더할 항목이 없으면 이유를 알려 준다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버는 초안이 있는 날짜의 생성을 덮어쓰기가 아니라 이어 붙이기로 처리한다. 이미
+            // 들어간 항목만 다시 보내면 409 -1013 이고, 실패로만 보이면 이유를 알 수 없다.
+            draftRepository.createFailure = ApiException.ConflictException(errorCode = -1013, rawCode = 409)
+            prepare(listOf(calendarItem("cal")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.submitError.orEmpty().contains("새로 추가할 것이 없어요"))
+            assertFalse(viewModel.state.value.isSubmitting)
+            // 같은 스냅샷으로 다시 제출할 수 있게 준비는 남긴다.
+            assertNotNull(sessionStore.preparation.value)
+        }
+
+    @Test
     fun `서버가 동의를 다시 요구하면 단계 동의 화면으로 보내고 준비는 지킨다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 약관 개정이나 구버전 온보딩으로 남은 동의가 있는 경우다. 이 화면은 동의를 받지
