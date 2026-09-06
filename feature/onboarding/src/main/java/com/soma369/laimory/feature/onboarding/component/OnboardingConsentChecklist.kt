@@ -4,10 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -138,7 +140,11 @@ private fun ChecklistRow(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        trailing?.invoke()
+        // `보기` 가 없는 줄도 그 자리를 그대로 비워 둔다. 버튼은 최소 크기가 있어서, 없는 줄만
+        // 글자가 오른쪽 끝까지 늘어나고 행 높이도 낮아져 한 목록 안에서 줄마다 리듬이 달라진다.
+        trailing?.invoke() ?: Spacer(
+            modifier = Modifier.size(width = ButtonDefaults.MinWidth, height = ButtonDefaults.MinHeight),
+        )
     }
 }
 

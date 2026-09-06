@@ -175,6 +175,8 @@ internal fun PhotoSelectionSheet(
                     onClick = { onIntent(HomeUiIntent.ConfirmPhotoSelection) },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.isPhotoLoading && state.pendingPhotoIds.isNotEmpty(),
+                    // M3 기본값은 모서리를 완전히 둥글리므로(stadium) 우리 버튼보다 훨씬 둥글다.
+                    shape = MaterialTheme.shapes.large,
                 ) {
                     Text("${state.pendingPhotoIds.size}장으로 초안 만들기")
                 }
@@ -274,7 +276,7 @@ private fun DeniedPhotoAccess(onOpenAppSettings: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(onClick = onOpenAppSettings) {
+        Button(onClick = onOpenAppSettings, shape = MaterialTheme.shapes.large) {
             Text("설정 열기")
         }
     }
