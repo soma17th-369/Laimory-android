@@ -5,16 +5,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
@@ -92,14 +88,9 @@ private fun TermsScreen(
             when {
                 state.isLoading -> LoadingBody()
                 state.hasFailed -> FailureBody()
-                else -> {
-                    ConsentBody(state = state, onOpenTerm = onOpenTerm)
-                    AgeConfirmationRow(
-                        isConfirmed = state.isAgeConfirmed,
-                        isEnabled = !state.isSubmitting,
-                        onConfirmationChange = { onIntent(TermsUiIntent.AgeConfirmationChanged(it)) },
-                    )
-                }
+                // 만 14세 이상 확인은 온보딩 마지막 장이 받는다. 여기서도 물으면 같은 질문을
+                // 두 번 받게 되고, 이 화면의 확인은 어디에도 남지 않아 근거가 되지도 않는다.
+                else -> ConsentBody(state = state, onOpenTerm = onOpenTerm)
             }
         }
 
@@ -164,42 +155,6 @@ private fun ConsentBody(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-}
-
-/**
- * 만 14세 이상 자기확인.
- *
- * 약관 동의와 한 덩어리로 묶지 않는다 — 가입 자격 확인이지 동의가 아니다. 기본은 해제이고,
- * 생년월일이나 본인인증을 요구하지 않는다.
- */
-@Composable
-private fun AgeConfirmationRow(
-    isConfirmed: Boolean,
-    isEnabled: Boolean,
-    onConfirmationChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                // 글자까지 터치 영역에 넣는다. 체크박스만 누르게 하면 눌러야 할 곳이 너무 작다.
-                .toggleable(
-                    value = isConfirmed,
-                    enabled = isEnabled,
-                    role = Role.Checkbox,
-                    onValueChange = onConfirmationChange,
-                ).padding(vertical = Spacing.small),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
-    ) {
-        // 행 전체가 이미 토글이라 체크박스는 그림만 맡는다. 둘 다 누르면 두 번 뒤집힌다.
-        Checkbox(checked = isConfirmed, onCheckedChange = null, enabled = isEnabled)
-        Text(
-            text = "[필수 확인] 만 14세 이상입니다",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
 }
 
 @Composable

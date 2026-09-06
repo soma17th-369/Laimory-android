@@ -12,13 +12,6 @@ data class TermsUiState(
     val termsOfService: TermDocument? = null,
     /** 동의 대상이 아니라 함께 안내하는 처리방침. 없으면 링크가 눌리지 않는다. */
     val privacyPolicy: TermDocument? = null,
-    /**
-     * 만 14세 이상 자기확인.
-     *
-     * 약관 동의와 섞지 않는다 — 가입 자격 확인이지 동의가 아니고, 서버에도 보내지 않는다.
-     * 기본은 해제다.
-     */
-    val isAgeConfirmed: Boolean = false,
     val isSubmitting: Boolean = false,
     val errorMessage: String? = null,
 ) : UiState {
@@ -26,5 +19,11 @@ data class TermsUiState(
 
     val hasFailed: Boolean get() = gate == TermsGateState.Failed
 
-    val canAgree: Boolean get() = termsOfService != null && isAgeConfirmed && !isSubmitting
+    /**
+     * 만 14세 이상 확인은 여기서 받지 않는다.
+     *
+     * 온보딩 마지막 장이 필수 확인 목록에서 함께 받고 **기록까지 남긴다** — 두 자리에서 물으면
+     * 같은 질문을 두 번 받게 되고, 이 화면의 확인은 어디에도 남지 않아 근거가 되지도 않는다.
+     */
+    val canAgree: Boolean get() = termsOfService != null && !isSubmitting
 }

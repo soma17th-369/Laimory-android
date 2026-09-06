@@ -3,8 +3,6 @@ package com.soma369.laimory.feature.terms.state
 import com.soma369.laimory.core.ui.base.UiIntent
 
 sealed interface TermsUiIntent : UiIntent {
-    data class AgeConfirmationChanged(val isConfirmed: Boolean) : TermsUiIntent
-
     data object AgreeClicked : TermsUiIntent
 
     /** 판정 조회가 실패했을 때 다시 묻는다. */

@@ -41,7 +41,6 @@ class TermsViewModel
 
         override suspend fun handleIntent(intent: TermsUiIntent) {
             when (intent) {
-                is TermsUiIntent.AgeConfirmationChanged -> updateState { copy(isAgeConfirmed = intent.isConfirmed) }
                 TermsUiIntent.AgreeClicked -> agree()
                 TermsUiIntent.RetryClicked -> retry()
                 TermsUiIntent.LogoutClicked -> signOut()
