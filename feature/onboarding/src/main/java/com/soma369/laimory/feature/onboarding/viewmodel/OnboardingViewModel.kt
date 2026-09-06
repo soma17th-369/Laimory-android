@@ -113,6 +113,7 @@ class OnboardingViewModel
             when (intent) {
                 is OnboardingUiIntent.PageChanged -> onPageChanged(intent.pageIndex)
                 is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
+                OnboardingUiIntent.AgeConfirmationToggled -> updateState { copy(isAgeConfirmed = !isAgeConfirmed) }
                 OnboardingUiIntent.Complete -> complete()
                 OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
             }
@@ -184,6 +185,10 @@ class OnboardingViewModel
          * 바뀐다. 저장 전에 넘기면 그 사이 앱이 죽었을 때 다음 실행에서 온보딩을 처음부터 다시 본다.
          */
         private suspend fun complete() {
+            // 화면이 이미 버튼을 잠그지만 여기서도 막는다 — 연령 확인은 완료와 같은 쓰기에 담기므로,
+            // 확인 없이 이 자리에 오면 확인하지 않은 사용자가 확인한 것으로 기록된다.
+            if (!state.value.isAgeConfirmed) return
+
             // 누른 즉시 잠근다. 연출을 먼저 하면 그 사이 버튼이 살아 있어 두 번 눌린다.
             updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
 

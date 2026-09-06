@@ -37,6 +37,13 @@ data class OnboardingUiState(
      * 철회시킬 수는 없으므로 끄지는 못한다.
      */
     val lockedConsents: Set<TermType> = emptySet(),
+    /**
+     * 마지막 장의 `만 14세 이상입니다` 확인.
+     *
+     * 서버 catalog 항목이 아니라 앱이 받는 확인이라 [consentDocuments] 와 나눠 둔다 — 열람할
+     * 원문이 없어 `보기` 가 붙지 않고, 기록도 서버가 아니라 이 설치에 남는다.
+     */
+    val isAgeConfirmed: Boolean = false,
     val isConsentSubmitting: Boolean = false,
     val consentErrorMessage: String? = null,
 ) : UiState

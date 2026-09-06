@@ -116,7 +116,9 @@ private fun OnboardingContent(
         state = state,
         pagerState = pagerState,
         ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, needsConsent, permissionState.locationStep),
-        isPrimaryEnabled = !state.isCompleting,
+        // 마지막 장은 연령 확인 없이 끝낼 수 없다. 확인은 완료와 같은 쓰기에 담기므로
+        // 여기서 막지 않으면 확인하지 않은 사용자가 확인한 것으로 기록된다.
+        isPrimaryEnabled = !state.isCompleting && (!isLastPage || state.isAgeConfirmed),
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
@@ -129,6 +131,7 @@ private fun OnboardingContent(
             }
         },
         onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
+        onAgeConfirmationToggle = { onIntent(OnboardingUiIntent.AgeConfirmationToggled) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
         onSkipClick = goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
@@ -147,6 +150,7 @@ private fun OnboardingScreen(
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
     onConsentToggle: (TermType) -> Unit,
+    onAgeConfirmationToggle: () -> Unit,
     onOpenTerm: (TermDocument) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -169,8 +173,10 @@ private fun OnboardingScreen(
                     page = spec,
                     nickname = state.nickname,
                     isGranted = isPageGranted(spec),
+                    // 문서가 비어도(이미 다 동의했거나 catalog 가 아직 없어도) 목록을 그린다 —
+                    // 연령 확인 줄은 서버 문서와 무관하게 언제나 받아야 한다.
                     extra =
-                        if (!spec.showsConsents || state.consentDocuments.isEmpty()) {
+                        if (!spec.showsConsents) {
                             null
                         } else {
                             {
@@ -178,9 +184,11 @@ private fun OnboardingScreen(
                                     documents = state.consentDocuments,
                                     checked = state.checkedConsents,
                                     locked = state.lockedConsents,
+                                    isAgeConfirmed = state.isAgeConfirmed,
                                     isEnabled = !state.isConsentSubmitting,
                                     errorMessage = state.consentErrorMessage,
                                     onToggle = onConsentToggle,
+                                    onToggleAge = onAgeConfirmationToggle,
                                     onOpenTerm = onOpenTerm,
                                 )
                             }
@@ -312,6 +320,7 @@ private fun OnboardingScreenPreview(
             onPrimaryClick = {},
             onSkipClick = {},
             onConsentToggle = {},
+            onAgeConfirmationToggle = {},
             onOpenTerm = {},
             onBack = {},
         )

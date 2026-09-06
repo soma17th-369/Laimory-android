@@ -52,10 +52,13 @@ class DefaultOnboardingCompletionCoordinator
          * 서버 응답을 기다리지 않고 값을 먼저 올린다 — 기록이 늦다고 사용자를 온보딩에 묶어 둘
          * 이유가 없다. 대신 **올리기 전에 대기 표시를 남긴다.** 완료 여부의 정본이 서버라,
          * 표시 없이 실패하면 다음 실행에서 서버가 `false` 를 주고 끝낸 온보딩을 다시 본다.
+         *
+         * 완료를 남길 때 연령 확인도 같은 쓰기에 담는다 — 마지막 장이 확인 없이는 이 자리에
+         * 오지 못하게 막으므로, 완료된 온보딩은 언제나 확인을 거친 것이다.
          */
         override suspend fun markCompleted() {
             repository.setCompletionPending(true)
-            repository.cacheCompletion(true)
+            repository.cacheCompletionWithAgeConfirmation()
             mutex.withLock { mutableCompleted.value = true }
             syncPendingCompletion()
         }
