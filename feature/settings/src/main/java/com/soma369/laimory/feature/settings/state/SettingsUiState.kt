@@ -14,6 +14,8 @@ data class SettingsUiState(
     val isWithdrawing: Boolean = false,
     /** 약관 원문 주소. 조회 전이거나 실패하면 비어 있고, 그때 정보 항목은 눌리지 않는다. */
     val termLinks: TermLinks = TermLinks(),
+    /** 위치 자동 수집을 사용자가 켜 둔 상태인지. 끈 적이 없으면 참이므로 기본값도 참이다. */
+    val isLocationCollectionEnabled: Boolean = true,
 ) : UiState {
     /** 계정 관련 동작 하나가 진행 중이면 나머지 항목도 잠근다. */
     val isAccountActionInProgress: Boolean get() = isLoggingOut || isWithdrawing

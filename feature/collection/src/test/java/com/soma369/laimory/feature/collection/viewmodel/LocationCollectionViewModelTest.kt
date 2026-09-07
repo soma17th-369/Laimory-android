@@ -137,5 +137,7 @@ class LocationCollectionViewModelTest {
         override suspend fun setEnabled(enabled: Boolean) {
             this.enabled.value = enabled
         }
+
+        override suspend fun reconcile() = Unit
     }
 }

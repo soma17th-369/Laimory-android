@@ -44,16 +44,17 @@ import javax.inject.Inject
  * 위치 자동 수집 Foreground Service(Phase 2). LocationManager 업데이트를 [LocationSegmenter] 로 분절해
  * 체류(STAY)·이동(MOVEMENT)을 저장하며, 앱이 백그라운드여도 상시 알림과 함께 지속한다.
  *
- * 서비스 인스턴스는 시스템이 생성하므로 라이브 상태는 @Singleton [LocationTrackingState] 에 반영하고, 토글 의도는
- * [LocationTrackingPreferences] 에 영속한다. 알림의 "중지" 또는 샘플링 실패 시 의도를 off 로 내려 토글과 일치시킨다.
+ * 서비스 인스턴스는 시스템이 생성하므로 라이브 상태는 @Singleton [LocationTrackingState] 에 반영한다.
+ *
+ * **사용자의 의사는 여기서 쓰지 않는다.** 중지 요청은 큐를 거쳐 늦게 도착할 수 있어, 그 사이에 사용자가 다시 켜 두었으면
+ * 지난 결정으로 최신 값을 덮어쓴다. 의사는 그 조작을 받은 곳([LocationTrackingRepository])이 그 자리에서 쓰고,
+ * 서비스는 "마감하고 멈춰라" 라는 지시만 받는다. 실패로 인한 중지도 같은 이유로 아무것도 남기지 않는다.
  */
 @AndroidEntryPoint
 internal class LocationCollectionService : Service() {
     @Inject lateinit var segmentStore: LocationSegmentStore
 
     @Inject lateinit var trackingState: LocationTrackingState
-
-    @Inject lateinit var preferences: LocationTrackingPreferences
 
     @Inject lateinit var transportHolder: DetectedTransportHolder
 
@@ -88,12 +89,12 @@ internal class LocationCollectionService : Service() {
         startId: Int,
     ): Int {
         if (intent?.action == ACTION_STOP) {
-            disableAndStop()
+            finishAndStop()
             return START_NOT_STICKY
         }
         if (!startForegroundInternal()) {
             // FGS 승격 실패(권한/eligible 부족) — startForegroundService 계약 위반 크래시를 피해 즉시 종료.
-            disableAndStop()
+            finishAndStop()
             return START_NOT_STICKY
         }
         startSampling()
@@ -149,10 +150,11 @@ internal class LocationCollectionService : Service() {
                     samplingStartRequested = false
                     registerActivityUpdates()
                 }.onFailure { e ->
-                    // 권한 미허용은 SecurityException — 의도를 off 로 내려 토글과 일치시키고 종료.
+                    // 권한 미허용(SecurityException)이든 다른 실패든 사용자의 의사는 건드리지 않는다.
+                    // 권한이 돌아오면 다음 전경 진입의 reconcile 이 다시 켠다.
                     Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e.message}")
                     samplingStartRequested = false
-                    disableAndStop()
+                    finishAndStop()
                 }
             }
         }
@@ -215,14 +217,16 @@ internal class LocationCollectionService : Service() {
     }
 
     /**
-     * 토글 의도를 off 로 내리고 서비스를 종료한다(알림 "중지"·샘플링 실패 공통 경로).
+     * 진행 중 구간을 마감하고 서비스를 종료한다.
+     *
+     * 마감(flush)이지 보존(snapshot)이 아니다 — 여기로 오는 두 경우(사용자 중지·샘플링 실패) 모두 다음에 켜질 때
+     * 이어 붙일 것이 아니라 거기서 끝난 구간이다. 보존하면 멈춰 있던 시간이 이전 체류에 얹힌다.
      *
      * 영속 저장이 [onDestroy] 의 scope 취소로 유실되지 않도록 [stopSelf] 는 저장 완료 후 코루틴 안에서 호출한다.
      */
-    private fun disableAndStop() {
+    private fun finishAndStop() {
         finalizeOnDestroy = true
         scope.launch {
-            runCatching { preferences.setEnabled(false) }
             if (segmenter == null) {
                 finalizePersistedSegment()
             }
@@ -342,11 +346,13 @@ internal class LocationCollectionService : Service() {
             packageManager.getLaunchIntentForPackage(packageName)?.let { launch ->
                 PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE)
             }
+        // 서비스가 아니라 리시버로 보낸다. 알림에서 끄는 것도 사용자의 의사라 저장돼야 하는데,
+        // 그것을 서비스가 쓰면 늦게 도착한 중지가 최신 값을 덮어쓴다.
         val stopIntent =
-            PendingIntent.getService(
+            PendingIntent.getBroadcast(
                 this,
                 1,
-                Intent(this, LocationCollectionService::class.java).setAction(ACTION_STOP),
+                Intent(this, LocationStopReceiver::class.java),
                 PendingIntent.FLAG_IMMUTABLE,
             )
         val stopAction =

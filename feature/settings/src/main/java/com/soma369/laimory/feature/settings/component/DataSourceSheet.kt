@@ -5,17 +5,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -47,6 +52,8 @@ internal fun DataSourceSheet(
     status: DataSourceStatus,
     locationStep: LocationPermissionStep,
     action: DataPermissionAction,
+    collectionEnabled: Boolean?,
+    onCollectionEnabledChange: (Boolean) -> Unit,
     onAction: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -62,6 +69,8 @@ internal fun DataSourceSheet(
             status = status,
             locationStep = locationStep,
             action = action,
+            collectionEnabled = collectionEnabled,
+            onCollectionEnabledChange = onCollectionEnabledChange,
             onAction = onAction,
             onDismiss = onDismiss,
             modifier = Modifier.navigationBarsPadding(),
@@ -75,6 +84,9 @@ private fun DataSourceSheetContent(
     status: DataSourceStatus,
     locationStep: LocationPermissionStep,
     action: DataPermissionAction,
+    /** 권한과 별개로 앱이 끄고 켜는 수집의 현재 값. 그런 수집이 아니거나 아직 켤 수 없으면 null. */
+    collectionEnabled: Boolean?,
+    onCollectionEnabledChange: (Boolean) -> Unit,
     onAction: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
@@ -137,6 +149,14 @@ private fun DataSourceSheetContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+        collectionEnabled?.let { enabled ->
+            CollectionToggleRow(
+                title = "자동 수집",
+                description = "끄면 새로 오간 길과 머문 장소를 기록하지 않아요. 이미 모인 기록은 그대로 둡니다.",
+                isChecked = enabled,
+                onCheckedChange = onCollectionEnabledChange,
+            )
         }
         action.buttonLabel(status)?.let { label ->
             Button(
@@ -207,6 +227,58 @@ private fun DataSourceSheetUnsupportedPreview() {
     }
 }
 
+/**
+ * 수집 자체를 끄고 켜는 줄.
+ *
+ * 권한과 나란히 두되 같은 것으로 보이지 않게 한다 — 권한은 시스템이 갖고 앱은 물어보기만 하지만,
+ * 이 값은 앱이 갖는다. 권한을 열어 둔 채로 수집만 쉬게 하는 자리가 없으면 사용자는 끄기 위해
+ * 권한을 회수해야 하고, 그러면 다시 켜는 길이 시스템 설정으로 멀어진다.
+ *
+ * 조작은 줄 전체가 받는다([NotificationToggleRow] 와 같은 이유로 [Switch] 에는 콜백을 주지 않는다).
+ */
+@Composable
+private fun CollectionToggleRow(
+    title: String,
+    description: String,
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = ToggleRowMinHeight)
+                .toggleable(
+                    value = isChecked,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange,
+                ),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(
+            checked = isChecked,
+            // 줄 전체가 이미 조작을 받는다. 여기에 또 주면 초점이 둘로 갈린다.
+            onCheckedChange = null,
+        )
+    }
+}
+
 /** ModalBottomSheet 는 Preview 에서 뜨지 않으므로 실제 시트 내용을 그대로 그린다. */
 @Composable
 private fun DataSourceSheetPreviewBody(
@@ -214,16 +286,34 @@ private fun DataSourceSheetPreviewBody(
     status: DataSourceStatus,
     action: DataPermissionAction,
     locationStep: LocationPermissionStep = LocationPermissionStep.GRANTED,
+    collectionEnabled: Boolean? = null,
 ) {
     DataSourceSheetContent(
         source = source,
         status = status,
         locationStep = locationStep,
         action = action,
+        collectionEnabled = collectionEnabled,
+        onCollectionEnabledChange = {},
         onAction = {},
         onDismiss = {},
         modifier = Modifier.padding(top = Spacing.extraLarge),
     )
 }
 
+@Preview(name = "DataSourceSheet / 위치 수집 토글", apiLevel = 36, showBackground = true, widthDp = 360, heightDp = 480)
+@Composable
+private fun DataSourceSheetLocationTogglePreview() {
+    LaimoryTheme {
+        DataSourceSheetPreviewBody(
+            source = DataSourceUiModel.LOCATION,
+            status = DataSourceStatus.GRANTED,
+            action = DataPermissionAction.APP_SETTINGS,
+            collectionEnabled = true,
+        )
+    }
+}
+
 private val ActionButtonHeight = 52.dp
+
+private val ToggleRowMinHeight = 48.dp

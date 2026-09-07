@@ -7,8 +7,8 @@ import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
+import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
-import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -29,7 +29,7 @@ class OnboardingViewModel
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val saveOnboardingProgressUseCase: SaveOnboardingProgressUseCase,
         private val completeOnboardingUseCase: CompleteOnboardingUseCase,
-        private val setLocationTrackingUseCase: SetLocationTrackingUseCase,
+        private val reconcileLocationTrackingUseCase: ReconcileLocationTrackingUseCase,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val getDisplayTerms: GetDisplayTermsUseCase,
     ) : BaseMviViewModel<OnboardingUiState, OnboardingUiIntent, OnboardingUiSideEffect>(OnboardingUiState()) {
@@ -124,7 +124,7 @@ class OnboardingViewModel
                 OnboardingUiIntent.AgeConfirmationToggled -> updateState { copy(isAgeConfirmed = !isAgeConfirmed) }
                 OnboardingUiIntent.RetryConsentLoad -> retryConsentLoad()
                 OnboardingUiIntent.Complete -> complete()
-                OnboardingUiIntent.EnableLocationTracking -> enableLocationTracking()
+                OnboardingUiIntent.ReconcileLocationTracking -> reconcileLocationTracking()
             }
         }
 
@@ -147,14 +147,14 @@ class OnboardingViewModel
         }
 
         /**
-         * 백그라운드 위치가 허용되면 자동 수집을 켠다.
+         * 백그라운드 위치가 허용된 상태면 수집 실행 상태를 맞춘다.
          *
-         * 수집 실험실 토글과 **같은 UseCase** 를 쓴다 — 갈라지면 한쪽에서 켠 추적이 다른 쪽에는
-         * 꺼진 것으로 보인다. 실패는 알리지 않는다. 권한은 이미 받았고, 사용자가 다시 할 수 있는
-         * 일이 없는 배경 작업이다.
+         * 앱 전경 진입과 **같은 UseCase** 를 쓴다 — 온보딩만의 켜는 규칙을 따로 두면 온보딩을 보지
+         * 않는 계정에서 규칙이 통째로 빠진다. 실패는 알리지 않는다. 사용자가 다시 할 수 있는 일이
+         * 없는 배경 작업이고, 다음 전경 진입이 같은 일을 다시 시도한다.
          */
-        private fun enableLocationTracking() {
-            safeLaunch(onError = { }) { setLocationTrackingUseCase(true) }
+        private fun reconcileLocationTracking() {
+            safeLaunch(onError = { }) { reconcileLocationTrackingUseCase() }
         }
 
         /** 항목을 직접 켜고 끌 수도 있다. 버튼은 남은 것을 마저 채우는 지름길이다. */

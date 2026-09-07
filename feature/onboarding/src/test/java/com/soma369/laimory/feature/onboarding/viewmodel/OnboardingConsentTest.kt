@@ -18,8 +18,8 @@ import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
+import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
-import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
@@ -348,7 +348,7 @@ class OnboardingConsentTest {
         observeUserProfileUseCase = ObserveUserProfileUseCase(FakeUserProfileCoordinator),
         saveOnboardingProgressUseCase = SaveOnboardingProgressUseCase(FakeOnboardingRepository),
         completeOnboardingUseCase = CompleteOnboardingUseCase(completion),
-        setLocationTrackingUseCase = SetLocationTrackingUseCase(FakeLocationTrackingRepository),
+        reconcileLocationTrackingUseCase = ReconcileLocationTrackingUseCase(FakeLocationTrackingRepository),
         termsCoordinator = coordinator,
         getDisplayTerms = GetDisplayTermsUseCase(displayTerms),
     )
@@ -483,5 +483,7 @@ class OnboardingConsentTest {
         override fun observeStatus(): Flow<LocationTrackingStatus?> = flowOf(null)
 
         override suspend fun setEnabled(enabled: Boolean) = Unit
+
+        override suspend fun reconcile() = Unit
     }
 }

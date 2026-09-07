@@ -76,6 +76,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- 상시 알림의 `중지` 수신(우리 PendingIntent 로만 트리거되므로 exported=false). -->
+        <receiver
+            android:name="com.soma369.laimory.core.collection.location.LocationStopReceiver"
+            android:exported="false" />
+
         <!-- Activity Recognition 전이 결과 수신(우리 PendingIntent 로만 트리거되므로 exported=false). -->
         <receiver
             android:name="com.soma369.laimory.core.collection.location.ActivityTransitionReceiver"
