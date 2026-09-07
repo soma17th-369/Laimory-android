@@ -34,6 +34,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.HomeSourceSummary
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.isInputLocked
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -44,7 +45,7 @@ internal fun DateHeaderCard(
     state: HomeUiState,
     onClick: () -> Unit,
     onActionClick: () -> Unit,
-    onPhotoClick: () -> Unit,
+    onTimeRangeClick: () -> Unit,
 ) {
     val today = rememberToday()
     Surface(
@@ -80,7 +81,7 @@ internal fun DateHeaderCard(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
-                TimeRangeChip(state)
+                TimeRangeChip(state = state, onClick = onTimeRangeClick)
             }
 
             Text(
@@ -91,10 +92,11 @@ internal fun DateHeaderCard(
                 textAlign = TextAlign.End,
             )
 
+            // 사진은 초안 만들기 흐름 안에서 고른다. 여기서도 열 수 있게 두면 어느 자리에서
+            // 고른 것이 실리는지 알 수 없어, 미리보기는 표시만 맡는다.
             PhotoPreviewRow(
                 previewUris = state.summary.photoPreviewUris,
                 photoCount = state.summary.photoCount,
-                onClick = onPhotoClick,
             )
 
             Box(
@@ -143,9 +145,20 @@ internal fun DateHeaderCard(
     }
 }
 
+/**
+ * 기록 범위 칩. 값을 보여 주는 자리가 그대로 고치는 자리다.
+ *
+ * 범위를 묻는 중간 시트를 없앤 대신 여기서 공용 타임 피커를 연다 — 대부분은 기본값을 그대로
+ * 쓰고 넘어가므로, 매번 확인시키는 단계보다 필요할 때 누르는 편이 낫다.
+ */
 @Composable
-private fun TimeRangeChip(state: HomeUiState) {
+private fun TimeRangeChip(
+    state: HomeUiState,
+    onClick: () -> Unit,
+) {
     Surface(
+        onClick = onClick,
+        enabled = !state.draftStatus.isInputLocked,
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
@@ -173,11 +186,9 @@ private fun TimeRangeChip(state: HomeUiState) {
 private fun PhotoPreviewRow(
     previewUris: List<String>,
     photoCount: Int,
-    onClick: () -> Unit,
 ) {
     if (previewUris.isEmpty()) {
         Surface(
-            onClick = onClick,
             modifier = Modifier.size(56.dp),
             shape = RoundedCornerShape(8.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -186,7 +197,7 @@ private fun PhotoPreviewRow(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     painter = painterResource(R.drawable.ico_timeline_photo),
-                    contentDescription = "초안에 사용할 사진 선택",
+                    contentDescription = "아직 모은 사진이 없어요",
                     modifier = Modifier.size(36.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -196,10 +207,7 @@ private fun PhotoPreviewRow(
     }
 
     Row(
-        modifier =
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onClick),
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)),
         horizontalArrangement = Arrangement.spacedBy((-8).dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -306,7 +314,7 @@ private fun DraftStatusPreview(status: DraftCreationStatus) {
                 ),
             onClick = {},
             onActionClick = {},
-            onPhotoClick = {},
+            onTimeRangeClick = {},
         )
     }
 }

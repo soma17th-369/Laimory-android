@@ -1,9 +1,11 @@
 package com.soma369.laimory.feature.timeline.model
 
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.ui.theme.Emotion
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -48,6 +50,32 @@ class CalendarRecordUiModelTest {
     }
 
     @Test
+    fun `초안 판정은 서버 status 만 본다`() {
+        // 감정은 초안 여부와 다른 축이다 — 감정 없는 저장 기록도, 감정 있는 초안도 있다.
+        val draftDate = LocalDate.of(2026, 5, 3)
+        val savedDate = LocalDate.of(2026, 5, 4)
+
+        val records =
+            listOf(
+                record(date = draftDate, emotion = TimelineEmotion.HAPPY, status = DailyRecordStatus.DRAFT),
+                record(date = savedDate, emotion = null, status = DailyRecordStatus.SAVED),
+            ).toCalendarRecordsByDate()
+
+        assertTrue(records.getValue(draftDate).isDraft)
+        assertFalse(records.getValue(savedDate).isDraft)
+    }
+
+    @Test
+    fun `상태를 모르면 초안으로 보지 않는다`() {
+        // 필드 누락이나 미지 literal 을 초안으로 읽으면 이미 있는 기록 위에 새 초안을 만들려 든다.
+        val date = LocalDate.of(2026, 5, 5)
+
+        val records = listOf(record(date = date, emotion = null, status = null)).toCalendarRecordsByDate()
+
+        assertFalse(records.getValue(date).isDraft)
+    }
+
+    @Test
     fun `기록이 없는 월은 빈 맵이 된다`() {
         assertTrue(emptyList<MonthlyDailyRecord>().toCalendarRecordsByDate().isEmpty())
     }
@@ -67,5 +95,6 @@ class CalendarRecordUiModelTest {
     private fun record(
         date: LocalDate,
         emotion: TimelineEmotion?,
-    ) = MonthlyDailyRecord(recordDate = date, emotion = emotion)
+        status: DailyRecordStatus? = DailyRecordStatus.SAVED,
+    ) = MonthlyDailyRecord(recordDate = date, status = status, emotion = emotion)
 }

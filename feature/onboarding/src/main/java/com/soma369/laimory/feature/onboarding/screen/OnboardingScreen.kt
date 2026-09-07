@@ -103,11 +103,15 @@ private fun OnboardingContent(
     // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
     // 일어나지 않은 것처럼 보이기 때문이다.
     val needsRequest = currentPage?.permission != null && !permissionState.isGranted(currentPage.permission)
-    // 아직 받을 동의가 남아 있는 장인지. 이미 다 동의한 사용자에게는 목록이 체크된 채로 보이되
-    // 받을 것이 없으므로 마지막 장은 평범한 마무리 장이다.
+    // 아직 받을 것이 남아 있는 장인지. 이미 다 동의했고 연령까지 확인한 사용자에게는 채울 것이
+    // 없으므로 마지막 장이 평범한 마무리 장이 된다.
+    //
+    // 연령 확인도 여기에 넣는다 — 약관을 모두 동의한 계정이라도 확인이 남아 있으면 아직 채울 것이
+    // 있는 장이다. 다만 CTA 가 대신 체크해 주지는 않는다(확인하지 않은 사용자가 확인한 것으로
+    // 기록되면 이 확인을 둔 이유가 사라진다).
     val needsConsent =
         currentPage?.showsConsents == true &&
-            state.consentDocuments.any { it.termType !in state.lockedConsents }
+            (state.consentDocuments.any { it.termType !in state.lockedConsents } || !state.isAgeConfirmed)
     val termContentLauncher = rememberTermContentLauncher()
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 
@@ -115,8 +119,18 @@ private fun OnboardingContent(
         innerPadding = innerPadding,
         state = state,
         pagerState = pagerState,
-        ctaLabel = ctaLabel(currentPage, needsRequest, isLastPage, needsConsent, permissionState.locationStep),
-        isPrimaryEnabled = !state.isCompleting,
+        ctaLabel =
+            ctaLabel(
+                page = currentPage,
+                needsRequest = needsRequest,
+                isLastPage = isLastPage,
+                needsConsent = needsConsent,
+                hasConsentLoadFailed = state.hasConsentLoadFailed,
+                locationStep = permissionState.locationStep,
+            ),
+        // 연령 미확인으로 버튼을 잠그지 않는다. 눌리지 않는 회색 버튼은 왜 막혔는지 말해 주지
+        // 못한다 — 대신 버튼이 확인을 함께 채운다(문구가 `모두 동의하고 시작하기` 다).
+        isPrimaryEnabled = !state.isCompleting && !state.isConsentSubmitting,
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
@@ -124,11 +138,14 @@ private fun OnboardingContent(
         onPrimaryClick = {
             when {
                 needsRequest -> currentPage?.permission?.let(permissionState::request)
+                // 불러오지 못한 채로 끝낼 수 없다. 같은 자리에서 다시 시도한다.
+                isLastPage && state.hasConsentLoadFailed -> onIntent(OnboardingUiIntent.RetryConsentLoad)
                 isLastPage -> onIntent(OnboardingUiIntent.Complete)
                 else -> goNext()
             }
         },
         onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
+        onAgeConfirmationToggle = { onIntent(OnboardingUiIntent.AgeConfirmationToggled) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
         onSkipClick = goNext,
         onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
@@ -147,6 +164,7 @@ private fun OnboardingScreen(
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
     onConsentToggle: (TermType) -> Unit,
+    onAgeConfirmationToggle: () -> Unit,
     onOpenTerm: (TermDocument) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -169,8 +187,10 @@ private fun OnboardingScreen(
                     page = spec,
                     nickname = state.nickname,
                     isGranted = isPageGranted(spec),
+                    // 문서가 비어도(이미 다 동의했거나 catalog 가 아직 없어도) 목록을 그린다 —
+                    // 연령 확인 줄은 서버 문서와 무관하게 언제나 받아야 한다.
                     extra =
-                        if (!spec.showsConsents || state.consentDocuments.isEmpty()) {
+                        if (!spec.showsConsents) {
                             null
                         } else {
                             {
@@ -178,9 +198,11 @@ private fun OnboardingScreen(
                                     documents = state.consentDocuments,
                                     checked = state.checkedConsents,
                                     locked = state.lockedConsents,
+                                    isAgeConfirmed = state.isAgeConfirmed,
                                     isEnabled = !state.isConsentSubmitting,
                                     errorMessage = state.consentErrorMessage,
                                     onToggle = onConsentToggle,
+                                    onToggleAge = onAgeConfirmationToggle,
                                     onOpenTerm = onOpenTerm,
                                 )
                             }
@@ -244,9 +266,13 @@ private fun ctaLabel(
     needsRequest: Boolean,
     isLastPage: Boolean,
     needsConsent: Boolean,
+    hasConsentLoadFailed: Boolean,
     locationStep: LocationPermissionStep,
 ): String =
     when {
+        // 불러오지 못한 목록을 두고 `시작하기` 라고 쓰면, 눌러도 아무 일이 없는 버튼이 된다.
+        isLastPage && hasConsentLoadFailed -> "다시 시도"
+
         // 무엇을 누르는지 버튼이 말한다. `시작하기` 만으로는 동의가 함께 일어나는 줄 알 수 없다.
         needsConsent -> "모두 동의하고 시작하기"
 
@@ -312,6 +338,7 @@ private fun OnboardingScreenPreview(
             onPrimaryClick = {},
             onSkipClick = {},
             onConsentToggle = {},
+            onAgeConfirmationToggle = {},
             onOpenTerm = {},
             onBack = {},
         )

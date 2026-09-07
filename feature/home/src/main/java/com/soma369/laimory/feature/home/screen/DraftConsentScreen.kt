@@ -1,9 +1,7 @@
 package com.soma369.laimory.feature.home.screen
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,13 +15,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,14 +28,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.terms.TermDocument
-import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
@@ -57,7 +50,6 @@ import com.soma369.laimory.feature.home.state.DraftConsentUiState
 import com.soma369.laimory.feature.home.viewmodel.DraftConsentViewModel
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
-import java.time.LocalDateTime
 import com.soma369.laimory.core.ui.R as UiR
 
 @Composable
@@ -117,7 +109,7 @@ private fun DraftConsentScreen(
                 .padding(innerPadding),
     ) {
         LaimoryTopAppBar(
-            title = { Text("데이터 수집 동의") },
+            title = { Text("보낼 데이터 확인") },
             onBackClick = { onIntent(DraftConsentUiIntent.NavigateBack) },
         )
         val content = state.content
@@ -150,33 +142,6 @@ private fun DraftConsentScreen(
                 }
             }
             Spacer(modifier = Modifier.height(Spacing.extraLarge2))
-
-            // 받을 것도 확인한 것도 없으면 제목만 남아 빈 자리가 된다.
-            if (state.pendingTerms.isNotEmpty() || state.agreedTerms.isNotEmpty()) {
-                Text(
-                    text = "동의 항목",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Spacer(modifier = Modifier.height(Spacing.medium))
-                Column(verticalArrangement = Arrangement.spacedBy(TYPE_CARD_GAP)) {
-                    state.pendingTerms.forEach { document ->
-                        TermRow(
-                            document = document,
-                            checked = document.termType in state.checkedTerms,
-                            enabled = !state.isSubmitting,
-                            onToggle = { onIntent(DraftConsentUiIntent.ToggleTerm(document.termType)) },
-                            onOpenDetail = { onOpenTerm(document) },
-                        )
-                    }
-                    // 이미 동의한 것은 확인 대상이 아니다. 해제할 수 있게 두면 철회처럼 보이는데,
-                    // 서버에는 철회 API 가 없어 실제로는 아무것도 되돌아가지 않는다.
-                    state.agreedTerms.forEach { document ->
-                        AgreedTermRow(document = document, onOpenDetail = { onOpenTerm(document) })
-                    }
-                }
-                Spacer(modifier = Modifier.height(Spacing.large))
-            }
 
             Text(
                 text = "알림·사진에는 다른 사람의 메시지, 얼굴 등 제3자의 개인정보가 포함될 수 있어요. 전송 전 상세 내용을 확인해주세요.",
@@ -278,122 +243,6 @@ private fun TypeSummaryRow(
 }
 
 @Composable
-private fun TermRow(
-    document: TermDocument,
-    checked: Boolean,
-    enabled: Boolean,
-    onToggle: () -> Unit,
-    onOpenDetail: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .heightIn(min = TERM_ROW_MIN_HEIGHT)
-                    .toggleable(
-                        value = checked,
-                        enabled = enabled,
-                        role = Role.Checkbox,
-                        onValueChange = { onToggle() },
-                    ).padding(start = Spacing.medium),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.small + 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ConsentCheckCircle(checked = checked)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    // 이름은 서버가 준 제목을 그대로 쓴다. 앱이 따로 들고 있으면 실제 동의한
-                    // 문서와 화면의 이름이 갈린다.
-                    text = "[필수] ${document.title}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            IconButton(onClick = onOpenDetail) {
-                Icon(
-                    painter = painterResource(UiR.drawable.ico_default_caret_right),
-                    contentDescription = "${document.title} 전문 보기",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-/**
- * 이미 동의한 항목.
- *
- * 체크박스를 두지 않는다 — 해제할 수 있게 보이면 철회로 읽히는데, 서버에는 철회 API 가 없어
- * 실제로는 아무것도 되돌아가지 않는다. 원문을 다시 열어 볼 길만 남긴다.
- */
-@Composable
-private fun AgreedTermRow(
-    document: TermDocument,
-    onOpenDetail: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(width = 1.dp, color = MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Row(
-            modifier = Modifier.heightIn(min = TERM_ROW_MIN_HEIGHT).padding(start = Spacing.medium),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.small + 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                modifier = Modifier.weight(1f),
-                text = "${document.title} · 동의함",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            IconButton(onClick = onOpenDetail) {
-                Icon(
-                    painter = painterResource(UiR.drawable.ico_default_caret_right),
-                    contentDescription = "${document.title} 전문 보기",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ConsentCheckCircle(checked: Boolean) {
-    val background = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
-    val checkColor = if (checked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.outline
-    Box(
-        modifier =
-            Modifier
-                .size(CHECK_CIRCLE_SIZE)
-                .background(background, CircleShape)
-                .border(
-                    width = if (checked) 0.dp else 1.5.dp,
-                    color = if (checked) background else MaterialTheme.colorScheme.outline,
-                    shape = CircleShape,
-                ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "✓",
-            style = MaterialTheme.typography.labelSmall,
-            color = checkColor,
-        )
-    }
-}
-
-@Composable
 private fun SubmitArea(
     state: DraftConsentUiState,
     onIntent: (DraftConsentUiIntent) -> Unit,
@@ -422,9 +271,7 @@ private fun SubmitArea(
                     when {
                         state.isSubmitting -> "초안 생성 중…"
                         state.submitError != null -> "다시 시도"
-                        // 받을 동의가 없으면 확인 문구가 아니라 하려는 일을 말한다.
-                        state.pendingTerms.isEmpty() -> "타임라인 만들기"
-                        else -> "모두 동의 후 시작하기"
+                        else -> "타임라인 만들기"
                     },
             )
         }
@@ -520,21 +367,6 @@ internal fun previewLocationMarkers(): List<ConsentLocationMarker> =
         ),
     )
 
-private fun previewPendingTerms() =
-    listOf(
-        TermType.SENSITIVE_INFORMATION_CONSENT to "민감정보 처리 동의",
-        TermType.THIRD_PARTY_PROVISION_CONSENT to "개인정보 제3자 제공 동의",
-        TermType.CROSS_BORDER_TRANSFER_CONSENT to "개인정보 국외 이전 동의",
-    ).map { (type, title) ->
-        TermDocument(
-            termType = type,
-            version = "1.0",
-            title = title,
-            contentUrl = "https://laimory.app/terms/preview/1.0",
-            effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
-        )
-    }
-
 @Preview(name = "DraftConsent / Light", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun DraftConsentScreenPreview() {
@@ -544,8 +376,6 @@ private fun DraftConsentScreenPreview() {
             state =
                 DraftConsentUiState(
                     content = previewConsentContent(),
-                    pendingTerms = previewPendingTerms(),
-                    checkedTerms = setOf(TermType.SENSITIVE_INFORMATION_CONSENT),
                 ),
             onOpenTerm = {},
             onIntent = {},
@@ -562,9 +392,6 @@ private fun DraftConsentScreenDarkPreview() {
             state =
                 DraftConsentUiState(
                     content = previewConsentContent(),
-                    pendingTerms = previewPendingTerms().take(1),
-                    agreedTerms = previewPendingTerms().drop(1),
-                    checkedTerms = setOf(TermType.SENSITIVE_INFORMATION_CONSENT),
                 ),
             onOpenTerm = {},
             onIntent = {},

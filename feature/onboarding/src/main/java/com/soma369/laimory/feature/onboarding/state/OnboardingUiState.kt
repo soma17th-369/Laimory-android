@@ -37,6 +37,21 @@ data class OnboardingUiState(
      * 철회시킬 수는 없으므로 끄지는 못한다.
      */
     val lockedConsents: Set<TermType> = emptySet(),
+    /**
+     * 마지막 장의 `만 14세 이상입니다` 확인.
+     *
+     * 서버 catalog 항목이 아니라 앱이 받는 확인이라 [consentDocuments] 와 나눠 둔다 — 열람할
+     * 원문이 없어 `보기` 가 붙지 않고, 기록도 서버가 아니라 이 설치에 남는다.
+     */
+    val isAgeConfirmed: Boolean = false,
+    /**
+     * 필수 동의 목록을 불러오지 못했는지.
+     *
+     * 이때는 온보딩을 **완료로 치지 않는다.** 예전에는 통과시킨 뒤 초안 생성 화면이 동의를 다시
+     * 받아 주었지만, 그 화면에서 동의 목록을 걷어냈으므로 여기가 마지막 자리다. 통과시키면
+     * 사용자는 앱을 쓰다가 초안 생성에서만 막히고 이유를 알 수 없다.
+     */
+    val hasConsentLoadFailed: Boolean = false,
     val isConsentSubmitting: Boolean = false,
     val consentErrorMessage: String? = null,
 ) : UiState

@@ -124,6 +124,8 @@ class DefaultOnboardingCompletionCoordinatorTest {
             assertEquals(true, coordinator.completed.value)
             assertEquals(1, repository.recordCount)
             assertEquals(true, repository.cached)
+            // 연령 확인은 완료와 같은 쓰기에 담긴다 — 한쪽만 남으면 확인 없이 완료된 상태가 된다.
+            assertTrue(repository.ageConfirmed)
         }
 
     @Test
@@ -199,6 +201,7 @@ class DefaultOnboardingCompletionCoordinatorTest {
         private val remoteCompletion: Result<Boolean>,
         var cached: Boolean? = null,
         var pending: Boolean = false,
+        var ageConfirmed: Boolean = false,
     ) : OnboardingRepository {
         var fetchCount = 0
         var recordCount = 0
@@ -209,6 +212,13 @@ class DefaultOnboardingCompletionCoordinatorTest {
 
         override suspend fun cacheCompletion(isCompleted: Boolean) {
             cached = isCompleted
+        }
+
+        override suspend fun isAgeConfirmed(): Boolean = ageConfirmed
+
+        override suspend fun cacheCompletionWithAgeConfirmation() {
+            ageConfirmed = true
+            cached = true
         }
 
         override suspend fun recordCompletion() {

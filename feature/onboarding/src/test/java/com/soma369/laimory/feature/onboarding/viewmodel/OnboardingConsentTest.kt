@@ -98,12 +98,15 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `이미 다 동의했으면 연출 없이 곧바로 완료한다`() =
+    fun `채울 체크가 없으면 연출 없이 곧바로 완료한다`() =
         runTest(UnconfinedTestDispatcher()) {
             // 채울 체크가 없는데 기다리면 화면은 그대로인 채 버튼만 잠시 먹통이 된다.
             val coordinator = FakeTermsCoordinator(alreadyAgreed = allFour)
             val completion = FakeOnboardingCompletionCoordinator()
             val viewModel = createViewModel(coordinator, completion = completion)
+            runCurrent()
+            // 연령까지 직접 확인해 두면 버튼이 채울 것이 하나도 남지 않는다.
+            viewModel.sendIntent(OnboardingUiIntent.AgeConfirmationToggled)
             runCurrent()
 
             viewModel.sendIntent(OnboardingUiIntent.Complete)
@@ -126,14 +129,61 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `조회에 실패해도 온보딩을 막지 않는다`() =
+    fun `조회에 실패하면 온보딩을 끝낼 수 없다`() =
         runTest(UnconfinedTestDispatcher()) {
-            // 동의는 초안 생성 화면이 다시 받는다. 여기서 막아 온보딩을 못 끝내게 할 이유가 없다.
-            val viewModel = createViewModel(FakeTermsCoordinator(failure = IllegalStateException("offline")))
-
+            // 초안 생성 화면에서 동의 목록을 걷어냈으므로 여기가 마지막 자리다. 통과시키면
+            // 사용자는 앱을 쓰다가 초안 생성에서만 막히고 이유를 알 수 없다.
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel =
+                createViewModel(
+                    FakeTermsCoordinator(failure = IllegalStateException("offline")),
+                    completion = completion,
+                )
             runCurrent()
 
-            assertTrue(viewModel.state.value.consentDocuments.isEmpty())
+            assertTrue(viewModel.state.value.hasConsentLoadFailed)
+            assertFalse(viewModel.state.value.consentErrorMessage.isNullOrBlank())
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            advanceUntilIdle()
+
+            assertEquals(0, completion.markedCount)
+        }
+
+    @Test
+    fun `다시 시도해 목록을 받으면 완료할 수 있다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val coordinator = FakeTermsCoordinator(failure = IllegalStateException("offline"))
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel = createViewModel(coordinator, completion = completion)
+            runCurrent()
+
+            coordinator.recover()
+            viewModel.sendIntent(OnboardingUiIntent.RetryConsentLoad)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.hasConsentLoadFailed)
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            advanceUntilIdle()
+
+            assertEquals(1, completion.markedCount)
+        }
+
+    @Test
+    fun `catalog 가 비어 있는 것은 조회 실패가 아니다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 서버도 catalog 가 없는 단계는 강제하지 않는다(fail-open). 막을 이유가 없다.
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel = createViewModel(FakeTermsCoordinator(), completion = completion)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.hasConsentLoadFailed)
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            advanceUntilIdle()
+
+            assertEquals(1, completion.markedCount)
         }
 
     @Test
@@ -242,6 +292,54 @@ class OnboardingConsentTest {
             assertTrue(viewModel.state.value.checkedConsents.isEmpty())
         }
 
+    @Test
+    fun `시작 버튼이 연령 확인도 함께 채운다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 버튼 문구가 `모두 동의하고 시작하기` 이고 목록이 바로 위에 있다 — 누르는 행위가 곧
+            // 확인이다. 약관 항목을 채우는 방식과 같다.
+            val coordinator = FakeTermsCoordinator(alreadyAgreed = allFour)
+            val completion = FakeOnboardingCompletionCoordinator()
+            val viewModel = createViewModel(coordinator, completion = completion)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isAgeConfirmed)
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.isAgeConfirmed)
+            assertEquals(1, completion.markedCount)
+        }
+
+    @Test
+    fun `동의 기록이 실패하면 연령 확인도 되돌린다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 화면엔 체크가 남았는데 서버엔 아무것도 기록되지 않은 상태를 만들지 않는다.
+            val coordinator = FakeTermsCoordinator(pending = allFour, agreeFailure = IllegalStateException("offline"))
+            val viewModel = createViewModel(coordinator)
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.isAgeConfirmed)
+        }
+
+    @Test
+    fun `연령 확인은 다시 눌러 끌 수 있다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.AgeConfirmationToggled)
+            runCurrent()
+            assertTrue(viewModel.state.value.isAgeConfirmed)
+
+            viewModel.sendIntent(OnboardingUiIntent.AgeConfirmationToggled)
+            runCurrent()
+            assertFalse(viewModel.state.value.isAgeConfirmed)
+        }
+
     private fun createViewModel(
         coordinator: TermsAgreementCoordinator,
         displayTerms: TermsRepository = EmptyTermsRepository,
@@ -271,7 +369,7 @@ class OnboardingConsentTest {
         private val pending: List<TermDocument> = emptyList(),
         /** 이 환경 catalog 에 있으나 이미 동의를 마친 문서. */
         private val alreadyAgreed: List<TermDocument> = emptyList(),
-        private val failure: Throwable? = null,
+        private var failure: Throwable? = null,
         private val agreeFailure: Throwable? = null,
         private val revised: List<TermDocument> = emptyList(),
     ) : TermsAgreementCoordinator {
@@ -281,6 +379,11 @@ class OnboardingConsentTest {
         override val loginGate: StateFlow<TermsGateState> = MutableStateFlow(TermsGateState.Satisfied)
 
         override fun refresh() = Unit
+
+        /** 조회 실패를 걷어 다시 시도가 성공하게 만든다. */
+        fun recover() {
+            failure = null
+        }
 
         override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> {
             failure?.let { return Result.failure(it) }
@@ -335,6 +438,10 @@ class OnboardingConsentTest {
         override suspend fun cachedCompletion(): Boolean? = null
 
         override suspend fun cacheCompletion(isCompleted: Boolean) = Unit
+
+        override suspend fun isAgeConfirmed(): Boolean = false
+
+        override suspend fun cacheCompletionWithAgeConfirmation() = Unit
 
         override suspend fun recordCompletion() = Unit
 

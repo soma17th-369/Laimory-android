@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -80,7 +81,7 @@ class CalendarViewModelTest {
     fun `동기화는 표시 월과 이웃 월을 함께 조회하고 각 월 슬롯에 담는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.VERY_HAPPY)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.VERY_HAPPY)))
             val viewModel = createViewModel()
 
             viewModel.sendIntent(CalendarUiIntent.Sync)
@@ -149,7 +150,7 @@ class CalendarViewModelTest {
     fun `복귀 재동기화는 격자를 비우지 않고 표시 월을 다시 검증한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
@@ -164,7 +165,7 @@ class CalendarViewModelTest {
             assertEquals(setOf(TODAY), revalidating.recordsByDate.keys)
             assertTrue(revalidating.isStale)
 
-            revalidationGate.complete(listOf(MonthlyDailyRecord(TODAY.minusDays(1), TimelineEmotion.VERY_UNHAPPY)))
+            revalidationGate.complete(listOf(MonthlyDailyRecord(TODAY.minusDays(1), DailyRecordStatus.SAVED, TimelineEmotion.VERY_UNHAPPY)))
             advanceUntilIdle()
 
             val revalidated = viewModel.state.value.contentOf(THIS_MONTH) as MonthlyRecordsUiContent.Records
@@ -176,7 +177,7 @@ class CalendarViewModelTest {
     fun `캐시가 있는 월의 재조회 실패는 기존 내용을 유지하고 안내한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
@@ -204,7 +205,7 @@ class CalendarViewModelTest {
 
             repository.failure = null
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.NEUTRAL)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.NEUTRAL)))
             viewModel.sendIntent(CalendarUiIntent.RetryMonth(THIS_MONTH))
             advanceUntilIdle()
 
@@ -277,13 +278,13 @@ class CalendarViewModelTest {
             advanceUntilIdle()
 
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.HAPPY)))
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
             assertEquals(Emotion.CALM, viewModel.state.value.recordOf(TODAY)?.emotion)
 
             // 무효화 이전 요청이 뒤늦게 도착해도 이미 반영된 최신 결과를 덮지 않는다.
-            staleGate.complete(listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.VERY_UNHAPPY)))
+            staleGate.complete(listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.VERY_UNHAPPY)))
             advanceUntilIdle()
 
             assertEquals(Emotion.CALM, viewModel.state.value.recordOf(TODAY)?.emotion)
@@ -302,7 +303,7 @@ class CalendarViewModelTest {
             advanceUntilIdle()
 
             val neighborDate = TODAY.minusMonths(1)
-            neighborGate.complete(listOf(MonthlyDailyRecord(neighborDate, TimelineEmotion.HAPPY)))
+            neighborGate.complete(listOf(MonthlyDailyRecord(neighborDate, DailyRecordStatus.SAVED, TimelineEmotion.HAPPY)))
             advanceUntilIdle()
 
             assertEquals(THIS_MONTH.plusMonths(1), viewModel.state.value.visibleMonth)
@@ -330,7 +331,7 @@ class CalendarViewModelTest {
     fun `기록이 있는 날짜를 선택하면 단건 조회 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
@@ -346,7 +347,7 @@ class CalendarViewModelTest {
     fun `기록이 없는 날짜는 선택만 갱신하고 이동하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()
@@ -363,7 +364,7 @@ class CalendarViewModelTest {
     fun `재동기화로 선택 날짜의 기록이 사라지면 빈 날짜가 된다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.recordsByMonth =
-                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, TimelineEmotion.HAPPY)))
+                mapOf(THIS_MONTH to listOf(MonthlyDailyRecord(TODAY, DailyRecordStatus.SAVED, TimelineEmotion.HAPPY)))
             val viewModel = createViewModel()
             viewModel.sendIntent(CalendarUiIntent.Sync)
             advanceUntilIdle()

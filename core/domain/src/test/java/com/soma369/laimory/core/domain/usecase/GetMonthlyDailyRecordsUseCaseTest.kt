@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -26,8 +27,8 @@ class GetMonthlyDailyRecordsUseCaseTest {
         runBlocking {
             val records =
                 listOf(
-                    MonthlyDailyRecord(LocalDate.of(2026, 7, 1), TimelineEmotion.HAPPY),
-                    MonthlyDailyRecord(LocalDate.of(2026, 7, 9), null),
+                    MonthlyDailyRecord(LocalDate.of(2026, 7, 1), DailyRecordStatus.SAVED, TimelineEmotion.HAPPY),
+                    MonthlyDailyRecord(LocalDate.of(2026, 7, 9), DailyRecordStatus.DRAFT, null),
                 )
             val repository = FakeRepository(records = records)
             val useCase = GetMonthlyDailyRecordsUseCase(repository, RecordingMessageHelper())

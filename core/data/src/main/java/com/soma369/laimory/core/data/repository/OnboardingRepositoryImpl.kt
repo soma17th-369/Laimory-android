@@ -28,6 +28,15 @@ internal class OnboardingRepositoryImpl
             dataStore.edit { preferences -> preferences[KEY_COMPLETED] = isCompleted }
         }
 
+        override suspend fun isAgeConfirmed(): Boolean = preferences().first()[KEY_AGE_CONFIRMED] == true
+
+        override suspend fun cacheCompletionWithAgeConfirmation() {
+            dataStore.edit { preferences ->
+                preferences[KEY_AGE_CONFIRMED] = true
+                preferences[KEY_COMPLETED] = true
+            }
+        }
+
         override suspend fun recordCompletion() = remoteDataSource.recordCompletion()
 
         override suspend fun isCompletionPending(): Boolean = preferences().first()[KEY_COMPLETION_PENDING] == true
@@ -65,5 +74,6 @@ internal class OnboardingRepositoryImpl
             val KEY_COMPLETED = booleanPreferencesKey("is_completed")
             val KEY_LAST_PAGE_KEY = stringPreferencesKey("last_page_key")
             val KEY_COMPLETION_PENDING = booleanPreferencesKey("completion_pending")
+            val KEY_AGE_CONFIRMED = booleanPreferencesKey("age_confirmed")
         }
     }

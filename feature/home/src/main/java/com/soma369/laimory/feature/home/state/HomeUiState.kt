@@ -31,7 +31,13 @@ data class HomeUiState(
     val pendingPhotoIds: Set<Long> = emptySet(),
     val isPhotoLoading: Boolean = false,
     val isPhotoAccessLimited: Boolean = false,
-    val isDraftSheetVisible: Boolean = false,
+    /**
+     * 사진 접근을 거부당한 채로 시트를 연 상태.
+     *
+     * 거부됐다고 시트를 안 열면 초안 만들기를 눌렀는데 아무 일도 일어나지 않는다. 열어서
+     * 왜 비었는지 알리고, 설정으로 나가거나 사진 없이 이어 가도록 둔다.
+     */
+    val isPhotoAccessDenied: Boolean = false,
     val isPhotoSheetVisible: Boolean = false,
     val isDatePickerVisible: Boolean = false,
     val timeSheet: HomeTimeSheetState? = null,
@@ -39,6 +45,17 @@ data class HomeUiState(
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
     val pastRecords: HomePastRecordsUiState = HomePastRecordsUiState.Loading,
+    /**
+     * 이미 저장이 끝난 기록의 날짜. 날짜 피커에서 고를 수 없게 하는 데 쓴다.
+     *
+     * 서버가 그 날짜의 초안 생성을 409 `-1003` 으로 거절하므로, 고르게 두면 사진까지 다 고른 뒤
+     * 마지막에야 막힌다. **초안(DRAFT) 날짜는 여기 없다** — 서버가 이어 붙이기로 받아 주므로
+     * 다시 만들 수 있는 날이다.
+     *
+     * 피커가 보여 주는 달만 담긴다. 아직 받지 못한 달은 비어 있고, 그때는 서버 거절이 최후
+     * 방어선으로 남는다.
+     */
+    val savedRecordDates: Set<LocalDate> = emptySet(),
 ) : UiState {
     /**
      * 지금 설정으로 만들어지는 기록 창. 정책을 벗어나면 null 이라 초안 생성이 막힌다.

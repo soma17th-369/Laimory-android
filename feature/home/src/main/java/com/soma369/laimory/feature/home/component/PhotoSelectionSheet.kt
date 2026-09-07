@@ -54,6 +54,7 @@ import java.time.ZoneId
 internal fun PhotoSelectionSheet(
     state: HomeUiState,
     onIntent: (HomeUiIntent) -> Unit,
+    onOpenAppSettings: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val zone = remember { ZoneId.systemDefault() }
@@ -86,11 +87,16 @@ internal fun PhotoSelectionSheet(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = "${state.timeRangeLabel()} 사이에 모은 사진만 표시해요.",
+                    text =
+                        if (state.isPhotoAccessDenied) {
+                            "사진 접근을 허용하지 않아 사진을 불러올 수 없어요."
+                        } else {
+                            "${state.timeRangeLabel()} 사이에 모은 사진만 표시해요."
+                        },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (state.isPhotoAccessLimited) {
+                if (state.isPhotoAccessLimited && !state.isPhotoAccessDenied) {
                     Column {
                         Text(
                             text = "기기에서 허용한 사진만 표시하고 있어요.",
@@ -106,7 +112,9 @@ internal fun PhotoSelectionSheet(
                 }
             }
 
-            if (state.isPhotoLoading) {
+            if (state.isPhotoAccessDenied) {
+                DeniedPhotoAccess(onOpenAppSettings = onOpenAppSettings)
+            } else if (state.isPhotoLoading) {
                 PhotoSelectionLoading()
             } else if (state.availablePhotos.isEmpty()) {
                 EmptyPhotoSelection()
@@ -160,17 +168,23 @@ internal fun PhotoSelectionSheet(
                 }
             }
 
+            // 버튼은 하나이고 **문구가 상태를 말한다.** 0장일 때 `0장으로 만들기` 를 잠가 두면
+            // 만들 수 있다고 쓰인 버튼이 눌리지 않고, 왜 막혔는지도 알려 주지 못한다. 사진 없이
+            // 만드는 것은 정상 경로이므로 문구로 분명히 하고 그대로 진행시킨다.
+            val hasSelection = state.pendingPhotoIds.isNotEmpty()
             Button(
-                onClick = { onIntent(HomeUiIntent.ConfirmPhotoSelection) },
+                onClick = {
+                    onIntent(
+                        if (hasSelection) HomeUiIntent.ConfirmPhotoSelection else HomeUiIntent.ContinueWithoutPhotos,
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !state.isPhotoLoading,
+                // M3 기본값은 모서리를 완전히 둥글리므로(stadium) 우리 버튼보다 훨씬 둥글다.
+                shape = MaterialTheme.shapes.large,
             ) {
                 Text(
-                    if (state.availablePhotos.isEmpty()) {
-                        "확인"
-                    } else {
-                        "${state.pendingPhotoIds.size}장 선택 완료"
-                    },
+                    if (hasSelection) "${state.pendingPhotoIds.size}장으로 초안 만들기" else "사진 없이 초안 만들기",
                 )
             }
             Spacer(modifier = Modifier.height(Spacing.large))
@@ -219,6 +233,48 @@ private fun PhotoDateHeader(
         }
         TextButton(onClick = onToggleAll) {
             Text(if (selectedCount == photoCount) "이 날짜 해제" else "이 날짜 전체 선택")
+        }
+    }
+}
+
+/**
+ * 사진 접근을 거부당했을 때의 안내.
+ *
+ * 이 자리를 비워 두면 초안 만들기를 눌렀는데 빈 시트가 뜨는 것으로 보인다 — 무엇이 막혔는지와
+ * 어디서 풀 수 있는지를 함께 둔다.
+ */
+@Composable
+private fun DeniedPhotoAccess(onOpenAppSettings: () -> Unit) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = Spacing.extraLarge2),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.medium),
+    ) {
+        Surface(
+            modifier = Modifier.size(56.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.surface),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(R.drawable.ico_timeline_photo),
+                    contentDescription = null,
+                    modifier = Modifier.size(36.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            text = "설정에서 사진 접근을 허용하면 그날 찍은 사진을 모아서 보여드려요.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = onOpenAppSettings, shape = MaterialTheme.shapes.large) {
+            Text("설정 열기")
         }
     }
 }

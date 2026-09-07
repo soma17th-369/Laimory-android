@@ -18,6 +18,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
@@ -39,6 +40,7 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
+import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
@@ -184,17 +186,72 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `제출 결과가 없는 복귀는 시트 상태를 바꾸지 않는다`() =
+    fun `저장된 날짜만 피커에서 고를 수 없게 모은다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            // 초안 날짜는 서버가 이어 붙이기로 받아 주므로 막지 않는다. 저장된 날짜만 409 다.
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val saved = month.atDay(3)
+            val draft = month.atDay(4)
+            recordRepository.monthlyRecords =
+                mapOf(
+                    month to
+                        listOf(
+                            MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null),
+                            MonthlyDailyRecord(draft, DailyRecordStatus.DRAFT, null),
+                        ),
+                )
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            assertEquals(setOf(saved), viewModel.state.value.savedRecordDates)
+        }
+
+    @Test
+    fun `같은 달을 두 번 요청해도 한 번만 조회한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            assertEquals(1, recordRepository.monthlyCallCount)
+        }
+
+    @Test
+    fun `피커를 다시 열면 받아 둔 달을 다시 조회한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 이 화면에서 만든 초안을 저장하고 돌아오면 그 날짜가 저장됨으로 바뀐다.
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            assertEquals(2, recordRepository.monthlyCallCount)
+        }
+
+    @Test
+    fun `제출 결과가 없는 복귀는 화면 상태를 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
             runCurrent()
 
-            assertTrue(viewModel.state.value.isDraftSheetVisible)
+            val state = viewModel.state.value
+            assertEquals(DraftCreationStatus.IDLE, state.draftStatus)
+            assertFalse(state.isPhotoSheetVisible)
         }
 
     @Test
@@ -202,8 +259,6 @@ class HomeViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("first"))
             val viewModel = createViewModel()
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
             runCurrent()
             sessionStore.markPhotoReselectionNeeded()
             val effects = async { viewModel.sideEffect.take(2).toList() }
@@ -213,7 +268,6 @@ class HomeViewModelTest {
             runCurrent()
 
             val state = viewModel.state.value
-            assertFalse(state.isDraftSheetVisible)
             assertEquals(DraftCreationStatus.FAILED, state.draftStatus)
             assertEquals(
                 listOf(
@@ -269,16 +323,99 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `사진 권한을 거절하면 선택 화면을 열거나 MediaStore를 조회하지 않는다`() =
+    fun `사진 권한을 거절하면 거부 상태로 시트를 열되 MediaStore를 조회하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            // 시트를 안 열면 초안 만들기를 눌렀는데 아무 일도 일어나지 않는 것으로 보인다.
             val viewModel = createViewModel()
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
             runCurrent()
 
-            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            val state = viewModel.state.value
+            assertTrue(state.isPhotoSheetVisible)
+            assertTrue(state.isPhotoAccessDenied)
+            assertFalse(state.isPhotoLoading)
             assertTrue(photoSource.requestedWindows.isEmpty())
+        }
+
+    @Test
+    fun `설정에서 권한을 허용하고 돌아오면 거부 상태가 풀린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 복귀는 `ResolvePhotoAccess` 가 아니라 `RefreshPhotos` 로 들어온다. 여기서 풀지
+            // 않으면 사진을 불러오고도 시트가 계속 거부 안내를 띄운다.
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoAccessDenied)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isPhotoAccessDenied)
+            assertEquals(1, viewModel.state.value.availablePhotos.size)
+        }
+
+    @Test
+    fun `저장된 날짜는 확정해도 기록 날짜로 반영되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 조회가 끝나기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면 표시와
+            // 별개로 경계에서 막지 않으면 서버 409 를 받는 날짜로 진행한다.
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val saved = month.atDay(3)
+            recordRepository.monthlyRecords =
+                mapOf(month to listOf(MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null)))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(saved))
+            runCurrent()
+
+            assertEquals(LocalDate.now(ZoneId.systemDefault()), viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `사진 없이 계속하면 선택을 비운 채 동의 화면으로 이동한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ContinueWithoutPhotos)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertFalse(state.isPhotoSheetVisible)
+            assertEquals(emptySet<Long>(), state.selectedPhotoIds)
+            assertEquals(listOf<Page>(DraftConsentPage), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `사진 선택을 확정하면 곧바로 동의 화면으로 이어진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 확정과 생성 사이에 홈으로 돌아가는 단계를 두지 않는다 — 만들기 흐름의 한 걸음이다.
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            assertEquals(setOf(1L), viewModel.state.value.selectedPhotoIds)
+            assertEquals(listOf<Page>(DraftConsentPage), navigationHelper.destinations)
         }
 
     @Test
@@ -402,11 +539,10 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
-            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
             photoSource.unavailableIds = setOf(1L)
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
 
             assertNull(sessionStore.preparation.value)
@@ -866,14 +1002,15 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `기본 날짜로 생성 설정을 열어도 미리 수집한다`() =
+    fun `기본 날짜로 사진 선택을 열어도 미리 수집한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 오늘을 그대로 쓰면 날짜 확정을 거치지 않아 선행 수집 기회가 없다.
+            // 오늘을 그대로 쓰면 날짜 확정을 거치지 않아 선행 수집 기회가 없다. 사진을 고르는
+            // 동안 수집이 돌아야 확인 화면에서 기다리는 시간이 짧다.
             val viewModel = createViewModel()
             runCurrent()
             val before = autoCollectionCoordinator.refreshCount
 
-            viewModel.sendIntent(HomeUiIntent.OpenDraftSheet)
+            viewModel.sendIntent(HomeUiIntent.OpenPhotoSheet)
             runCurrent()
 
             assertTrue(autoCollectionCoordinator.refreshCount > before)
@@ -930,6 +1067,11 @@ class HomeViewModelTest {
                 ),
             getDailyRecordsUseCase =
                 GetDailyRecordsUseCase(
+                    repository = recordRepository,
+                    messageHelper = NoOpMessageHelper,
+                ),
+            getMonthlyDailyRecordsUseCase =
+                GetMonthlyDailyRecordsUseCase(
                     repository = recordRepository,
                     messageHelper = NoOpMessageHelper,
                 ),
@@ -1167,7 +1309,13 @@ class HomeViewModelTest {
             emotion: TimelineEmotion,
         ) = error("사용하지 않음")
 
-        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("사용하지 않음")
+        var monthlyRecords: Map<YearMonth, List<MonthlyDailyRecord>> = emptyMap()
+        var monthlyCallCount = 0
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> {
+            monthlyCallCount++
+            return monthlyRecords[month].orEmpty()
+        }
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }

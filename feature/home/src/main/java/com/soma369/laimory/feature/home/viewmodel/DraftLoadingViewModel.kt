@@ -158,9 +158,9 @@ class DraftLoadingViewModel
 
                 is DraftTaskTrackingState.LongRunning ->
                     DraftLoadingNotice(
-                        message = "생각보다 오래 걸리고 있어요. 계속 기다리거나 새로 만들 수 있어요.",
+                        message = "생각보다 오래 걸리고 있어요. 계속 기다리거나 다시 만들 수 있어요.",
                         primaryAction = DraftLoadingAction("계속 기다리기", DraftLoadingUiIntent.ContinueWaiting),
-                        secondaryAction = DraftLoadingAction("새로 만들기", DraftLoadingUiIntent.Discard),
+                        secondaryAction = DraftLoadingAction("다시 만들기", DraftLoadingUiIntent.Discard),
                     )
 
                 is DraftTaskTrackingState.RetryableError ->
@@ -173,14 +173,14 @@ class DraftLoadingViewModel
                 is DraftTaskTrackingState.Failed ->
                     DraftLoadingNotice(
                         message = "초안을 만들지 못했어요. 다시 시도해주세요.",
-                        primaryAction = DraftLoadingAction("새로 만들기", DraftLoadingUiIntent.Discard),
+                        primaryAction = DraftLoadingAction("다시 만들기", DraftLoadingUiIntent.Discard),
                         secondaryAction = null,
                     )
 
                 is DraftTaskTrackingState.Unavailable ->
                     DraftLoadingNotice(
-                        message = "생성 요청을 찾지 못했어요. 새로 만들어주세요.",
-                        primaryAction = DraftLoadingAction("새로 만들기", DraftLoadingUiIntent.Discard),
+                        message = "생성 요청을 찾지 못했어요. 다시 만들어주세요.",
+                        primaryAction = DraftLoadingAction("다시 만들기", DraftLoadingUiIntent.Discard),
                         secondaryAction = null,
                     )
             }

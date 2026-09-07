@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.home.state
 import com.soma369.laimory.core.ui.base.UiIntent
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 
 sealed interface HomeUiIntent : UiIntent {
     /** 화면 진입·복귀. 아직 못 받은 닉네임을 다시 요청한다. */
@@ -10,10 +11,12 @@ sealed interface HomeUiIntent : UiIntent {
 
     data object NavigateToCollection : HomeUiIntent
 
-    data object OpenDraftSheet : HomeUiIntent
-
-    data object DismissDraftSheet : HomeUiIntent
-
+    /**
+     * 초안 만들기의 시작. 사진 선택 시트를 연다.
+     *
+     * 사진은 고른 것만 초안에 실리므로 만들기 흐름의 첫 단계다 — 홈에 따로 떨어져 있으면
+     * 옆길처럼 보여 사진 없는 초안이 만들어진다.
+     */
     data object OpenPhotoSheet : HomeUiIntent
 
     data object RequestAdditionalPhotoAccess : HomeUiIntent
@@ -40,11 +43,30 @@ sealed interface HomeUiIntent : UiIntent {
 
     data object ToggleAllPhotos : HomeUiIntent
 
+    /** 고른 사진으로 확정하고 데이터 확인 화면으로 넘어간다. */
     data object ConfirmPhotoSelection : HomeUiIntent
+
+    /**
+     * 사진 없이 이어서 만든다.
+     *
+     * 0장 선택 후 확인과 나누는 이유는 의사가 다르기 때문이다 — 아무것도 고르지 않은 확인이
+     * 실수인지 의도인지 구분되지 않는다.
+     */
+    data object ContinueWithoutPhotos : HomeUiIntent
 
     data object ShowDatePicker : HomeUiIntent
 
     data object DismissDatePicker : HomeUiIntent
+
+    /**
+     * 날짜 피커가 보여 주는 달의 기록 상태를 받아 온다.
+     *
+     * 피커를 열 때와 달을 넘길 때마다 그 달을 요청한다 — 어느 날짜가 이미 저장됐는지 알아야
+     * 고를 수 없게 만들 수 있다. 월별 경량 조회라 달마다 불러도 부담이 적다.
+     */
+    data class LoadMonthlyRecords(
+        val month: YearMonth,
+    ) : HomeUiIntent
 
     data class SelectDate(
         val date: LocalDate,

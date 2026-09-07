@@ -250,10 +250,10 @@ private fun previewMonths(): Map<YearMonth, MonthlyRecordsUiContent> {
     val records =
         emotions.associate { (day, emotion) ->
             val date = LocalDate.of(2026, 5, day)
-            date to CalendarRecordUiModel(recordDate = date, emotion = emotion)
+            date to CalendarRecordUiModel(recordDate = date, emotion = emotion, isDraft = false)
         } +
             LocalDate.of(2026, 5, 10).let { date ->
-                date to CalendarRecordUiModel(recordDate = date, emotion = null)
+                date to CalendarRecordUiModel(recordDate = date, emotion = null, isDraft = true)
             }
     return mapOf(PREVIEW_MONTH to MonthlyRecordsUiContent.Records(records))
 }

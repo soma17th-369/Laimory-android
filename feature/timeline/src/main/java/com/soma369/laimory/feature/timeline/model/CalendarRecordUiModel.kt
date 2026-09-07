@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.model
 
 import androidx.compose.runtime.Immutable
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.Emotion
@@ -17,6 +18,16 @@ data class CalendarRecordUiModel(
     val recordDate: LocalDate,
     /** 서버 감정을 표시 팔레트로 옮긴 값. 감정이 없거나 미지 literal 이면 null(중립 표시). */
     val emotion: Emotion?,
+    /**
+     * 아직 작성 중인 초안인지.
+     *
+     * 서버 `status` 가 `DRAFT` 일 때만 참이다. **상태를 모르면(필드 누락·미지 literal) 거짓**이다 —
+     * 모르는 값을 초안으로 읽으면 이미 있는 기록 위에 새 초안을 만들려 들게 된다.
+     *
+     * **아직 화면에 그리지 않는다.** 초안/저장 구분 표시는 시안이 정해진 뒤에 붙인다 — 서버에서
+     * 여기까지 오는 배선만 먼저 세워 둔다.
+     */
+    val isDraft: Boolean,
 )
 
 /**
@@ -31,5 +42,6 @@ internal fun List<MonthlyDailyRecord>.toCalendarRecordsByDate(): Map<LocalDate, 
             CalendarRecordUiModel(
                 recordDate = record.recordDate,
                 emotion = record.emotion?.toUiEmotionOrNull(),
+                isDraft = record.status == DailyRecordStatus.DRAFT,
             )
     }

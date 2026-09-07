@@ -1,8 +1,6 @@
 package com.soma369.laimory.feature.home.state
 
 import androidx.compose.runtime.Immutable
-import com.soma369.laimory.core.domain.model.terms.TermDocument
-import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.base.UiState
 
 /**
@@ -15,16 +13,6 @@ import com.soma369.laimory.core.ui.base.UiState
 @Immutable
 data class DraftConsentUiState(
     val content: DraftConsentUiContent? = null,
-    /**
-     * 아직 동의가 없거나 개정으로 버전이 어긋난 문서. **기본은 모두 해제**다.
-     *
-     * 정본은 서버 이력이다. 이미 동의한 것은 여기 오지 않는다 — 서버에 철회 API 가 없어
-     * 화면에서 해제해도 실제로 철회되지 않으므로, 되돌릴 수 없는 것을 되돌릴 수 있게 보이지 않는다.
-     */
-    val pendingTerms: List<TermDocument> = emptyList(),
-    /** 이미 동의한 문서. 확인은 끝났고 원문을 다시 열어 볼 길만 남긴다. */
-    val agreedTerms: List<TermDocument> = emptyList(),
-    val checkedTerms: Set<TermType> = emptySet(),
     /** 현재 생성 시도에서 사용자가 전송에서 제외한 항목의 rawId. 스냅샷 항목의 부분집합이다. */
     val excludedRawIds: Set<String> = emptySet(),
     val isSubmitting: Boolean = false,
@@ -35,10 +23,6 @@ data class DraftConsentUiState(
      */
     val isMapRenderAllowed: Boolean = false,
 ) : UiState {
-    /** 남은 필수 동의를 전부 확인했는지. 받을 것이 없으면 이미 충족이다. */
-    val isAllTermsChecked: Boolean
-        get() = pendingTerms.all { it.termType in checkedTerms }
-
     /** 제외를 반영한 실제 전송 예정 건수. */
     val includedTotal: Int
         get() = (content?.sentTotal ?: 0) - excludedRawIds.size
@@ -61,7 +45,12 @@ data class DraftConsentUiState(
         return summary.sections.sumOf { section -> section.items.count { it.key in excludedRawIds } }
     }
 
-    /** 필수 동의를 모두 완료하고 전송할 항목이 1건 이상 남아 있어야 생성 CTA 가 활성화된다. */
+    /**
+     * 전송할 항목이 1건 이상 남아 있어야 생성 CTA 가 활성화된다.
+     *
+     * 필수 동의는 여기서 확인하지 않는다 — 온보딩이 받지 못하면 완료로 치지 않으므로 정상
+     * 경로에는 남은 동의가 없고, 개정·구버전은 서버가 403 `-3001` 로 알려 준다.
+     */
     val canSubmit: Boolean
-        get() = content != null && isAllTermsChecked && !isSubmitting && includedTotal > 0
+        get() = content != null && !isSubmitting && includedTotal > 0
 }

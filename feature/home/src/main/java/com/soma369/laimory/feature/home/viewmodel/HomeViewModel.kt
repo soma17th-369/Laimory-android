@@ -8,16 +8,19 @@ import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
+import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
@@ -47,6 +50,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -57,6 +61,7 @@ class HomeViewModel
         private val observeSourceItemsUseCase: ObserveSourceItemsUseCase,
         private val prepareTimelineDraftSelectionUseCase: PrepareTimelineDraftSelectionUseCase,
         private val getDailyRecordsUseCase: GetDailyRecordsUseCase,
+        private val getMonthlyDailyRecordsUseCase: GetMonthlyDailyRecordsUseCase,
         private val getPhotosInWindowUseCase: GetPhotosInWindowUseCase,
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftConsentSessionStore: DraftConsentSessionStore,
@@ -76,6 +81,10 @@ class HomeViewModel
         ) {
         private val zone: ZoneId = ZoneId.systemDefault()
         private var sourceItems: List<SourceItem> = emptyList()
+
+        /** 날짜 피커가 이미 받아 온 달. 같은 달을 두 번 부르지 않는다. */
+        private val loadedRecordMonths = mutableSetOf<YearMonth>()
+
         private var photoCandidates: List<PhotoCandidate> = emptyList()
         private var photoAccessGranted = false
         private var photoCandidatesJob: Job? = null
@@ -115,21 +124,23 @@ class HomeViewModel
                 // 버튼만 숨기지 않고 호출 경계에서도 막는다 — release 에는 라우트 자체가 없다.
                 HomeUiIntent.NavigateToCollection ->
                     if (state.value.isCollectionLabAccessible) navigationHelper.navigateTo(CollectionPage) else Unit
-                HomeUiIntent.OpenDraftSheet -> openDraftSheet()
-                HomeUiIntent.DismissDraftSheet -> updateState { copy(isDraftSheetVisible = false) }
-                HomeUiIntent.OpenPhotoSheet -> requestPhotoSheet()
+                HomeUiIntent.OpenPhotoSheet -> startPhotoSelection()
                 HomeUiIntent.RequestAdditionalPhotoAccess ->
                     sendEffect(HomeUiSideEffect.RequestPhotoAccess(force = true))
                 is HomeUiIntent.ResolvePhotoAccess -> resolvePhotoAccess(intent.granted, intent.limited)
                 is HomeUiIntent.RefreshPhotos -> refreshPhotos(intent.hasAccess, intent.limited)
                 HomeUiIntent.DismissPhotoSheet ->
-                    updateState { copy(isPhotoSheetVisible = false, pendingPhotoIds = emptySet()) }
+                    updateState {
+                        copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet())
+                    }
                 is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
                 is HomeUiIntent.TogglePhotoDate -> togglePhotoDate(intent.date)
                 HomeUiIntent.ToggleAllPhotos -> toggleAllPhotos()
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
-                HomeUiIntent.ShowDatePicker -> updateState { copy(isDatePickerVisible = true) }
+                HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
+                HomeUiIntent.ShowDatePicker -> showDatePicker()
                 HomeUiIntent.DismissDatePicker -> updateState { copy(isDatePickerVisible = false) }
+                is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
                 is HomeUiIntent.SelectDate -> selectDate(intent.date)
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
                 is HomeUiIntent.ExpandTimeField ->
@@ -175,12 +186,6 @@ class HomeViewModel
                 }
             }
 
-        private fun openDraftSheet() {
-            updateState { copy(isDraftSheetVisible = true) }
-            // 기본 날짜(오늘)를 그대로 쓰면 날짜 확정을 거치지 않으므로 여기서도 선행 수집을 건다.
-            startAutoCollectionAhead()
-        }
-
         /**
          * 최종 생성 전에 미리 수집을 시작한다. 결과를 기다리지 않는다.
          *
@@ -191,8 +196,15 @@ class HomeViewModel
             safeLaunch(onError = { }) { autoCollectionCoordinator.refresh() }
         }
 
-        private fun requestPhotoSheet() {
+        /**
+         * 초안 만들기의 시작. 사진 선택 시트를 연다.
+         *
+         * 기본 날짜(오늘)를 그대로 쓰면 날짜 확정을 거치지 않으므로 여기서 선행 수집을 건다 —
+         * 사진을 고르는 동안 수집이 돌아, 확인 화면에서 기다리는 시간이 짧아진다.
+         */
+        private fun startPhotoSelection() {
             if (state.value.draftStatus.isInputLocked) return
+            startAutoCollectionAhead()
             sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
 
@@ -202,12 +214,22 @@ class HomeViewModel
         ) {
             photoAccessGranted = granted
             if (!granted) {
-                sendEffect(HomeUiSideEffect.ShowSnackbar("사진을 선택하려면 사진 접근 권한이 필요해요."))
+                // 거부됐다고 시트를 안 열면 초안 만들기를 눌렀는데 아무 일도 일어나지 않는다.
+                // 열어서 왜 비었는지 알리고 설정으로 나가거나 사진 없이 이어 가게 둔다.
+                updateState {
+                    copy(
+                        isPhotoSheetVisible = true,
+                        isPhotoAccessDenied = true,
+                        isPhotoLoading = false,
+                        pendingPhotoIds = emptySet(),
+                    )
+                }
                 return
             }
             updateState {
                 copy(
                     isPhotoSheetVisible = true,
+                    isPhotoAccessDenied = false,
                     pendingPhotoIds = selectedPhotoIds,
                     isPhotoLoading = true,
                     isPhotoAccessLimited = limited,
@@ -225,7 +247,10 @@ class HomeViewModel
                 clearPhotoCandidates()
                 return
             }
-            updateState { copy(isPhotoAccessLimited = limited) }
+            // 거부 안내의 `설정 열기` 로 나갔다 허용하고 돌아오는 경로다. 복귀는
+            // `ResolvePhotoAccess` 가 아니라 이 갱신으로 들어오므로, 여기서 풀지 않으면 사진을
+            // 불러오고도 시트가 계속 거부 안내를 띄운다.
+            updateState { copy(isPhotoAccessLimited = limited, isPhotoAccessDenied = false) }
             loadPhotoCandidates(force = true)
         }
 
@@ -282,23 +307,72 @@ class HomeViewModel
             if (idsToAdd.size < datePhotoIds.count { it !in current.pendingPhotoIds }) showPhotoLimitMessage()
         }
 
-        private fun confirmPhotoSelection() {
+        /** 고른 사진으로 확정하고 곧장 데이터 확인으로 넘어간다. */
+        private fun confirmPhotoSelection() = closePhotoSheetAndPrepare { pendingPhotoIds }
+
+        /** 사진 없이 이어 간다. 이전에 고른 것이 있어도 이번 초안에는 싣지 않는다. */
+        private fun continueWithoutPhotos() = closePhotoSheetAndPrepare { emptySet() }
+
+        private fun closePhotoSheetAndPrepare(selected: HomeUiState.() -> Set<Long>) {
             if (state.value.draftStatus.isInputLocked) return
             preparedPhotoCache = null
             updateState {
                 copy(
-                    selectedPhotoIds = pendingPhotoIds,
+                    selectedPhotoIds = selected(),
                     pendingPhotoIds = emptySet(),
                     isPhotoSheetVisible = false,
+                    isPhotoAccessDenied = false,
                     draftStatus = DraftCreationStatus.IDLE,
                     draftRetryMode = null,
                     draftMessage = null,
                 ).refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
+            prepareDraftConsent()
+        }
+
+        /**
+         * 날짜 피커를 연다.
+         *
+         * 받아 둔 달을 비워 다시 조회하게 한다 — 이 화면에서 초안을 만들어 저장하고 돌아오면
+         * 그 날짜가 저장됨으로 바뀌는데, 한 번 받은 값을 계속 쓰면 고를 수 있는 날로 남는다.
+         * 표시하던 날짜는 지우지 않는다(다시 받는 사이 비었다 차면 격자가 깜빡인다).
+         */
+        private fun showDatePicker() {
+            loadedRecordMonths.clear()
+            updateState { copy(isDatePickerVisible = true) }
+        }
+
+        /**
+         * 피커가 보여 주는 달의 기록 상태를 받는다.
+         *
+         * 실패는 조용히 넘긴다 — 못 받으면 그 달은 고를 수 있는 채로 남고, 서버가 409 로 막는
+         * 최후 방어선이 그대로 있다. 여기서 오류를 띄우면 날짜를 고르려던 흐름만 끊긴다.
+         */
+        private fun loadMonthlyRecords(month: YearMonth) {
+            if (!loadedRecordMonths.add(month)) return
+            safeLaunch(onError = { loadedRecordMonths.remove(month) }) {
+                getMonthlyDailyRecordsUseCase(month)
+                    .onSuccess { records ->
+                        val saved =
+                            records
+                                .filter { it.status == DailyRecordStatus.SAVED }
+                                .map(MonthlyDailyRecord::recordDate)
+                        updateState {
+                            // 그 달의 이전 결과를 걷어내고 다시 채운다 — 기록이 지워졌을 수도 있다.
+                            copy(
+                                savedRecordDates =
+                                    savedRecordDates.filterNotTo(mutableSetOf()) { YearMonth.from(it) == month } + saved,
+                            )
+                        }
+                    }.onFailure { loadedRecordMonths.remove(month) }
+            }
         }
 
         private fun selectDate(date: LocalDate) {
             if (state.value.draftStatus.isDateLocked) return
+            // 피커가 회색으로 만들기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면
+            // 표시와 별개로 경계에서 한 번 더 막는다 — 서버가 409 로 거절할 날짜다.
+            if (date in state.value.savedRecordDates) return
             hasUserSelectedDate = true
             // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
             startAutoCollectionAhead()
@@ -463,7 +537,6 @@ class HomeViewModel
                         draftStatus = DraftCreationStatus.FAILED,
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
                         draftMessage = message,
-                        isDraftSheetVisible = false,
                     )
                 }
                 sendEffect(HomeUiSideEffect.ShowSnackbar(message))
@@ -509,7 +582,6 @@ class HomeViewModel
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
                     draftMessage = message,
-                    isDraftSheetVisible = false,
                     isPhotoSheetVisible = true,
                 ).refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
@@ -524,7 +596,6 @@ class HomeViewModel
                         draftStatus = DraftCreationStatus.FAILED,
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
                         draftMessage = message,
-                        isDraftSheetVisible = false,
                         isPhotoSheetVisible = true,
                         pendingPhotoIds = selectedPhotoIds,
                     )
@@ -703,7 +774,7 @@ class HomeViewModel
                         draftRetryMode = null,
                         draftMessage =
                             "초안 생성 시작 후 ${trackingState.elapsedSeconds / 60}분이 지났어요. " +
-                                "계속 기다리거나 새로 만들 수 있어요.",
+                                "계속 기다리거나 다시 만들 수 있어요.",
                     )
 
                 is DraftTaskTrackingState.Success ->
@@ -711,7 +782,6 @@ class HomeViewModel
                         draftStatus = DraftCreationStatus.SUCCESS,
                         draftRetryMode = null,
                         draftMessage = "초안이 준비됐어요.",
-                        isDraftSheetVisible = false,
                     )
 
                 is DraftTaskTrackingState.Failed ->
@@ -734,8 +804,8 @@ class HomeViewModel
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
                         draftMessage =
                             when (trackingState.reason) {
-                                DraftTaskUnavailableReason.TASK -> "초안 작업 정보를 찾을 수 없어요. 새로 만들어주세요."
-                                DraftTaskUnavailableReason.RESULT -> "완료된 초안 결과를 찾을 수 없어요. 새로 만들어주세요."
+                                DraftTaskUnavailableReason.TASK -> "초안 작업 정보를 찾을 수 없어요. 다시 만들어주세요."
+                                DraftTaskUnavailableReason.RESULT -> "완료된 초안 결과를 찾을 수 없어요. 다시 만들어주세요."
                             },
                     )
             }

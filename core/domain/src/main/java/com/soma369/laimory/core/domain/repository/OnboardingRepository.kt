@@ -17,6 +17,24 @@ interface OnboardingRepository {
 
     suspend fun cacheCompletion(isCompleted: Boolean)
 
+    /**
+     * 사용자가 만 14세 이상임을 확인했는지.
+     *
+     * 서버 약관 catalog 의 항목이 아니라 이 설치가 들고 있는 값이다 — 열람할 원문이 없는 단순
+     * 확인이라 서버 단계 정의(`TermStage`)에 끼워 넣으면 그 축이 흐려진다. 나중에 동의 이력이
+     * 필요해지면 화면은 그대로 두고 출처만 catalog 로 옮긴다.
+     */
+    suspend fun isAgeConfirmed(): Boolean
+
+    /**
+     * 완료 캐시와 연령 확인을 **한 번의 쓰기**로 남긴다.
+     *
+     * 연령 확인 없이는 온보딩을 끝낼 수 없으므로 둘은 항상 같이 참이 된다. 따로 쓰면 그 사이에
+     * 앱이 죽었을 때 **확인 없이 완료된 상태**가 남고, 나중에 연령 확인을 루트 게이트로 쓰려 할 때
+     * 그 사용자만 판정이 갈린다.
+     */
+    suspend fun cacheCompletionWithAgeConfirmation()
+
     /** 서버에 완료를 기록한다. 멱등이라 재시도가 안전하다. */
     suspend fun recordCompletion()
 
