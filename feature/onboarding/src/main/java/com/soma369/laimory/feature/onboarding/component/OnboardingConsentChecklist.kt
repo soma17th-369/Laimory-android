@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -83,7 +82,8 @@ internal fun OnboardingConsentChecklist(
                     // 읽으려다 동의가 켜진다.
                     TextButton(
                         onClick = { onOpenTerm(document) },
-                        modifier = Modifier.height(CHECKLIST_ROW_MIN_HEIGHT),
+                        // 행이 높이를 정하므로 버튼은 그 안에서 가운데 정렬만 하면 된다.
+                        modifier = Modifier.height(CHECKLIST_ROW_HEIGHT),
                         enabled = isEnabled,
                         contentPadding = PaddingValues(horizontal = Spacing.small),
                     ) {
@@ -121,16 +121,16 @@ private fun ChecklistRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                // 모든 줄이 같은 높이를 갖게 행이 직접 잡는다. 버튼이 있는 줄만 그 최소 높이에
-                // 끌려 올라가면, 한 목록 안에서 줄 간격이 들쭉날쭉해진다.
-                .heightIn(min = CHECKLIST_ROW_MIN_HEIGHT)
+                // 모든 줄이 **같은 높이로 고정**된다. 최소 높이로 두면 `보기` 버튼이 있는 줄만
+                // 그 크기에 끌려 올라가 한 목록 안에서 줄 간격이 들쭉날쭉해진다.
+                .height(CHECKLIST_ROW_HEIGHT)
                 // 글자까지 터치 영역에 넣는다. 체크박스만 누르게 하면 눌러야 할 곳이 너무 작다.
                 .toggleable(
                     value = isChecked,
                     enabled = isEnabled && isToggleable,
                     role = Role.Checkbox,
                     onValueChange = { onToggle() },
-                ).padding(vertical = CONSENT_ROW_VERTICAL_PADDING),
+                ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
@@ -160,19 +160,10 @@ private const val AGE_CONFIRMATION_LABEL = "[필수] 만 14세 이상입니다"
 /**
  * 목록 한 줄의 높이.
  *
- * `보기` 버튼이 있는 줄과 없는 줄이 같은 높이여야 한다. 버튼의 최소 크기에 맡기면 버튼이 있는
- * 줄만 높아져 연령 확인 줄의 간격이 다르게 보인다.
+ * **최소가 아니라 고정이다.** `보기` 버튼이 있는 줄과 없는 줄이 같은 높이여야 하는데, 최소 높이로
+ * 두면 버튼이 있는 줄만 버튼 크기에 끌려 올라가 간격이 어긋난다. 터치 영역으로도 넉넉한 값이다.
  */
-private val CHECKLIST_ROW_MIN_HEIGHT = ButtonDefaults.MinHeight
-
-/**
- * 동의 한 줄의 상하 여백.
- *
- * 마지막 장은 이미지·설명·동의 여러 줄이 한 화면에 들어가야 한다. 이 목록은 읽을거리가 아니라
- * 확인하고 넘기는 줄이라 본문만큼 클 이유가 없다. 다만 터치 영역은 행 전체가 토글이라
- * 여백을 줄여도 누를 곳은 넉넉하다.
- */
-private val CONSENT_ROW_VERTICAL_PADDING = 5.dp
+private val CHECKLIST_ROW_HEIGHT = 48.dp
 
 /** 기본 48dp 터치 영역을 그대로 두면 몇 줄만으로 화면을 넘긴다. 그림만 줄이고 터치는 행이 받는다. */
 private val CONSENT_CHECKBOX_SIZE = 18.dp
