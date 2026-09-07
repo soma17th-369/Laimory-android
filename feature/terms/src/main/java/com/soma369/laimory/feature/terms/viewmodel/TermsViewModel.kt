@@ -47,11 +47,32 @@ class TermsViewModel
 
         override suspend fun handleIntent(intent: TermsUiIntent) {
             when (intent) {
+                TermsUiIntent.InitializeLogin -> initializeLogin()
                 is TermsUiIntent.InitializeStages -> initializeStages(intent.stages)
                 is TermsUiIntent.StageTermToggled -> toggleStageTerm(intent.termType)
                 TermsUiIntent.AgreeClicked -> agree()
                 TermsUiIntent.RetryClicked -> retry()
                 TermsUiIntent.LogoutClicked -> signOut()
+            }
+        }
+
+        /**
+         * 로그인 단계 화면으로 되돌린다.
+         *
+         * 이 ViewModel 은 Activity 범위라 단계 화면과 인스턴스를 공유한다. 여기서 비우지 않으면
+         * 단계 동의를 한 번 연 계정이 로그아웃한 뒤에도 초안 동의 화면을 보게 되고, 버튼이
+         * 단계 동의를 등록하려 들어 이용약관을 끝낼 수 없다.
+         */
+        private suspend fun initializeLogin() {
+            stageCandidates = emptyList()
+            updateState {
+                copy(
+                    isStageMode = false,
+                    stageDocuments = emptyList(),
+                    checkedStageTerms = emptySet(),
+                    isSubmitting = false,
+                    errorMessage = null,
+                )
             }
         }
 
@@ -66,9 +87,19 @@ class TermsViewModel
          * 없는 동의 화면에 갇힌다.
          */
         private suspend fun initializeStages(stages: List<TermStage>) {
-            if (stages.isEmpty() || state.value.isStageMode) return
+            if (stages.isEmpty()) return
             stageCandidates = stages
-            updateState { copy(isStageMode = true) }
+            // 열 때마다 처음부터 받는다. 이전에 열었을 때의 목록을 그대로 쓰면, 그 사이 기록된
+            // 동의가 반영되지 않아 이미 끝난 항목을 다시 확인하게 된다.
+            updateState {
+                copy(
+                    isStageMode = true,
+                    stageDocuments = emptyList(),
+                    checkedStageTerms = emptySet(),
+                    isSubmitting = false,
+                    errorMessage = null,
+                )
+            }
 
             val documents =
                 stages

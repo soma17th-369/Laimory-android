@@ -63,8 +63,14 @@ fun TermsRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val termContentLauncher = rememberTermContentLauncher()
 
+    // 두 경로가 같은 Activity 범위 ViewModel 을 공유하므로, 어느 모드로 열렸는지 **매번**
+    // 알린다. 단계 화면이 남긴 상태가 로그인 화면으로 새지 않게 하는 것도 이 의도가 맡는다.
     LaunchedEffect(stages) {
-        if (stages.isNotEmpty()) viewModel.sendIntent(TermsUiIntent.InitializeStages(stages))
+        if (stages.isEmpty()) {
+            viewModel.sendIntent(TermsUiIntent.InitializeLogin)
+        } else {
+            viewModel.sendIntent(TermsUiIntent.InitializeStages(stages))
+        }
     }
 
     TermsScreen(

@@ -340,6 +340,45 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `설정에서 권한을 허용하고 돌아오면 거부 상태가 풀린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 복귀는 `ResolvePhotoAccess` 가 아니라 `RefreshPhotos` 로 들어온다. 여기서 풀지
+            // 않으면 사진을 불러오고도 시트가 계속 거부 안내를 띄운다.
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoAccessDenied)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isPhotoAccessDenied)
+            assertEquals(1, viewModel.state.value.availablePhotos.size)
+        }
+
+    @Test
+    fun `저장된 날짜는 확정해도 기록 날짜로 반영되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 조회가 끝나기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면 표시와
+            // 별개로 경계에서 막지 않으면 서버 409 를 받는 날짜로 진행한다.
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val saved = month.atDay(3)
+            recordRepository.monthlyRecords =
+                mapOf(month to listOf(MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null)))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(saved))
+            runCurrent()
+
+            assertEquals(LocalDate.now(ZoneId.systemDefault()), viewModel.state.value.selectedDate)
+        }
+
+    @Test
     fun `사진 없이 계속하면 선택을 비운 채 동의 화면으로 이동한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("calendar"))

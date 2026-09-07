@@ -247,7 +247,10 @@ class HomeViewModel
                 clearPhotoCandidates()
                 return
             }
-            updateState { copy(isPhotoAccessLimited = limited) }
+            // 거부 안내의 `설정 열기` 로 나갔다 허용하고 돌아오는 경로다. 복귀는
+            // `ResolvePhotoAccess` 가 아니라 이 갱신으로 들어오므로, 여기서 풀지 않으면 사진을
+            // 불러오고도 시트가 계속 거부 안내를 띄운다.
+            updateState { copy(isPhotoAccessLimited = limited, isPhotoAccessDenied = false) }
             loadPhotoCandidates(force = true)
         }
 
@@ -367,6 +370,9 @@ class HomeViewModel
 
         private fun selectDate(date: LocalDate) {
             if (state.value.draftStatus.isDateLocked) return
+            // 피커가 회색으로 만들기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면
+            // 표시와 별개로 경계에서 한 번 더 막는다 — 서버가 409 로 거절할 날짜다.
+            if (date in state.value.savedRecordDates) return
             hasUserSelectedDate = true
             // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
             startAutoCollectionAhead()

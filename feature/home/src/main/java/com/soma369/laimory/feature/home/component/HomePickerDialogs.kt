@@ -45,7 +45,10 @@ internal fun HomeDatePickerDialog(
     key(savedDates) {
         val pickerState =
             rememberDatePickerState(
-                initialSelectedDateMillis = selectedDate.toUtcMillis(),
+                // 조회가 끝나기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 그대로 되돌려
+                // 넣으면 회색이 된 날짜가 선택된 채 남아 확인으로 확정된다 — M3 1.4 는 초기
+                // 선택값을 `SelectableDates` 로 검사하지 않는다.
+                initialSelectedDateMillis = selectedDate.toUtcMillis().takeIf { selectedDate !in savedDates },
                 initialDisplayedMonthMillis = displayedMonth.atDay(1).toUtcMillis(),
                 selectableDates =
                     object : SelectableDates {
@@ -76,10 +79,12 @@ internal fun HomeDatePickerDialog(
         DatePickerDialog(
             onDismissRequest = onDismiss,
             confirmButton = {
+                // 고를 수 없는 날짜가 선택된 상태로 남아 있으면 확정도 막는다.
+                val confirmedDate =
+                    pickerState.selectedDateMillis?.toUtcLocalDate()?.takeIf { it !in savedDates }
                 TextButton(
-                    onClick = {
-                        pickerState.selectedDateMillis?.let { millis -> onSelect(millis.toUtcLocalDate()) }
-                    },
+                    onClick = { confirmedDate?.let(onSelect) },
+                    enabled = confirmedDate != null,
                 ) {
                     Text("확인")
                 }
