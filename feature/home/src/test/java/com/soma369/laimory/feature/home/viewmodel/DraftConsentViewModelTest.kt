@@ -55,7 +55,6 @@ import org.junit.Rule
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -790,7 +789,6 @@ class DraftConsentViewModelTest {
                 version = "1.0",
                 title = type.name,
                 contentUrl = "https://laimory.app/terms/${type.name}/1.0",
-                effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
             )
     }
 

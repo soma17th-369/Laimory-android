@@ -49,7 +49,6 @@ import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import com.soma369.laimory.feature.onboarding.viewmodel.OnboardingViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 
 @Composable
 fun OnboardingRoute(
@@ -373,5 +372,4 @@ private fun previewTerm(
     version = "1.0",
     title = title,
     contentUrl = "https://laimory.app/terms/preview/1.0",
-    effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
 )

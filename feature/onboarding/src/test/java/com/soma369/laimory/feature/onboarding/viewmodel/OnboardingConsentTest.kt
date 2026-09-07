@@ -42,7 +42,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.time.LocalDateTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OnboardingConsentTest {
@@ -362,7 +361,6 @@ class OnboardingConsentTest {
         version = version,
         title = type.name,
         contentUrl = "https://laimory.app/terms/${type.name}/$version",
-        effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
     )
 
     private class FakeTermsCoordinator(
