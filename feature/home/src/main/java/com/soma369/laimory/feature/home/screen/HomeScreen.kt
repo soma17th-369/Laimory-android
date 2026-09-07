@@ -158,7 +158,9 @@ private fun HomeContent(
     if (state.isDatePickerVisible) {
         HomeDatePickerDialog(
             initialDate = state.selectedDate,
+            savedDates = state.savedRecordDates,
             onSelect = { onIntent(HomeUiIntent.SelectDate(it)) },
+            onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },
         )
     }

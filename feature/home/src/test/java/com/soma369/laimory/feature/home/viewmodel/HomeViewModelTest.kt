@@ -18,6 +18,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
@@ -39,6 +40,7 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
+import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
@@ -181,6 +183,61 @@ class HomeViewModelTest {
             assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
             assertNull(sessionStore.preparation.value)
             assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
+    @Test
+    fun `저장된 날짜만 피커에서 고를 수 없게 모은다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 초안 날짜는 서버가 이어 붙이기로 받아 주므로 막지 않는다. 저장된 날짜만 409 다.
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val saved = month.atDay(3)
+            val draft = month.atDay(4)
+            recordRepository.monthlyRecords =
+                mapOf(
+                    month to
+                        listOf(
+                            MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null),
+                            MonthlyDailyRecord(draft, DailyRecordStatus.DRAFT, null),
+                        ),
+                )
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            assertEquals(setOf(saved), viewModel.state.value.savedRecordDates)
+        }
+
+    @Test
+    fun `같은 달을 두 번 요청해도 한 번만 조회한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            assertEquals(1, recordRepository.monthlyCallCount)
+        }
+
+    @Test
+    fun `피커를 다시 열면 받아 둔 달을 다시 조회한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 이 화면에서 만든 초안을 저장하고 돌아오면 그 날짜가 저장됨으로 바뀐다.
+            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+
+            assertEquals(2, recordRepository.monthlyCallCount)
         }
 
     @Test
@@ -974,6 +1031,11 @@ class HomeViewModelTest {
                     repository = recordRepository,
                     messageHelper = NoOpMessageHelper,
                 ),
+            getMonthlyDailyRecordsUseCase =
+                GetMonthlyDailyRecordsUseCase(
+                    repository = recordRepository,
+                    messageHelper = NoOpMessageHelper,
+                ),
             getPhotosInWindowUseCase = GetPhotosInWindowUseCase(photoSource),
             prepareSelectedPhotosUseCase = PrepareSelectedPhotosUseCase(photoSource),
             draftConsentSessionStore = sessionStore,
@@ -1208,7 +1270,13 @@ class HomeViewModelTest {
             emotion: TimelineEmotion,
         ) = error("사용하지 않음")
 
-        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("사용하지 않음")
+        var monthlyRecords: Map<YearMonth, List<MonthlyDailyRecord>> = emptyMap()
+        var monthlyCallCount = 0
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> {
+            monthlyCallCount++
+            return monthlyRecords[month].orEmpty()
+        }
 
         override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("사용하지 않음")
     }

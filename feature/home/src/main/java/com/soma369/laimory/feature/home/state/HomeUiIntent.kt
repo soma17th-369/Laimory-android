@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.home.state
 import com.soma369.laimory.core.ui.base.UiIntent
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 
 sealed interface HomeUiIntent : UiIntent {
     /** 화면 진입·복귀. 아직 못 받은 닉네임을 다시 요청한다. */
@@ -56,6 +57,16 @@ sealed interface HomeUiIntent : UiIntent {
     data object ShowDatePicker : HomeUiIntent
 
     data object DismissDatePicker : HomeUiIntent
+
+    /**
+     * 날짜 피커가 보여 주는 달의 기록 상태를 받아 온다.
+     *
+     * 피커를 열 때와 달을 넘길 때마다 그 달을 요청한다 — 어느 날짜가 이미 저장됐는지 알아야
+     * 고를 수 없게 만들 수 있다. 월별 경량 조회라 달마다 불러도 부담이 적다.
+     */
+    data class LoadMonthlyRecords(
+        val month: YearMonth,
+    ) : HomeUiIntent
 
     data class SelectDate(
         val date: LocalDate,

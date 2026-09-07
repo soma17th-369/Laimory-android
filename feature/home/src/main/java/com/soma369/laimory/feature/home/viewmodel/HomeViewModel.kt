@@ -8,16 +8,19 @@ import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
+import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
@@ -47,6 +50,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.YearMonth
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -57,6 +61,7 @@ class HomeViewModel
         private val observeSourceItemsUseCase: ObserveSourceItemsUseCase,
         private val prepareTimelineDraftSelectionUseCase: PrepareTimelineDraftSelectionUseCase,
         private val getDailyRecordsUseCase: GetDailyRecordsUseCase,
+        private val getMonthlyDailyRecordsUseCase: GetMonthlyDailyRecordsUseCase,
         private val getPhotosInWindowUseCase: GetPhotosInWindowUseCase,
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftConsentSessionStore: DraftConsentSessionStore,
@@ -76,6 +81,10 @@ class HomeViewModel
         ) {
         private val zone: ZoneId = ZoneId.systemDefault()
         private var sourceItems: List<SourceItem> = emptyList()
+
+        /** 날짜 피커가 이미 받아 온 달. 같은 달을 두 번 부르지 않는다. */
+        private val loadedRecordMonths = mutableSetOf<YearMonth>()
+
         private var photoCandidates: List<PhotoCandidate> = emptyList()
         private var photoAccessGranted = false
         private var photoCandidatesJob: Job? = null
@@ -129,8 +138,9 @@ class HomeViewModel
                 HomeUiIntent.ToggleAllPhotos -> toggleAllPhotos()
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
-                HomeUiIntent.ShowDatePicker -> updateState { copy(isDatePickerVisible = true) }
+                HomeUiIntent.ShowDatePicker -> showDatePicker()
                 HomeUiIntent.DismissDatePicker -> updateState { copy(isDatePickerVisible = false) }
+                is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
                 is HomeUiIntent.SelectDate -> selectDate(intent.date)
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
                 is HomeUiIntent.ExpandTimeField ->
@@ -315,6 +325,44 @@ class HomeViewModel
                 ).refreshSourceSummary(sourceItems, photoCandidates, zone)
             }
             prepareDraftConsent()
+        }
+
+        /**
+         * 날짜 피커를 연다.
+         *
+         * 받아 둔 달을 비워 다시 조회하게 한다 — 이 화면에서 초안을 만들어 저장하고 돌아오면
+         * 그 날짜가 저장됨으로 바뀌는데, 한 번 받은 값을 계속 쓰면 고를 수 있는 날로 남는다.
+         * 표시하던 날짜는 지우지 않는다(다시 받는 사이 비었다 차면 격자가 깜빡인다).
+         */
+        private fun showDatePicker() {
+            loadedRecordMonths.clear()
+            updateState { copy(isDatePickerVisible = true) }
+        }
+
+        /**
+         * 피커가 보여 주는 달의 기록 상태를 받는다.
+         *
+         * 실패는 조용히 넘긴다 — 못 받으면 그 달은 고를 수 있는 채로 남고, 서버가 409 로 막는
+         * 최후 방어선이 그대로 있다. 여기서 오류를 띄우면 날짜를 고르려던 흐름만 끊긴다.
+         */
+        private fun loadMonthlyRecords(month: YearMonth) {
+            if (!loadedRecordMonths.add(month)) return
+            safeLaunch(onError = { loadedRecordMonths.remove(month) }) {
+                getMonthlyDailyRecordsUseCase(month)
+                    .onSuccess { records ->
+                        val saved =
+                            records
+                                .filter { it.status == DailyRecordStatus.SAVED }
+                                .map(MonthlyDailyRecord::recordDate)
+                        updateState {
+                            // 그 달의 이전 결과를 걷어내고 다시 채운다 — 기록이 지워졌을 수도 있다.
+                            copy(
+                                savedRecordDates =
+                                    savedRecordDates.filterNotTo(mutableSetOf()) { YearMonth.from(it) == month } + saved,
+                            )
+                        }
+                    }.onFailure { loadedRecordMonths.remove(month) }
+            }
         }
 
         private fun selectDate(date: LocalDate) {
