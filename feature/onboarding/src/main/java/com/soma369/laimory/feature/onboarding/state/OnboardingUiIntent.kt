@@ -22,5 +22,5 @@ sealed interface OnboardingUiIntent : UiIntent {
     data object Complete : OnboardingUiIntent
 
     /** 백그라운드 위치까지 허용됐다. 자동 수집을 켠다. */
-    data object EnableLocationTracking : OnboardingUiIntent
+    data object ReconcileLocationTracking : OnboardingUiIntent
 }

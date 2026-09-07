@@ -21,10 +21,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,13 +85,13 @@ private fun OnboardingContent(
             .collect { page -> onIntent(OnboardingUiIntent.PageChanged(page)) }
     }
 
-    // 백그라운드 위치까지 받은 순간에만 추적을 켠다. 진입 시점에 이미 허용돼 있던 경우는 건드리지
-    // 않는다 — 사용자가 일부러 꺼 둔 추적을 온보딩이 조용히 되살리면 안 된다.
-    var wasLocationGranted by remember { mutableStateOf(permissionState.locationStep == LocationPermissionStep.GRANTED) }
+    // 백그라운드 위치까지 받았으면 수집 상태를 맞춘다. 전환이 아니라 상태를 본다 — 진입 시점에
+    // 이미 허용돼 있으면 전환이 없어서, 전환만 보면 그 사용자는 영영 켜지지 않는다. 사용자가 일부러
+    // 꺼 둔 수집을 되살리지 않는 판단은 reconcile 이 이미 갖고 있다.
     LaunchedEffect(permissionState.locationStep) {
-        val isGranted = permissionState.locationStep == LocationPermissionStep.GRANTED
-        if (isGranted && !wasLocationGranted) onIntent(OnboardingUiIntent.EnableLocationTracking)
-        wasLocationGranted = isGranted
+        if (permissionState.locationStep == LocationPermissionStep.GRANTED) {
+            onIntent(OnboardingUiIntent.ReconcileLocationTracking)
+        }
     }
 
     val currentPage = state.pages.getOrNull(pagerState.currentPage)
