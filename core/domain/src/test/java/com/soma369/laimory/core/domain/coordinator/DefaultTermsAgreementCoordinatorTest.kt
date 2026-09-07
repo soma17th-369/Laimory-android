@@ -227,7 +227,6 @@ class DefaultTermsAgreementCoordinatorTest {
         version = version,
         title = type.name,
         contentUrl = "https://laimory.app/terms/${type.name}/$version",
-        effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
     )
 
     private fun agreement(document: TermDocument) = TermAgreement(document = document, acceptedAt = LocalDateTime.of(2026, 8, 29, 9, 30))

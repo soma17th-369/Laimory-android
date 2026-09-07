@@ -43,7 +43,6 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.terms.state.TermsUiIntent
 import com.soma369.laimory.feature.terms.state.TermsUiState
 import com.soma369.laimory.feature.terms.viewmodel.TermsViewModel
-import java.time.LocalDateTime
 
 /**
  * 이용약관 동의 화면.
@@ -344,5 +343,4 @@ private fun previewDocument(type: TermType) =
         version = "1.0",
         title = type.name,
         contentUrl = "https://laimory.app/terms/preview/1.0",
-        effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
     )

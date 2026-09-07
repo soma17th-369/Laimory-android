@@ -1,7 +1,5 @@
 package com.soma369.laimory.core.domain.model.terms
 
-import java.time.LocalDateTime
-
 /**
  * 현재 유효한 약관 문서 한 건.
  *
@@ -16,6 +14,4 @@ data class TermDocument(
     val version: String,
     val title: String,
     val contentUrl: String,
-    /** 효력 시작 시각(Asia/Seoul 벽시계). 시간대 정보가 없는 값이다. */
-    val effectiveAt: LocalDateTime,
 )

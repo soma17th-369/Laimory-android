@@ -17,7 +17,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDateTime
 
 class AuthNavigationTest {
     @Test
@@ -192,6 +191,5 @@ class AuthNavigationTest {
             version = "1.0",
             title = "라이모리 이용약관",
             contentUrl = "https://laimory.app/terms/terms-of-service/1.0",
-            effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
         )
 }

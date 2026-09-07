@@ -11,7 +11,6 @@ data class TermAgreementResponse(
     val version: String,
     val title: String,
     val contentUrl: String,
-    val effectiveAt: String,
     val acceptedAt: String,
 )
 
@@ -22,7 +21,6 @@ internal fun TermAgreementResponse.toDomain(): TermAgreement? {
             version = version,
             title = title,
             contentUrl = contentUrl,
-            effectiveAt = effectiveAt,
         ).toDomain() ?: return null
     val accepted = runCatching { LocalDateTime.parse(acceptedAt) }.getOrNull() ?: return null
     return TermAgreement(document = document, acceptedAt = accepted)

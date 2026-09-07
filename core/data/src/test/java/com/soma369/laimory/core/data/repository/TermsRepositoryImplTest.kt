@@ -15,7 +15,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.time.LocalDateTime
 
 class TermsRepositoryImplTest {
     @Test
@@ -35,14 +34,6 @@ class TermsRepositoryImplTest {
             val documents = TermsRepositoryImpl(remote).getCurrentTerms(listOf(TermType.TERMS_OF_SERVICE))
 
             assertEquals(listOf(TermType.TERMS_OF_SERVICE), documents.map { it.termType })
-        }
-
-    @Test
-    fun `해석할 수 없는 시각은 버린다`() =
-        runTest {
-            val remote = FakeTermsRemoteDataSource(terms = listOf(termResponse("TERMS_OF_SERVICE", effectiveAt = "언젠가")))
-
-            assertTrue(TermsRepositoryImpl(remote).getCurrentTerms(listOf(TermType.TERMS_OF_SERVICE)).isEmpty())
         }
 
     @Test
@@ -123,16 +114,13 @@ class TermsRepositoryImplTest {
             assertTrue(error is ApiException.ClientException)
         }
 
-    private fun termResponse(
-        termType: String,
-        effectiveAt: String = "2026-08-28T00:00:00",
-    ) = TermResponse(
-        termType = termType,
-        version = "1.0",
-        title = "제목",
-        contentUrl = "https://laimory.app/terms/slug/1.0",
-        effectiveAt = effectiveAt,
-    )
+    private fun termResponse(termType: String) =
+        TermResponse(
+            termType = termType,
+            version = "1.0",
+            title = "제목",
+            contentUrl = "https://laimory.app/terms/slug/1.0",
+        )
 
     private fun document() =
         TermDocument(
@@ -140,7 +128,6 @@ class TermsRepositoryImplTest {
             version = "1.0",
             title = "제목",
             contentUrl = "https://laimory.app/terms/terms-of-service/1.0",
-            effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
         )
 
     private class FakeTermsRemoteDataSource(

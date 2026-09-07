@@ -115,6 +115,30 @@ class TermsRemoteDataSourceImplTest {
         }
 
     @Test
+    fun `아직 effectiveAt 을 보내는 서버의 응답도 그대로 읽는다`() =
+        runTest {
+            // 앱이 필드를 걷어도 서버는 한동안 계속 보낸다. 모르는 키는 무시하고 읽어야
+            // 앱과 서버가 서로의 배포를 기다리지 않는다.
+            server.enqueue(
+                success(
+                    """{"terms":[{"termType":"TERMS_OF_SERVICE","version":"1.0","title":"제목",""" +
+                        """"contentUrl":"https://laimory.app/terms/terms-of-service/1.0",""" +
+                        """"effectiveAt":"2026-08-28T00:00:00"}]}""",
+                ),
+            )
+            server.enqueue(
+                success(
+                    """{"agreements":[{"termType":"TERMS_OF_SERVICE","version":"1.0","title":"제목",""" +
+                        """"contentUrl":"https://laimory.app/terms/terms-of-service/1.0",""" +
+                        """"effectiveAt":"2026-08-28T00:00:00","acceptedAt":"2026-08-29T09:30:00"}]}""",
+                ),
+            )
+
+            assertEquals("1.0", remote.getCurrentTerms(listOf("TERMS_OF_SERVICE")).terms.single().version)
+            assertEquals("2026-08-29T09:30:00", remote.getMyAgreements().agreements.single().acceptedAt)
+        }
+
+    @Test
     fun `이력이 없으면 빈 배열로 온다`() =
         runTest {
             server.enqueue(success("""{"agreements":[]}"""))

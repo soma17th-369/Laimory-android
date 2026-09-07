@@ -28,7 +28,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import java.time.LocalDateTime
 
 /**
  * 이 ViewModel 은 **Activity 범위**라 로그인 약관 화면과 단계 동의 화면이 같은 인스턴스를 쓴다.
@@ -132,7 +131,6 @@ class TermsViewModelTest {
             version = "1.0",
             title = type.name,
             contentUrl = "https://laimory.app/terms/${type.name}",
-            effectiveAt = LocalDateTime.of(2026, 8, 28, 0, 0),
         )
 
     private class FakeTermsCoordinator(
