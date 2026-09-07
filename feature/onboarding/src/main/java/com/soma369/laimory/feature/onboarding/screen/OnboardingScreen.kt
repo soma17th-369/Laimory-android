@@ -103,11 +103,15 @@ private fun OnboardingContent(
     // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
     // 일어나지 않은 것처럼 보이기 때문이다.
     val needsRequest = currentPage?.permission != null && !permissionState.isGranted(currentPage.permission)
-    // 아직 받을 동의가 남아 있는 장인지. 이미 다 동의한 사용자에게는 목록이 체크된 채로 보이되
-    // 받을 것이 없으므로 마지막 장은 평범한 마무리 장이다.
+    // 아직 받을 것이 남아 있는 장인지. 이미 다 동의했고 연령까지 확인한 사용자에게는 채울 것이
+    // 없으므로 마지막 장이 평범한 마무리 장이 된다.
+    //
+    // 연령 확인도 여기에 넣는다 — 약관을 모두 동의한 계정이라도 확인이 남아 있으면 아직 채울 것이
+    // 있는 장이다. 다만 CTA 가 대신 체크해 주지는 않는다(확인하지 않은 사용자가 확인한 것으로
+    // 기록되면 이 확인을 둔 이유가 사라진다).
     val needsConsent =
         currentPage?.showsConsents == true &&
-            state.consentDocuments.any { it.termType !in state.lockedConsents }
+            (state.consentDocuments.any { it.termType !in state.lockedConsents } || !state.isAgeConfirmed)
     val termContentLauncher = rememberTermContentLauncher()
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 

@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -80,6 +83,7 @@ internal fun OnboardingConsentChecklist(
                     // 읽으려다 동의가 켜진다.
                     TextButton(
                         onClick = { onOpenTerm(document) },
+                        modifier = Modifier.height(CHECKLIST_ROW_MIN_HEIGHT),
                         enabled = isEnabled,
                         contentPadding = PaddingValues(horizontal = Spacing.small),
                     ) {
@@ -117,6 +121,9 @@ private fun ChecklistRow(
         modifier =
             Modifier
                 .fillMaxWidth()
+                // 모든 줄이 같은 높이를 갖게 행이 직접 잡는다. 버튼이 있는 줄만 그 최소 높이에
+                // 끌려 올라가면, 한 목록 안에서 줄 간격이 들쭉날쭉해진다.
+                .heightIn(min = CHECKLIST_ROW_MIN_HEIGHT)
                 // 글자까지 터치 영역에 넣는다. 체크박스만 누르게 하면 눌러야 할 곳이 너무 작다.
                 .toggleable(
                     value = isChecked,
@@ -140,16 +147,23 @@ private fun ChecklistRow(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        // `보기` 가 없는 줄도 그 자리를 그대로 비워 둔다. 버튼은 최소 크기가 있어서, 없는 줄만
-        // 글자가 오른쪽 끝까지 늘어나고 행 높이도 낮아져 한 목록 안에서 줄마다 리듬이 달라진다.
-        trailing?.invoke() ?: Spacer(
-            modifier = Modifier.size(width = ButtonDefaults.MinWidth, height = ButtonDefaults.MinHeight),
-        )
+        // `보기` 가 없는 줄도 그 자리를 폭만큼 비워 둔다. 안 그러면 그 줄만 글자가 오른쪽 끝까지
+        // 늘어나 다른 줄과 끝선이 어긋난다. **높이는 여기서 맞추지 않는다** — 행이 스스로
+        // 높이를 갖는다.
+        trailing?.invoke() ?: Spacer(modifier = Modifier.width(ButtonDefaults.MinWidth))
     }
 }
 
 /** 서버 문서가 아니라 앱이 받는 확인이라 문구를 여기서 갖는다. */
 private const val AGE_CONFIRMATION_LABEL = "[필수] 만 14세 이상입니다"
+
+/**
+ * 목록 한 줄의 높이.
+ *
+ * `보기` 버튼이 있는 줄과 없는 줄이 같은 높이여야 한다. 버튼의 최소 크기에 맡기면 버튼이 있는
+ * 줄만 높아져 연령 확인 줄의 간격이 다르게 보인다.
+ */
+private val CHECKLIST_ROW_MIN_HEIGHT = ButtonDefaults.MinHeight
 
 /**
  * 동의 한 줄의 상하 여백.
