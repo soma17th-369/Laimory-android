@@ -168,27 +168,24 @@ internal fun PhotoSelectionSheet(
                 }
             }
 
-            // 사진을 고를 수 있는 상태에서만 확정 버튼을 둔다. 거부 상태에서는 고를 것이 없어
-            // 버튼이 있어도 누를 이유가 없다.
-            if (!state.isPhotoAccessDenied) {
-                Button(
-                    onClick = { onIntent(HomeUiIntent.ConfirmPhotoSelection) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isPhotoLoading && state.pendingPhotoIds.isNotEmpty(),
-                    // M3 기본값은 모서리를 완전히 둥글리므로(stadium) 우리 버튼보다 훨씬 둥글다.
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text("${state.pendingPhotoIds.size}장으로 초안 만들기")
-                }
-            }
-
-            // 0장 선택 후 확인과 나누어 둔다 — 아무것도 고르지 않은 확인이 실수인지 의도인지
-            // 구분되지 않으면, 사진이 빠진 초안을 만들어 놓고 왜 비었는지 알 수 없다.
-            TextButton(
-                onClick = { onIntent(HomeUiIntent.ContinueWithoutPhotos) },
+            // 버튼은 하나이고 **문구가 상태를 말한다.** 0장일 때 `0장으로 만들기` 를 잠가 두면
+            // 만들 수 있다고 쓰인 버튼이 눌리지 않고, 왜 막혔는지도 알려 주지 못한다. 사진 없이
+            // 만드는 것은 정상 경로이므로 문구로 분명히 하고 그대로 진행시킨다.
+            val hasSelection = state.pendingPhotoIds.isNotEmpty()
+            Button(
+                onClick = {
+                    onIntent(
+                        if (hasSelection) HomeUiIntent.ConfirmPhotoSelection else HomeUiIntent.ContinueWithoutPhotos,
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !state.isPhotoLoading,
+                // M3 기본값은 모서리를 완전히 둥글리므로(stadium) 우리 버튼보다 훨씬 둥글다.
+                shape = MaterialTheme.shapes.large,
             ) {
-                Text("사진 없이 계속")
+                Text(
+                    if (hasSelection) "${state.pendingPhotoIds.size}장으로 초안 만들기" else "사진 없이 초안 만들기",
+                )
             }
             Spacer(modifier = Modifier.height(Spacing.large))
         }
