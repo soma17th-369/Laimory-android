@@ -28,6 +28,12 @@ internal class LocationTrackingRepositoryImpl
 
         override fun observeStatus(): Flow<LocationTrackingStatus?> = trackingState.status
 
+        /**
+         * 사용자의 의사를 쓰는 **유일한 자리**다. 설정 토글도 알림의 `중지`([LocationStopReceiver])도 여기로 온다.
+         *
+         * 서비스가 대신 쓰지 않는다 — 중지 지시는 큐를 거쳐 늦게 처리될 수 있어, 그 사이에 사용자가
+         * 다시 켜 두었으면 지난 결정이 최신 값을 덮어쓴다. 값은 조작을 받은 그 자리에서 쓴다.
+         */
         override suspend fun setEnabled(enabled: Boolean) {
             preferences.setUserDisabled(!enabled)
             if (enabled) start() else stopByUser()
@@ -59,7 +65,7 @@ internal class LocationTrackingRepositoryImpl
         }
 
         /**
-         * 알림의 `중지` 와 같은 경로로 끈다.
+         * 마감을 지시해 멈춘다. 의사는 [setEnabled] 가 이미 썼으므로 여기서는 지시만 보낸다.
          *
          * `stopService` 로 바로 끊으면 서비스가 그것을 시스템에 의한 종료로 읽어 진행 중 구간을
          * **스냅샷으로 보존한다** — 프로세스가 죽었다 살아났을 때 이어 붙이기 위한 길이다. 사용자가
