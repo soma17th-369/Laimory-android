@@ -128,15 +128,9 @@ private fun OnboardingContent(
                 hasConsentLoadFailed = state.hasConsentLoadFailed,
                 locationStep = permissionState.locationStep,
             ),
-        // 마지막 장은 연령 확인 없이 끝낼 수 없다. 확인은 완료와 같은 쓰기에 담기므로
-        // 여기서 막지 않으면 확인하지 않은 사용자가 확인한 것으로 기록된다.
-        //
-        // 동의 목록을 불러오지 못한 상태에서는 버튼이 완료가 아니라 다시 시도라서, 연령 확인
-        // 여부와 무관하게 눌릴 수 있어야 한다.
-        isPrimaryEnabled =
-            !state.isCompleting &&
-                !state.isConsentSubmitting &&
-                (!isLastPage || state.hasConsentLoadFailed || state.isAgeConfirmed),
+        // 연령 미확인으로 버튼을 잠그지 않는다. 눌리지 않는 회색 버튼은 왜 막혔는지 말해 주지
+        // 못한다 — 대신 버튼이 확인을 함께 채운다(문구가 `모두 동의하고 시작하기` 다).
+        isPrimaryEnabled = !state.isCompleting && !state.isConsentSubmitting,
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,

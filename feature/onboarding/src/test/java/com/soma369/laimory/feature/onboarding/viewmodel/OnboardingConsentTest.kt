@@ -98,15 +98,18 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `이미 다 동의했으면 연출 없이 곧바로 완료한다`() =
+    fun `채울 체크가 없으면 연출 없이 곧바로 완료한다`() =
         runTest(UnconfinedTestDispatcher()) {
             // 채울 체크가 없는데 기다리면 화면은 그대로인 채 버튼만 잠시 먹통이 된다.
             val coordinator = FakeTermsCoordinator(alreadyAgreed = allFour)
             val completion = FakeOnboardingCompletionCoordinator()
             val viewModel = createViewModel(coordinator, completion = completion)
             runCurrent()
+            // 연령까지 직접 확인해 두면 버튼이 채울 것이 하나도 남지 않는다.
+            viewModel.sendIntent(OnboardingUiIntent.AgeConfirmationToggled)
+            runCurrent()
 
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             runCurrent()
 
             // 가상 시간을 넘기지 않았는데도 완료가 저장됐다 — 연출 지연을 타지 않았다는 뜻이다.
@@ -141,7 +144,7 @@ class OnboardingConsentTest {
             assertTrue(viewModel.state.value.hasConsentLoadFailed)
             assertFalse(viewModel.state.value.consentErrorMessage.isNullOrBlank())
 
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertEquals(0, completion.markedCount)
@@ -161,7 +164,7 @@ class OnboardingConsentTest {
 
             assertFalse(viewModel.state.value.hasConsentLoadFailed)
 
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertEquals(1, completion.markedCount)
@@ -177,7 +180,7 @@ class OnboardingConsentTest {
 
             assertFalse(viewModel.state.value.hasConsentLoadFailed)
 
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertEquals(1, completion.markedCount)
@@ -193,7 +196,7 @@ class OnboardingConsentTest {
 
             assertTrue(viewModel.state.value.checkedConsents.isEmpty())
 
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertEquals(allFour.map { it.termType }.toSet(), viewModel.state.value.checkedConsents)
@@ -206,7 +209,7 @@ class OnboardingConsentTest {
             val coordinator = FakeTermsCoordinator(pending = allFour)
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertEquals(allFour, coordinator.agreed)
@@ -219,7 +222,7 @@ class OnboardingConsentTest {
             val coordinator = FakeTermsCoordinator(pending = allFour, agreeFailure = IllegalStateException("offline"))
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertFalse(viewModel.state.value.isCompleting)
@@ -235,7 +238,7 @@ class OnboardingConsentTest {
                 FakeTermsCoordinator(pending = allFour, agreeFailure = StaleTermVersionException(), revised = revised)
             val viewModel = createViewModel(coordinator)
             runCurrent()
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertTrue(viewModel.state.value.checkedConsents.isEmpty())
@@ -254,7 +257,7 @@ class OnboardingConsentTest {
             runCurrent()
             assertEquals(allFour, viewModel.state.value.consentDocuments)
 
-            viewModel.confirmAgeAndComplete()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
             assertTrue(coordinator.agreed.isEmpty())
@@ -290,24 +293,36 @@ class OnboardingConsentTest {
         }
 
     @Test
-    fun `연령 확인 전에는 완료되지 않는다`() =
+    fun `시작 버튼이 연령 확인도 함께 채운다`() =
         runTest(UnconfinedTestDispatcher()) {
-            // 확인은 완료와 같은 쓰기에 담기므로, 여기서 새면 확인하지 않은 사용자가 확인한 것으로 남는다.
+            // 버튼 문구가 `모두 동의하고 시작하기` 이고 목록이 바로 위에 있다 — 누르는 행위가 곧
+            // 확인이다. 약관 항목을 채우는 방식과 같다.
             val coordinator = FakeTermsCoordinator(alreadyAgreed = allFour)
             val completion = FakeOnboardingCompletionCoordinator()
             val viewModel = createViewModel(coordinator, completion = completion)
             runCurrent()
 
+            assertFalse(viewModel.state.value.isAgeConfirmed)
+
             viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
-            assertEquals(0, completion.markedCount)
-            assertFalse(viewModel.state.value.isCompleting)
+            assertTrue(viewModel.state.value.isAgeConfirmed)
+            assertEquals(1, completion.markedCount)
+        }
 
-            viewModel.confirmAgeAndComplete()
+    @Test
+    fun `동의 기록이 실패하면 연령 확인도 되돌린다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 화면엔 체크가 남았는데 서버엔 아무것도 기록되지 않은 상태를 만들지 않는다.
+            val coordinator = FakeTermsCoordinator(pending = allFour, agreeFailure = IllegalStateException("offline"))
+            val viewModel = createViewModel(coordinator)
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
             advanceUntilIdle()
 
-            assertEquals(1, completion.markedCount)
+            assertFalse(viewModel.state.value.isAgeConfirmed)
         }
 
     @Test
@@ -324,12 +339,6 @@ class OnboardingConsentTest {
             runCurrent()
             assertFalse(viewModel.state.value.isAgeConfirmed)
         }
-
-    /** 연령 확인은 마지막 장의 잠금장치라, 완료를 확인하는 테스트는 먼저 켜고 시작한다. */
-    private fun OnboardingViewModel.confirmAgeAndComplete() {
-        sendIntent(OnboardingUiIntent.AgeConfirmationToggled)
-        sendIntent(OnboardingUiIntent.Complete)
-    }
 
     private fun createViewModel(
         coordinator: TermsAgreementCoordinator,

@@ -205,26 +205,39 @@ class OnboardingViewModel
             // 쓰다가 초안 생성에서만 막히고 이유를 알 수 없다.
             if (state.value.hasConsentLoadFailed) return
 
-            // 화면이 이미 버튼을 잠그지만 여기서도 막는다 — 연령 확인은 완료와 같은 쓰기에 담기므로,
-            // 확인 없이 이 자리에 오면 확인하지 않은 사용자가 확인한 것으로 기록된다.
-            if (!state.value.isAgeConfirmed) return
-
             // 누른 즉시 잠근다. 연출을 먼저 하면 그 사이 버튼이 살아 있어 두 번 눌린다.
             updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }
 
             val documents = state.value.consentDocuments
-            // 이미 다 동의한 사용자에게는 채울 체크가 없다. 그때도 기다리면 화면은 그대로인 채
-            // 버튼만 잠시 먹통이 된다.
-            if (recordableConsents.isNotEmpty()) {
+            // 연령 확인도 버튼이 함께 채운다. `모두 동의하고 시작하기` 를 누르는 행위가 곧 확인이고,
+            // 목록이 버튼 바로 위에 있어 무엇을 확인하고 넘어가는지 보인다 — 약관 항목을 다루는
+            // 방식과 같다. 체크박스로 직접 켜고 끄는 길도 그대로 남는다.
+            val fillsAgeConfirmation = !state.value.isAgeConfirmed
+            // 이미 다 동의하고 확인까지 마친 사용자에게는 채울 체크가 없다. 그때도 기다리면 화면은
+            // 그대로인 채 버튼만 잠시 먹통이 된다.
+            if (recordableConsents.isNotEmpty() || fillsAgeConfirmation) {
                 // 무엇에 동의하고 넘어가는지 눈으로 확인할 틈을 준다. 버튼 문구가 `모두 동의하고
                 // 시작하기` 라 결과는 이미 분명하지만, 체크가 차오르는 것을 보지 못하면 무엇이
                 // 일어났는지 모른 채 화면이 바뀐다.
-                updateState { copy(checkedConsents = documents.mapTo(mutableSetOf()) { it.termType }) }
+                updateState {
+                    copy(
+                        checkedConsents = documents.mapTo(mutableSetOf()) { it.termType },
+                        isAgeConfirmed = true,
+                    )
+                }
                 delay(CONSENT_REVEAL_MILLIS)
             }
 
             if (!recordConsents()) {
-                updateState { copy(isCompleting = false, checkedConsents = lockedConsents) }
+                // 동의 기록이 실패하면 확인 상태도 처음으로 되돌린다 — 화면에 체크가 남아 있는데
+                // 서버에는 아무것도 기록되지 않은 상태를 만들지 않는다.
+                updateState {
+                    copy(
+                        isCompleting = false,
+                        checkedConsents = lockedConsents,
+                        isAgeConfirmed = !fillsAgeConfirmation,
+                    )
+                }
                 return
             }
             markCompleted()
