@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.ui.permission
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -154,5 +156,15 @@ class DataPermissionStatusTest {
             DataSourceStatus.GRANTED,
             state(granted = setOf(DataPermission.CALENDAR)).statusOf(DataPermission.CALENDAR),
         )
+    }
+
+    @Test
+    fun `이동수단 인식만 없어도 백그라운드 수집은 돈다`() {
+        // 수집 토글을 보일지가 이 판정에 달려 있다. GRANTED 로만 좁히면 이동수단 인식을 거부한
+        // 사용자에게 수집은 도는데 끄는 자리가 없는 상태가 된다.
+        assertTrue(LocationPermissionStep.ACTIVITY.collectsInBackground)
+        assertTrue(LocationPermissionStep.GRANTED.collectsInBackground)
+        assertFalse(LocationPermissionStep.FOREGROUND.collectsInBackground)
+        assertFalse(LocationPermissionStep.BACKGROUND.collectsInBackground)
     }
 }

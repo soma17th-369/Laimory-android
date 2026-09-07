@@ -21,6 +21,16 @@ enum class LocationPermissionStep {
 
     /** 더 받을 것이 없다. */
     GRANTED,
+    ;
+
+    /**
+     * 백그라운드 수집이 실제로 도는 단계인지.
+     *
+     * [ACTIVITY] 를 포함한다 — 이동수단 인식은 없으면 속도 추론으로 폴백할 뿐 수집을 막지 않는다.
+     * 이 판정을 [GRANTED] 하나로 좁히면, 이동수단 인식만 거부한 사용자에게 **수집은 도는데 끄는
+     * 자리는 보이지 않는** 상태가 된다.
+     */
+    val collectsInBackground: Boolean get() = this == ACTIVITY || this == GRANTED
 }
 
 /**

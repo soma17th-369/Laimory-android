@@ -127,10 +127,10 @@ private fun SettingsContent(
             action = permissionState.actionFor(source.permission),
             // 앱이 끄고 켜는 수집은 위치뿐이고, 그마저도 `항상 허용` 이라야 켤 수 있다. 켤 수
             // 없는 스위치를 두면 눌러도 아무 일이 없으므로 그때는 권한 버튼 하나만 남긴다.
+            // 판정은 수집이 실제로 도는 조건과 같아야 한다 — 좁히면 도는데 끌 수 없는 자리가 생긴다.
             collectionEnabled =
                 state.isLocationCollectionEnabled.takeIf {
-                    source == DataSourceUiModel.LOCATION &&
-                        permissionState.locationStep == LocationPermissionStep.GRANTED
+                    source == DataSourceUiModel.LOCATION && permissionState.locationStep.collectsInBackground
                 },
             onCollectionEnabledChange = { enabled ->
                 onIntent(SettingsUiIntent.LocationCollectionToggled(enabled))
