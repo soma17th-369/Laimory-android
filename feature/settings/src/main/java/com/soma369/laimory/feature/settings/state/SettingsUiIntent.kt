@@ -20,6 +20,16 @@ sealed interface SettingsUiIntent : UiIntent {
     /** `앱 설정 > 테마`. */
     data object ThemeSettingsClicked : SettingsUiIntent
 
+    /**
+     * 위치 자동 수집을 켜거나 끈다.
+     *
+     * 권한과 나눠 둔다 — 권한은 시스템이 갖고 이 값은 앱이 갖는다. 여기서 끈 것은 앱이 다시
+     * 켜지 않는다(전경 진입의 상태 맞추기가 사용자의 의사를 넘지 않는다).
+     */
+    data class LocationCollectionToggled(
+        val enabled: Boolean,
+    ) : SettingsUiIntent
+
     data object LogoutClicked : SettingsUiIntent
 
     data object LogoutDismissed : SettingsUiIntent

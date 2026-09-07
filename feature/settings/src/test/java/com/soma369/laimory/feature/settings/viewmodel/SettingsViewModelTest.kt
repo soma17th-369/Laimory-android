@@ -11,6 +11,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
@@ -19,9 +20,12 @@ import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
 import com.soma369.laimory.core.domain.repository.AuthRepository
+import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.UserRepository
+import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
+import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
@@ -59,6 +63,7 @@ class SettingsViewModelTest {
     private val globalLoadingHelper = RecordingGlobalLoadingHelper()
     private val userProfileCoordinator = FakeUserProfileCoordinator()
     private val userRepository = FakeUserRepository()
+    private val locationTrackingRepository = FakeLocationTrackingRepository()
 
     @Test
     fun `약관 주소를 못 받으면 화면이 뜰 때마다 다시 묻는다`() =
@@ -445,7 +450,53 @@ class SettingsViewModelTest {
             messageHelper = messageHelper,
             globalLoadingHelper = globalLoadingHelper,
             getPublicTermLinks = GetPublicTermLinksUseCase(EmptyTermsRepository),
+            observeLocationTracking = ObserveLocationTrackingUseCase(locationTrackingRepository),
+            setLocationTracking = SetLocationTrackingUseCase(locationTrackingRepository),
         )
+
+    @Test
+    fun `위치 수집을 끄면 사용자의 의사로 저장하고 화면도 꺼진 것으로 보인다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+            assertTrue(viewModel.state.value.isLocationCollectionEnabled)
+
+            viewModel.sendIntent(SettingsUiIntent.LocationCollectionToggled(enabled = false))
+            runCurrent()
+
+            // 화면 값과 저장이 함께 내려가야 한다. 한쪽만 내려가면 앱을 다시 열었을 때 어긋난다.
+            assertFalse(viewModel.state.value.isLocationCollectionEnabled)
+            assertFalse(locationTrackingRepository.enabled.value)
+        }
+
+    @Test
+    fun `설정에서 다시 켜면 수집이 살아난다`() =
+        runTest {
+            // 사용자가 끈 수집은 전경 진입의 상태 맞추기가 되살리지 않으므로, 이 자리가 유일한 복구 경로다.
+            locationTrackingRepository.enabled.value = false
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.LocationCollectionToggled(enabled = true))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isLocationCollectionEnabled)
+            assertTrue(locationTrackingRepository.enabled.value)
+        }
+
+    private class FakeLocationTrackingRepository : LocationTrackingRepository {
+        val enabled = MutableStateFlow(true)
+
+        override fun observeEnabled(): Flow<Boolean> = enabled
+
+        override fun observeStatus(): Flow<LocationTrackingStatus?> = MutableStateFlow(null)
+
+        override suspend fun setEnabled(enabled: Boolean) {
+            this.enabled.value = enabled
+        }
+
+        override suspend fun reconcile() = Unit
+    }
 
     /** 약관 주소는 정보 항목이 여는 곁가지라 조회가 비어도 계정 동작이 달라지지 않는다. */
     private object EmptyTermsRepository : TermsRepository {

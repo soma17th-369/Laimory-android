@@ -12,6 +12,8 @@ import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
+import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
+import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
@@ -42,6 +44,8 @@ class SettingsViewModel
         private val messageHelper: MessageHelper,
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val getPublicTermLinks: GetPublicTermLinksUseCase,
+        observeLocationTracking: ObserveLocationTrackingUseCase,
+        private val setLocationTracking: SetLocationTrackingUseCase,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
@@ -61,6 +65,11 @@ class SettingsViewModel
                 }
             }
             observeUserProfile()
+            viewModelScope.launch {
+                observeLocationTracking().collect { enabled ->
+                    updateState { copy(isLocationCollectionEnabled = enabled) }
+                }
+            }
         }
 
         /**
@@ -101,6 +110,7 @@ class SettingsViewModel
                     navigationHelper.navigateTo(NotificationSettingsPage)
                 SettingsUiIntent.ThemeSettingsClicked ->
                     navigationHelper.navigateTo(ThemeSettingsPage)
+                is SettingsUiIntent.LocationCollectionToggled -> setLocationTracking(intent.enabled)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit
                 SettingsUiIntent.LogoutConfirmed -> logout()
