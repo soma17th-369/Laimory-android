@@ -44,8 +44,9 @@ import javax.inject.Inject
  * 위치 자동 수집 Foreground Service(Phase 2). LocationManager 업데이트를 [LocationSegmenter] 로 분절해
  * 체류(STAY)·이동(MOVEMENT)을 저장하며, 앱이 백그라운드여도 상시 알림과 함께 지속한다.
  *
- * 서비스 인스턴스는 시스템이 생성하므로 라이브 상태는 @Singleton [LocationTrackingState] 에 반영하고, 토글 의도는
- * [LocationTrackingPreferences] 에 영속한다. 알림의 "중지" 또는 샘플링 실패 시 의도를 off 로 내려 토글과 일치시킨다.
+ * 서비스 인스턴스는 시스템이 생성하므로 라이브 상태는 @Singleton [LocationTrackingState] 에 반영한다. 알림의 "중지"
+ * 만 사용자의 의사로 보아 [LocationTrackingPreferences] 에 남기고, 실패로 인한 중지는 남기지 않는다 — 실패를 의사로
+ * 적으면 권한이 돌아와도 다시 켜지지 않는다.
  */
 @AndroidEntryPoint
 internal class LocationCollectionService : Service() {
@@ -88,12 +89,12 @@ internal class LocationCollectionService : Service() {
         startId: Int,
     ): Int {
         if (intent?.action == ACTION_STOP) {
-            disableAndStop()
+            stopByUser()
             return START_NOT_STICKY
         }
         if (!startForegroundInternal()) {
             // FGS 승격 실패(권한/eligible 부족) — startForegroundService 계약 위반 크래시를 피해 즉시 종료.
-            disableAndStop()
+            stopAfterFailure()
             return START_NOT_STICKY
         }
         startSampling()
@@ -149,10 +150,11 @@ internal class LocationCollectionService : Service() {
                     samplingStartRequested = false
                     registerActivityUpdates()
                 }.onFailure { e ->
-                    // 권한 미허용은 SecurityException — 의도를 off 로 내려 토글과 일치시키고 종료.
+                    // 권한 미허용(SecurityException)이든 다른 실패든 사용자의 의사는 건드리지 않는다.
+                    // 권한이 돌아오면 다음 전경 진입의 reconcile 이 다시 켠다.
                     Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e.message}")
                     samplingStartRequested = false
-                    disableAndStop()
+                    stopAfterFailure()
                 }
             }
         }
@@ -214,15 +216,21 @@ internal class LocationCollectionService : Service() {
         return PendingIntent.getBroadcast(this, 2, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
     }
 
+    /** 사용자가 알림에서 직접 중지했다. 이것만 의사로 남겨 다음 전경 진입이 되살리지 않게 한다. */
+    private fun stopByUser() = finishAndStop(userDisabled = true)
+
+    /** 승격·샘플링이 실패해 멈춘다. 사고이지 의사가 아니므로 아무것도 남기지 않는다. */
+    private fun stopAfterFailure() = finishAndStop(userDisabled = false)
+
     /**
-     * 토글 의도를 off 로 내리고 서비스를 종료한다(알림 "중지"·샘플링 실패 공통 경로).
+     * 진행 중 구간을 마감하고 서비스를 종료한다.
      *
      * 영속 저장이 [onDestroy] 의 scope 취소로 유실되지 않도록 [stopSelf] 는 저장 완료 후 코루틴 안에서 호출한다.
      */
-    private fun disableAndStop() {
+    private fun finishAndStop(userDisabled: Boolean) {
         finalizeOnDestroy = true
         scope.launch {
-            runCatching { preferences.setEnabled(false) }
+            if (userDisabled) runCatching { preferences.setUserDisabled(true) }
             if (segmenter == null) {
                 finalizePersistedSegment()
             }
