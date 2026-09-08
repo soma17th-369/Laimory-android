@@ -18,7 +18,11 @@ interface CrashReporter {
     /** 크래시 직전 맥락으로 남길 한 줄(브레드크럼). */
     fun log(message: String)
 
-    /** 앱을 죽이지 않았지만 알아야 할 예외(non-fatal). */
+    /**
+     * 앱을 죽이지 않았지만 알아야 할 예외(non-fatal).
+     *
+     * [Logger] 가 [RedactedThrowable] 로 걷어서 넘긴다 — 구현은 받은 것을 그대로 보내면 된다.
+     */
     fun recordException(throwable: Throwable)
 
     /** 리포트를 가를 때 쓰는 꼬리표. 같은 키를 다시 넣으면 덮어쓴다. */

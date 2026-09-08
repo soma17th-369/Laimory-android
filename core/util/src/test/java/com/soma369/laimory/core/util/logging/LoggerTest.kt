@@ -1,7 +1,9 @@
 package com.soma369.laimory.core.util.logging
 
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -49,7 +51,42 @@ class LoggerTest {
 
         Logger.e(LogDomain.DRAFT_TASK, "초안 작업 실패", failure)
 
-        assertEquals(listOf<Throwable>(failure), reporter.exceptions)
+        assertEquals(1, reporter.exceptions.size)
+        assertArrayEquals(failure.stackTrace, reporter.exceptions.single().stackTrace)
+    }
+
+    @Test
+    fun `원격으로 나가는 예외에는 원문 메시지가 남지 않는다`() {
+        // 예외를 throwable 인자로 옮기는 것만으로는 원문이 사라지지 않는다. SDK 가 메시지를 읽는다.
+        val failure = IllegalStateException("content://media/external/images/media/42")
+
+        Logger.e(LogDomain.COLLECTION, "사진 처리 실패", failure)
+
+        val reported = reporter.exceptions.single()
+        assertEquals("java.lang.IllegalStateException", reported.message)
+        assertFalse(reported.message.orEmpty().contains("content://"))
+    }
+
+    @Test
+    fun `cause 의 메시지도 걷는다`() {
+        val failure = IllegalStateException("겉", IllegalArgumentException("content://media/42"))
+
+        Logger.e(LogDomain.COLLECTION, "사진 처리 실패", failure)
+
+        val cause = reporter.exceptions.single().cause
+        assertEquals("java.lang.IllegalArgumentException", cause?.message)
+    }
+
+    @Test
+    fun `자기 자신을 가리키는 cause 에서도 멈춘다`() {
+        val failure =
+            object : Throwable("겉") {
+                override val cause: Throwable get() = this
+            }
+
+        Logger.e(LogDomain.MVI, "실패", failure)
+
+        assertEquals(1, reporter.exceptions.size)
     }
 
     @Test
@@ -107,7 +144,7 @@ class LoggerTest {
 
         Logger.e(LogDomain.MVI, "실패", failure)
 
-        assertEquals(listOf<Throwable>(failure), reporter.exceptions)
+        assertEquals(1, reporter.exceptions.size)
     }
 
     private class RecordingCrashReporter : CrashReporter {

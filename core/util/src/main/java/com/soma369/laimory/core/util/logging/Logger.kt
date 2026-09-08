@@ -17,8 +17,10 @@ import com.soma369.laimory.core.util.BuildConfig
  *
  * **[remoteMinLevel] 이상의 메시지는 기기를 떠난다.** 그래서 `throwable.message` 를 문장에 넣지
  * 않는다 — 안드로이드 예외 메시지에는 파일 경로·content URI·계정 이름이 그대로 들어 있다.
- * 예외를 남길 때는 종류만 적고(`${'$'}{e::class.simpleName}`) 원문은 throwable 인자로 넘긴다.
- * 그 스택은 [isUnexpectedFailure] 를 통과할 때만 나간다.
+ * 예외를 남길 때는 종류만 적는다(`${'$'}{e::class.simpleName}`).
+ *
+ * throwable 인자로 옮기는 것도 그 자체로 안전하지는 않다. 예외의 메시지는 리포트에 그대로 실리므로
+ * [RedactedThrowable] 로 걷어서 내보낸다.
  */
 object Logger {
     enum class Level { VERBOSE, DEBUG, INFO, WARN, ERROR }
@@ -114,6 +116,9 @@ object Logger {
      *
      * throwable 을 든 [Level.ERROR] 중 [isUnexpectedFailure] 를 통과한 것만 non-fatal 로 보고한다.
      * 낮은 레벨은 "이미 다룬 실패"를 뜻하고, throwable 이 없으면 보고할 스택 자체가 없다.
+     *
+     * 원본이 아니라 [RedactedThrowable] 을 넘긴다. 예외의 메시지는 우리가 다 쓰지 않는 값이라
+     * 그대로 내보낼 수 없다.
      */
     private fun report(
         level: Level,
@@ -125,7 +130,7 @@ object Logger {
         if (level.ordinal < remoteMinLevel.ordinal) return
         reporter.log("$level/$domain: $msg")
         if (level == Level.ERROR && throwable != null && isUnexpectedFailure(throwable)) {
-            reporter.recordException(throwable)
+            reporter.recordException(RedactedThrowable.of(throwable))
         }
     }
 }
