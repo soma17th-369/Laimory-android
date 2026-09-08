@@ -49,7 +49,7 @@ private fun SourceItemPayload.toPayloadJson(
                 DraftPhotoPayloadDto(
                     filename =
                         uploadedPhotoFilename
-                            ?: throw ApiException.UnknownException("PHOTO 업로드 파일명이 없습니다: $clientPhotoUri"),
+                            ?: throw ApiException.UnknownException("PHOTO 업로드 파일명이 없습니다"),
                     clientPhotoUri = clientPhotoUri,
                     latitude = latitude,
                     longitude = longitude,
