@@ -228,35 +228,38 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `메모 편집 중 뒤로가기는 화면을 유지하고 편집기만 닫는다`() =
+    fun `메모 편집 중 뒤로가기는 화면을 유지하고 쓰던 메모를 갈무리한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            // 뒤로 한 번은 포커스를 놓는 동작이다. 예전에는 쓰던 글을 버렸다.
             val viewModel = createLoadedViewModel()
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("뒤로 누르기 전에 쓴 메모"))
             runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.NavigateBack)
-            runCurrent()
+            advanceUntilIdle()
 
-            assertEquals(null, viewModel.state.value.memoEditor)
+            assertNull(viewModel.state.value.memoEditor)
             assertEquals(0, navigationHelper.backCount)
+            assertEquals(listOf(1L to "뒤로 누르기 전에 쓴 메모"), recordRepository.updatedMemos)
         }
 
     @Test
-    fun `메모 저장 중 뒤로가기는 저장과 화면을 그대로 유지한다`() =
+    fun `메모 커밋이 도는 중에도 뒤로가기가 막히지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            // 커밋은 화면을 묶지 않는다 — 응답을 기다리는 동안에도 화면을 떠날 수 있다.
             val gate = CompletableDeferred<Unit>()
             recordRepository.memoUpdateGate = gate
             val viewModel = createLoadedViewModel()
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 중인 메모"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("날아가는 중인 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.NavigateBack)
             runCurrent()
 
-            assertEquals(true, viewModel.state.value.memoEditor?.isSaving)
-            assertEquals(0, navigationHelper.backCount)
+            assertEquals(1, navigationHelper.backCount)
 
             gate.complete(Unit)
             advanceUntilIdle()
@@ -274,7 +277,7 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
-    fun `메모 영역을 선택하면 기존 값으로 인라인 편집하고 취소하면 원래 표시로 돌아간다`() =
+    fun `바뀐 것이 없으면 포커스가 빠져도 요청을 보내지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel =
                 createLoadedViewModel(
@@ -282,38 +285,53 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("수정 중인 메모"))
             runCurrent()
-
             assertEquals("기존 메모", viewModel.state.value.memoEditor?.originalMemo)
-            assertEquals("수정 중인 메모", viewModel.state.value.memoEditor?.draftMemo)
 
-            viewModel.sendIntent(TimelineRecordUiIntent.CancelMemoEdit)
-            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
 
-            assertEquals(null, viewModel.state.value.memoEditor)
+            assertNull(viewModel.state.value.memoEditor)
             assertTrue(recordRepository.updatedMemos.isEmpty())
         }
 
     @Test
-    fun `메모 완료는 전용 PUT 결과를 세션과 카드에 반영한다`() =
+    fun `다른 이벤트의 포커스 해제는 지금 열린 편집기를 닫지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 편집이 옮겨 간 뒤에 앞선 입력칸의 포커스 해제가 뒤늦게 도착할 수 있다.
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(timelineEventId = 1L), event(timelineEventId = 2L))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            assertEquals(2L, viewModel.state.value.memoEditor?.timelineEventId)
+        }
+
+    @Test
+    fun `포커스가 빠지면 전용 PUT 결과를 세션과 카드에 반영한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("오늘의 메모"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
             assertEquals(listOf(1L to "오늘의 메모"), recordRepository.updatedMemos)
             assertEquals("오늘의 메모", repository.timeline.value?.events?.single()?.memo)
             val content = viewModel.state.value.content as TimelineRecordUiContent.Record
             assertEquals("오늘의 메모", content.value.events.single().memo)
-            assertEquals(null, viewModel.state.value.memoEditor)
+            assertNull(viewModel.state.value.memoEditor)
+            // 성공하면 세션이 같은 값을 들고 오므로 덧씌울 것이 남지 않는다.
+            assertTrue(viewModel.state.value.pendingMemos.isEmpty())
         }
 
     @Test
-    fun `공백뿐인 메모 완료는 null 제거 요청을 보낸다`() =
+    fun `공백뿐인 메모는 null 제거 요청을 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel =
                 createLoadedViewModel(
@@ -322,79 +340,160 @@ class TimelineRecordViewModelTest {
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("   "))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
             assertEquals(listOf(1L to null), recordRepository.updatedMemos)
-            assertEquals(null, repository.timeline.value?.events?.single()?.memo)
+            assertNull(repository.timeline.value?.events?.single()?.memo)
         }
 
     @Test
-    fun `메모 최대 길이를 초과하면 완료 요청을 보내지 않는다`() =
+    fun `메모 최대 길이까지는 그대로 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createLoadedViewModel()
-
-            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("가".repeat(10_001)))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
-            advanceUntilIdle()
-
-            assertEquals(false, viewModel.state.value.memoEditor?.isValid)
-            assertTrue(recordRepository.updatedMemos.isEmpty())
-        }
-
-    @Test
-    fun `메모 최대 길이까지는 완료 요청을 보낸다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
+            // 상한을 넘긴 값은 입력칸이 잘라 내므로 여기까지 오지 않는다.
             val maxLengthMemo = "가".repeat(10_000)
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(maxLengthMemo))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
             assertEquals(listOf(1L to maxLengthMemo), recordRepository.updatedMemos)
-            assertEquals(null, viewModel.state.value.memoEditor)
+            assertNull(viewModel.state.value.memoEditor)
         }
 
     @Test
-    fun `메모 수정 네트워크 실패는 입력값을 유지해 다시 시도할 수 있다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.failure = ApiException.NetworkException()
-            val viewModel = createLoadedViewModel()
-
-            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("연결되면 다시 저장할 메모"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
-            advanceUntilIdle()
-
-            assertEquals("연결되면 다시 저장할 메모", viewModel.state.value.memoEditor?.draftMemo)
-            assertEquals(false, viewModel.state.value.memoEditor?.isSaving)
-        }
-
-    @Test
-    fun `메모 저장 중 중복 완료 요청을 막는다`() =
+    fun `커밋이 도는 동안에도 카드는 방금 쓴 메모를 보여 준다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val gate = CompletableDeferred<Unit>()
             recordRepository.memoUpdateGate = gate
-            val viewModel = createLoadedViewModel()
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "옛 메모"))),
+                )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("한 번만 저장"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
-            runCurrent()
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("방금 쓴 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
 
-            assertEquals(listOf(1L to "한 번만 저장"), recordRepository.updatedMemos)
-            assertEquals(true, viewModel.state.value.memoEditor?.isSaving)
+            assertEquals("방금 쓴 메모", viewModel.state.value.displayedRecord?.events?.single()?.memo)
+            // 다시 열어도 방금 쓴 글이 나온다 — 서버 응답을 기다리는 값이 기준이다.
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            runCurrent()
+            assertEquals("방금 쓴 메모", viewModel.state.value.memoEditor?.draftMemo)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+        }
+
+    @Test
+    fun `커밋 실패는 낙관 반영을 되돌리고 재시도할 길을 준다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "원래 메모"))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("연결되면 다시 보낼 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            // 되돌리지 않으면 다음 조회에서 쓴 글이 소리 없이 사라진다.
+            assertEquals("원래 메모", viewModel.state.value.displayedRecord?.events?.single()?.memo)
+            assertTrue(viewModel.state.value.pendingMemos.isEmpty())
+            assertEquals(
+                TimelineRecordUiSideEffect.MemoCommitFailed(
+                    timelineEventId = 1L,
+                    memo = "연결되면 다시 보낼 메모",
+                    message = "메모를 저장하지 못했어요.",
+                ),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `재시도는 실패한 값을 그대로 다시 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(
+                TimelineRecordUiIntent.RetryMemoCommit(timelineEventId = 1L, memo = "다시 보내는 메모"),
+            )
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "다시 보내는 메모"), recordRepository.updatedMemos)
+            assertEquals("다시 보내는 메모", repository.timeline.value?.events?.single()?.memo)
+        }
+
+    @Test
+    fun `다른 메모를 누르면 쓰던 메모가 저장되고 편집이 넘어간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(timelineEventId = 1L), event(timelineEventId = 2L))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("첫 이벤트 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 2L))
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "첫 이벤트 메모"), recordRepository.updatedMemos)
+            assertEquals(2L, viewModel.state.value.memoEditor?.timelineEventId)
+        }
+
+    @Test
+    fun `메모를 쓰는 중에도 화면이 굳지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 예전에는 메모 하나를 누르면 상단 X·FAB·이벤트 편집·저장이 모두 잠겼다.
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "메모")), status = DailyRecordStatus.SAVED),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("쓰는 중"))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isModeSwitchable)
+
+            // 이벤트 편집으로 넘어가면서 쓰던 메모가 갈무리된다.
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectEvent(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.memoEditor)
+            assertEquals(listOf(1L to "쓰는 중"), recordRepository.updatedMemos)
+            assertEquals(listOf(TimelineEventEditorPage(timelineEventId = 1L)), navigationHelper.pages)
+        }
+
+    @Test
+    fun `저장 CTA는 메모가 서버에 닿은 뒤에 기록을 확정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기록이 먼저 확정되면 화면이 종결돼, 뒤늦게 도착한 메모가 어디에 붙을지 알 수 없다.
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.memoUpdateGate = gate
+            val viewModel = createLoadedViewModel()
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("기록보다 먼저 닿아야 할 메모"))
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            assertNull(viewModel.state.value.memoEditor)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
 
             gate.complete(Unit)
             advanceUntilIdle()
 
-            assertEquals(listOf(1L to "한 번만 저장"), recordRepository.updatedMemos)
-            assertEquals(null, viewModel.state.value.memoEditor)
+            assertEquals(listOf(1L to "기록보다 먼저 닿아야 할 메모"), recordRepository.updatedMemos)
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
         }
 
     @Test
@@ -405,15 +504,18 @@ class TimelineRecordViewModelTest {
                     errorCode = -1003,
                     rawCode = 409,
                 )
-            val viewModel = createLoadedViewModel()
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "원래 메모"))),
+                )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("수정할 메모"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
             // 서버가 SAVED 에서도 메모 수정을 허용하므로 -1003 전용 분기를 두지 않는다.
-            assertTrue(viewModel.state.value.memoEditor != null)
+            assertEquals("원래 메모", viewModel.state.value.displayedRecord?.events?.single()?.memo)
         }
 
     @Test
@@ -896,7 +998,7 @@ class TimelineRecordViewModelTest {
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("고친 메모"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
             // 메모 저장마다 세션이 다시 방출되는데 그때마다 기록 상태로 모드를 되돌리면 안 된다.
@@ -1317,7 +1419,7 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             advanceUntilIdle()
             viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("메모"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmMemoEdit)
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
             val record = (viewModel.state.value.content as TimelineRecordUiContent.Record).value
