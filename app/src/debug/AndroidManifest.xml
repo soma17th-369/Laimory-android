@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!--
+            debug 는 크래시를 원격으로 보내지 않는다. 개발 중 크래시는 디버거로 즉시 보므로 보낼
+            값이 없고, 실험 중인 데이터가 브레드크럼에 섞여 Google 로 나간다. 런타임 분기가 아니라
+            매니페스트로 끊는 이유는 SDK 가 프로세스 시작 시점에 이 값을 읽기 때문이다 — 코드가
+            돌기 전에 터진 크래시까지 막으려면 여기여야 한다.
+        -->
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
+    </application>
+
+</manifest>
