@@ -10,6 +10,7 @@ import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetection
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.crash.CrashlyticsCrashReporter
 import com.soma369.laimory.crash.SignedInCrashKeyObserver
+import com.soma369.laimory.crash.isUnexpectedFailure
 import com.soma369.laimory.draft.DraftTaskProcessLifecycleObserver
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
 import com.soma369.laimory.push.PushRegistrationSessionObserver
@@ -78,9 +79,13 @@ class LaimoryApp :
      *
      * 다른 초기화보다 먼저 한다 — 시작 과정에서 나는 로그가 첫 크래시의 맥락이 되는 경우가 많다.
      * 수집을 켤지는 여기서 정하지 않는다. 빌드 타입별 정책은 매니페스트가 소유한다.
+     *
+     * 무엇을 non-fatal 로 볼지도 함께 정한다. 도메인 예외 타입을 아는 것은 이 모듈이고,
+     * `core:util` 은 그것을 알지 않아야 한다.
      */
     private fun installCrashReporter() {
         Logger.crashReporter = CrashlyticsCrashReporter()
+        Logger.isUnexpectedFailure = ::isUnexpectedFailure
     }
 
     /**

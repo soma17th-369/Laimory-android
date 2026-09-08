@@ -14,6 +14,7 @@ class LoggerTest {
         Logger.crashReporter = reporter
         Logger.minLevel = Logger.Level.VERBOSE
         Logger.remoteMinLevel = Logger.Level.INFO
+        Logger.isUnexpectedFailure = { true }
     }
 
     @After
@@ -21,6 +22,7 @@ class LoggerTest {
         Logger.crashReporter = null
         Logger.minLevel = Logger.Level.VERBOSE
         Logger.remoteMinLevel = Logger.Level.INFO
+        Logger.isUnexpectedFailure = { true }
     }
 
     @Test
@@ -85,6 +87,27 @@ class LoggerTest {
         Logger.setCrashKey("route", "timeline")
 
         assertEquals(listOf("route" to "home", "route" to "timeline"), reporter.keys)
+    }
+
+    @Test
+    fun `예상된 실패는 non-fatal 로 보고하지 않는다`() {
+        // 통신 사정처럼 이미 다룬 실패다. `Logger.e` 를 부르는 자리가 여럿이라 판정을 여기서 한다.
+        Logger.isUnexpectedFailure = { false }
+
+        Logger.e(LogDomain.PUSH, "FID 서버 등록 실패", IllegalStateException("network"))
+
+        assertTrue(reporter.exceptions.isEmpty())
+        assertEquals(listOf("ERROR/Push: FID 서버 등록 실패"), reporter.messages)
+    }
+
+    @Test
+    fun `판정을 꽂지 않으면 전부 예상 밖으로 본다`() {
+        // 주입을 잊었을 때 조용히 아무것도 안 보내는 것보다 시끄러운 쪽이 안전하다.
+        val failure = IllegalStateException("boom")
+
+        Logger.e(LogDomain.MVI, "실패", failure)
+
+        assertEquals(listOf<Throwable>(failure), reporter.exceptions)
     }
 
     private class RecordingCrashReporter : CrashReporter {

@@ -116,6 +116,24 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     }
 
     /**
+     * 실패를 로그로 남긴다. 심각도와 원격 보고 여부를 **같은 기준**으로 가른다.
+     *
+     * 예상 밖인지 판정하는 것은 [Logger.isUnexpectedFailure] 하나다. 여기서 따로 예외 종류를
+     * 나열하면 원격 보고 기준과 갈라져, 화면에는 에러로 보이는데 리포트에는 없거나 그 반대가 된다.
+     *
+     * [CancellationException] 은 아예 남기지 않는다. [safeLaunch] 의 `runCatching` 이 취소까지
+     * 잡아 여기로 보내므로, 화면을 떠날 때마다 로그가 한 줄씩 쌓인다.
+     */
+    private fun logFailure(e: Throwable) {
+        if (e is CancellationException) return
+        if (Logger.isUnexpectedFailure(e)) {
+            Logger.e(LogDomain.MVI, "처리하지 못한 예외: ${e::class.simpleName}", e)
+        } else {
+            Logger.w(LogDomain.MVI, "요청 실패: ${e::class.simpleName}")
+        }
+    }
+
+    /**
      * 실패를 화면 피드백(스낵바)으로 표면화한다.
      *
      * 단, [HandledException]은 UseCase에서 이미 공통 정책으로 처리(알림)됐으므로 무시한다.
@@ -123,15 +141,7 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
      */
     protected open fun handleFailure(e: Throwable) {
         if (e is HandledException) return
-        // 예상하지 못한 예외만 남긴다. throwable 을 든 ERROR 는 [Logger] 가 원격 non-fatal 로도
-        // 보고하므로, 예상된 실패까지 올리면 노이즈에 묻혀 진짜 신호를 못 본다.
-        //
-        // - [ApiException]: 서버가 알려 준 도메인 오류다. 스택을 봐야 할 것이 없다.
-        // - [CancellationException]: 화면을 떠나면 [safeLaunch] 의 `runCatching` 이 취소까지 잡아
-        //   여기로 보낸다. 실패가 아니라 정상적인 생명주기다.
-        if (e !is ApiException && e !is CancellationException) {
-            Logger.e(LogDomain.MVI, "처리하지 못한 예외: ${e::class.simpleName}", e)
-        }
+        logFailure(e)
         val message =
             when (e) {
                 is ApiException.NetworkException -> ApiException.NETWORK_ERROR
