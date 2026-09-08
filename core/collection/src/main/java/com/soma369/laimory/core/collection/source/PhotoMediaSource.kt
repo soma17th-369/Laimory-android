@@ -88,7 +88,7 @@ internal class PhotoMediaSource
                     )
                 }.getOrElse { e ->
                     // 권한 미허용은 SecurityException 으로 온다 — 계약대로 빈 목록.
-                    Logger.w(LogDomain.COLLECTION, "MediaStore 사진 후보 조회 실패: ${e.message}")
+                    Logger.w(LogDomain.COLLECTION, "MediaStore 사진 후보 조회 실패: ${e::class.simpleName}")
                     null
                 } ?: return emptyList()
 
@@ -140,7 +140,7 @@ internal class PhotoMediaSource
                         null,
                     )
                 }.getOrElse { e ->
-                    Logger.w(LogDomain.COLLECTION, "MediaStore 사진 조회 실패(ids=${ids.size}): ${e.message}")
+                    Logger.w(LogDomain.COLLECTION, "MediaStore 사진 조회 실패(ids=${ids.size}): ${e::class.simpleName}")
                     null
                 } ?: return emptyList()
 

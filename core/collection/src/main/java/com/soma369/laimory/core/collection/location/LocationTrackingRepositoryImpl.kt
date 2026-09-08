@@ -61,7 +61,7 @@ internal class LocationTrackingRepositoryImpl
          */
         private fun start() {
             runCatching { context.startForegroundService(serviceIntent()) }
-                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 수집 시작 실패: ${e.message}") }
+                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 수집 시작 실패: ${e::class.simpleName}") }
         }
 
         /**
@@ -78,7 +78,7 @@ internal class LocationTrackingRepositoryImpl
             runCatching { context.startService(serviceIntent().setAction(LocationCollectionService.ACTION_STOP)) }
                 .onFailure { e ->
                     // 백그라운드에서 꺼진 서비스를 깨우는 것은 거부될 수 있다. 그때는 확실히 멈추는 것만 한다.
-                    Logger.w(LogDomain.COLLECTION, "위치 수집 중지 전달 실패: ${e.message}")
+                    Logger.w(LogDomain.COLLECTION, "위치 수집 중지 전달 실패: ${e::class.simpleName}")
                     runCatching { context.stopService(serviceIntent()) }
                 }
         }

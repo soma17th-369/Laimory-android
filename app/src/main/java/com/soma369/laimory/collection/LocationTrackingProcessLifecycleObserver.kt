@@ -35,7 +35,7 @@ class LocationTrackingProcessLifecycleObserver
         override fun onStart(owner: LifecycleOwner) {
             applicationScope.launch {
                 runCatching { reconcileLocationTracking() }
-                    .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 수집 상태 맞추기 실패: ${e.message}") }
+                    .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 수집 상태 맞추기 실패: ${e::class.simpleName}") }
             }
         }
     }

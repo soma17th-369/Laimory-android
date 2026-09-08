@@ -45,7 +45,7 @@ internal class LocationBootReceiver : BroadcastReceiver() {
             try {
                 repository.reconcile()
             } catch (e: Exception) {
-                Logger.w(LogDomain.COLLECTION, "부팅 후 위치 수집 복원 실패: ${e.message}")
+                Logger.w(LogDomain.COLLECTION, "부팅 후 위치 수집 복원 실패: ${e::class.simpleName}")
             } finally {
                 pending.finish()
                 scope.cancel()

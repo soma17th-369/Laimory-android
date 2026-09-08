@@ -37,7 +37,7 @@ internal class PhotoExifLocationReader
                     ExifInterface(stream).latLong
                 }
             }.getOrElse { e ->
-                Logger.w(LogDomain.COLLECTION, "사진 EXIF 위치 읽기 실패(uri=$baseUri): ${e.message}")
+                Logger.w(LogDomain.COLLECTION, "사진 EXIF 위치 읽기 실패: ${e::class.simpleName}")
                 null
             }
         }
