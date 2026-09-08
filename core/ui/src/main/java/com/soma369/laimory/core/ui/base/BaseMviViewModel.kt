@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * MVI 패턴의 베이스 ViewModel.
@@ -122,6 +123,15 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
      */
     protected open fun handleFailure(e: Throwable) {
         if (e is HandledException) return
+        // 예상하지 못한 예외만 남긴다. throwable 을 든 ERROR 는 [Logger] 가 원격 non-fatal 로도
+        // 보고하므로, 예상된 실패까지 올리면 노이즈에 묻혀 진짜 신호를 못 본다.
+        //
+        // - [ApiException]: 서버가 알려 준 도메인 오류다. 스택을 봐야 할 것이 없다.
+        // - [CancellationException]: 화면을 떠나면 [safeLaunch] 의 `runCatching` 이 취소까지 잡아
+        //   여기로 보낸다. 실패가 아니라 정상적인 생명주기다.
+        if (e !is ApiException && e !is CancellationException) {
+            Logger.e(LogDomain.MVI, "처리하지 못한 예외: ${e::class.simpleName}", e)
+        }
         val message =
             when (e) {
                 is ApiException.NetworkException -> ApiException.NETWORK_ERROR
