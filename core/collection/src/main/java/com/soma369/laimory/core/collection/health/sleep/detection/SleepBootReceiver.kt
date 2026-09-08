@@ -32,7 +32,7 @@ internal class SleepBootReceiver : BroadcastReceiver() {
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch {
             runCatching { subscriber.startIfEnabled() }
-                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "부팅 후 수면 감지 복원 실패: ${e.message}") }
+                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "부팅 후 수면 감지 복원 실패: ${e::class.simpleName}") }
             pending.finish()
             scope.cancel()
         }

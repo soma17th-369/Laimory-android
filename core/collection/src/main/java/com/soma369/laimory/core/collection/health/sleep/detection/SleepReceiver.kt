@@ -62,7 +62,7 @@ internal class SleepReceiver : BroadcastReceiver() {
             runCatching {
                 if (samples.isNotEmpty()) entry.classifyStore().add(samples)
                 if (segments.isNotEmpty()) entry.segmentProcessor().process(segments)
-            }.onFailure { e -> Logger.w(LogDomain.COLLECTION, "수면 이벤트 처리 실패: ${e.message}") }
+            }.onFailure { e -> Logger.w(LogDomain.COLLECTION, "수면 이벤트 처리 실패: ${e::class.simpleName}") }
             pending.finish()
             scope.cancel()
         }

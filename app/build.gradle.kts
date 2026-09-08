@@ -1,3 +1,4 @@
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import java.net.URI
 import java.util.Properties
 
@@ -9,6 +10,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 // 이름이 buildType 이 아니라 **환경**을 가리킨다. qa 와 release 가 같은 서버(prod)를 보므로
@@ -103,6 +105,8 @@ android {
             buildConfigField("int", "SOURCE_ITEM_RETENTION_DAYS", "365")
             buildConfigField("String", "APP_LOG_LEVEL", "\"VERBOSE\"")
             manifestPlaceholders["authCallbackHost"] = devBaseUrl.toAppLinkHost()
+            // 난독화하지 않으므로 올릴 매핑이 없다. 수집 자체는 debug 소스셋 매니페스트에서 끈다.
+            configure<CrashlyticsExtension> { mappingFileUploadEnabled = false }
         }
 
         release {
@@ -114,6 +118,7 @@ android {
             buildConfigField("int", "SOURCE_ITEM_RETENTION_DAYS", "30")
             buildConfigField("String", "APP_LOG_LEVEL", "\"WARN\"")
             manifestPlaceholders["authCallbackHost"] = prodBaseUrl.toAppLinkHost()
+            configure<CrashlyticsExtension> { mappingFileUploadEnabled = true }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -136,6 +141,10 @@ android {
             // 이 모듈만 qa 를 안다. 나머지 모듈은 release 변종을 쓰게 한다.
             matchingFallbacks += "release"
             buildConfigField("String", "APP_LOG_LEVEL", "\"DEBUG\"")
+            // `initWith` 가 buildType 속성은 복사해도 **플러그인이 붙인 확장 블록까지 옮겨 주지는
+            // 않는다.** 상속에 기대면 R8 을 켠 QA 빌드의 스택이 조용히 난독화된 채 남으므로 여기서
+            // 다시 켠다.
+            configure<CrashlyticsExtension> { mappingFileUploadEnabled = true }
         }
     }
 
@@ -176,11 +185,12 @@ dependencies {
     implementation(libs.lifecycle.process)
     implementation(libs.coroutines.android)
 
-    // Firebase — 초기 연동(#128). 제품 SDK 는 후속 이슈에서 추가; 지금은 초기화 확인용 common 만.
+    // Firebase — 초기 연동(#128) 이후 제품 SDK 를 하나씩 얹는다.
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.common)
     implementation(libs.firebase.installations)
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.crashlytics)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

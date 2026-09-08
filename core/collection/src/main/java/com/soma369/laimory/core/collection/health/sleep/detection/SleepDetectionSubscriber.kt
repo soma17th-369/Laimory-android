@@ -52,7 +52,7 @@ class SleepDetectionSubscriber
                         pendingIntent(),
                         SleepSegmentRequest(SleepSegmentRequest.SEGMENT_AND_CLASSIFY_EVENTS),
                     )
-            }.onFailure { e -> Logger.w(LogDomain.COLLECTION, "수면 감지 구독 실패: ${e.message}") }
+            }.onFailure { e -> Logger.w(LogDomain.COLLECTION, "수면 감지 구독 실패: ${e::class.simpleName}") }
         }
 
         /** 감지 구독을 해제한다. */

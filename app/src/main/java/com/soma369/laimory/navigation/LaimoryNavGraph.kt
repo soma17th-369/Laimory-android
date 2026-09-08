@@ -36,6 +36,8 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.util.logging.Logger
+import com.soma369.laimory.crash.CrashKey
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -89,6 +91,12 @@ fun LaimoryNavGraph(
 
     // 바텀바 노출·선택 상태는 별도 상태 없이 backStack top 의 path 에서 파생한다.
     val currentPath = (backStack.lastOrNull() as? GenericNavKey)?.path
+
+    // 크래시가 어느 화면에서 났는지 좁힌다. 경로는 우리가 정한 상수 문자열이라 개인정보가 실리지
+    // 않는다 — 화면 인자(기록 날짜 등)가 붙는 경로는 여기 오기 전에 path 로만 줄어 있다.
+    LaunchedEffect(currentPath) {
+        Logger.setCrashKey(CrashKey.ROUTE, currentPath ?: "unknown")
+    }
 
     LaunchedEffect(messages) {
         messages.collect { message ->

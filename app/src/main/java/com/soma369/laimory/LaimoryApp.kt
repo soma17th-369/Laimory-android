@@ -8,6 +8,9 @@ import com.soma369.laimory.collection.AutoCollectionProcessLifecycleObserver
 import com.soma369.laimory.collection.LocationTrackingProcessLifecycleObserver
 import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetectionEntryPoint
 import com.soma369.laimory.core.util.logging.Logger
+import com.soma369.laimory.crash.CrashlyticsCrashReporter
+import com.soma369.laimory.crash.SignedInCrashKeyObserver
+import com.soma369.laimory.crash.isUnexpectedFailure
 import com.soma369.laimory.draft.DraftTaskProcessLifecycleObserver
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
 import com.soma369.laimory.push.PushRegistrationSessionObserver
@@ -40,6 +43,9 @@ class LaimoryApp :
     lateinit var sourceItemRetentionScheduler: SourceItemRetentionScheduler
 
     @Inject
+    lateinit var signedInCrashKeyObserver: SignedInCrashKeyObserver
+
+    @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
     override val workManagerConfiguration: Configuration
@@ -51,11 +57,13 @@ class LaimoryApp :
 
     override fun onCreate() {
         super.onCreate()
+        installCrashReporter()
         applyLogLevel()
         ProcessLifecycleOwner.get().lifecycle.addObserver(draftTaskProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(autoCollectionProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(locationTrackingProcessLifecycleObserver)
         pushRegistrationSessionObserver.start()
+        signedInCrashKeyObserver.start()
         sourceItemRetentionScheduler.schedule()
         DraftCompletionNotificationChannel.create(this)
         // 수면 자동 감지 구독 복원. 사용자가 켜둔 상태였을 때만 다시 구독한다(시스템 구독이라 앱이 죽어도 유지).
@@ -64,6 +72,20 @@ class LaimoryApp :
                 .fromApplication(this, SleepDetectionEntryPoint::class.java)
                 .sleepDetectionSubscriber()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch { subscriber.startIfEnabled() }
+    }
+
+    /**
+     * 로그가 크래시 리포트에도 실리도록 원격 대상을 꽂는다.
+     *
+     * 다른 초기화보다 먼저 한다 — 시작 과정에서 나는 로그가 첫 크래시의 맥락이 되는 경우가 많다.
+     * 수집을 켤지는 여기서 정하지 않는다. 빌드 타입별 정책은 매니페스트가 소유한다.
+     *
+     * 무엇을 non-fatal 로 볼지도 함께 정한다. 도메인 예외 타입을 아는 것은 이 모듈이고,
+     * `core:util` 은 그것을 알지 않아야 한다.
+     */
+    private fun installCrashReporter() {
+        Logger.crashReporter = CrashlyticsCrashReporter()
+        Logger.isUnexpectedFailure = ::isUnexpectedFailure
     }
 
     /**

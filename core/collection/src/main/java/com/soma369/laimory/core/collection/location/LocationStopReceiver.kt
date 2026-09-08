@@ -45,7 +45,7 @@ internal class LocationStopReceiver : BroadcastReceiver() {
             try {
                 repository.setEnabled(false)
             } catch (e: Exception) {
-                Logger.w(LogDomain.COLLECTION, "알림에서 위치 수집 중지 실패: ${e.message}")
+                Logger.w(LogDomain.COLLECTION, "알림에서 위치 수집 중지 실패: ${e::class.simpleName}")
             } finally {
                 pending.finish()
                 scope.cancel()

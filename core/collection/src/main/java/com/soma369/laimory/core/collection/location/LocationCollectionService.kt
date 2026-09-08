@@ -117,7 +117,7 @@ internal class LocationCollectionService : Service() {
                 startForeground(NOTIFICATION_ID, notification)
             }
         }.onFailure { e ->
-            Logger.w(LogDomain.COLLECTION, "위치 FGS 시작 실패: ${e.message}")
+            Logger.w(LogDomain.COLLECTION, "위치 FGS 시작 실패: ${e::class.simpleName}")
         }.isSuccess
 
     @SuppressLint("MissingPermission")
@@ -127,7 +127,7 @@ internal class LocationCollectionService : Service() {
         scope.launch {
             val restored =
                 runCatching { segmentStore.restore() }
-                    .onFailure { e -> Logger.w(LogDomain.COLLECTION, "진행 중 위치 상태 복원 실패: ${e.message}") }
+                    .onFailure { e -> Logger.w(LogDomain.COLLECTION, "진행 중 위치 상태 복원 실패: ${e::class.simpleName}") }
                     .getOrNull()
             withContext(Dispatchers.Main.immediate) {
                 if (destroyed) return@withContext
@@ -152,7 +152,7 @@ internal class LocationCollectionService : Service() {
                 }.onFailure { e ->
                     // 권한 미허용(SecurityException)이든 다른 실패든 사용자의 의사는 건드리지 않는다.
                     // 권한이 돌아오면 다음 전경 진입의 reconcile 이 다시 켠다.
-                    Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e.message}")
+                    Logger.w(LogDomain.COLLECTION, "위치 업데이트 시작 실패: ${e::class.simpleName}")
                     samplingStartRequested = false
                     finishAndStop()
                 }
@@ -198,7 +198,7 @@ internal class LocationCollectionService : Service() {
                 .requestActivityTransitionUpdates(ActivityTransitionRequest(transitions), activityPendingIntent())
         }.onFailure { e ->
             // ACTIVITY_RECOGNITION 미허용 등 — AR 없이 속도 추론으로 폴백.
-            Logger.w(LogDomain.COLLECTION, "이동수단 인식 등록 실패: ${e.message}")
+            Logger.w(LogDomain.COLLECTION, "이동수단 인식 등록 실패: ${e::class.simpleName}")
         }
     }
 
@@ -249,7 +249,7 @@ internal class LocationCollectionService : Service() {
                 items = events.map { it.toSourceItem(collectedAt, zone) },
             )
         }.onFailure { e ->
-            Logger.w(LogDomain.COLLECTION, "저장된 위치 상태 마감 실패: ${e.message}")
+            Logger.w(LogDomain.COLLECTION, "저장된 위치 상태 마감 실패: ${e::class.simpleName}")
         }
     }
 
@@ -293,7 +293,7 @@ internal class LocationCollectionService : Service() {
         // UNDISPATCHED로 mutex 대기열에 호출 순서대로 진입해 이전 스냅샷이 최신 상태를 덮지 않게 한다.
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             runCatching { segmentStore.persist(snapshot, items) }
-                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 이벤트 저장 실패: ${e.message}") }
+                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 이벤트 저장 실패: ${e::class.simpleName}") }
             if (cancelScopeWhenDone) {
                 segmentStore.awaitIdle()
                 scope.cancel()
