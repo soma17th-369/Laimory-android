@@ -9,7 +9,7 @@ import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.terms.TermStage
-import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
+import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
@@ -52,12 +52,12 @@ class DraftConsentViewModel
         private val getDisplayTerms: GetDisplayTermsUseCase,
         private val resolveStayAddress: ResolveStayAddressUseCase,
         private val resolveMovementAddresses: ResolveMovementAddressesUseCase,
-        private val mapRenderGate: LocationMapRenderGate,
+        mapKeyGate: LocationMapKeyGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
             DraftConsentUiState(),
         ) {
-        /** 지도 렌더 허용 여부. 약관 조회가 끝나기 전과 조회에 실패했을 때는 false 다. */
-        private var isMapRenderAllowed = false
+        /** 지도 SDK 키 준비 여부. 빌드 상수라 세션 동안 바뀌지 않는다. */
+        private val isMapKeyPresent = mapKeyGate.isMapKeyPresent()
         private var activePreparation: DraftConsentPreparation? = null
 
         /**
@@ -69,11 +69,6 @@ class DraftConsentViewModel
         private val resolvedAddresses = mutableMapOf<String, String>()
 
         init {
-            // 조회가 끝나기 전에는 지도를 붙이지 않는다 — 그리는 순간 카메라 영역이 Google 로 나간다.
-            safeLaunch(onError = {}) {
-                isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()
-                updateState { copy(isMapRenderAllowed = isMapRenderAllowed) }
-            }
             safeLaunch {
                 sessionStore.preparation.collect { preparation ->
                     when {
@@ -82,14 +77,14 @@ class DraftConsentViewModel
                         preparation == null -> {
                             activePreparation = null
                             clearResolvedAddresses()
-                            updateState { initialUiState() }
+                            updateState { DraftConsentUiState() }
                         }
 
                         preparation.attemptId != activePreparation?.attemptId -> {
                             activePreparation = preparation
                             clearResolvedAddresses()
-                            updateState { initialUiState().copy(content = preparation.toConsentContent()) }
-                            resolveMissingAddresses(preparation)
+                            updateState { DraftConsentUiState(content = preparation.toConsentContent()) }
+                            applyLocationConsent(preparation)
                         }
                     }
                 }
@@ -228,6 +223,34 @@ class DraftConsentViewModel
         }
 
         /**
+         * 저장된 위치정보 약관 동의를 확인하고, 그 결과로 지도와 주소 해석을 **함께** 연다.
+         *
+         * 둘 다 사용자의 좌표를 Google 로 내보내는 일이다 — 지도는 카메라 영역을, `Geocoder` 는
+         * 좌표 자체를 보낸다. 지도만 막고 주소 해석을 열어 두면 미동의 좌표가 그대로 나간다.
+         *
+         * **시도마다 다시 판정한다.** 이 ViewModel 은 Activity 범위라 로그아웃 뒤 다음 계정까지
+         * 살아 있다. 한 번 받은 값을 재사용하면 동의한 계정의 판정이 다음 계정으로 넘어가고,
+         * 반대로 뒤늦게 동의한 사용자는 계속 막힌 채로 남는다. 이전 시도의 늦은 응답은 버린다.
+         *
+         * 알아내기 전과 조회 실패는 모두 "허용되지 않음"이다. 모르는 상태에서 좌표를 내보내지 않는다.
+         * catalog 가 비면 요구가 없어 만족으로 보는데, 이는 서버의 fail-open 과 같은 판정이다.
+         */
+        private fun applyLocationConsent(preparation: DraftConsentPreparation) {
+            val attemptId = preparation.attemptId
+            safeLaunch(onError = {}) {
+                val isGranted =
+                    termsCoordinator
+                        .requirementOf(TermStage.TIMELINE_LOCATION)
+                        .getOrNull()
+                        ?.isSatisfied == true
+                if (activePreparation?.attemptId != attemptId || !isGranted) return@safeLaunch
+                val isMapAllowed = isMapKeyPresent
+                updateState { copy(isMapRenderAllowed = isMapAllowed) }
+                resolveMissingAddresses(preparation)
+            }
+        }
+
+        /**
          * 주소가 없는 위치 항목을 화면에 보여줄 때 해석한다.
          *
          * 수집 시점에 붙이지 않는 이유는 두 가지다. 수집은 초안을 만들지 않을 날의 좌표까지
@@ -290,8 +313,6 @@ class DraftConsentViewModel
         }
 
         private fun clearResolvedAddresses() = resolvedAddresses.clear()
-
-        private fun initialUiState(): DraftConsentUiState = DraftConsentUiState(isMapRenderAllowed = isMapRenderAllowed)
 
         private companion object {
             /** 서버가 이 단계 동의를 요구할 때 주는 코드. */

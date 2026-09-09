@@ -13,11 +13,10 @@ import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
-import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
-import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
+import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.draft.LogcatDraftSourceItemSelectionReporter
@@ -100,23 +99,12 @@ object DraftTaskRuntimeModule {
     fun provideCollectionLabAccessGate(): CollectionLabAccessGate = CollectionLabAccessGate { BuildConfig.DEBUG }
 
     /**
-     * 지도 렌더링 허용 여부.
+     * 지도 SDK 키가 심겨 있는지. 빌드 설정이라 여기서만 읽는다.
      *
-     * 빌드 타입으로 가르지 않는다. 지도를 그릴 때 나가는 것은 사용자의 위치이지 개발용 기능이
-     * 아니므로, 판정은 **저장된 위치정보 약관 동의**여야 한다. 온보딩이 이 단계를 필수로 받으므로
-     * 정상 경로로 들어온 사용자는 이미 동의한 상태다.
-     *
-     * catalog 가 비어 있으면 요구가 없어 만족으로 본다 — 서버의 fail-open 과 같은 판정이다.
-     * 반대로 조회에 실패하면 동의 여부를 모르는 것이므로 그리지 않는다.
-     *
-     * API 키가 비어 있으면 SDK 인증이 실패하므로 아예 붙이지 않고 대체 안내로 넘긴다. 키 조회가
-     * 먼저라 키가 없는 환경에서는 약관 조회를 하지 않는다.
+     * 빌드 타입으로 가르지 않는다 — 지도를 그릴 때 나가는 것은 사용자의 위치이지 개발용 기능이
+     * 아니다. **그려도 되는지**는 저장된 위치정보 약관 동의가 답하며 화면이 판정한다.
      */
     @Provides
     @Singleton
-    fun provideLocationMapRenderGate(termsCoordinator: TermsAgreementCoordinator): LocationMapRenderGate =
-        LocationMapRenderGate {
-            BuildConfig.MAPS_API_KEY.isNotBlank() &&
-                termsCoordinator.requirementOf(TermStage.TIMELINE_LOCATION).getOrNull()?.isSatisfied == true
-        }
+    fun provideLocationMapKeyGate(): LocationMapKeyGate = LocationMapKeyGate { BuildConfig.MAPS_API_KEY.isNotBlank() }
 }
