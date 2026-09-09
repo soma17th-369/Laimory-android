@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -239,15 +240,22 @@ private fun rowGap(isLast: Boolean): Dp = if (isLast) 0.dp else TIMELINE_ROW_GAP
  * 채움은 시안대로 `surfaceVariant` 다. 배경색으로 낮춰 봤더니 원이 사라지면서 아이콘이 허공에
  * 뜨고, 아래에서 올라온 연결선도 닿을 곳을 잃어 어색했다. 원은 아이콘의 바탕이자 연결선이
  * 맞물리는 마디라 배경과 구분돼야 한다.
+ *
+ * 테두리는 아이콘과 **같은 색**이다. 시안이 이 자리에 `selector/icon-color` 를 물려 둔 것도
+ * 같은 뜻이다 — 원은 아이콘이 앉은 자리지 따로 읽히는 상자가 아니라, 윤곽만 아이콘을 따라
+ * 한 겹 두른다. 채움(`surfaceVariant`)만으로는 밝은 배경에서 원의 경계가 흐려 연결선이
+ * 어디에 맞물리는지 보이지 않았다.
  */
 @Composable
 private fun EventTypeIndicator(eventType: TimelineEventType) {
+    val shape = RoundedCornerShape(INDICATOR_CORNER_RADIUS)
     Box(
         modifier =
             Modifier
                 .size(INDICATOR_SIZE)
-                .clip(RoundedCornerShape(INDICATOR_CORNER_RADIUS))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(INDICATOR_BORDER_WIDTH, MaterialTheme.colorScheme.onSurfaceVariant, shape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -730,6 +738,7 @@ private val TIMELINE_ROW_GAP = 16.dp
 /** 표시자 원형 크기. 시안 32dp. */
 private val INDICATOR_SIZE = 32.dp
 private val INDICATOR_CORNER_RADIUS = 16.dp
+private val INDICATOR_BORDER_WIDTH = 1.dp
 private val INDICATOR_ICON_SIZE = 24.dp
 
 /** 아이콘 아래로 이어지는 연결선 두께. 시안 2dp. */
