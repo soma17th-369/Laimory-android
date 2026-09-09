@@ -28,13 +28,17 @@ import com.soma369.laimory.core.ui.R
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
-import com.soma369.laimory.core.ui.theme.color
 
 /**
- * 하루를 대표하는 감정을 나타내는 원형 아이콘. Figma `MoodEmoji` 컴포넌트를 옮긴 것으로 홈·캘린더가 공유한다.
+ * 하루를 대표하는 감정을 나타내는 원형 아이콘. Figma `Emoji-v2` 컴포넌트를 옮긴 것으로 홈·캘린더가 공유한다.
  *
- * [emotion] 이 null 이면 감정을 알 수 없는 상태로 보고 중립 물음표를 표시한다. 기록 자체가 없는 날은
- * 이 컴포넌트를 그리지 않는 것이 호출부 책임이다 — "감정 미상"과 "기록 없음"은 다른 상태다.
+ * 감정 5종은 원 배경·표정선·악센트가 에셋 한 장에 들어 있어 테마 색을 입히지 않는다 — 라이트와 다크가
+ * 같은 색으로 보인다(구형도 감정 base 색이 테마별로 같았으므로 보이는 결과는 달라지지 않는다).
+ *
+ * [emotion] 이 null 이면 감정을 알 수 없는 상태로 보고 중립 물음표를 표시한다. **이때만** 원을 직접 깔고
+ * 테마 색을 쓴다 — 미상은 색을 빌려 오는 자리가 아니라 비어 있음의 표시라, 다크에서 배경과 함께 어두워져야
+ * 한다. 기록 자체가 없는 날은 이 컴포넌트를 그리지 않는 것이 호출부 책임이다 — "감정 미상"과 "기록 없음"은
+ * 다른 상태다.
  *
  * @param contentDescription null 이면 접근성 트리에서 제외한다(날짜 셀처럼 부모가 설명을 소유하는 경우).
  */
@@ -50,8 +54,8 @@ fun EmotionIcon(
             modifier
                 .size(size)
                 .background(
-                    // 감정 미상은 팔레트 색을 빌려 쓰지 않고 중립 톤으로 떨어뜨린다.
-                    color = emotion?.color() ?: MaterialTheme.colorScheme.outline,
+                    // 감정 5종은 원이 에셋 안에 있다. 미상만 중립 톤 원을 직접 깐다.
+                    color = if (emotion == null) MaterialTheme.colorScheme.outline else Color.Transparent,
                     shape = CircleShape,
                 ).clearAndSetSemantics {
                     contentDescription?.let { this.contentDescription = it }
@@ -82,8 +86,8 @@ private fun NeutralEmotionMark(size: Dp) {
                 fontSize = markSize,
                 lineHeight = markSize,
             ),
-        // 글리프 5종과 같은 흰색 계열 — 원 배경 위에 얹히는 표정선이라 테마 색으로 갈아끼우지 않는다.
-        color = Color.White.copy(alpha = NEUTRAL_MARK_ALPHA),
+        // 신형 글리프 5종이 먹선이라 물음표도 같은 무게로 맞춘다. 원과 함께 테마를 따라야 해 토큰으로 둔다.
+        color = MaterialTheme.colorScheme.onSurface,
     )
 }
 
@@ -99,10 +103,10 @@ private fun Emotion.glyphRes(): Int =
 
 object EmotionIconDefaults {
     /**
-     * Figma `MoodEmoji` 가 실제로 그려지는 지름.
+     * Figma `Emoji-v2` 가 그려지는 지름.
      *
-     * 컴포넌트 프레임은 24dp 지만 안쪽 원이 프레임을 넘겨 36dp 로 렌더된다(캘린더 셀 실측 기준).
-     * 레이아웃 슬롯이 아니라 눈에 보이는 크기를 정본으로 삼는다.
+     * 신형은 원 배경까지 포함한 36x36 프레임이라 프레임 크기가 곧 눈에 보이는 크기다. 구형 `MoodEmoji` 는
+     * 24dp 프레임을 원이 넘겨 36dp 로 렌더되던 것을 실측으로 맞춰 뒀는데, 그 어긋남이 사라졌다.
      */
     val Size: Dp = 36.dp
 
@@ -111,7 +115,6 @@ object EmotionIconDefaults {
 }
 
 private const val NEUTRAL_MARK_RATIO = 0.61f
-private const val NEUTRAL_MARK_ALPHA = 0.7f
 
 @Preview(name = "감정 5종 + 중립", showBackground = true)
 @Composable
@@ -139,6 +142,23 @@ private fun EmotionIconDarkPreview() {
         ) {
             Emotion.entries.forEach { emotion -> EmotionIcon(emotion = emotion) }
             EmotionIcon(emotion = null)
+        }
+    }
+}
+
+@Preview(name = "감정 5종 + 중립 · 축소", showBackground = true)
+@Composable
+private fun EmotionIconCompactPreview() {
+    LaimoryTheme {
+        Row(
+            modifier = Modifier.padding(Spacing.large),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Emotion.entries.forEach { emotion ->
+                EmotionIcon(emotion = emotion, size = EmotionIconDefaults.CompactSize)
+            }
+            EmotionIcon(emotion = null, size = EmotionIconDefaults.CompactSize)
         }
     }
 }
