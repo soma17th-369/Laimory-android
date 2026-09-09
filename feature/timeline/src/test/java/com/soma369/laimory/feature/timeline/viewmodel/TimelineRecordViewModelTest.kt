@@ -405,28 +405,127 @@ class TimelineRecordViewModelTest {
             // 되돌리지 않으면 다음 조회에서 쓴 글이 소리 없이 사라진다.
             assertEquals("원래 메모", viewModel.state.value.displayedRecord?.events?.single()?.memo)
             assertTrue(viewModel.state.value.pendingMemos.isEmpty())
-            assertEquals(
-                TimelineRecordUiSideEffect.MemoCommitFailed(
-                    timelineEventId = 1L,
-                    memo = "연결되면 다시 보낼 메모",
-                    message = "메모를 저장하지 못했어요.",
-                ),
-                viewModel.sideEffect.first(),
-            )
+            val failure = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
+            assertEquals(1L, failure.timelineEventId)
+            assertEquals("연결되면 다시 보낼 메모", failure.memo)
+            assertEquals("메모를 저장하지 못했어요.", failure.message)
         }
 
     @Test
     fun `재시도는 실패한 값을 그대로 다시 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.memoFailureQueue += ApiException.NetworkException()
+            recordRepository.memoFailureQueue += null
             val viewModel = createLoadedViewModel()
 
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("다시 보내는 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+            val failure = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
+
             viewModel.sendIntent(
-                TimelineRecordUiIntent.RetryMemoCommit(timelineEventId = 1L, memo = "다시 보내는 메모"),
+                TimelineRecordUiIntent.RetryMemoCommit(
+                    timelineEventId = failure.timelineEventId,
+                    commitId = failure.commitId,
+                    memo = failure.memo,
+                ),
             )
             advanceUntilIdle()
 
-            assertEquals(listOf(1L to "다시 보내는 메모"), recordRepository.updatedMemos)
+            assertEquals(listOf(1L to "다시 보내는 메모", 1L to "다시 보내는 메모"), recordRepository.updatedMemos)
             assertEquals("다시 보내는 메모", repository.timeline.value?.events?.single()?.memo)
+        }
+
+    @Test
+    fun `앞선 응답이 뒤이어 쓴 메모를 지우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val firstGate = CompletableDeferred<Unit>()
+            val secondGate = CompletableDeferred<Unit>()
+            recordRepository.memoUpdateGateQueue += firstGate
+            recordRepository.memoUpdateGateQueue += secondGate
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(memo = "옛 메모"))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("first"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("latest"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            runCurrent()
+            assertEquals("latest", viewModel.state.value.displayedRecord?.events?.single()?.memo)
+
+            // 앞선 요청의 응답이 먼저 돌아온다. 이벤트 id 만 보고 걷어내면 최신 값까지 사라진다.
+            firstGate.complete(Unit)
+            runCurrent()
+
+            assertEquals("latest", viewModel.state.value.displayedRecord?.events?.single()?.memo)
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            runCurrent()
+            assertEquals("latest", viewModel.state.value.memoEditor?.draftMemo)
+
+            secondGate.complete(Unit)
+            advanceUntilIdle()
+            assertEquals("latest", repository.timeline.value?.events?.single()?.memo)
+        }
+
+    @Test
+    fun `오래된 재시도는 새로 저장한 메모를 덮지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 실패 스낵바가 떠 있는 동안 같은 메모를 다시 써서 저장할 수 있다.
+            recordRepository.memoFailureQueue += ApiException.NetworkException()
+            recordRepository.memoFailureQueue += null
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("지난 실패 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+            val stale = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("새로 쓴 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertEquals("새로 쓴 메모", repository.timeline.value?.events?.single()?.memo)
+
+            viewModel.sendIntent(
+                TimelineRecordUiIntent.RetryMemoCommit(
+                    timelineEventId = stale.timelineEventId,
+                    commitId = stale.commitId,
+                    memo = stale.memo,
+                ),
+            )
+            advanceUntilIdle()
+
+            assertEquals("새로 쓴 메모", repository.timeline.value?.events?.single()?.memo)
+            assertEquals(listOf(1L to "지난 실패 메모", 1L to "새로 쓴 메모"), recordRepository.updatedMemos)
+        }
+
+    @Test
+    fun `저장하지 못한 메모가 있으면 하루 기록을 확정하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 확정하면 화면이 종결되는데, 그 글은 서버에 없고 재시도할 자리도 함께 사라진다.
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(false, viewModel.state.value.isSavingRecord)
+            assertNull(viewModel.state.value.emotionSheet)
+            // 화면이 살아 있어야 실패한 글을 다시 저장할 수 있다.
+            assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
         }
 
     @Test
@@ -1553,6 +1652,12 @@ class TimelineRecordViewModelTest {
         var dailyRecordResult: Result<DailyTimeline>? = null
         var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
         var memoUpdateGate: CompletableDeferred<Unit>? = null
+
+        /** 요청 순서대로 하나씩 소비하는 게이트. 같은 이벤트에 두 번 보낼 때 응답 시점을 갈라 본다. */
+        val memoUpdateGateQueue = ArrayDeque<CompletableDeferred<Unit>>()
+
+        /** 요청 순서대로 하나씩 소비하는 실패. 비어 있으면 [failure] 를 쓴다. */
+        val memoFailureQueue = ArrayDeque<ApiException?>()
         var failure: ApiException? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
@@ -1576,11 +1681,14 @@ class TimelineRecordViewModelTest {
             memo: String?,
         ): TimelineEvent {
             updatedMemos += timelineEventId to memo
+            // 실패는 응답을 기다리기 전에 뽑는다 — 두 요청이 엇갈려 끝나도 보낸 순서를 따른다.
+            val queuedFailure = if (memoFailureQueue.isNotEmpty()) memoFailureQueue.removeFirst() else failure
+            memoUpdateGateQueue.removeFirstOrNull()?.await()
             memoUpdateGate?.let { gate ->
                 memoUpdateGate = null
                 gate.await()
             }
-            failure?.let { throw it }
+            queuedFailure?.let { throw it }
             return TimelineEvent(
                 timelineEventId = timelineEventId,
                 eventType = TimelineEventType.WORK,

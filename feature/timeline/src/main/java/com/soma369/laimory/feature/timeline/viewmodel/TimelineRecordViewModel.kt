@@ -85,6 +85,24 @@ class TimelineRecordViewModel
          */
         private val memoCommitJobs = mutableMapOf<Long, Job>()
 
+        /**
+         * 커밋마다 붙이는 일련번호와, 이벤트별 마지막 번호.
+         *
+         * 응답은 화면을 묶지 않고 뒤에서 돌아오므로, 도착했을 때 그 커밋이 아직 최신인지 가려야
+         * 한다. 확인하지 않으면 앞선 응답이 뒤이어 쓴 글을 지우고, 옛 실패의 재시도가 새로 저장한
+         * 글을 덮는다.
+         */
+        private var memoCommitSequence = 0L
+        private val latestMemoCommits = mutableMapOf<Long, Long>()
+
+        /**
+         * 아직 사용자에게 되돌려 준 적 없는 실패.
+         *
+         * 하루 기록 확정을 막는 자리다 — 저장하지 못한 글을 둔 채 확정하면 화면이 종결되면서
+         * 그 글도 재시도할 자리도 함께 사라진다.
+         */
+        private val failedMemoCommits = mutableSetOf<Long>()
+
         init {
             safeLaunch {
                 observeTimelineRecordUseCase().collect { timeline ->
@@ -139,7 +157,8 @@ class TimelineRecordViewModel
                 is TimelineRecordUiIntent.EditMemo -> editMemo(intent.timelineEventId)
                 is TimelineRecordUiIntent.ChangeMemo -> changeMemo(intent.value)
                 is TimelineRecordUiIntent.CommitMemoEdit -> commitMemo(intent.timelineEventId)
-                is TimelineRecordUiIntent.RetryMemoCommit -> sendMemo(intent.timelineEventId, intent.memo)
+                is TimelineRecordUiIntent.RetryMemoCommit ->
+                    retryMemoCommit(intent.timelineEventId, intent.commitId, intent.memo)
             }
         }
 
@@ -394,7 +413,10 @@ class TimelineRecordViewModel
                 safeLaunch(onError = ::handleSaveFailure) {
                     // 메모가 아직 날아가는 중일 수 있다. 기록이 먼저 확정되면 화면이 종결돼
                     // 뒤늦게 도착한 메모가 어디에 붙을지 알 수 없다.
-                    awaitMemoCommits()
+                    if (!awaitMemoCommits()) {
+                        abortSaveForFailedMemo()
+                        return@safeLaunch
+                    }
                     completeDailyRecordUseCase(record.recordDate, sheet.selected)
                         .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
                         .onFailure(::handleSaveFailure)
@@ -422,6 +444,20 @@ class TimelineRecordViewModel
                 CompleteDailyRecordOutcome.RecordUnavailable ->
                     sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 기록이에요."))
             }
+        }
+
+        /**
+         * 저장하지 못한 메모를 둔 채로는 기록을 확정하지 않는다.
+         *
+         * 확정하면 화면이 `Unavailable` 로 종결되는데, 그 글은 서버에 없고 재시도할 자리(스낵바)도
+         * 화면과 함께 사라진다. 사용자는 무엇을 잃었는지도 모른 채 끝난다.
+         *
+         * 시트를 닫는 이유는 메모가 시트 뒤에 있기 때문이다 — 고치러 갈 곳을 가린 채로 두면
+         * 안내만 하고 길은 막는 꼴이다.
+         */
+        private fun abortSaveForFailedMemo() {
+            updateState { copy(isSavingRecord = false, emotionSheet = null) }
+            showSnackbar("저장하지 못한 메모가 있어요. 메모를 다시 저장한 뒤 완료해 주세요.")
         }
 
         private fun handleSaveFailure(error: Throwable) {
@@ -683,28 +719,62 @@ class TimelineRecordViewModel
             timelineEventId: Long,
             memo: String?,
         ) {
+            val commitId = ++memoCommitSequence
+            latestMemoCommits[timelineEventId] = commitId
+            // 새로 쓴 글이 앞선 실패를 대신한다. 옛 실패로 기록 확정을 계속 막지 않는다.
+            failedMemoCommits -= timelineEventId
             val previous = memoCommitJobs[timelineEventId]
             updateState { copy(pendingMemos = pendingMemos + (timelineEventId to memo)) }
             memoCommitJobs[timelineEventId] =
-                safeLaunch(onError = { error -> handleMemoCommitFailure(timelineEventId, memo, error) }) {
+                safeLaunch(onError = { error -> handleMemoCommitFailure(timelineEventId, commitId, memo, error) }) {
                     previous?.join()
                     updateTimelineEventMemoUseCase(
                         timelineEventId = timelineEventId,
                         memo = memo,
                     ).onSuccess {
                         // 성공하면 UseCase 가 세션에 같은 값을 넣어 두므로 덧씌울 것이 없다.
-                        clearPendingMemo(timelineEventId)
-                    }.onFailure { error -> handleMemoCommitFailure(timelineEventId, memo, error) }
+                        clearPendingMemo(timelineEventId, commitId)
+                    }.onFailure { error -> handleMemoCommitFailure(timelineEventId, commitId, memo, error) }
                 }
         }
 
-        private fun clearPendingMemo(timelineEventId: Long) {
+        /**
+         * 스낵바의 `다시 시도`.
+         *
+         * 그 사이 같은 메모를 다시 써서 커밋했다면 이 재시도는 이미 지난 값이다 — 보내면 새로
+         * 저장한 글을 옛 글로 덮는다.
+         */
+        private fun retryMemoCommit(
+            timelineEventId: Long,
+            commitId: Long,
+            memo: String?,
+        ) {
+            if (latestMemoCommits[timelineEventId] != commitId) return
+            sendMemo(timelineEventId, memo)
+        }
+
+        /**
+         * 낙관 반영을 걷는다. **더 나중 커밋이 이미 다른 값을 얹어 뒀으면 그 값이 주인이다.**
+         *
+         * 확인하지 않으면 먼저 보낸 요청의 응답이 뒤이어 쓴 글까지 지운다 — 카드가 옛 값으로
+         * 돌아가고, 다시 연 편집기도 그 옛 값을 읽는다.
+         */
+        private fun clearPendingMemo(
+            timelineEventId: Long,
+            commitId: Long,
+        ) {
+            if (latestMemoCommits[timelineEventId] != commitId) return
             updateState { copy(pendingMemos = pendingMemos - timelineEventId) }
         }
 
-        /** 날아가는 중인 메모가 하루 기록 확정보다 늦게 서버에 닿지 않도록 기다린다. */
-        private suspend fun awaitMemoCommits() {
+        /**
+         * 날아가는 중인 메모가 하루 기록 확정보다 늦게 서버에 닿지 않도록 기다린다.
+         *
+         * 기다린 것 중 **되돌려 준 실패가 하나라도 있으면 `false`** 다. 확정을 멈추라는 뜻이다.
+         */
+        private suspend fun awaitMemoCommits(): Boolean {
             memoCommitJobs.values.toList().forEach { it.join() }
+            return failedMemoCommits.isEmpty()
         }
 
         /**
@@ -718,26 +788,37 @@ class TimelineRecordViewModel
          */
         private fun handleMemoCommitFailure(
             timelineEventId: Long,
+            commitId: Long,
             memo: String?,
             error: Throwable,
         ) {
-            clearPendingMemo(timelineEventId)
+            // 뒤이은 커밋이 이 값을 이미 대신했다. 결과는 그 커밋이 자기 몫으로 알린다 —
+            // 여기서 알리면 사용자가 이미 고쳐 쓴 글을 옛 글로 되돌릴 길을 열어 주는 셈이다.
+            if (latestMemoCommits[timelineEventId] != commitId) return
+            clearPendingMemo(timelineEventId, commitId)
             if (error is CancellationException) return
             when ((error as? TimelineEventUpdateException)?.reason) {
-                // 되돌릴 대상이 이미 없다. 목록을 서버 기준으로 맞춘다.
+                // 되돌릴 대상이 이미 없다. 목록을 서버 기준으로 맞추고, 막을 것도 없앤다.
                 TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE -> {
+                    latestMemoCommits -= timelineEventId
+                    failedMemoCommits -= timelineEventId
                     showSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요.")
                     requestedRecordDate?.let(::loadRecord)
                 }
-                // 같은 값을 다시 보내도 같은 답이 온다. 재시도를 권하지 않는다.
-                TimelineEventUpdateException.Reason.INVALID_REQUEST -> showSnackbar("메모 내용을 다시 확인해 주세요.")
+                // 같은 값을 다시 보내도 같은 답이 온다. 재시도를 권하지 않는다 — 고쳐 써야 풀린다.
+                TimelineEventUpdateException.Reason.INVALID_REQUEST -> {
+                    failedMemoCommits += timelineEventId
+                    showSnackbar("메모 내용을 다시 확인해 주세요.")
+                }
                 // 메모 수정이 내는 사유는 위 둘뿐이다(`UpdateTimelineEventMemoUseCase`).
                 // 나머지는 네트워크·서버 실패와 같은 자리에 둔다 — 다시 보내면 될 수 있는 것들이다.
                 else -> {
                     if (error is HandledException) return
+                    failedMemoCommits += timelineEventId
                     sendEffect(
                         TimelineRecordUiSideEffect.MemoCommitFailed(
                             timelineEventId = timelineEventId,
+                            commitId = commitId,
                             memo = memo,
                             message = "메모를 저장하지 못했어요.",
                         ),

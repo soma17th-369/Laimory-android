@@ -127,6 +127,7 @@ private fun TimelineRecordContent(
                         onIntent(
                             TimelineRecordUiIntent.RetryMemoCommit(
                                 timelineEventId = effect.timelineEventId,
+                                commitId = effect.commitId,
                                 memo = effect.memo,
                             ),
                         )

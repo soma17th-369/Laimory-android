@@ -15,6 +15,7 @@ sealed interface TimelineRecordUiSideEffect : UiSideEffect {
      */
     data class MemoCommitFailed(
         val timelineEventId: Long,
+        val commitId: Long,
         val memo: String?,
         val message: String,
     ) : TimelineRecordUiSideEffect
