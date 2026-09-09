@@ -6,12 +6,16 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.collection.MovementPayload
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveMovementAddressesUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
@@ -21,6 +25,9 @@ import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import com.soma369.laimory.feature.home.state.DraftConsentUiSideEffect
 import com.soma369.laimory.feature.home.state.DraftConsentUiState
+import com.soma369.laimory.feature.home.state.movementEndAddressKey
+import com.soma369.laimory.feature.home.state.movementStartAddressKey
+import com.soma369.laimory.feature.home.state.stayAddressKey
 import com.soma369.laimory.feature.home.state.toConsentContent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -43,6 +50,8 @@ class DraftConsentViewModel
         private val navigationHelper: NavigationHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val getDisplayTerms: GetDisplayTermsUseCase,
+        private val resolveStayAddress: ResolveStayAddressUseCase,
+        private val resolveMovementAddresses: ResolveMovementAddressesUseCase,
         private val mapRenderGate: LocationMapRenderGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
             DraftConsentUiState(),
@@ -50,6 +59,14 @@ class DraftConsentViewModel
         /** 지도 렌더 허용 여부. 약관 조회가 끝나기 전과 조회에 실패했을 때는 false 다. */
         private var isMapRenderAllowed = false
         private var activePreparation: DraftConsentPreparation? = null
+
+        /**
+         * 표시 시점에 해석한 주소. 키는 [stayAddressKey] 계열이다.
+         *
+         * 전송 스냅샷이 아니라 화면 모델에만 덧입힌다. 새 생성 시도가 오면 비운다 — 스냅샷이
+         * 바뀌면 대응하는 항목도 달라진다.
+         */
+        private val resolvedAddresses = mutableMapOf<String, String>()
 
         init {
             // 조회가 끝나기 전에는 지도를 붙이지 않는다 — 그리는 순간 카메라 영역이 Google 로 나간다.
@@ -64,12 +81,15 @@ class DraftConsentViewModel
                         // 민감 표시 모델과 체크 상태가 남지 않도록 즉시 초기화한다.
                         preparation == null -> {
                             activePreparation = null
+                            clearResolvedAddresses()
                             updateState { initialUiState() }
                         }
 
                         preparation.attemptId != activePreparation?.attemptId -> {
                             activePreparation = preparation
+                            clearResolvedAddresses()
                             updateState { initialUiState().copy(content = preparation.toConsentContent()) }
+                            resolveMissingAddresses(preparation)
                         }
                     }
                 }
@@ -206,6 +226,70 @@ class DraftConsentViewModel
             activePreparation = null
             navigationHelper.navigateToBack()
         }
+
+        /**
+         * 주소가 없는 위치 항목을 화면에 보여줄 때 해석한다.
+         *
+         * 수집 시점에 붙이지 않는 이유는 두 가지다. 수집은 초안을 만들지 않을 날의 좌표까지
+         * 해석하게 되고, 배경에서 도는 데다 `Geocoder` 는 네트워크가 필요해 조용히 실패한 뒤
+         * **다시 시도할 계기가 없다.** 화면에서 부르면 열 때마다 재시도 기회가 생긴다.
+         *
+         * 해석 결과는 같은 로컬 SourceItem 에 저장되므로 다음 진입부터는 캐시처럼 붙어 있다.
+         *
+         * 좌표 하나를 한 번씩만 부른다 — 새 `attemptId` 마다 이 함수가 한 번 돌고 항목을 한 번씩
+         * 지난다. 실패해도 이번 시도 안에서는 다시 부르지 않고 `주소 미확인` 으로 남긴다. 재시도
+         * 기회는 화면을 다시 열어 새 시도가 시작될 때 생긴다.
+         */
+        private fun resolveMissingAddresses(preparation: DraftConsentPreparation) {
+            val attemptId = preparation.attemptId
+            preparation.selection.items.forEach { item ->
+                when (val payload = item.payload) {
+                    is StayPayload -> {
+                        if (payload.address != null) return@forEach
+                        launchAddressResolution(attemptId) {
+                            resolveStayAddress(item.rawId, payload.latitude, payload.longitude)
+                                ?.let { mapOf(stayAddressKey(item.rawId) to it) }
+                                .orEmpty()
+                        }
+                    }
+
+                    is MovementPayload -> {
+                        if (payload.start.address != null && payload.end.address != null) return@forEach
+                        launchAddressResolution(attemptId) {
+                            val resolved = resolveMovementAddresses(item.rawId, payload.start, payload.end)
+                            buildMap {
+                                resolved.start?.let { put(movementStartAddressKey(item.rawId), it) }
+                                resolved.end?.let { put(movementEndAddressKey(item.rawId), it) }
+                            }
+                        }
+                    }
+
+                    else -> Unit
+                }
+            }
+        }
+
+        /**
+         * 해석 한 건을 띄우고 결과를 화면에 얹는다.
+         *
+         * 항목마다 따로 띄운다 — 한 좌표가 늦거나 응답이 오지 않아도 나머지 주소는 먼저 뜬다.
+         * 주소는 보조 표시라 실패는 삼키고 `주소 미확인` 으로 남긴다.
+         */
+        private fun launchAddressResolution(
+            attemptId: Long,
+            resolve: suspend () -> Map<String, String>,
+        ) {
+            safeLaunch(onError = {}) {
+                val resolved = resolve()
+                if (resolved.isEmpty()) return@safeLaunch
+                // 늦게 도착한 이전 생성 시도의 결과는 버린다. 지금 화면의 스냅샷과 맞지 않는다.
+                val preparation = activePreparation?.takeIf { it.attemptId == attemptId } ?: return@safeLaunch
+                resolvedAddresses += resolved
+                updateState { copy(content = preparation.toConsentContent(resolvedAddresses)) }
+            }
+        }
+
+        private fun clearResolvedAddresses() = resolvedAddresses.clear()
 
         private fun initialUiState(): DraftConsentUiState = DraftConsentUiState(isMapRenderAllowed = isMapRenderAllowed)
 

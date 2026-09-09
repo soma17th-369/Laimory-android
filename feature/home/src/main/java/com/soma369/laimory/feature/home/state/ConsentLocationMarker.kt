@@ -46,6 +46,23 @@ data class ConsentLocationMarker(
 }
 
 /**
+ * 표시 시점에 해석한 주소를 스냅샷 위에 덧입힐 때 쓰는 키.
+ *
+ * 전송 스냅샷의 payload 는 건드리지 않고 화면 모델만 이 맵을 본다. 지도 마커와 아래 목록이 같은
+ * 키를 보므로 두 곳의 주소가 어긋날 수 없다.
+ *
+ * 키 모양은 [ConsentLocationMarker.key] 와 같다 — 이동은 한 `rawId` 에 점이 둘이라 그 자체로는
+ * 어느 쪽 주소인지 말할 수 없어 접미사가 필요하다.
+ */
+internal fun stayAddressKey(rawId: String): String = rawId
+
+/** 이동 출발점의 덧입힘 키. */
+internal fun movementStartAddressKey(rawId: String): String = "$rawId$MOVEMENT_START_SUFFIX"
+
+/** 이동 도착점의 덧입힘 키. */
+internal fun movementEndAddressKey(rawId: String): String = "$rawId$MOVEMENT_END_SUFFIX"
+
+/**
  * 현재 생성 시도 스냅샷의 위치 항목을 마커로 옮긴다.
  *
  * `STAY` 는 체류 좌표 하나, `MOVEMENT` 는 시작·종료 좌표 두 개다. 두 좌표를 잇는 선은 그리지
@@ -53,8 +70,13 @@ data class ConsentLocationMarker(
  * 왕복 이동이면 두 점이 겹쳐 선이 사라진다. 직선을 실제 경로로 오해할 여지만 남는다.
  *
  * 위치가 아닌 항목은 조용히 건너뛴다.
+ *
+ * @param resolvedAddresses 표시 시점에 해석한 주소. 수집 당시 주소가 이미 있으면 그쪽이 먼저다.
  */
-internal fun List<SourceItem>.toLocationMarkers(zone: ZoneId): List<ConsentLocationMarker> {
+internal fun List<SourceItem>.toLocationMarkers(
+    zone: ZoneId,
+    resolvedAddresses: Map<String, String> = emptyMap(),
+): List<ConsentLocationMarker> {
     var order = 0
     return flatMap { item ->
         when (val payload = item.payload) {
@@ -67,7 +89,10 @@ internal fun List<SourceItem>.toLocationMarkers(zone: ZoneId): List<ConsentLocat
                         kind = ConsentLocationMarker.Kind.STAY,
                         latitude = payload.latitude,
                         longitude = payload.longitude,
-                        title = payload.address ?: UNRESOLVED_MARKER_LABEL,
+                        title =
+                            payload.address
+                                ?: resolvedAddresses[stayAddressKey(item.rawId)]
+                                ?: UNRESOLVED_MARKER_LABEL,
                         snippet = formatDateTimeRange(item.startAt, item.endAt, zone),
                     ),
                 )
@@ -82,6 +107,7 @@ internal fun List<SourceItem>.toLocationMarkers(zone: ZoneId): List<ConsentLocat
                         ConsentLocationMarker.Kind.MOVEMENT_START,
                         MOVEMENT_START_SUFFIX,
                         MOVEMENT_START_LABEL,
+                        resolvedAddresses[movementStartAddressKey(item.rawId)],
                         zone,
                     ),
                     payload.end.toMarker(
@@ -90,6 +116,7 @@ internal fun List<SourceItem>.toLocationMarkers(zone: ZoneId): List<ConsentLocat
                         ConsentLocationMarker.Kind.MOVEMENT_END,
                         MOVEMENT_END_SUFFIX,
                         MOVEMENT_END_LABEL,
+                        resolvedAddresses[movementEndAddressKey(item.rawId)],
                         zone,
                     ),
                 )
@@ -105,6 +132,7 @@ private fun GeoPoint.toMarker(
     kind: ConsentLocationMarker.Kind,
     suffix: String,
     roleLabel: String,
+    resolvedAddress: String?,
     zone: ZoneId,
 ) = ConsentLocationMarker(
     key = "${item.rawId}$suffix",
@@ -113,7 +141,7 @@ private fun GeoPoint.toMarker(
     kind = kind,
     latitude = latitude,
     longitude = longitude,
-    title = address ?: UNRESOLVED_MARKER_LABEL,
+    title = address ?: resolvedAddress ?: UNRESOLVED_MARKER_LABEL,
     snippet = "$roleLabel · ${formatDateTimeRange(item.startAt, item.endAt, zone)}",
 )
 

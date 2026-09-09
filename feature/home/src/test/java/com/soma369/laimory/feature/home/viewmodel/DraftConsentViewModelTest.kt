@@ -32,9 +32,14 @@ import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
+import com.soma369.laimory.core.domain.provider.LocationAddressResolver
+import com.soma369.laimory.core.domain.repository.MovementAddressRepository
+import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveMovementAddressesUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
@@ -71,6 +76,7 @@ class DraftConsentViewModelTest {
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val termsCoordinator = FakeTermsAgreementCoordinator()
+    private val addressResolver = RecordingLocationAddressResolver()
     private var mapRenderAllowed = false
 
     @Test
@@ -368,6 +374,67 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `주소 없는 위치는 진입할 때 해석해 목록과 지도에 함께 얹는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            addressResolver.answer = { latitude, _ -> if (latitude == 37.5665) "해석한 체류 주소" else "해석한 이동 주소" }
+            prepare(listOf(stayItem("stay-1", address = null), movementItem("move-1", null, null)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val content = viewModel.state.value.content
+            assertEquals(
+                listOf("해석한 체류 주소", "해석한 이동 주소", "해석한 이동 주소"),
+                content?.locationMarkers?.map { it.title },
+            )
+            // 지도 말풍선과 목록이 같은 맵을 본다.
+            val titles = content?.summaryOf(DraftConsentTypeGroup.LOCATION)?.sections?.flatMap { it.items }?.map { it.title }
+            assertEquals(listOf("해석한 체류 주소", "해석한 이동 주소 →\n해석한 이동 주소"), titles)
+        }
+
+    @Test
+    fun `수집 당시 주소가 있으면 다시 해석하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            prepare(listOf(stayItem("stay-1"), movementItem("move-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(addressResolver.requested.isEmpty())
+            assertEquals("서울특별시 중구 세종대로 110", viewModel.state.value.content?.locationMarkers?.first()?.title)
+        }
+
+    @Test
+    fun `해석에 실패하면 주소 미확인으로 두고 좌표마다 한 번씩만 부른다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            addressResolver.answer = { _, _ -> null }
+            prepare(listOf(stayItem("stay-1", address = null), movementItem("move-1", null, null)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(3, addressResolver.requested.size)
+            assertEquals(3, addressResolver.requested.distinct().size)
+            assertTrue(viewModel.state.value.content?.locationMarkers.orEmpty().all { it.title == "주소 미확인" })
+        }
+
+    @Test
+    fun `전송 스냅샷의 payload 에는 해석한 주소를 써넣지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 화면에 보인 것과 보내는 것이 같다는 보장은 스냅샷 하나에서 나온다. 주소는 표시용
+            // 덧입힘이라 payload 를 바꾸면 전송 바이트가 달라진다.
+            addressResolver.answer = { _, _ -> "해석한 주소" }
+            prepare(listOf(stayItem("stay-1", address = null)))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals("해석한 주소", viewModel.state.value.content?.locationMarkers?.single()?.title)
+
+            // 제출에 성공하면 준비가 폐기되므로 화면 상태는 여기서 먼저 본다.
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            val sent = draftRepository.createdItems.single().payload as StayPayload
+            assertNull(sent.address)
+        }
+
+    @Test
     fun `지도는 게이트가 허용할 때만 켜진다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 게이트는 저장된 위치정보 약관 동의를 본다. 조회 전·실패는 false 라 지도를 붙이지 않는다.
@@ -602,6 +669,8 @@ class DraftConsentViewModelTest {
             navigationHelper = navigationHelper,
             termsCoordinator = termsCoordinator,
             getDisplayTerms = GetDisplayTermsUseCase(EmptyTermsRepository),
+            resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
+            resolveMovementAddresses = ResolveMovementAddressesUseCase(addressResolver, NoOpMovementAddressRepository),
             mapRenderGate = LocationMapRenderGate { mapRenderAllowed },
         )
 
@@ -634,21 +703,56 @@ class DraftConsentViewModelTest {
         )
     }
 
-    private fun stayItem(id: String): SourceItem {
+    private class RecordingLocationAddressResolver : LocationAddressResolver {
+        var answer: (Double, Double) -> String? = { _, _ -> null }
+        val requested = mutableListOf<Pair<Double, Double>>()
+
+        override suspend fun resolve(
+            latitude: Double,
+            longitude: Double,
+        ): String? {
+            requested += latitude to longitude
+            return answer(latitude, longitude)
+        }
+    }
+
+    private object NoOpStayAddressRepository : StayAddressRepository {
+        override suspend fun updateAddress(
+            rawId: String,
+            address: String,
+        ): Boolean = true
+    }
+
+    private object NoOpMovementAddressRepository : MovementAddressRepository {
+        override suspend fun updateAddresses(
+            rawId: String,
+            startAddress: String?,
+            endAddress: String?,
+        ): Boolean = true
+    }
+
+    private fun stayItem(
+        id: String,
+        address: String? = "서울특별시 중구 세종대로 110",
+    ): SourceItem {
         val instant = date.atTime(9, 0).atZone(zone).toInstant()
         return SourceItem(
             rawId = id,
             startAt = instant,
             endAt = instant.plusSeconds(3_600),
             timeZoneId = zone,
-            payload = StayPayload(latitude = 37.5665, longitude = 126.9780, address = "서울특별시 중구 세종대로 110"),
+            payload = StayPayload(latitude = 37.5665, longitude = 126.9780, address = address),
             sourceName = SourceName.LOCATION_PROVIDER,
             sourceKey = "STAY:$id",
             collectedAt = instant,
         )
     }
 
-    private fun movementItem(id: String): SourceItem {
+    private fun movementItem(
+        id: String,
+        startAddress: String? = "서울특별시 종로구 종로 1",
+        endAddress: String? = "서울특별시 중구 남대문로 81",
+    ): SourceItem {
         val instant = date.atTime(10, 0).atZone(zone).toInstant()
         return SourceItem(
             rawId = id,
@@ -657,8 +761,8 @@ class DraftConsentViewModelTest {
             timeZoneId = zone,
             payload =
                 MovementPayload(
-                    start = GeoPoint(37.5701, 126.9820, "서울특별시 종로구 종로 1"),
-                    end = GeoPoint(37.5512, 126.9882, "서울특별시 중구 남대문로 81"),
+                    start = GeoPoint(37.5701, 126.9820, startAddress),
+                    end = GeoPoint(37.5512, 126.9882, endAddress),
                     distanceMeters = 2_400.0,
                     transports = MovementPayload.Transport.WALKING,
                 ),
