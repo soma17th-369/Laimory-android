@@ -127,6 +127,9 @@ internal fun TimelineMemo(
  */
 @Composable
 private fun MemoQuestionBubble(question: String) {
+    val questionStyle = MaterialTheme.typography.bodyMedium
+    // 아이콘 자리는 본문 한 줄 높이다. 글꼴을 키우면 줄도 함께 자라므로 고정값으로 두지 않는다.
+    val lineHeight = with(LocalDensity.current) { questionStyle.lineHeight.toDp() }
     Row(
         modifier =
             Modifier
@@ -143,15 +146,22 @@ private fun MemoQuestionBubble(question: String) {
         horizontalArrangement = Arrangement.spacedBy(BUBBLE_ICON_GAP),
         verticalAlignment = Alignment.Top,
     ) {
-        Icon(
-            painter = painterResource(UiR.drawable.ico_default_sparkle),
-            contentDescription = null,
-            modifier = Modifier.padding(top = BUBBLE_ICON_TOP_PADDING).size(BUBBLE_ICON_SIZE),
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
+        // 한 줄 높이의 자리를 잡고 그 안에서 가운데 둔다. 말풍선 전체를 기준으로 가운데 두면
+        // (`Alignment.CenterVertically`) 질문이 여러 줄로 접힐수록 아이콘이 아래로 흘러내린다.
+        Box(
+            modifier = Modifier.height(lineHeight),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(UiR.drawable.ico_default_sparkle),
+                contentDescription = null,
+                modifier = Modifier.size(BUBBLE_ICON_SIZE),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
         Text(
             text = question,
-            style = MaterialTheme.typography.bodyMedium,
+            style = questionStyle,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             maxLines = QUESTION_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
@@ -380,8 +390,7 @@ private val BUBBLE_TAIL_CORNER = 4.dp
 private val BUBBLE_PADDING_HORIZONTAL = 12.dp
 private val BUBBLE_PADDING_VERTICAL = 8.dp
 private val BUBBLE_ICON_GAP = 8.dp
-private val BUBBLE_ICON_SIZE = 14.dp
-private val BUBBLE_ICON_TOP_PADDING = 2.dp
+private val BUBBLE_ICON_SIZE = 16.dp
 
 /** 입력 줄 — 본문과 밑줄 사이 간격, 그리고 두 굵기. */
 private val INPUT_LINE_GAP = 8.dp
