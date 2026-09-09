@@ -27,14 +27,19 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
-import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
+import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
+import com.soma369.laimory.core.domain.provider.LocationAddressResolver
+import com.soma369.laimory.core.domain.repository.MovementAddressRepository
+import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveMovementAddressesUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
@@ -71,6 +76,8 @@ class DraftConsentViewModelTest {
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val termsCoordinator = FakeTermsAgreementCoordinator()
+    private val addressResolver = RecordingLocationAddressResolver()
+    private var mapKeyPresent = true
 
     @Test
     fun `새 스냅샷이 들어오면 내용을 구성하고 체크 상태를 초기화한다`() =
@@ -367,6 +374,225 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `주소 없는 위치는 진입할 때 해석해 목록과 지도에 함께 얹는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            addressResolver.answer = { latitude, _ -> if (latitude == 37.5665) "해석한 체류 주소" else "해석한 이동 주소" }
+            prepare(listOf(stayItem("stay-1", address = null), movementItem("move-1", null, null)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val content = viewModel.state.value.content
+            assertEquals(
+                listOf("해석한 체류 주소", "해석한 이동 주소", "해석한 이동 주소"),
+                content?.locationMarkers?.map { it.title },
+            )
+            // 지도 말풍선과 목록이 같은 맵을 본다.
+            val titles = content?.summaryOf(DraftConsentTypeGroup.LOCATION)?.sections?.flatMap { it.items }?.map { it.title }
+            assertEquals(listOf("해석한 체류 주소", "해석한 이동 주소 →\n해석한 이동 주소"), titles)
+        }
+
+    @Test
+    fun `수집 당시 주소가 있으면 다시 해석하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            prepare(listOf(stayItem("stay-1"), movementItem("move-1")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertTrue(addressResolver.requested.isEmpty())
+            assertEquals("서울특별시 중구 세종대로 110", viewModel.state.value.content?.locationMarkers?.first()?.title)
+        }
+
+    @Test
+    fun `해석에 실패하면 주소 미확인으로 두고 좌표마다 한 번씩만 부른다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            addressResolver.answer = { _, _ -> null }
+            prepare(listOf(stayItem("stay-1", address = null), movementItem("move-1", null, null)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(3, addressResolver.requested.size)
+            assertEquals(3, addressResolver.requested.distinct().size)
+            assertTrue(viewModel.state.value.content?.locationMarkers.orEmpty().all { it.title == "주소 미확인" })
+        }
+
+    @Test
+    fun `전송 스냅샷의 payload 에는 해석한 주소를 써넣지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 화면에 보인 것과 보내는 것이 같다는 보장은 스냅샷 하나에서 나온다. 주소는 표시용
+            // 덧입힘이라 payload 를 바꾸면 전송 바이트가 달라진다.
+            agreeLocationTerms()
+            addressResolver.answer = { _, _ -> "해석한 주소" }
+            prepare(listOf(stayItem("stay-1", address = null)))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals("해석한 주소", viewModel.state.value.content?.locationMarkers?.single()?.title)
+
+            // 제출에 성공하면 준비가 폐기되므로 화면 상태는 여기서 먼저 본다.
+            viewModel.sendIntent(DraftConsentUiIntent.Submit)
+            runCurrent()
+
+            val sent = draftRepository.createdItems.single().payload as StayPayload
+            assertNull(sent.address)
+        }
+
+    @Test
+    fun `위치 약관에 동의했을 때만 지도를 붙인다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1")))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
+    fun `동의가 없으면 지도도 주소 해석도 시작하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 지도는 카메라 영역을, Geocoder 는 좌표 자체를 Google 로 보낸다. 지도만 막으면
+            // 미동의 좌표가 주소 해석으로 그대로 나간다.
+            addressResolver.answer = { _, _ -> "해석한 주소" }
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1", address = null), movementItem("move-1", null, null)))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+            assertTrue(addressResolver.requested.isEmpty())
+        }
+
+    @Test
+    fun `약관 조회에 실패하면 지도를 붙이지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            termsCoordinator.requirementFailure = IllegalStateException("network")
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1")))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
+    fun `키가 없으면 동의해도 지도를 붙이지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            mapKeyPresent = false
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1")))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
+    fun `동의 조회가 늦게 와도 현재 화면에 반영된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            termsCoordinator.requirementGate = CompletableDeferred()
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1")))
+            runCurrent()
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+
+            termsCoordinator.requirementGate?.complete(Unit)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
+    fun `계정이 바뀌면 이전 계정의 지도 허용을 넘겨주지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 이 ViewModel 은 Activity 범위라 로그아웃 뒤 다음 계정까지 살아 있다.
+            agreeLocationTerms()
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1")))
+            runCurrent()
+            assertTrue(viewModel.state.value.isMapRenderAllowed)
+
+            sessionStore.clearAll()
+            termsCoordinator.revokeAll()
+            runCurrent()
+            prepare(listOf(stayItem("stay-2")))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
+    fun `뒤늦게 동의하면 다음 시도에서 지도가 열린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1")))
+            runCurrent()
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+
+            agreeLocationTerms()
+            prepare(listOf(stayItem("stay-2")))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
+    fun `약관 화면에서 동의하고 복귀하면 같은 스냅샷에서 지도와 주소가 열린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 제출이 403 -3001 로 막히면 사진을 다시 고르지 않도록 준비를 폐기하지 않는다.
+            // 새 attemptId 가 없으므로 스냅샷 수집만으로는 재판정 계기가 없다.
+            addressResolver.answer = { _, _ -> "해석한 주소" }
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1", address = null), calendarItem("cal-1")))
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            runCurrent()
+            val attemptId = viewModel.state.value.content?.attemptId
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+            assertTrue(addressResolver.requested.isEmpty())
+
+            agreeLocationTerms()
+            viewModel.sendIntent(DraftConsentUiIntent.Sync)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isMapRenderAllowed)
+            assertEquals("해석한 주소", viewModel.state.value.content?.locationMarkers?.single()?.title)
+            // 스냅샷과 제외 선택은 그대로여야 한다.
+            assertEquals(attemptId, viewModel.state.value.content?.attemptId)
+            assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
+        }
+
+    @Test
+    fun `복귀를 반복해도 같은 좌표를 다시 부르지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            addressResolver.answer = { _, _ -> "해석한 주소" }
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1", address = null)))
+            runCurrent()
+            assertEquals(1, addressResolver.requested.size)
+
+            repeat(3) { viewModel.sendIntent(DraftConsentUiIntent.Sync) }
+            runCurrent()
+
+            assertEquals(1, addressResolver.requested.size)
+        }
+
+    @Test
+    fun `준비가 없으면 복귀 신호를 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.Sync)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
     fun `제출 중에는 위치 Switch 를 바꿀 수 없다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(stayItem("stay-1"), calendarItem("cal-1")))
@@ -573,8 +799,12 @@ class DraftConsentViewModelTest {
             navigationHelper = navigationHelper,
             termsCoordinator = termsCoordinator,
             getDisplayTerms = GetDisplayTermsUseCase(EmptyTermsRepository),
-            mapRenderGate = LocationMapRenderGate { false },
+            resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
+            resolveMovementAddresses = ResolveMovementAddressesUseCase(addressResolver, NoOpMovementAddressRepository),
+            mapKeyGate = LocationMapKeyGate { mapKeyPresent },
         )
+
+    private fun agreeLocationTerms() = termsCoordinator.markAgreed(TermType.LOCATION_BASED_SERVICE_TERMS)
 
     private fun prepare(
         items: List<SourceItem>,
@@ -605,21 +835,56 @@ class DraftConsentViewModelTest {
         )
     }
 
-    private fun stayItem(id: String): SourceItem {
+    private class RecordingLocationAddressResolver : LocationAddressResolver {
+        var answer: (Double, Double) -> String? = { _, _ -> null }
+        val requested = mutableListOf<Pair<Double, Double>>()
+
+        override suspend fun resolve(
+            latitude: Double,
+            longitude: Double,
+        ): String? {
+            requested += latitude to longitude
+            return answer(latitude, longitude)
+        }
+    }
+
+    private object NoOpStayAddressRepository : StayAddressRepository {
+        override suspend fun updateAddress(
+            rawId: String,
+            address: String,
+        ): Boolean = true
+    }
+
+    private object NoOpMovementAddressRepository : MovementAddressRepository {
+        override suspend fun updateAddresses(
+            rawId: String,
+            startAddress: String?,
+            endAddress: String?,
+        ): Boolean = true
+    }
+
+    private fun stayItem(
+        id: String,
+        address: String? = "서울특별시 중구 세종대로 110",
+    ): SourceItem {
         val instant = date.atTime(9, 0).atZone(zone).toInstant()
         return SourceItem(
             rawId = id,
             startAt = instant,
             endAt = instant.plusSeconds(3_600),
             timeZoneId = zone,
-            payload = StayPayload(latitude = 37.5665, longitude = 126.9780, address = "서울특별시 중구 세종대로 110"),
+            payload = StayPayload(latitude = 37.5665, longitude = 126.9780, address = address),
             sourceName = SourceName.LOCATION_PROVIDER,
             sourceKey = "STAY:$id",
             collectedAt = instant,
         )
     }
 
-    private fun movementItem(id: String): SourceItem {
+    private fun movementItem(
+        id: String,
+        startAddress: String? = "서울특별시 종로구 종로 1",
+        endAddress: String? = "서울특별시 중구 남대문로 81",
+    ): SourceItem {
         val instant = date.atTime(10, 0).atZone(zone).toInstant()
         return SourceItem(
             rawId = id,
@@ -628,8 +893,8 @@ class DraftConsentViewModelTest {
             timeZoneId = zone,
             payload =
                 MovementPayload(
-                    start = GeoPoint(37.5701, 126.9820, "서울특별시 종로구 종로 1"),
-                    end = GeoPoint(37.5512, 126.9882, "서울특별시 중구 남대문로 81"),
+                    start = GeoPoint(37.5701, 126.9820, startAddress),
+                    end = GeoPoint(37.5512, 126.9882, endAddress),
                     distanceMeters = 2_400.0,
                     transports = MovementPayload.Transport.WALKING,
                 ),
@@ -756,23 +1021,35 @@ class DraftConsentViewModelTest {
     private class FakeTermsAgreementCoordinator : TermsAgreementCoordinator {
         var agreeFailure: Throwable? = null
         var agreeCount = 0
+
+        /** 조회를 붙잡아 두는 문. 비동기 응답이 늦는 상황을 만든다. */
+        var requirementGate: CompletableDeferred<Unit>? = null
+        var requirementFailure: Throwable? = null
         private val agreed = mutableSetOf<TermType>()
 
         fun markAgreed(type: TermType) {
             agreed += type
         }
 
+        /** 계정 경계 교체. 다음 계정에는 이전 계정의 동의가 없다. */
+        fun revokeAll() {
+            agreed.clear()
+        }
+
         override val loginGate: StateFlow<TermsGateState> = MutableStateFlow(TermsGateState.Satisfied)
 
         override fun refresh() = Unit
 
-        override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> =
-            Result.success(
+        override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> {
+            requirementGate?.await()
+            requirementFailure?.let { return Result.failure(it) }
+            return Result.success(
                 TermStageRequirement(
                     stage = stage,
                     items = stage.requiredTypes.map { TermRequirement(document(it), isAgreed = it in agreed) },
                 ),
             )
+        }
 
         override suspend fun documentOf(type: TermType): TermDocument = document(type)
 

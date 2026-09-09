@@ -39,8 +39,16 @@ data class DraftConsentUiContent(
     val locationRawIds: Set<String> get() = locationMarkers.mapTo(linkedSetOf()) { it.sourceRawId }
 }
 
-/** 스냅샷에서 화면 본문을 만든다. 건수는 선택 정책 리포트를 그대로 사용하고 재계산하지 않는다. */
-internal fun DraftConsentPreparation.toConsentContent(): DraftConsentUiContent {
+/**
+ * 스냅샷에서 화면 본문을 만든다. 건수는 선택 정책 리포트를 그대로 사용하고 재계산하지 않는다.
+ *
+ * [resolvedAddresses] 는 표시 시점에 해석한 주소를 스냅샷 **위에 덧입히기만** 한다. 전송되는
+ * payload 는 그대로다 — "보여준 것 = 보내는 것" 보장이 스냅샷 하나에서 나오므로 여기에 주소를
+ * 써넣지 않는다. 서버도 초안 생성 때 좌표를 다시 지오코딩하므로 실어 보낼 이유가 없다.
+ *
+ * 지도 마커와 아래 목록이 같은 맵을 보므로 두 곳의 주소가 어긋날 수 없다.
+ */
+internal fun DraftConsentPreparation.toConsentContent(resolvedAddresses: Map<String, String> = emptyMap()): DraftConsentUiContent {
     val report = selection.report
     val summaries =
         DraftConsentTypeGroup.entries.map { group ->
@@ -48,7 +56,7 @@ internal fun DraftConsentPreparation.toConsentContent(): DraftConsentUiContent {
                 group = group,
                 originalCount = group.memberTypes.sumOf { report.originalCounts.getOrDefault(it, 0) },
                 sentCount = group.memberTypes.sumOf { report.selectedCounts.getOrDefault(it, 0) },
-                sections = buildDetailSections(group, selection.items, zone),
+                sections = buildDetailSections(group, selection.items, zone, resolvedAddresses),
             )
         }
     return DraftConsentUiContent(
@@ -57,7 +65,7 @@ internal fun DraftConsentPreparation.toConsentContent(): DraftConsentUiContent {
         windowText = formatWindow(window.start, window.end, zone),
         sentTotal = report.selectedTotal,
         typeSummaries = summaries,
-        locationMarkers = selection.items.toLocationMarkers(zone),
+        locationMarkers = selection.items.toLocationMarkers(zone, resolvedAddresses),
     )
 }
 
@@ -69,6 +77,7 @@ private fun buildDetailSections(
     group: DraftConsentTypeGroup,
     items: List<SourceItem>,
     zone: ZoneId,
+    resolvedAddresses: Map<String, String>,
 ): List<DraftConsentDetailSection> =
     when (group) {
         DraftConsentTypeGroup.PHOTO ->
@@ -80,7 +89,7 @@ private fun buildDetailSections(
                 .map { (date, dateItems) ->
                     DraftConsentDetailSection(
                         title = PHOTO_DATE_FORMAT.format(date),
-                        items = dateItems.map { it.toDetailItem(zone) },
+                        items = dateItems.map { it.toDetailItem(zone, resolvedAddresses) },
                     )
                 }
 
@@ -91,7 +100,7 @@ private fun buildDetailSections(
                 .map { (date, dateItems) ->
                     DraftConsentDetailSection(
                         title = DAY_FORMAT.format(date),
-                        items = dateItems.map { it.toDetailItem(zone) },
+                        items = dateItems.map { it.toDetailItem(zone, resolvedAddresses) },
                     )
                 }
 
@@ -99,18 +108,18 @@ private fun buildDetailSections(
             listOf(
                 DraftConsentDetailSection(
                     title = "체류한 장소",
-                    items = items.filter { it.itemType == ItemType.STAY }.map { it.toDetailItem(zone) },
+                    items = items.filter { it.itemType == ItemType.STAY }.map { it.toDetailItem(zone, resolvedAddresses) },
                 ),
                 DraftConsentDetailSection(
                     title = "이동 기록",
-                    items = items.filter { it.itemType == ItemType.MOVEMENT }.map { it.toDetailItem(zone) },
+                    items = items.filter { it.itemType == ItemType.MOVEMENT }.map { it.toDetailItem(zone, resolvedAddresses) },
                 ),
             ).filter { it.items.isNotEmpty() }
 
         DraftConsentTypeGroup.HEALTH ->
             items
                 .filter { it.itemType == ItemType.HEALTH }
-                .map { it.toDetailItem(zone) }
+                .map { it.toDetailItem(zone, resolvedAddresses) }
                 .takeIf { it.isNotEmpty() }
                 ?.let { listOf(DraftConsentDetailSection(title = null, items = it)) }
                 .orEmpty()
@@ -131,13 +140,16 @@ private fun buildDetailSections(
                     DraftConsentDetailSection(
                         // 앱 이름이 바뀌었을 수 있어 가장 최근 알림의 수집 당시 표시명을 쓴다.
                         title = (appItems.maxBy(SourceItem::startAt).payload as NotificationPayload).appName,
-                        items = appItems.map { it.toDetailItem(zone) },
+                        items = appItems.map { it.toDetailItem(zone, resolvedAddresses) },
                         iconPackageName = packageName,
                     )
                 }
     }
 
-private fun SourceItem.toDetailItem(zone: ZoneId): DraftConsentDetailItem =
+private fun SourceItem.toDetailItem(
+    zone: ZoneId,
+    resolvedAddresses: Map<String, String>,
+): DraftConsentDetailItem =
     when (val payload = payload) {
         is PhotoPayload ->
             DraftConsentDetailItem(
@@ -163,7 +175,7 @@ private fun SourceItem.toDetailItem(zone: ZoneId): DraftConsentDetailItem =
         is StayPayload ->
             DraftConsentDetailItem(
                 key = rawId,
-                title = payload.address ?: UNRESOLVED_PLACE_LABEL,
+                title = payload.address ?: resolvedAddresses[stayAddressKey(rawId)] ?: UNRESOLVED_PLACE_LABEL,
                 description = null,
                 timeText = formatDateTimeRange(startAt, endAt, zone),
             )
@@ -180,7 +192,9 @@ private fun SourceItem.toDetailItem(zone: ZoneId): DraftConsentDetailItem =
         is MovementPayload ->
             DraftConsentDetailItem(
                 key = rawId,
-                title = "${payload.start.label()} →\n${payload.end.label()}",
+                title =
+                    "${payload.start.label(resolvedAddresses[movementStartAddressKey(rawId)])} →\n" +
+                        payload.end.label(resolvedAddresses[movementEndAddressKey(rawId)]),
                 description = null,
                 timeText = formatDateTimeRange(startAt, endAt, zone),
                 trailingText = "${formatDistance(payload.distanceMeters)} · ${payload.transports.label()}",
@@ -205,7 +219,7 @@ private fun SourceItem.toDetailItem(zone: ZoneId): DraftConsentDetailItem =
     }
 
 /** 위경도 좌표는 전송 항목이지만 화면에는 노출하지 않고 주소 요약만 표시한다. */
-private fun GeoPoint.label(): String = address ?: UNRESOLVED_PLACE_LABEL
+private fun GeoPoint.label(resolvedAddress: String?): String = address ?: resolvedAddress ?: UNRESOLVED_PLACE_LABEL
 
 private const val UNRESOLVED_PLACE_LABEL = "주소 미확인"
 

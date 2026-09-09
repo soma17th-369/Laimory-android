@@ -13,13 +13,20 @@ class ResolveStayAddressUseCase
         private val resolver: LocationAddressResolver,
         private val repository: StayAddressRepository,
     ) {
-        /** 주소를 해석해 저장했으면 true, 주소를 찾지 못했거나 대상이 없으면 false. */
+        /**
+         * 해석한 주소. 주소를 찾지 못했으면 null.
+         *
+         * 저장 성공 여부가 아니라 **주소 자체**를 돌려준다 — 화면이 저장을 기다리지 않고 표시에
+         * 바로 쓸 수 있어야 한다. 저장은 다음 조회를 위한 캐시라 대상 항목이 이미 사라졌더라도
+         * 이번 화면의 표시까지 막을 이유가 없다.
+         */
         suspend operator fun invoke(
             rawId: String,
             latitude: Double,
             longitude: Double,
-        ): Boolean {
-            val address = resolver.resolve(latitude, longitude)?.trim()?.takeIf(String::isNotEmpty) ?: return false
-            return repository.updateAddress(rawId, address)
+        ): String? {
+            val address = resolver.resolve(latitude, longitude)?.trim()?.takeIf(String::isNotEmpty) ?: return null
+            repository.updateAddress(rawId, address)
+            return address
         }
     }

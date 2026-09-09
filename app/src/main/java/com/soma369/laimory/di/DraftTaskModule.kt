@@ -16,7 +16,7 @@ import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
-import com.soma369.laimory.core.domain.model.timeline.LocationMapRenderGate
+import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.draft.LogcatDraftSourceItemSelectionReporter
@@ -99,16 +99,12 @@ object DraftTaskRuntimeModule {
     fun provideCollectionLabAccessGate(): CollectionLabAccessGate = CollectionLabAccessGate { BuildConfig.DEBUG }
 
     /**
-     * 지도 렌더링 허용 여부.
+     * 지도 SDK 키가 심겨 있는지. 빌드 설정이라 여기서만 읽는다.
      *
-     * 정본은 계정 단위 최초 1회 동의(#238)인데 그 저장소가 아직 없다. 그때까지는 제출 게이트와
-     * 같은 방식으로 debug 빌드에서만 열어 둔다 — 실기기로 지도·마커를 확인할 수 있어야 하고,
-     * 릴리즈 사용자에게는 동의 없이 지도가 뜨지 않는다. #238 이 들어오면 저장된 동의를 읽도록 바꾼다.
-     *
-     * API 키가 비어 있으면 SDK 인증이 실패하므로 아예 붙이지 않고 대체 안내로 넘긴다.
+     * 빌드 타입으로 가르지 않는다 — 지도를 그릴 때 나가는 것은 사용자의 위치이지 개발용 기능이
+     * 아니다. **그려도 되는지**는 저장된 위치정보 약관 동의가 답하며 화면이 판정한다.
      */
     @Provides
     @Singleton
-    fun provideLocationMapRenderGate(): LocationMapRenderGate =
-        LocationMapRenderGate { BuildConfig.DEBUG && BuildConfig.MAPS_API_KEY.isNotBlank() }
+    fun provideLocationMapKeyGate(): LocationMapKeyGate = LocationMapKeyGate { BuildConfig.MAPS_API_KEY.isNotBlank() }
 }

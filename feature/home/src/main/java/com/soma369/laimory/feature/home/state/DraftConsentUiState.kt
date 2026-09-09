@@ -20,6 +20,9 @@ data class DraftConsentUiState(
     /**
      * 위치 지도를 그려도 되는지. false 면 `GoogleMap` 을 composition 에 넣지 않는다 —
      * 지도를 그리는 것 자체가 카메라 영역을 Google 로 보내는 일이라 동의·키 확인이 먼저다.
+     *
+     * 저장된 위치정보 약관 동의와 SDK 키 준비를 **둘 다** 만족해야 true 다. 판정 전에는 false 이며
+     * 생성 시도마다 다시 판정한다.
      */
     val isMapRenderAllowed: Boolean = false,
 ) : UiState {

@@ -16,12 +16,17 @@ class ResolveMovementAddressesUseCase
         private val resolver: LocationAddressResolver,
         private val repository: MovementAddressRepository,
     ) {
-        /** 하나 이상의 주소를 해석해 저장했으면 true. */
+        /**
+         * 출발·도착 주소. 해석하지 못한 쪽은 null 이다.
+         *
+         * 이미 주소를 가진 쪽은 그대로 돌려준다 — 해석은 없는 쪽만 한다. 저장 성공 여부가 아니라
+         * 주소 자체를 돌려주는 이유는 [ResolveStayAddressUseCase] 와 같다.
+         */
         suspend operator fun invoke(
             rawId: String,
             start: GeoPoint,
             end: GeoPoint,
-        ): Boolean =
+        ): ResolvedMovementAddresses =
             coroutineScope {
                 val startAddress =
                     async {
@@ -31,11 +36,8 @@ class ResolveMovementAddressesUseCase
                     async {
                         end.address.normalized() ?: resolver.resolve(end.latitude, end.longitude).normalized()
                     }
-                repository.updateAddresses(
-                    rawId = rawId,
-                    startAddress = startAddress.await(),
-                    endAddress = endAddress.await(),
-                )
+                ResolvedMovementAddresses(startAddress.await(), endAddress.await())
+                    .also { repository.updateAddresses(rawId, it.start, it.end) }
             }
 
         private fun String?.normalized(): String? = this?.trim()?.takeIf(String::isNotEmpty)

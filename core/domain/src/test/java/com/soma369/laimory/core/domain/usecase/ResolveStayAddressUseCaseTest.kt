@@ -4,18 +4,17 @@ import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ResolveStayAddressUseCaseTest {
     @Test
-    fun `해석한 주소를 정리해 같은 rawId에 저장한다`() =
+    fun `해석한 주소를 정리해 돌려주고 같은 rawId에 저장한다`() =
         runTest {
             val repository = RecordingStayAddressRepository(result = true)
             val useCase = ResolveStayAddressUseCase(LocationAddressResolver { _, _ -> "  서울특별시 마포구  " }, repository)
 
-            assertTrue(useCase(rawId = "stay-1", latitude = 37.5, longitude = 126.9))
+            assertEquals("서울특별시 마포구", useCase(rawId = "stay-1", latitude = 37.5, longitude = 126.9))
             assertEquals("stay-1" to "서울특별시 마포구", repository.updated)
         }
 
@@ -25,8 +24,19 @@ class ResolveStayAddressUseCaseTest {
             val repository = RecordingStayAddressRepository(result = true)
             val useCase = ResolveStayAddressUseCase(LocationAddressResolver { _, _ -> null }, repository)
 
-            assertFalse(useCase(rawId = "stay-1", latitude = 37.5, longitude = 126.9))
-            assertEquals(null, repository.updated)
+            assertNull(useCase(rawId = "stay-1", latitude = 37.5, longitude = 126.9))
+            assertNull(repository.updated)
+        }
+
+    @Test
+    fun `저장 대상이 사라졌어도 해석한 주소는 돌려준다`() =
+        runTest {
+            // 저장은 다음 조회를 위한 캐시다. 화면은 이번에 보여줄 주소가 필요하므로 저장 실패에
+            // 표시까지 끌려가지 않아야 한다.
+            val repository = RecordingStayAddressRepository(result = false)
+            val useCase = ResolveStayAddressUseCase(LocationAddressResolver { _, _ -> "서울특별시 마포구" }, repository)
+
+            assertEquals("서울특별시 마포구", useCase(rawId = "stay-1", latitude = 37.5, longitude = 126.9))
         }
 
     private class RecordingStayAddressRepository(
