@@ -77,6 +77,32 @@ class TimelineRecordViewModel
         private var saveJob: Job? = null
         private var eventDeleteJob: Job? = null
 
+        /**
+         * 이벤트별로 도는 메모 커밋.
+         *
+         * 같은 이벤트의 다음 요청은 앞엣것이 끝난 뒤에 나간다 — 엇갈려 도착하면 옛 값이 서버에
+         * 남는다.
+         */
+        private val memoCommitJobs = mutableMapOf<Long, Job>()
+
+        /**
+         * 커밋마다 붙이는 일련번호와, 이벤트별 마지막 번호.
+         *
+         * 응답은 화면을 묶지 않고 뒤에서 돌아오므로, 도착했을 때 그 커밋이 아직 최신인지 가려야
+         * 한다. 확인하지 않으면 앞선 응답이 뒤이어 쓴 글을 지우고, 옛 실패의 재시도가 새로 저장한
+         * 글을 덮는다.
+         */
+        private var memoCommitSequence = 0L
+        private val latestMemoCommits = mutableMapOf<Long, Long>()
+
+        /**
+         * 아직 사용자에게 되돌려 준 적 없는 실패.
+         *
+         * 하루 기록 확정을 막는 자리다 — 저장하지 못한 글을 둔 채 확정하면 화면이 종결되면서
+         * 그 글도 재시도할 자리도 함께 사라진다.
+         */
+        private val failedMemoCommits = mutableSetOf<Long>()
+
         init {
             safeLaunch {
                 observeTimelineRecordUseCase().collect { timeline ->
@@ -127,25 +153,24 @@ class TimelineRecordViewModel
                 is TimelineRecordUiIntent.RequestEventDelete -> requestEventDelete(intent.timelineEventId)
                 TimelineRecordUiIntent.ConfirmEventDelete -> deleteEvent()
                 TimelineRecordUiIntent.DismissEventDelete -> dismissEventDelete()
-                is TimelineRecordUiIntent.SelectEvent ->
-                    if (state.value.mode.isEditing && state.value.isModeSwitchable) {
-                        navigationHelper.navigateTo(TimelineEventEditorPage(intent.timelineEventId))
-                    }
+                is TimelineRecordUiIntent.SelectEvent -> editEvent(intent.timelineEventId)
                 is TimelineRecordUiIntent.EditMemo -> editMemo(intent.timelineEventId)
                 is TimelineRecordUiIntent.ChangeMemo -> changeMemo(intent.value)
-                TimelineRecordUiIntent.CancelMemoEdit -> cancelMemoEdit()
-                TimelineRecordUiIntent.ConfirmMemoEdit -> updateMemo()
+                is TimelineRecordUiIntent.CommitMemoEdit -> commitMemo(intent.timelineEventId)
+                is TimelineRecordUiIntent.RetryMemoCommit ->
+                    retryMemoCommit(intent.timelineEventId, intent.commitId, intent.memo)
             }
         }
 
         private fun navigateBack() {
             val current = state.value
-            if (current.isDeleting || current.isSavingRecord || current.memoEditor?.isSaving == true) return
+            if (current.isDeleting || current.isSavingRecord) return
+            // 메모를 쓰던 중이면 갈무리만 하고 화면에 남는다 — 뒤로 한 번은 포커스를 놓는 동작이다.
             if (current.memoEditor != null) {
-                updateState { copy(memoEditor = null) }
-            } else {
-                navigationHelper.navigateToBack()
+                commitOpenMemo()
+                return
             }
+            navigationHelper.navigateToBack()
         }
 
         private fun initialize(recordDate: LocalDate?) {
@@ -161,6 +186,8 @@ class TimelineRecordViewModel
                 requestedRecordDate == recordDate &&
                     state.value.content is TimelineRecordUiContent.Record
             if (isAlreadyPresented) return
+            // 같은 날짜의 재조회는 그대로 둔다 — 날아가는 중인 커밋이 이 기록의 것이다.
+            if (requestedRecordDate != recordDate) resetMemoCommitState()
             requestedRecordDate = recordDate
             loadRecord(recordDate)
         }
@@ -217,6 +244,7 @@ class TimelineRecordViewModel
          * 화면에서는 `X` 가 비활성이라 눌리지 않지만, Intent 경로에서도 한 번 더 막는다.
          */
         private fun switchMode(mode: TimelineRecordMode) {
+            commitOpenMemo()
             val current = state.value
             val record = current.record() ?: return
             if (current.mode == mode || !current.isModeSwitchable) return
@@ -227,14 +255,14 @@ class TimelineRecordViewModel
 
         /** 저장 CTA는 감정 선택 시트를 여는 데까지만 관여한다 — 실제 저장은 시트의 `확인`이 일으킨다. */
         private fun openEmotionSheet() {
+            commitOpenMemo()
             val current = state.value
             val record = current.unsavedRecord() ?: return
             if (current.emotionSheet != null ||
                 current.isSavingRecord ||
                 saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
-                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden ||
-                current.memoEditor != null
+                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden
             ) {
                 return
             }
@@ -252,10 +280,19 @@ class TimelineRecordViewModel
 
         /** 빈 편집기를 열어 새 이벤트를 만든다. 편집 모드에서만, 진행 중인 작업이 없을 때만 연다. */
         private fun addEvent() {
+            commitOpenMemo()
             val current = state.value
             val record = (current.content as? TimelineRecordUiContent.Record)?.value ?: return
             if (!current.mode.isEditing || !current.isModeSwitchable) return
             navigationHelper.navigateTo(TimelineEventCreatePage(record.recordDate))
+        }
+
+        /** 카드의 연필 — 이벤트 편집 화면으로 간다. */
+        private fun editEvent(timelineEventId: Long) {
+            commitOpenMemo()
+            val current = state.value
+            if (!current.mode.isEditing || !current.isModeSwitchable) return
+            navigationHelper.navigateTo(TimelineEventEditorPage(timelineEventId))
         }
 
         /**
@@ -265,6 +302,7 @@ class TimelineRecordViewModel
          * `409/-1020` 을 낸다. 읽기 모드에서도 열지 않는다: 감정은 보여 주기만 한다.
          */
         private fun openEmotionEditor() {
+            commitOpenMemo()
             val current = state.value
             val record = (current.content as? TimelineRecordUiContent.Record)?.value ?: return
             if (!record.isSaved || !current.mode.isEditing) return
@@ -367,8 +405,7 @@ class TimelineRecordViewModel
             if (current.isSavingRecord ||
                 saveJob?.isActive == true ||
                 current.deleteDialogState != TimelineDeleteDialogState.Hidden ||
-                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden ||
-                current.memoEditor != null
+                current.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden
             ) {
                 return
             }
@@ -376,6 +413,12 @@ class TimelineRecordViewModel
             updateState { copy(isSavingRecord = true) }
             saveJob =
                 safeLaunch(onError = ::handleSaveFailure) {
+                    // 메모가 아직 날아가는 중일 수 있다. 기록이 먼저 확정되면 화면이 종결돼
+                    // 뒤늦게 도착한 메모가 어디에 붙을지 알 수 없다.
+                    if (!awaitMemoCommits()) {
+                        abortSaveForFailedMemo()
+                        return@safeLaunch
+                    }
                     completeDailyRecordUseCase(record.recordDate, sheet.selected)
                         .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
                         .onFailure(::handleSaveFailure)
@@ -405,6 +448,20 @@ class TimelineRecordViewModel
             }
         }
 
+        /**
+         * 저장하지 못한 메모를 둔 채로는 기록을 확정하지 않는다.
+         *
+         * 확정하면 화면이 `Unavailable` 로 종결되는데, 그 글은 서버에 없고 재시도할 자리(스낵바)도
+         * 화면과 함께 사라진다. 사용자는 무엇을 잃었는지도 모른 채 끝난다.
+         *
+         * 시트를 닫는 이유는 메모가 시트 뒤에 있기 때문이다 — 고치러 갈 곳을 가린 채로 두면
+         * 안내만 하고 길은 막는 꼴이다.
+         */
+        private fun abortSaveForFailedMemo() {
+            updateState { copy(isSavingRecord = false, emotionSheet = null) }
+            showSnackbar("저장하지 못한 메모가 있어요. 메모를 다시 저장한 뒤 완료해 주세요.")
+        }
+
         private fun handleSaveFailure(error: Throwable) {
             updateState { copy(isSavingRecord = false) }
             if (error is HandledException) return
@@ -426,11 +483,11 @@ class TimelineRecordViewModel
         }
 
         private fun requestDelete() {
+            commitOpenMemo()
             // 하루 기록 삭제는 내용 편집과 별개인 기록 단위 관리 동작이라 SAVED 기록과 읽기 모드에서도 연다.
             val record = (state.value.content as? TimelineRecordUiContent.Record)?.value ?: return
             if (state.value.deleteDialogState != TimelineDeleteDialogState.Hidden ||
                 state.value.isSavingRecord ||
-                state.value.memoEditor != null ||
                 state.value.eventDeleteDialogState != TimelineEventDeleteDialogState.Hidden
             ) {
                 return
@@ -523,6 +580,7 @@ class TimelineRecordViewModel
          * 화면의 내용을 지우면 안 된다.
          */
         private fun requestEventDelete(timelineEventId: Long) {
+            commitOpenMemo()
             val current = state.value
             if (!current.mode.isEditing || !current.isModeSwitchable) return
             val exists =
@@ -599,9 +657,13 @@ class TimelineRecordViewModel
             val current = state.value
             // 읽기 모드에서는 메모 영역이 눌리지 않지만 Intent 경로도 막는다.
             if (!current.mode.isEditing || !current.isModeSwitchable) return
+            if (current.memoEditor?.timelineEventId == timelineEventId) return
+            // 다른 메모를 누른 것이 곧 쓰던 메모에서 포커스가 빠진 것이다.
+            commitOpenMemo()
+            // 갈무리한 값을 얹은 뒤에 읽는다 — 방금 커밋한 메모를 다시 열면 그 글이 나와야 한다.
             val event =
-                current
-                    .record()
+                state.value
+                    .displayedRecord
                     ?.events
                     ?.firstOrNull { it.timelineEventId == timelineEventId }
                     ?: return
@@ -620,40 +682,184 @@ class TimelineRecordViewModel
         private fun changeMemo(value: String) {
             updateState {
                 val editor = memoEditor ?: return@updateState this
-                if (editor.isSaving) this else copy(memoEditor = editor.copy(draftMemo = value))
+                copy(memoEditor = editor.copy(draftMemo = value))
             }
         }
 
-        private fun cancelMemoEdit() {
-            if (state.value.memoEditor?.isSaving == true) return
+        /**
+         * 열려 있는 메모를 갈무리한다.
+         *
+         * 화면의 다른 동작이 자기 일을 하기 전에 부른다 — 무엇을 누르든 그 순간 메모에서 포커스는
+         * 빠진다. 이 덕분에 메모를 쓰는 동안에도 화면이 굳지 않는다.
+         */
+        private fun commitOpenMemo() {
+            state.value.memoEditor?.let { commitMemo(it.timelineEventId) }
+        }
+
+        /**
+         * 포커스가 빠졌다 — 편집기를 닫고, 바뀐 게 있으면 뒤에서 저장한다.
+         *
+         * [timelineEventId] 가 지금 열린 편집기와 다르면 무시한다. 다른 메모로 편집이 옮겨 간 뒤에
+         * 앞선 입력칸의 포커스 해제가 뒤늦게 도착할 수 있는데, 확인하지 않으면 방금 연 편집기를
+         * 대신 닫는다.
+         */
+        private fun commitMemo(timelineEventId: Long) {
+            val editor = state.value.memoEditor?.takeIf { it.timelineEventId == timelineEventId } ?: return
             updateState { copy(memoEditor = null) }
+            if (!editor.hasChanges) return
+            sendMemo(timelineEventId, editor.draftMemo.takeUnless(String::isBlank))
         }
 
-        private suspend fun updateMemo() {
-            val editor = state.value.memoEditor ?: return
-            if (!editor.isConfirmEnabled) return
-            updateState { copy(memoEditor = editor.copy(isSaving = true)) }
-            updateTimelineEventMemoUseCase(
-                timelineEventId = editor.timelineEventId,
-                memo = editor.draftMemo.takeUnless(String::isBlank),
-            ).onSuccess {
-                updateState { copy(memoEditor = null) }
-            }.onFailure(::handleMemoUpdateFailure)
+        /**
+         * 메모를 서버로 보낸다. 응답을 기다리며 화면을 묶지 않는다.
+         *
+         * 보낸 값을 [TimelineRecordUiState.pendingMemos] 에 얹는 것이 낙관 반영이자 되돌릴 자리다 —
+         * 카드는 곧바로 쓴 글을 보여 주고, 응답을 기다리는 동안 세션이 다시 방출돼도 옛 값으로
+         * 돌아가지 않는다.
+         */
+        private fun sendMemo(
+            timelineEventId: Long,
+            memo: String?,
+        ) {
+            val commitId = ++memoCommitSequence
+            latestMemoCommits[timelineEventId] = commitId
+            // 새로 쓴 글이 앞선 실패를 대신한다. 옛 실패로 기록 확정을 계속 막지 않는다.
+            failedMemoCommits -= timelineEventId
+            val previous = memoCommitJobs[timelineEventId]
+            updateState { copy(pendingMemos = pendingMemos + (timelineEventId to memo)) }
+            memoCommitJobs[timelineEventId] =
+                safeLaunch(onError = { error -> handleMemoCommitFailure(timelineEventId, commitId, memo, error) }) {
+                    previous?.join()
+                    updateTimelineEventMemoUseCase(
+                        timelineEventId = timelineEventId,
+                        memo = memo,
+                    ).onSuccess {
+                        // 성공하면 UseCase 가 세션에 같은 값을 넣어 두므로 덧씌울 것이 없다.
+                        clearPendingMemo(timelineEventId, commitId)
+                    }.onFailure { error -> handleMemoCommitFailure(timelineEventId, commitId, memo, error) }
+                }
         }
 
-        private fun handleMemoUpdateFailure(error: Throwable) {
-            updateState {
-                copy(memoEditor = memoEditor?.copy(isSaving = false))
-            }
+        /**
+         * 스낵바의 `다시 시도`.
+         *
+         * 그 사이 같은 메모를 다시 써서 커밋했다면 이 재시도는 이미 지난 값이다 — 보내면 새로
+         * 저장한 글을 옛 글로 덮는다.
+         */
+        private fun retryMemoCommit(
+            timelineEventId: Long,
+            commitId: Long,
+            memo: String?,
+        ) {
+            if (latestMemoCommits[timelineEventId] != commitId) return
+            sendMemo(timelineEventId, memo)
+        }
+
+        /**
+         * 낙관 반영을 걷는다. **더 나중 커밋이 이미 다른 값을 얹어 뒀으면 그 값이 주인이다.**
+         *
+         * 확인하지 않으면 먼저 보낸 요청의 응답이 뒤이어 쓴 글까지 지운다 — 카드가 옛 값으로
+         * 돌아가고, 다시 연 편집기도 그 옛 값을 읽는다.
+         */
+        private fun clearPendingMemo(
+            timelineEventId: Long,
+            commitId: Long,
+        ) {
+            if (latestMemoCommits[timelineEventId] != commitId) return
+            updateState { copy(pendingMemos = pendingMemos - timelineEventId) }
+        }
+
+        /**
+         * 날아가는 중인 메모가 하루 기록 확정보다 늦게 서버에 닿지 않도록 기다린다.
+         *
+         * 기다린 것 중 **되돌려 준 실패가 하나라도 있으면 `false`** 다. 확정을 멈추라는 뜻이다.
+         */
+        private suspend fun awaitMemoCommits(): Boolean {
+            // 기다리는 것도 막는 것도 **지금 기록에 남아 있는 이벤트**로 한정한다. 다른 날짜의
+            // 메모가 아직 날아가는 중이라고 이 기록의 확정을 늦출 이유는 없고, 지운 이벤트는 다시
+            // 편집할 수 없어 "메모를 다시 저장해 달라" 는 안내를 따를 방법이 없다 — 그 실패가
+            // 남아 있으면 저장이 영영 막힌다.
+            val currentEvents =
+                state.value
+                    .record()
+                    ?.events
+                    .orEmpty()
+                    .mapTo(mutableSetOf()) { it.timelineEventId }
+            memoCommitJobs.filterKeys(currentEvents::contains).values.forEach { it.join() }
+            failedMemoCommits.retainAll(currentEvents)
+            return failedMemoCommits.isEmpty()
+        }
+
+        /**
+         * 기록을 바꿀 때 메모 커밋 대장을 비운다.
+         *
+         * 번호도 실패도 이벤트 단위인데 이벤트는 기록에 속한다. 다른 날짜로 넘어가면 남은 값은
+         * 무관할 뿐 아니라 해가 된다 — 옛 실패가 새 기록의 확정을 막고, 옛 재시도가 살아 있다.
+         *
+         * 날아가는 중인 요청은 멈추지도, 그 고리를 끊지도 않는다. 사용자가 그 기록에 실제로 쓴
+         * 글이라 끝까지 보내는 것이 맞고, 결과를 받을 화면만 사라질 뿐이다.
+         */
+        private fun resetMemoCommitState() {
+            // `memoCommitJobs` 는 **남긴다.** 같은 이벤트의 다음 저장이 앞선 요청을 기다리게 하는
+            // 고리라, 화면이 어느 기록을 보고 있는지와 무관하다. 여기서 끊으면 A→B→A 로 돌아와
+            // 같은 메모를 다시 저장했을 때 두 요청이 나란히 달리고, 늦게 끝난 옛 응답의
+            // `replaceEvent` 가 세션의 새 글을 덮는다. 번호 검사는 pending 만 지키지 세션 쓰기는
+            // 막지 못한다. (키가 이벤트 id 라 무한히 늘지 않는다.)
+            latestMemoCommits.clear()
+            failedMemoCommits.clear()
+            updateState { copy(pendingMemos = emptyMap()) }
+        }
+
+        /**
+         * 커밋 실패 — 낙관 반영을 되돌리고 알린다.
+         *
+         * 되돌리지 않으면 화면과 서버가 갈린 채로 남아, 다음 조회에서 사용자가 쓴 글이 소리 없이
+         * 사라진다. 그때는 무엇을 잃었는지 알 방법이 없다.
+         *
+         * 편집기를 다시 열지는 않는다. 포커스는 이미 다른 곳에 가 있고, 되찾아 오면 지금 쓰던 글을
+         * 방해한다. 대신 스낵바가 같은 값을 다시 보낼 길을 준다.
+         */
+        private fun handleMemoCommitFailure(
+            timelineEventId: Long,
+            commitId: Long,
+            memo: String?,
+            error: Throwable,
+        ) {
+            // 뒤이은 커밋이 이 값을 이미 대신했다. 결과는 그 커밋이 자기 몫으로 알린다 —
+            // 여기서 알리면 사용자가 이미 고쳐 쓴 글을 옛 글로 되돌릴 길을 열어 주는 셈이다.
+            if (latestMemoCommits[timelineEventId] != commitId) return
+            clearPendingMemo(timelineEventId, commitId)
+            if (error is CancellationException) return
             when ((error as? TimelineEventUpdateException)?.reason) {
-                TimelineEventUpdateException.Reason.INVALID_REQUEST ->
-                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("메모 내용을 다시 확인해 주세요."))
+                // 되돌릴 대상이 이미 없다. 목록을 서버 기준으로 맞추고, 막을 것도 없앤다.
                 TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE -> {
-                    updateState { copy(memoEditor = null) }
-                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
+                    latestMemoCommits -= timelineEventId
+                    failedMemoCommits -= timelineEventId
+                    showSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요.")
                     requestedRecordDate?.let(::loadRecord)
                 }
-                else -> handleFailure(error)
+                // 같은 값을 다시 보내도 같은 답이 온다. 재시도를 권하지 않는다 — 고쳐 써야 풀린다.
+                TimelineEventUpdateException.Reason.INVALID_REQUEST -> {
+                    failedMemoCommits += timelineEventId
+                    showSnackbar("메모 내용을 다시 확인해 주세요.")
+                }
+                // 메모 수정이 내는 사유는 위 둘뿐이다(`UpdateTimelineEventMemoUseCase`).
+                // 나머지는 네트워크·서버 실패와 같은 자리에 둔다 — 다시 보내면 될 수 있는 것들이다.
+                else -> {
+                    // 공통 정책이 이미 안내한 실패(`HandledException`, 5xx·401 등)도 여기서 센다.
+                    // **안내했다는 것과 저장됐다는 것은 다르다** — 글은 서버에 없으므로 확정을 막아야
+                    // 하고, 되찾을 길도 줘야 한다. 공통 안내는 요청이 왜 실패했는지를 말하고 이
+                    // 스낵바는 방금 쓴 글을 어떻게 되살리는지를 말한다. 주어가 달라 겹치지 않는다.
+                    failedMemoCommits += timelineEventId
+                    sendEffect(
+                        TimelineRecordUiSideEffect.MemoCommitFailed(
+                            timelineEventId = timelineEventId,
+                            commitId = commitId,
+                            memo = memo,
+                            message = "메모를 저장하지 못했어요.",
+                        ),
+                    )
+                }
             }
         }
 

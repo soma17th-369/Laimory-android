@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,8 +83,7 @@ internal fun TimelineEventCard(
     memoEditor: TimelineMemoEditorState? = null,
     onMemoClick: () -> Unit = {},
     onMemoChange: (String) -> Unit = {},
-    onMemoCancel: () -> Unit = {},
-    onMemoConfirm: () -> Unit = {},
+    onMemoCommit: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val photoSlots = event.photoSlots()
@@ -152,8 +152,7 @@ internal fun TimelineEventCard(
                 isEditable = isEditable,
                 onClick = onMemoClick,
                 onValueChange = onMemoChange,
-                onCancel = onMemoCancel,
-                onConfirm = onMemoConfirm,
+                onCommit = onMemoCommit,
             )
         }
     }
@@ -241,15 +240,22 @@ private fun rowGap(isLast: Boolean): Dp = if (isLast) 0.dp else TIMELINE_ROW_GAP
  * 채움은 시안대로 `surfaceVariant` 다. 배경색으로 낮춰 봤더니 원이 사라지면서 아이콘이 허공에
  * 뜨고, 아래에서 올라온 연결선도 닿을 곳을 잃어 어색했다. 원은 아이콘의 바탕이자 연결선이
  * 맞물리는 마디라 배경과 구분돼야 한다.
+ *
+ * 테두리는 아이콘과 **같은 색**이다. 시안이 이 자리에 `selector/icon-color` 를 물려 둔 것도
+ * 같은 뜻이다 — 원은 아이콘이 앉은 자리지 따로 읽히는 상자가 아니라, 윤곽만 아이콘을 따라
+ * 한 겹 두른다. 채움(`surfaceVariant`)만으로는 밝은 배경에서 원의 경계가 흐려 연결선이
+ * 어디에 맞물리는지 보이지 않았다.
  */
 @Composable
 private fun EventTypeIndicator(eventType: TimelineEventType) {
+    val shape = RoundedCornerShape(INDICATOR_CORNER_RADIUS)
     Box(
         modifier =
             Modifier
                 .size(INDICATOR_SIZE)
-                .clip(RoundedCornerShape(INDICATOR_CORNER_RADIUS))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(INDICATOR_BORDER_WIDTH, MaterialTheme.colorScheme.onSurfaceVariant, shape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -543,7 +549,7 @@ private fun TimelineMemoEditorPreview(
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             TimelineEventCard(
-                event = photoThumbnailPreviewEvent(photoCount = 0),
+                event = questionPreviewEvent(memo = editor.originalMemo.ifBlank { null }, question = PREVIEW_QUESTION),
                 onEditClick = {},
                 onDeleteClick = {},
                 onPhotoClick = { _, _ -> },
@@ -576,30 +582,30 @@ internal class PhotoMainCountPreviewParameterProvider : PreviewParameterProvider
 internal class TimelineMemoEditorPreviewParameterProvider : PreviewParameterProvider<TimelineMemoEditorState> {
     override val values: Sequence<TimelineMemoEditorState> =
         sequenceOf(
+            // 막 잡은 빈 입력칸 — 안내 문구가 남아 있다.
+            TimelineMemoEditorState(timelineEventId = 9L, originalMemo = "", draftMemo = ""),
+            // 여러 줄로 접힌 입력.
             TimelineMemoEditorState(
-                timelineEventId = 2L,
-                originalMemo = "7호선이 평소보다 많이 붐볐다.",
-                draftMemo = "오늘은 비가 와서 조금 우울했지만, 카페에서 따뜻한 라떼를 마시니 기분이 좋아졌다.",
-            ),
-            TimelineMemoEditorState(
-                timelineEventId = 2L,
-                originalMemo = "7호선이 평소보다 많이 붐볐다.",
-                draftMemo = "저장 중인 메모",
-                isSaving = true,
-            ),
-            TimelineMemoEditorState(
-                timelineEventId = 2L,
+                timelineEventId = 9L,
                 originalMemo = "",
-                draftMemo = "가".repeat(10_001),
+                draftMemo = "환승 계단에서 문득 여름 냄새가 났다. 지하철 안은 차가웠는데, 계단을 오르자마자",
+            ),
+            // 이미 남긴 메모를 고치는 중.
+            TimelineMemoEditorState(
+                timelineEventId = 9L,
+                originalMemo = "7호선이 평소보다 많이 붐볐다.",
+                draftMemo = "7호선이 평소보다 많이 붐볐다. 환승 계단에서는 여름 냄새가 났다.",
             ),
         )
 }
 
 /**
- * 질문 표시 조합 미리보기.
+ * 질문·메모 조합 미리보기.
  *
- * 메모가 있으면 메모가 질문을 가리고, 메모가 비면 질문이 안내 문구 자리를 차지한다.
- * 읽기 모드에서 메모가 없으면 영역째 사라진다.
+ * 질문은 편집 모드에서만, 메모 위 말풍선으로 선다. 메모를 남긴 뒤에도 사라지지 않는다 —
+ * 무엇에 답한 글인지가 그 글의 문맥이다.
+ *
+ * 읽기 모드에는 질문도 안내 문구도 없다. 메모가 없으면 영역째 사라진다.
  */
 @Preview(name = "질문·메모 조합", showBackground = true, widthDp = 360)
 @Composable
@@ -610,20 +616,38 @@ private fun QuestionPromptCardPreview() {
                 modifier = Modifier.padding(Spacing.large),
                 verticalArrangement = Arrangement.spacedBy(Spacing.large),
             ) {
+                // 편집 · 질문 있음 · 메모 없음 — 말풍선 + 밑줄 입력 줄.
                 TimelineEventCard(
-                    event = questionPreviewEvent(memo = null, question = "오늘 누구와 함께였나요?"),
+                    event = questionPreviewEvent(memo = null, question = PREVIEW_QUESTION),
                     onEditClick = {},
                     onDeleteClick = {},
                     onPhotoClick = { _, _ -> },
                 )
+                // 편집 · 질문 있음 · 메모 있음 — 말풍선 + 인용.
                 TimelineEventCard(
-                    event = questionPreviewEvent(memo = "혼자 조용히 걸었다.", question = "오늘 누구와 함께였나요?"),
+                    event = questionPreviewEvent(memo = "혼자 조용히 걸었다.", question = PREVIEW_QUESTION),
                     onEditClick = {},
                     onDeleteClick = {},
                     onPhotoClick = { _, _ -> },
                 )
+                // 편집 · 질문 없음 · 메모 없음 — 밑줄 입력 줄만.
                 TimelineEventCard(
-                    event = questionPreviewEvent(memo = null, question = "오늘 누구와 함께였나요?"),
+                    event = questionPreviewEvent(memo = null, question = null),
+                    onEditClick = {},
+                    onDeleteClick = {},
+                    onPhotoClick = { _, _ -> },
+                )
+                // 읽기 · 질문 있음 · 메모 있음 — 질문을 감추고 인용만 남는다.
+                TimelineEventCard(
+                    event = questionPreviewEvent(memo = "혼자 조용히 걸었다.", question = PREVIEW_QUESTION),
+                    onEditClick = {},
+                    onDeleteClick = {},
+                    onPhotoClick = { _, _ -> },
+                    isEditable = false,
+                )
+                // 읽기 · 질문 있음 · 메모 없음 — 메모 영역이 통째로 사라진다.
+                TimelineEventCard(
+                    event = questionPreviewEvent(memo = null, question = PREVIEW_QUESTION),
                     onEditClick = {},
                     onDeleteClick = {},
                     onPhotoClick = { _, _ -> },
@@ -633,6 +657,8 @@ private fun QuestionPromptCardPreview() {
         }
     }
 }
+
+private const val PREVIEW_QUESTION = "오늘 아침, 어떤 생각을 하며 걸었나요?"
 
 private fun questionPreviewEvent(
     memo: String?,
@@ -712,6 +738,7 @@ private val TIMELINE_ROW_GAP = 16.dp
 /** 표시자 원형 크기. 시안 32dp. */
 private val INDICATOR_SIZE = 32.dp
 private val INDICATOR_CORNER_RADIUS = 16.dp
+private val INDICATOR_BORDER_WIDTH = 1.dp
 private val INDICATOR_ICON_SIZE = 24.dp
 
 /** 아이콘 아래로 이어지는 연결선 두께. 시안 2dp. */

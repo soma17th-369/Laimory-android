@@ -1,25 +1,25 @@
 package com.soma369.laimory.feature.timeline.component
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,18 +27,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,23 +49,34 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
-import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
-import com.soma369.laimory.feature.timeline.model.DEFAULT_MEMO_PROMPT
 import com.soma369.laimory.feature.timeline.model.TimelineMemoDisplay
 import com.soma369.laimory.feature.timeline.model.timelineMemoDisplay
+import com.soma369.laimory.feature.timeline.model.timelineMemoPrompt
+import com.soma369.laimory.feature.timeline.model.timelineMemoQuestion
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.core.ui.R as UiR
 
 /**
  * 이벤트 메모.
  *
- * 읽을 때나 쓸 때나 **왼쪽에 세로 획을 세운 인용**이다. 종전처럼 편집 모드에서만 점선 테두리를
- * 두르지 않는다 — 테두리는 입력칸의 표시라, 같은 문장이 모드에 따라 글이었다가 칸이 된다.
- * 편집 중인 동안만 획 색이 바뀌어 지금 손대는 자리를 알린다.
+ * AI 질문은 **메모 위 말풍선**으로 따로 선다. 예전에는 메모가 비었을 때만 질문이 메모 자리에
+ * 들어앉아, 답을 적기 시작하면 무엇을 물었는지 볼 수 없었다.
+ *
+ * 메모 자리의 왼쪽 표시는 하나만 강조색을 쓴다 — **지금 커서가 있는 자리**다.
+ *
+ * | 상태 | 표시 | 색 |
+ * | --- | --- | --- |
+ * | 아직 안 쓴 자리 | 밑줄 1 | `outline` |
+ * | 쓰는 중 | 밑줄 2 | `primary` |
+ * | 다 쓴 메모 | 인용 획 2 | `outline` |
+ *
+ * 다 쓴 메모의 인용 획은 읽기 모드와 같은 색이다. 모드를 오가도 이미 쓴 글의 겉모습은 흔들리지
+ * 않는다.
  */
 @Composable
 internal fun TimelineMemo(
@@ -73,57 +86,147 @@ internal fun TimelineMemo(
     isEditable: Boolean,
     onClick: () -> Unit,
     onValueChange: (String) -> Unit,
-    onCancel: () -> Unit,
-    onConfirm: () -> Unit,
+    onCommit: () -> Unit,
 ) {
-    if (editor == null) {
-        val display = timelineMemoDisplay(memo = memo, question = question, isEditable = isEditable) ?: return
+    val bubbleQuestion = timelineMemoQuestion(question = question, isEditable = isEditable)
+    val display = timelineMemoDisplay(memo = memo, question = question, isEditable = isEditable)
+    if (bubbleQuestion == null && display == null && editor == null) return
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(QUESTION_GAP),
+    ) {
+        bubbleQuestion?.let { MemoQuestionBubble(question = it) }
+        when {
+            editor != null ->
+                MemoInputLine(
+                    editor = editor,
+                    placeholder = timelineMemoPrompt(question),
+                    onValueChange = onValueChange,
+                    onCommit = onCommit,
+                )
+
+            display is TimelineMemoDisplay.Memo ->
+                MemoQuote(text = display.text, onClick = onClick.takeIf { isEditable })
+
+            display is TimelineMemoDisplay.Prompt ->
+                MemoPromptLine(placeholder = display.text, onClick = onClick)
+
+            else -> Unit
+        }
+    }
+}
+
+/**
+ * AI 질문 말풍선.
+ *
+ * 좌상 모서리만 4 인 것은 꼬리 자리다. 아이콘은 말풍선 안 첫 줄에 물리며 본문에 들여쓰기를
+ * 만들지 않는다 — 질문이 여러 줄로 접혀도 둘째 줄부터는 왼쪽 선에 맞는다.
+ *
+ * TalkBack 은 말풍선을 한 덩어리로 읽는다. 아이콘은 뜻을 더하지 않는 장식이라 이름이 없고,
+ * 대신 이것이 AI 가 던진 질문이라는 사실을 문장 앞에 붙인다.
+ */
+@Composable
+private fun MemoQuestionBubble(question: String) {
+    val questionStyle = MaterialTheme.typography.bodyMedium
+    // 아이콘 자리는 본문 한 줄 높이다. 글꼴을 키우면 줄도 함께 자라므로 고정값으로 두지 않는다.
+    val lineHeight = with(LocalDensity.current) { questionStyle.lineHeight.toDp() }
+    Row(
+        modifier =
+            Modifier
+                .clip(
+                    RoundedCornerShape(
+                        topStart = BUBBLE_TAIL_CORNER,
+                        topEnd = BUBBLE_CORNER,
+                        bottomEnd = BUBBLE_CORNER,
+                        bottomStart = BUBBLE_CORNER,
+                    ),
+                ).background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(horizontal = BUBBLE_PADDING_HORIZONTAL, vertical = BUBBLE_PADDING_VERTICAL)
+                .semantics(mergeDescendants = true) { contentDescription = "AI 질문, $question" },
+        horizontalArrangement = Arrangement.spacedBy(BUBBLE_ICON_GAP),
+        verticalAlignment = Alignment.Top,
+    ) {
+        // 한 줄 높이의 자리를 잡고 그 안에서 가운데 둔다. 말풍선 전체를 기준으로 가운데 두면
+        // (`Alignment.CenterVertically`) 질문이 여러 줄로 접힐수록 아이콘이 아래로 흘러내린다.
+        Box(
+            modifier = Modifier.height(lineHeight),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(UiR.drawable.ico_default_sparkle),
+                contentDescription = null,
+                modifier = Modifier.size(BUBBLE_ICON_SIZE),
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
         Text(
-            text = display.text,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .then(
-                        // 읽기 모드의 메모는 본문의 한 문단이라 누를 곳이 없다.
-                        if (isEditable) Modifier.clickable(onClick = onClick) else Modifier,
-                    ).memoQuote(MaterialTheme.colorScheme.outline),
-            style = memoQuoteStyle(),
-            color =
-                if (display is TimelineMemoDisplay.Memo) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            maxLines = if (display is TimelineMemoDisplay.Question) QUESTION_MAX_LINES else MEMO_MAX_LINES,
+            text = question,
+            style = questionStyle,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            maxLines = QUESTION_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
         )
-        return
     }
+}
 
-    TimelineMemoEditor(
-        editor = editor,
-        placeholder = question?.takeIf(String::isNotBlank) ?: DEFAULT_MEMO_PROMPT,
-        onValueChange = onValueChange,
-        onCancel = onCancel,
-        onConfirm = onConfirm,
+/** 다 쓴 메모. 편집 모드에서만 눌린다 — 읽기 모드의 메모는 본문의 한 문단이라 누를 곳이 없다. */
+@Composable
+private fun MemoQuote(
+    text: String,
+    onClick: (() -> Unit)?,
+) {
+    Text(
+        text = text,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(onClickLabel = "메모 편집", onClick = onClick) else Modifier)
+                .memoQuote(MaterialTheme.colorScheme.outline),
+        style = memoTextStyle(),
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = MEMO_MAX_LINES,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 
-private const val MEMO_MAX_LINES = 3
-
-/** question 은 서버 기준 255자까지 온다. 기본 안내 문구보다 여유를 둔다. */
-private const val QUESTION_MAX_LINES = 5
-
+/** 아직 비어 있는 메모 자리. 인용이 아니라 입력칸이라 밑줄을 깐다. */
 @Composable
-private fun TimelineMemoEditor(
+private fun MemoPromptLine(
+    placeholder: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = "메모 작성", onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(INPUT_LINE_GAP),
+    ) {
+        Text(
+            text = placeholder,
+            modifier = Modifier.fillMaxWidth(),
+            style = memoTextStyle(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        MemoUnderline(color = MaterialTheme.colorScheme.outline, thickness = UNDERLINE_IDLE)
+    }
+}
+
+/**
+ * 입력 중인 메모.
+ *
+ * **포커스가 빠지면 저장한다.** 확인 버튼이 따로 없으므로 이 콜백이 유일한 저장 신호다. 처음
+ * 포커스를 잡기 전에도 `onFocusChanged` 가 한 번 도는데, 그때는 커밋하지 않는다 — 편집기를 열자마자
+ * 스스로 닫힌다.
+ */
+@Composable
+private fun MemoInputLine(
     editor: TimelineMemoEditorState,
     placeholder: String,
     onValueChange: (String) -> Unit,
-    onCancel: () -> Unit,
-    onConfirm: () -> Unit,
+    onCommit: () -> Unit,
 ) {
     val focusRequester = remember(editor.timelineEventId) { FocusRequester() }
-    val editorBottomBringIntoViewRequester = remember(editor.timelineEventId) { BringIntoViewRequester() }
+    val bringIntoViewRequester = remember(editor.timelineEventId) { BringIntoViewRequester() }
+    var hasFocused by remember(editor.timelineEventId) { mutableStateOf(false) }
     var textFieldValue by remember(editor.timelineEventId) {
         mutableStateOf(
             TextFieldValue(
@@ -134,12 +237,30 @@ private fun TimelineMemoEditor(
     }
     val imeInsets = WindowInsets.ime
     val density = LocalDensity.current
-    val textColor = MaterialTheme.colorScheme.onBackground
     LaunchedEffect(editor.timelineEventId) {
         focusRequester.requestFocus()
         imeInsets.awaitSettled(density)
         withFrameNanos { }
-        editorBottomBringIntoViewRequester.bringIntoView()
+        bringIntoViewRequester.bringIntoView()
+    }
+    // 키보드를 내리는 것도 이 자리에서 손을 떼는 동작이다. `BasicTextField` 는 키보드가 내려가도
+    // 입력 포커스를 쥐고 있어서 `onFocusChanged` 만으로는 이 경로가 잡히지 않는다 — 키보드의
+    // 숨기기 버튼으로 내리면 편집기도 쓰던 글도 그대로 남는다. 뒤로 키도 마찬가지다: 키보드가
+    // 올라와 있으면 시스템이 먼저 먹고 화면의 `BackHandler` 까지 오지 않는다.
+    //
+    // **한 번 올라온 적 있는 키보드가 내려가는 전환만** 센다. 편집기를 여는 순간에는 아직 inset
+    // 이 0 이라 그대로 두면 열자마자 스스로 닫히고, 메모 A→B 로 옮길 때는 키보드가 계속 올라와
+    // 있어 애초에 전환이 없다.
+    LaunchedEffect(editor.timelineEventId) {
+        var wasImeVisible = false
+        snapshotFlow { imeInsets.getBottom(density) > 0 }
+            .collect { isImeVisible ->
+                if (isImeVisible) {
+                    wasImeVisible = true
+                } else if (wasImeVisible) {
+                    onCommit()
+                }
+            }
     }
     LaunchedEffect(editor.draftMemo) {
         if (editor.draftMemo != textFieldValue.text) {
@@ -152,23 +273,29 @@ private fun TimelineMemoEditor(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(Spacing.small),
+        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoViewRequester),
+        verticalArrangement = Arrangement.spacedBy(INPUT_LINE_GAP),
     ) {
         BasicTextField(
             value = textFieldValue,
-            onValueChange = {
-                textFieldValue = it
-                onValueChange(it.text)
+            onValueChange = { value ->
+                val limited = value.limitedToMemoLength()
+                textFieldValue = limited
+                onValueChange(limited.text)
             },
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .memoQuote(MaterialTheme.colorScheme.primaryContainer)
                     .heightIn(min = EDITOR_MIN_HEIGHT, max = EDITOR_MAX_HEIGHT)
-                    .focusRequester(focusRequester),
-            enabled = !editor.isSaving,
-            textStyle = memoQuoteStyle().copy(color = textColor),
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            hasFocused = true
+                        } else if (hasFocused) {
+                            onCommit()
+                        }
+                    },
+            textStyle = memoTextStyle().copy(color = MaterialTheme.colorScheme.onSurface),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             maxLines = EDITOR_MAX_LINES,
@@ -177,7 +304,7 @@ private fun TimelineMemoEditor(
                     if (textFieldValue.text.isEmpty()) {
                         Text(
                             text = placeholder,
-                            style = memoQuoteStyle(),
+                            style = memoTextStyle(),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -185,86 +312,37 @@ private fun TimelineMemoEditor(
                 }
             },
         )
-        // 앵커는 하단 바 자체다. 아래에 빈 Spacer 를 두면 그만큼 버튼 밑이 벌어지는데,
-        // 시안의 편집 상태는 버튼 줄에서 끝난다.
-        MemoEditorBottomBar(
-            editor = editor,
-            onCancel = onCancel,
-            onConfirm = onConfirm,
-            modifier = Modifier.bringIntoViewRequester(editorBottomBringIntoViewRequester),
-        )
+        MemoUnderline(color = MaterialTheme.colorScheme.primary, thickness = UNDERLINE_ACTIVE)
     }
 }
 
-/**
- * 편집 중 아래 줄 — 글자수와 취소·확인.
- *
- * 글자수는 상한을 넘겼을 때 색으로 알린다. 별도 안내 문장을 두지 않는 이유는 넘긴 사실과 얼마나
- * 넘겼는지를 같은 자리에서 이미 말하고 있기 때문이다.
- *
- * 왼쪽 여백은 획(2) + 간격(10) 만큼이다. 위의 메모 본문과 글자 시작선을 맞춘다.
- */
 @Composable
-private fun MemoEditorBottomBar(
-    editor: TimelineMemoEditorState,
-    onCancel: () -> Unit,
-    onConfirm: () -> Unit,
-    modifier: Modifier = Modifier,
+private fun MemoUnderline(
+    color: Color,
+    thickness: Dp,
 ) {
-    val locale = LocalLocale.current.platformLocale
-    Row(
+    Box(
         modifier =
-            modifier
+            Modifier
                 .fillMaxWidth()
-                .padding(start = QUOTE_RULE_WIDTH + QUOTE_RULE_GAP),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text =
-                "${String.format(locale, "%,d", editor.draftMemo.length)}/" +
-                    String.format(locale, "%,d", TimelineEventMemoPolicy.MAX_LENGTH),
-            style = MaterialTheme.typography.labelSmall,
-            color =
-                if (editor.isValid) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.error
-                },
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
-            TimelineMemoActionButton(
-                contentDescription = "메모 편집 취소",
-                enabled = !editor.isSaving,
-                onClick = onCancel,
-            ) {
-                Icon(
-                    painter = painterResource(UiR.drawable.ico_default_close),
-                    contentDescription = null,
-                    modifier = Modifier.size(MEMO_ACTION_ICON_SIZE),
-                )
-            }
-            TimelineMemoActionButton(
-                contentDescription = "메모 편집 완료",
-                enabled = editor.isConfirmEnabled,
-                onClick = onConfirm,
-            ) {
-                if (editor.isSaving) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(MEMO_ACTION_PROGRESS_SIZE),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(UiR.drawable.ico_default_check_filled),
-                        contentDescription = null,
-                        modifier = Modifier.size(MEMO_ACTION_ICON_SIZE),
-                    )
-                }
-            }
-        }
-    }
+                .height(thickness)
+                .background(color),
+    )
+}
+
+/**
+ * 상한을 넘긴 입력을 잘라 낸다.
+ *
+ * 글자수 표시가 없으므로 넘긴 사실을 나중에 알릴 방법이 없다. 붙여넣기를 통째로 거절하는 대신
+ * 상한까지만 받는다 — 거절하면 무엇이 왜 안 들어갔는지 알 길이 없다.
+ */
+private fun TextFieldValue.limitedToMemoLength(): TextFieldValue {
+    if (text.length <= TimelineEventMemoPolicy.MAX_LENGTH) return this
+    val limited = text.take(TimelineEventMemoPolicy.MAX_LENGTH)
+    return copy(
+        text = limited,
+        selection = TextRange(selection.start.coerceAtMost(limited.length), selection.end.coerceAtMost(limited.length)),
+    )
 }
 
 private suspend fun WindowInsets.awaitSettled(density: Density) {
@@ -284,37 +362,12 @@ private suspend fun WindowInsets.awaitSettled(density: Density) {
     }
 }
 
-@Composable
-private fun TimelineMemoActionButton(
-    contentDescription: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.size(MEMO_ACTION_BUTTON_SIZE),
-        enabled = enabled,
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.primaryContainer,
-        // 시안은 primaryContainer 바탕 위에 본문 보조색 아이콘을 얹는다.
-        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.semantics { this.contentDescription = contentDescription },
-        ) {
-            content()
-        }
-    }
-}
-
 /**
  * 인용 표시 — 왼쪽 세로 획과 그만큼의 안쪽 여백.
  *
- * 획을 자식으로 두고 높이를 맞추려면 `IntrinsicSize.Min` 이 필요한데, 편집 중에는 이 자리에
- * `BasicTextField` 가 들어와 intrinsic 측정을 기대할 수 없다. 그래서 배경으로 직접 그린다 —
- * 어떤 내용이 오든 그려진 높이가 곧 내용의 높이다.
+ * 획을 자식으로 두고 높이를 맞추려면 `IntrinsicSize.Min` 이 필요한데, 그리는 대상이 여러 줄로
+ * 접히는 본문이라 미리 재기 어렵다. 그래서 배경으로 직접 그린다 — 어떤 내용이 오든 그려진
+ * 높이가 곧 내용의 높이다.
  */
 private fun Modifier.memoQuote(color: Color) =
     padding(top = QUOTE_TOP_PADDING)
@@ -336,31 +389,39 @@ private fun Modifier.memoQuote(color: Color) =
  * 행간은 시안값을 그대로 쓴다. 글자 크기의 1.1 배라 여러 줄로 접히면 빽빽해진다.
  */
 @Composable
-private fun memoQuoteStyle() =
+private fun memoTextStyle() =
     MaterialTheme.laimorySignature.note.copy(
         fontSize = MEMO_FONT_SIZE,
         lineHeight = MEMO_LINE_HEIGHT,
     )
 
+private const val MEMO_MAX_LINES = 3
+
+/** question 은 서버 기준 255자까지 온다. 다 펼치면 말풍선이 카드를 덮는다. */
+private const val QUESTION_MAX_LINES = 5
+
 private val MEMO_FONT_SIZE = 20.sp
 private val MEMO_LINE_HEIGHT = 22.sp
+
+/** 말풍선과 메모 사이. */
+private val QUESTION_GAP = 12.dp
+private val BUBBLE_CORNER = 12.dp
+private val BUBBLE_TAIL_CORNER = 4.dp
+private val BUBBLE_PADDING_HORIZONTAL = 12.dp
+private val BUBBLE_PADDING_VERTICAL = 8.dp
+private val BUBBLE_ICON_GAP = 8.dp
+private val BUBBLE_ICON_SIZE = 16.dp
+
+/** 입력 줄 — 본문과 밑줄 사이 간격, 그리고 두 굵기. */
+private val INPUT_LINE_GAP = 8.dp
+private val UNDERLINE_IDLE = 1.dp
+private val UNDERLINE_ACTIVE = 2.dp
 
 /** 인용 획. 시안 폭 2, 모서리 1, 본문과의 간격 10, 위 여백 2. */
 private val QUOTE_RULE_WIDTH = 2.dp
 private val QUOTE_RULE_RADIUS = 1.dp
 private val QUOTE_RULE_GAP = 10.dp
 private val QUOTE_TOP_PADDING = 2.dp
-
-private val MEMO_ACTION_BUTTON_SIZE = 28.dp
-
-/**
- * 아이콘이 버튼과 같은 크기다.
- *
- * 시안의 두 아이콘은 28 버튼 안에서 각각 18x18(X)·22x16(체크)을 차지한다. 에셋의 여백까지
- * 그 비율로 그려져 있어, 버튼 크기 그대로 두면 시안과 같은 글리프 크기가 나온다.
- */
-private val MEMO_ACTION_ICON_SIZE = MEMO_ACTION_BUTTON_SIZE
-private val MEMO_ACTION_PROGRESS_SIZE = 16.dp
 
 /** 한 줄 높이. 빈 입력칸이 접히지 않게 잡아 둔다. */
 private val EDITOR_MIN_HEIGHT = 22.dp

@@ -66,7 +66,25 @@ sealed interface TimelineRecordUiIntent : UiIntent {
         val value: String,
     ) : TimelineRecordUiIntent
 
-    data object CancelMemoEdit : TimelineRecordUiIntent
+    /**
+     * 메모 입력칸에서 포커스가 빠졌다 — 이것이 유일한 저장 신호다.
+     *
+     * 대상 이벤트를 들고 다닌다. 다른 메모를 눌러 편집이 옮겨 간 뒤에 앞선 입력칸의 포커스 해제가
+     * 뒤늦게 도착할 수 있는데, id 를 확인하지 않으면 방금 연 편집기를 대신 닫는다.
+     */
+    data class CommitMemoEdit(
+        val timelineEventId: Long,
+    ) : TimelineRecordUiIntent
 
-    data object ConfirmMemoEdit : TimelineRecordUiIntent
+    /**
+     * 커밋 실패 스낵바의 `다시 시도`. 실패한 값을 그대로 다시 보낸다.
+     *
+     * 실패한 커밋의 번호를 함께 들고 온다. 스낵바가 떠 있는 동안 같은 메모를 다시 써서 저장할 수
+     * 있는데, 확인하지 않으면 그 뒤에 눌린 `다시 시도` 가 새로 저장한 글을 옛 글로 덮는다.
+     */
+    data class RetryMemoCommit(
+        val timelineEventId: Long,
+        val commitId: Long,
+        val memo: String?,
+    ) : TimelineRecordUiIntent
 }

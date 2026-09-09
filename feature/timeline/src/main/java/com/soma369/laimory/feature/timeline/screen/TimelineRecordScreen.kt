@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.timeline.screen
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,6 +45,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -110,12 +116,37 @@ private fun TimelineRecordContent(
             when (effect) {
                 is TimelineRecordUiSideEffect.ShowSnackbar ->
                     snackbarHostState.showSnackbar(effect.message)
+
+                is TimelineRecordUiSideEffect.MemoCommitFailed -> {
+                    val result =
+                        snackbarHostState.showSnackbar(
+                            message = effect.message,
+                            actionLabel = "다시 시도",
+                        )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        onIntent(
+                            TimelineRecordUiIntent.RetryMemoCommit(
+                                timelineEventId = effect.timelineEventId,
+                                commitId = effect.commitId,
+                                memo = effect.memo,
+                            ),
+                        )
+                    }
+                }
             }
         }
     }
 
+    // 화면을 벗어나면 쓰던 메모도 포커스를 잃는다. 홈으로 나가거나 다른 앱으로 넘어갈 때
+    // 입력칸이 열린 채 남으면 그동안 쓴 글이 어디에도 남지 않는다.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        state.memoEditor?.let { onIntent(TimelineRecordUiIntent.CommitMemoEdit(it.timelineEventId)) }
+    }
+
     // 저장 중 시스템·예측 뒤로가기는 소비만 한다 — 요청이 진행 중인 채 화면을 벗어나면
     // 완료 시점의 뒤늦은 pop이 다른 화면을 닫고 실패 안내도 유실된다.
+    //
+    // 메모를 쓰던 중이면 첫 뒤로는 갈무리에 쓴다. 예전에는 쓰던 글을 버렸다.
     BackHandler(enabled = state.memoEditor != null || state.isSavingRecord) {
         if (!state.isSavingRecord) onIntent(TimelineRecordUiIntent.NavigateBack)
     }
@@ -168,6 +199,7 @@ private fun TimelineRecordScreen(
 ) {
     var photoViewerState by remember { mutableStateOf<TimelinePhotoViewerState?>(null) }
     var isRecordMenuExpanded by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     Column(
         modifier =
@@ -268,17 +300,30 @@ private fun TimelineRecordScreen(
                 )
             is TimelineRecordUiContent.Record ->
                 Column(modifier = Modifier.fillMaxSize()) {
-                    Box(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                // 빈 곳을 누르는 것도 메모에서 포커스를 놓는 동작이다. 포커스를
+                                // 거두면 입력칸이 스스로 갈무리한다 — 저장 경로가 하나로 남는다.
+                                //
+                                // `clickable` 대신 제스처를 직접 받는다. 목록 전체가 버튼으로
+                                // 읽히면 TalkBack 이 카드마다 다른 이름 대신 이 영역을 먼저 읽는다.
+                                .pointerInput(Unit) {
+                                    detectTapGestures { focusManager.clearFocus() }
+                                },
+                    ) {
                         TimelineRecordBody(
-                            record = content.value,
+                            // 아직 응답을 기다리는 메모를 얹은 값이다 — 방금 쓴 글이 서버를
+                            // 다녀오는 동안 옛 값으로 되돌아가 보이지 않게 한다.
+                            record = state.displayedRecord ?: content.value,
                             memoEditor = state.memoEditor,
                             mode = state.mode,
                             onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
                             onEventDeleteClick = { onIntent(TimelineRecordUiIntent.RequestEventDelete(it)) },
                             onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
                             onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
-                            onMemoCancel = { onIntent(TimelineRecordUiIntent.CancelMemoEdit) },
-                            onMemoConfirm = { onIntent(TimelineRecordUiIntent.ConfirmMemoEdit) },
+                            onMemoCommit = { onIntent(TimelineRecordUiIntent.CommitMemoEdit(it)) },
                             onPhotoClick = { photoUrls, initialIndex ->
                                 photoViewerState =
                                     TimelinePhotoViewerState(
@@ -290,7 +335,9 @@ private fun TimelineRecordScreen(
                         )
                         // 목록 위에 얹어 저장 버튼과 겹치지 않게 둔다. 편집 모드에서만 보인다 —
                         // 읽는 화면에 만들기 버튼이 떠 있으면 무엇을 읽는 화면인지 흐려진다.
-                        if (state.mode.isEditing && state.memoEditor == null) {
+                        //
+                        // 메모를 쓰는 중에도 남는다. 누르면 쓰던 메모가 갈무리되고 이벤트 추가로 넘어간다.
+                        if (state.mode.isEditing) {
                             AddEventFab(
                                 enabled = state.isModeSwitchable,
                                 onClick = { onIntent(TimelineRecordUiIntent.AddEvent) },
@@ -298,10 +345,9 @@ private fun TimelineRecordScreen(
                             )
                         }
                     }
-                    // 메모 편집 중에는 어차피 누를 수 없는 버튼이라 감춘다 — 키보드 위 좁은 자리를
-                    // 비활성 버튼이 차지하지 않게 한다.
                     // 저장은 내용 변경이 아니라 상태 확정이라 모드와 무관하게 노출한다. SAVED 는 재호출하지 않는다.
-                    if (!content.value.isSaved && state.memoEditor == null) {
+                    // 메모를 쓰는 중에도 누를 수 있다 — 쓰던 메모를 갈무리한 뒤 감정 시트가 열린다.
+                    if (!content.value.isSaved) {
                         SaveRecordButton(
                             enabled =
                                 !state.isSavingRecord &&
@@ -408,8 +454,7 @@ private fun TimelineRecordBody(
     onEventDeleteClick: (Long) -> Unit,
     onMemoClick: (Long) -> Unit,
     onMemoChange: (String) -> Unit,
-    onMemoCancel: () -> Unit,
-    onMemoConfirm: () -> Unit,
+    onMemoCommit: (Long) -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -438,8 +483,7 @@ private fun TimelineRecordBody(
                 memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = onMemoChange,
-                onMemoCancel = onMemoCancel,
-                onMemoConfirm = onMemoConfirm,
+                onMemoCommit = { onMemoCommit(event.timelineEventId) },
             )
         }
     }
