@@ -1,18 +1,22 @@
-<!-- Figma MoodEmoji / emoji-mellow 글리프. 감정 색 원 위에 얹는 흰색 표정선이라 tint 없이 그대로 그린다. -->
+<!-- Figma Emoji-v2 / emoji-무덤덤. 원 배경까지 한 벌이라 tint 없이 그대로 그린다. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="36dp"
     android:height="36dp"
     android:viewportWidth="36"
     android:viewportHeight="36">
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M9.75 15a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0Z" />
+        android:fillColor="#C2C2C2"
+        android:pathData="M18,0 A18,18 0 1 1 18,36 A18,18 0 1 1 18,0 Z" />
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M23.25 15a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0Z" />
+        android:fillColor="#262626"
+        android:pathData="M14.5,14 A1.5,1.5 0 1 1 14.5,17 A1.5,1.5 0 1 1 14.5,14 Z" />
     <path
-        android:pathData="M14.75 21.25L21.25 21.25"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round" />
+        android:fillColor="#262626"
+        android:pathData="M22.5,14 A1.5,1.5 0 1 1 22.5,17 A1.5,1.5 0 1 1 22.5,14 Z" />
+    <path
+        android:pathData="M14,24 L22,24"
+        android:strokeColor="#262626"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>
