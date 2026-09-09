@@ -29,7 +29,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -123,14 +122,20 @@ internal fun TimelineMemo(
  * 좌상 모서리만 4 인 것은 꼬리 자리다. 아이콘은 말풍선 안 첫 줄에 물리며 본문에 들여쓰기를
  * 만들지 않는다 — 질문이 여러 줄로 접혀도 둘째 줄부터는 왼쪽 선에 맞는다.
  *
+ * **아이콘과 글자는 baseline 으로 맞춘다.** 글자를 담는 상자(`lineHeight`)는 글리프보다 크고,
+ * 남는 여백이 위아래로 똑같이 붙지 않는다 — 한글은 디센더를 거의 쓰지 않아 아래가 더 남는다.
+ * 그래서 상자끼리 가운데를 맞추면(`Alignment.CenterVertically`) 아이콘이 2dp 가량 처져 보인다.
+ * 눈은 상자가 아니라 글자를 본다.
+ *
+ * [RowScope.alignByBaseline] 은 **첫 줄** baseline 을 쓰므로, 질문이 여러 줄로 접혀도 아이콘은
+ * 첫 줄에 물린 채 남는다. 가운데 정렬이었다면 줄이 늘어날수록 아래로 흘러내린다.
+ *
  * TalkBack 은 말풍선을 한 덩어리로 읽는다. 아이콘은 뜻을 더하지 않는 장식이라 이름이 없고,
  * 대신 이것이 AI 가 던진 질문이라는 사실을 문장 앞에 붙인다.
  */
 @Composable
 private fun MemoQuestionBubble(question: String) {
     val questionStyle = MaterialTheme.typography.bodyMedium
-    // 아이콘 자리는 본문 한 줄 높이다. 글꼴을 키우면 줄도 함께 자라므로 고정값으로 두지 않는다.
-    val lineHeight = with(LocalDensity.current) { questionStyle.lineHeight.toDp() }
     Row(
         modifier =
             Modifier
@@ -145,23 +150,19 @@ private fun MemoQuestionBubble(question: String) {
                 .padding(horizontal = BUBBLE_PADDING_HORIZONTAL, vertical = BUBBLE_PADDING_VERTICAL)
                 .semantics(mergeDescendants = true) { contentDescription = "AI 질문, $question" },
         horizontalArrangement = Arrangement.spacedBy(BUBBLE_ICON_GAP),
-        verticalAlignment = Alignment.Top,
     ) {
-        // 한 줄 높이의 자리를 잡고 그 안에서 가운데 둔다. 말풍선 전체를 기준으로 가운데 두면
-        // (`Alignment.CenterVertically`) 질문이 여러 줄로 접힐수록 아이콘이 아래로 흘러내린다.
-        Box(
-            modifier = Modifier.height(lineHeight),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(UiR.drawable.ico_default_sparkle),
-                contentDescription = null,
-                modifier = Modifier.size(BUBBLE_ICON_SIZE),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        }
+        Icon(
+            painter = painterResource(UiR.drawable.ico_default_sparkle),
+            contentDescription = null,
+            // baseline 에 얹을 지점을 아이콘 위에서 3/4 되는 곳으로 잡는다. 그러면 아이콘 가운데가
+            // baseline 보다 아이콘 높이의 1/4 만큼 위에 서는데, 그 자리가 대문자·한글이 차지하는
+            // 띠의 한가운데다. 글꼴을 키우면 아이콘과 글자가 함께 커지므로 비율이 그대로 산다.
+            modifier = Modifier.size(BUBBLE_ICON_SIZE).alignBy { it.measuredHeight * 3 / 4 },
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
         Text(
             text = question,
+            modifier = Modifier.alignByBaseline(),
             style = questionStyle,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             maxLines = QUESTION_MAX_LINES,
