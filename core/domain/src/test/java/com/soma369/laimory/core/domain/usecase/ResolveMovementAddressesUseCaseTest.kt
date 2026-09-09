@@ -5,7 +5,6 @@ import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.MovementAddressRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ResolveMovementAddressesUseCaseTest {
@@ -26,7 +25,7 @@ class ResolveMovementAddressesUseCaseTest {
                     end = GeoPoint(37.6, 127.0),
                 )
 
-            assertTrue(result)
+            assertEquals(ResolvedMovementAddresses("출발 주소", "도착 주소"), result)
             assertEquals(Triple("move-1", "출발 주소", "도착 주소"), repository.updated)
         }
 
@@ -42,13 +41,15 @@ class ResolveMovementAddressesUseCaseTest {
                 }
             val useCase = ResolveMovementAddressesUseCase(resolver, repository)
 
-            useCase(
-                rawId = "move-1",
-                start = GeoPoint(37.5, 126.9, address = "출발 주소"),
-                end = GeoPoint(37.6, 127.0),
-            )
+            val result =
+                useCase(
+                    rawId = "move-1",
+                    start = GeoPoint(37.5, 126.9, address = "출발 주소"),
+                    end = GeoPoint(37.6, 127.0),
+                )
 
             assertEquals(1, resolveCount)
+            assertEquals(ResolvedMovementAddresses("출발 주소", "도착 주소"), result)
             assertEquals(Triple("move-1", "출발 주소", "도착 주소"), repository.updated)
         }
 
