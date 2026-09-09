@@ -186,6 +186,8 @@ class TimelineRecordViewModel
                 requestedRecordDate == recordDate &&
                     state.value.content is TimelineRecordUiContent.Record
             if (isAlreadyPresented) return
+            // 같은 날짜의 재조회는 그대로 둔다 — 날아가는 중인 커밋이 이 기록의 것이다.
+            if (requestedRecordDate != recordDate) resetMemoCommitState()
             requestedRecordDate = recordDate
             loadRecord(recordDate)
         }
@@ -774,7 +776,32 @@ class TimelineRecordViewModel
          */
         private suspend fun awaitMemoCommits(): Boolean {
             memoCommitJobs.values.toList().forEach { it.join() }
+            // 지금 기록에 **남아 있는** 이벤트의 실패만 확정을 막는다. 지운 이벤트는 다시 편집할 수
+            // 없어 "메모를 다시 저장해 달라" 는 안내를 따를 방법이 없고, 그러면 저장이 영영 막힌다.
+            failedMemoCommits.retainAll(
+                state.value
+                    .record()
+                    ?.events
+                    .orEmpty()
+                    .mapTo(mutableSetOf()) { it.timelineEventId },
+            )
             return failedMemoCommits.isEmpty()
+        }
+
+        /**
+         * 기록을 바꿀 때 메모 커밋 대장을 비운다.
+         *
+         * 번호도 실패도 이벤트 단위인데 이벤트는 기록에 속한다. 다른 날짜로 넘어가면 남은 값은
+         * 무관할 뿐 아니라 해가 된다 — 옛 실패가 새 기록의 확정을 막고, 옛 재시도가 살아 있다.
+         *
+         * 날아가는 중인 요청은 멈추지 않는다. 사용자가 그 기록에 실제로 쓴 글이라 끝까지 보내는
+         * 것이 맞고, 결과를 받을 화면만 사라질 뿐이다.
+         */
+        private fun resetMemoCommitState() {
+            memoCommitJobs.clear()
+            latestMemoCommits.clear()
+            failedMemoCommits.clear()
+            updateState { copy(pendingMemos = emptyMap()) }
         }
 
         /**
@@ -813,7 +840,10 @@ class TimelineRecordViewModel
                 // 메모 수정이 내는 사유는 위 둘뿐이다(`UpdateTimelineEventMemoUseCase`).
                 // 나머지는 네트워크·서버 실패와 같은 자리에 둔다 — 다시 보내면 될 수 있는 것들이다.
                 else -> {
-                    if (error is HandledException) return
+                    // 공통 정책이 이미 안내한 실패(`HandledException`, 5xx·401 등)도 여기서 센다.
+                    // **안내했다는 것과 저장됐다는 것은 다르다** — 글은 서버에 없으므로 확정을 막아야
+                    // 하고, 되찾을 길도 줘야 한다. 공통 안내는 요청이 왜 실패했는지를 말하고 이
+                    // 스낵바는 방금 쓴 글을 어떻게 되살리는지를 말한다. 주어가 달라 겹치지 않는다.
                     failedMemoCommits += timelineEventId
                     sendEffect(
                         TimelineRecordUiSideEffect.MemoCommitFailed(

@@ -596,6 +596,128 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `메모가 503 으로 실패해도 기록을 확정하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 5xx 는 BaseUseCase 가 공통 안내 후 HandledException 으로 감싼다.
+            // 안내했다는 것과 저장됐다는 것은 다르다 — 글은 여전히 서버에 없다.
+            recordRepository.failure = ApiException.fromCode(503)
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("503 으로 못 간 메모"))
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertTrue(viewModel.state.value.content is TimelineRecordUiContent.Record)
+            // 되찾을 길도 남아야 한다.
+            val failure = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
+            assertEquals("503 으로 못 간 메모", failure.memo)
+        }
+
+    @Test
+    fun `실패한 이벤트를 지우면 하루 기록을 다시 저장할 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 지운 이벤트는 다시 편집할 수 없어 "메모를 다시 저장해 달라" 는 안내를 따를 방법이
+            // 없다. 그 실패가 남아 있으면 저장이 영영 막힌다.
+            recordRepository.memoFailureQueue += ApiException.NetworkException()
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(timelineEventId = 1L), event(timelineEventId = 2L))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+        }
+
+    @Test
+    fun `다른 날짜 기록에는 이전 실패가 따라오지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.memoFailureQueue += ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            val otherDate = RECORD_DATE.plusDays(1)
+            recordRepository.dailyRecordResult =
+                Result.success(
+                    DailyTimeline(
+                        dailyRecordId = 2L,
+                        recordDate = otherDate,
+                        emotion = null,
+                        events = listOf(event(timelineEventId = 9L)),
+                        status = DailyRecordStatus.DRAFT,
+                    ),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(otherDate))
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(listOf(otherDate), recordRepository.savedRecordDates)
+        }
+
+    @Test
+    fun `기록을 바꾸면 이전 기록의 재시도가 살아 있지 않다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 실패 스낵바는 화면을 옮겨도 잠시 남는다. 그 `다시 시도` 가 이제 보고 있지도 않은
+            // 기록의 이벤트에 글을 쓰면 안 된다.
+            recordRepository.memoFailureQueue += ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            advanceUntilIdle()
+            val stale = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
+
+            val otherDate = RECORD_DATE.plusDays(1)
+            recordRepository.dailyRecordResult =
+                Result.success(
+                    DailyTimeline(
+                        dailyRecordId = 2L,
+                        recordDate = otherDate,
+                        emotion = null,
+                        events = listOf(event(timelineEventId = 9L)),
+                        status = DailyRecordStatus.DRAFT,
+                    ),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(otherDate))
+            advanceUntilIdle()
+
+            viewModel.sendIntent(
+                TimelineRecordUiIntent.RetryMemoCommit(
+                    timelineEventId = stale.timelineEventId,
+                    commitId = stale.commitId,
+                    memo = stale.memo,
+                ),
+            )
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "저장 못 한 메모"), recordRepository.updatedMemos)
+        }
+
+    @Test
     fun `서버가 SAVED 충돌을 보내도 전용 안내 없이 일반 오류로 처리한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
