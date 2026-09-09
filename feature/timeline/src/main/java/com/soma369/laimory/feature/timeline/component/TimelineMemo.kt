@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -241,6 +242,25 @@ private fun MemoInputLine(
         imeInsets.awaitSettled(density)
         withFrameNanos { }
         bringIntoViewRequester.bringIntoView()
+    }
+    // 키보드를 내리는 것도 이 자리에서 손을 떼는 동작이다. `BasicTextField` 는 키보드가 내려가도
+    // 입력 포커스를 쥐고 있어서 `onFocusChanged` 만으로는 이 경로가 잡히지 않는다 — 키보드의
+    // 숨기기 버튼으로 내리면 편집기도 쓰던 글도 그대로 남는다. 뒤로 키도 마찬가지다: 키보드가
+    // 올라와 있으면 시스템이 먼저 먹고 화면의 `BackHandler` 까지 오지 않는다.
+    //
+    // **한 번 올라온 적 있는 키보드가 내려가는 전환만** 센다. 편집기를 여는 순간에는 아직 inset
+    // 이 0 이라 그대로 두면 열자마자 스스로 닫히고, 메모 A→B 로 옮길 때는 키보드가 계속 올라와
+    // 있어 애초에 전환이 없다.
+    LaunchedEffect(editor.timelineEventId) {
+        var wasImeVisible = false
+        snapshotFlow { imeInsets.getBottom(density) > 0 }
+            .collect { isImeVisible ->
+                if (isImeVisible) {
+                    wasImeVisible = true
+                } else if (wasImeVisible) {
+                    onCommit()
+                }
+            }
     }
     LaunchedEffect(editor.draftMemo) {
         if (editor.draftMemo != textFieldValue.text) {
