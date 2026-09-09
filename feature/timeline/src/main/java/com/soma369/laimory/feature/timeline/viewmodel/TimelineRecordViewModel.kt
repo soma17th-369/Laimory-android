@@ -775,16 +775,18 @@ class TimelineRecordViewModel
          * 기다린 것 중 **되돌려 준 실패가 하나라도 있으면 `false`** 다. 확정을 멈추라는 뜻이다.
          */
         private suspend fun awaitMemoCommits(): Boolean {
-            memoCommitJobs.values.toList().forEach { it.join() }
-            // 지금 기록에 **남아 있는** 이벤트의 실패만 확정을 막는다. 지운 이벤트는 다시 편집할 수
-            // 없어 "메모를 다시 저장해 달라" 는 안내를 따를 방법이 없고, 그러면 저장이 영영 막힌다.
-            failedMemoCommits.retainAll(
+            // 기다리는 것도 막는 것도 **지금 기록에 남아 있는 이벤트**로 한정한다. 다른 날짜의
+            // 메모가 아직 날아가는 중이라고 이 기록의 확정을 늦출 이유는 없고, 지운 이벤트는 다시
+            // 편집할 수 없어 "메모를 다시 저장해 달라" 는 안내를 따를 방법이 없다 — 그 실패가
+            // 남아 있으면 저장이 영영 막힌다.
+            val currentEvents =
                 state.value
                     .record()
                     ?.events
                     .orEmpty()
-                    .mapTo(mutableSetOf()) { it.timelineEventId },
-            )
+                    .mapTo(mutableSetOf()) { it.timelineEventId }
+            memoCommitJobs.filterKeys(currentEvents::contains).values.forEach { it.join() }
+            failedMemoCommits.retainAll(currentEvents)
             return failedMemoCommits.isEmpty()
         }
 
@@ -794,11 +796,15 @@ class TimelineRecordViewModel
          * 번호도 실패도 이벤트 단위인데 이벤트는 기록에 속한다. 다른 날짜로 넘어가면 남은 값은
          * 무관할 뿐 아니라 해가 된다 — 옛 실패가 새 기록의 확정을 막고, 옛 재시도가 살아 있다.
          *
-         * 날아가는 중인 요청은 멈추지 않는다. 사용자가 그 기록에 실제로 쓴 글이라 끝까지 보내는
-         * 것이 맞고, 결과를 받을 화면만 사라질 뿐이다.
+         * 날아가는 중인 요청은 멈추지도, 그 고리를 끊지도 않는다. 사용자가 그 기록에 실제로 쓴
+         * 글이라 끝까지 보내는 것이 맞고, 결과를 받을 화면만 사라질 뿐이다.
          */
         private fun resetMemoCommitState() {
-            memoCommitJobs.clear()
+            // `memoCommitJobs` 는 **남긴다.** 같은 이벤트의 다음 저장이 앞선 요청을 기다리게 하는
+            // 고리라, 화면이 어느 기록을 보고 있는지와 무관하다. 여기서 끊으면 A→B→A 로 돌아와
+            // 같은 메모를 다시 저장했을 때 두 요청이 나란히 달리고, 늦게 끝난 옛 응답의
+            // `replaceEvent` 가 세션의 새 글을 덮는다. 번호 검사는 pending 만 지키지 세션 쓰기는
+            // 막지 못한다. (키가 이벤트 id 라 무한히 늘지 않는다.)
             latestMemoCommits.clear()
             failedMemoCommits.clear()
             updateState { copy(pendingMemos = emptyMap()) }

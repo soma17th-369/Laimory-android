@@ -718,6 +718,56 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `기록을 오갔다 돌아와도 같은 이벤트의 저장 순서가 지켜진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 화면이 어느 기록을 보고 있든 같은 이벤트의 요청은 줄을 서야 한다. 고리를 끊으면
+            // 두 요청이 나란히 달리고, 늦게 끝난 옛 응답의 replaceEvent 가 새 글을 덮는다.
+            val firstGate = CompletableDeferred<Unit>()
+            recordRepository.memoUpdateGateQueue += firstGate
+            val recordA = timeline(events = listOf(event(memo = "옛 메모")))
+            val viewModel = createLoadedViewModel(record = recordA)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("old pending answer"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            runCurrent()
+
+            // A → 다른 날짜 B
+            val otherDate = RECORD_DATE.plusDays(1)
+            recordRepository.dailyRecordResult =
+                Result.success(
+                    DailyTimeline(
+                        dailyRecordId = 2L,
+                        recordDate = otherDate,
+                        emotion = null,
+                        events = listOf(event(timelineEventId = 9L)),
+                        status = DailyRecordStatus.DRAFT,
+                    ),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(otherDate))
+            runCurrent()
+
+            // B → 다시 A, 같은 이벤트에 새 메모
+            recordRepository.dailyRecordResult = Result.success(recordA)
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("latest answer"))
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+            runCurrent()
+
+            // 이제 첫 응답을 돌려준다. 줄을 섰다면 두 번째 요청은 아직 나가지도 않았다.
+            firstGate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(1L to "old pending answer", 1L to "latest answer"),
+                recordRepository.updatedMemos,
+            )
+            assertEquals("latest answer", repository.timeline.value?.events?.single()?.memo)
+        }
+
+    @Test
     fun `서버가 SAVED 충돌을 보내도 전용 안내 없이 일반 오류로 처리한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.failure =
