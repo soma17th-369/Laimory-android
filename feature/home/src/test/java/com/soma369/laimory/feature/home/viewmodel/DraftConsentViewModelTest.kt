@@ -538,6 +538,61 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `약관 화면에서 동의하고 복귀하면 같은 스냅샷에서 지도와 주소가 열린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 제출이 403 -3001 로 막히면 사진을 다시 고르지 않도록 준비를 폐기하지 않는다.
+            // 새 attemptId 가 없으므로 스냅샷 수집만으로는 재판정 계기가 없다.
+            addressResolver.answer = { _, _ -> "해석한 주소" }
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1", address = null), calendarItem("cal-1")))
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            runCurrent()
+            val attemptId = viewModel.state.value.content?.attemptId
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+            assertTrue(addressResolver.requested.isEmpty())
+
+            agreeLocationTerms()
+            viewModel.sendIntent(DraftConsentUiIntent.Sync)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isMapRenderAllowed)
+            assertEquals("해석한 주소", viewModel.state.value.content?.locationMarkers?.single()?.title)
+            // 스냅샷과 제외 선택은 그대로여야 한다.
+            assertEquals(attemptId, viewModel.state.value.content?.attemptId)
+            assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
+        }
+
+    @Test
+    fun `복귀를 반복해도 같은 좌표를 다시 부르지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            addressResolver.answer = { _, _ -> "해석한 주소" }
+            val viewModel = createViewModel()
+            prepare(listOf(stayItem("stay-1", address = null)))
+            runCurrent()
+            assertEquals(1, addressResolver.requested.size)
+
+            repeat(3) { viewModel.sendIntent(DraftConsentUiIntent.Sync) }
+            runCurrent()
+
+            assertEquals(1, addressResolver.requested.size)
+        }
+
+    @Test
+    fun `준비가 없으면 복귀 신호를 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            agreeLocationTerms()
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.Sync)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
     fun `제출 중에는 위치 Switch 를 바꿀 수 없다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(stayItem("stay-1"), calendarItem("cal-1")))

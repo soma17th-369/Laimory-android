@@ -68,6 +68,15 @@ class DraftConsentViewModel
          */
         private val resolvedAddresses = mutableMapOf<String, String>()
 
+        /**
+         * 해석을 이미 시도한 위치 항목의 rawId. 같은 생성 시도 안에서만 유효하다.
+         *
+         * 화면이 복귀할 때마다 재판정하므로 이 표시가 없으면 같은 좌표를 반복해서 묻게 된다.
+         * 실패한 좌표도 이번 시도 안에서는 다시 부르지 않는다 — 주소는 보조 표시라 재시도 기회는
+         * 홈에서 새 시도를 시작할 때 준다.
+         */
+        private val attemptedAddressRawIds = mutableSetOf<String>()
+
         init {
             safeLaunch {
                 sessionStore.preparation.collect { preparation ->
@@ -94,6 +103,7 @@ class DraftConsentViewModel
         override suspend fun handleIntent(intent: DraftConsentUiIntent) {
             when (intent) {
                 is DraftConsentUiIntent.ToggleItemInclusion -> toggleItemInclusion(intent)
+                DraftConsentUiIntent.Sync -> syncLocationConsent()
                 DraftConsentUiIntent.ToggleLocationInclusion -> toggleLocationInclusion()
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
@@ -222,15 +232,22 @@ class DraftConsentViewModel
             navigationHelper.navigateToBack()
         }
 
+        /** 화면 복귀 신호. 진행 중인 시도가 없으면 판정할 대상도 없다. */
+        private fun syncLocationConsent() {
+            applyLocationConsent(activePreparation ?: return)
+        }
+
         /**
          * 저장된 위치정보 약관 동의를 확인하고, 그 결과로 지도와 주소 해석을 **함께** 연다.
          *
          * 둘 다 사용자의 좌표를 Google 로 내보내는 일이다 — 지도는 카메라 영역을, `Geocoder` 는
          * 좌표 자체를 보낸다. 지도만 막고 주소 해석을 열어 두면 미동의 좌표가 그대로 나간다.
          *
-         * **시도마다 다시 판정한다.** 이 ViewModel 은 Activity 범위라 로그아웃 뒤 다음 계정까지
-         * 살아 있다. 한 번 받은 값을 재사용하면 동의한 계정의 판정이 다음 계정으로 넘어가고,
-         * 반대로 뒤늦게 동의한 사용자는 계속 막힌 채로 남는다. 이전 시도의 늦은 응답은 버린다.
+         * **시도마다, 그리고 화면에 돌아올 때마다 다시 판정한다.** 이 ViewModel 은 Activity 범위라
+         * 로그아웃 뒤 다음 계정까지 살아 있다. 한 번 받은 값을 재사용하면 동의한 계정의 판정이 다음
+         * 계정으로 넘어가고, 반대로 뒤늦게 동의한 사용자는 계속 막힌 채로 남는다. 제출이 막혀 약관
+         * 화면에 다녀오는 경로는 **같은 스냅샷으로 돌아오므로** 새 시도가 생기지 않는다 — 그 복귀는
+         * [DraftConsentUiIntent.Sync] 가 알려 준다. 이전 시도의 늦은 응답은 버린다.
          *
          * 알아내기 전과 조회 실패는 모두 "허용되지 않음"이다. 모르는 상태에서 좌표를 내보내지 않는다.
          * catalog 가 비면 요구가 없어 만족으로 보는데, 이는 서버의 fail-open 과 같은 판정이다.
@@ -243,10 +260,10 @@ class DraftConsentViewModel
                         .requirementOf(TermStage.TIMELINE_LOCATION)
                         .getOrNull()
                         ?.isSatisfied == true
-                if (activePreparation?.attemptId != attemptId || !isGranted) return@safeLaunch
-                val isMapAllowed = isMapKeyPresent
+                if (activePreparation?.attemptId != attemptId) return@safeLaunch
+                val isMapAllowed = isGranted && isMapKeyPresent
                 updateState { copy(isMapRenderAllowed = isMapAllowed) }
-                resolveMissingAddresses(preparation)
+                if (isGranted) resolveMissingAddresses(preparation)
             }
         }
 
@@ -259,9 +276,9 @@ class DraftConsentViewModel
          *
          * 해석 결과는 같은 로컬 SourceItem 에 저장되므로 다음 진입부터는 캐시처럼 붙어 있다.
          *
-         * 좌표 하나를 한 번씩만 부른다 — 새 `attemptId` 마다 이 함수가 한 번 돌고 항목을 한 번씩
-         * 지난다. 실패해도 이번 시도 안에서는 다시 부르지 않고 `주소 미확인` 으로 남긴다. 재시도
-         * 기회는 화면을 다시 열어 새 시도가 시작될 때 생긴다.
+         * 좌표 하나를 한 번씩만 부른다([attemptedAddressRawIds]). 이 함수는 복귀할 때마다 다시
+         * 도는데 그때 이미 물어본 좌표를 또 물으면 같은 요청이 쌓인다. 실패해도 이번 시도 안에서는
+         * 다시 부르지 않고 `주소 미확인` 으로 남긴다 — 재시도 기회는 홈에서 새 시도를 시작할 때 생긴다.
          */
         private fun resolveMissingAddresses(preparation: DraftConsentPreparation) {
             val attemptId = preparation.attemptId
@@ -269,6 +286,7 @@ class DraftConsentViewModel
                 when (val payload = item.payload) {
                     is StayPayload -> {
                         if (payload.address != null) return@forEach
+                        if (!attemptedAddressRawIds.add(item.rawId)) return@forEach
                         launchAddressResolution(attemptId) {
                             resolveStayAddress(item.rawId, payload.latitude, payload.longitude)
                                 ?.let { mapOf(stayAddressKey(item.rawId) to it) }
@@ -278,6 +296,7 @@ class DraftConsentViewModel
 
                     is MovementPayload -> {
                         if (payload.start.address != null && payload.end.address != null) return@forEach
+                        if (!attemptedAddressRawIds.add(item.rawId)) return@forEach
                         launchAddressResolution(attemptId) {
                             val resolved = resolveMovementAddresses(item.rawId, payload.start, payload.end)
                             buildMap {
@@ -312,7 +331,10 @@ class DraftConsentViewModel
             }
         }
 
-        private fun clearResolvedAddresses() = resolvedAddresses.clear()
+        private fun clearResolvedAddresses() {
+            resolvedAddresses.clear()
+            attemptedAddressRawIds.clear()
+        }
 
         private companion object {
             /** 서버가 이 단계 동의를 요구할 때 주는 코드. */

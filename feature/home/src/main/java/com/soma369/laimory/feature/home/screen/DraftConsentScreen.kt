@@ -32,6 +32,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
@@ -58,6 +60,11 @@ fun DraftConsentRoute(
     viewModel: DraftConsentViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // 약관 화면에 다녀오면 같은 스냅샷으로 돌아온다. 새 생성 시도가 아니라 스냅샷 수집이
+    // 깨어나지 않으므로, 복귀를 알려 위치 동의를 다시 판정하게 한다.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.sendIntent(DraftConsentUiIntent.Sync)
+    }
     DraftConsentContent(
         innerPadding = innerPadding,
         state = state,
