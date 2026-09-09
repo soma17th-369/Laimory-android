@@ -7,12 +7,14 @@ package com.soma369.laimory.core.domain.model.timeline
  * 좌표에서 계산되므로, 동의 없이 지도를 붙이면 "무엇이 기기 밖으로 나가는지 확인받는 화면"이
  * 확인 전에 위치를 내보내게 된다. 그래서 `GoogleMap` 을 composition 에 **넣기 전에** 이 게이트를 본다.
  *
- * 정본은 계정 단위 최초 1회 동의(#238)다. 그 동의 저장소가 생기기 전까지는
- * [com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate] 와 같은 방식으로
- * 빌드 단위 임시 바인딩을 쓴다 — 릴리즈에서는 켜지지 않는다.
+ * 판정의 정본은 저장된 위치정보 약관 동의다([com.soma369.laimory.core.domain.model.terms.TermStage.TIMELINE_LOCATION]).
+ * 동의 이력은 서버가 갖고 있어 조회가 필요하므로 이 판정은 suspend 다 — 알아내기 전까지는
+ * "허용되지 않음"이고, 조회에 실패해도 마찬가지다. 모르는 상태에서 좌표를 내보내지 않는다.
  *
- * API 키가 없어도 빌드는 성공해야 하므로 키 준비 상태도 이 게이트가 함께 본다.
+ * API 키가 없어도 빌드는 성공해야 하므로 키 준비 상태도 이 게이트가 함께 본다. 조립은 앱 계층이
+ * 한다 — 빌드 설정을 읽는 자리라
+ * [com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate] 와 같은 포트다.
  */
 fun interface LocationMapRenderGate {
-    fun isMapRenderAllowed(): Boolean
+    suspend fun isMapRenderAllowed(): Boolean
 }

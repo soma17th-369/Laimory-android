@@ -43,14 +43,20 @@ class DraftConsentViewModel
         private val navigationHelper: NavigationHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val getDisplayTerms: GetDisplayTermsUseCase,
-        mapRenderGate: LocationMapRenderGate,
+        private val mapRenderGate: LocationMapRenderGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
-            DraftConsentUiState(isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()),
+            DraftConsentUiState(),
         ) {
-        private val isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()
+        /** 지도 렌더 허용 여부. 약관 조회가 끝나기 전과 조회에 실패했을 때는 false 다. */
+        private var isMapRenderAllowed = false
         private var activePreparation: DraftConsentPreparation? = null
 
         init {
+            // 조회가 끝나기 전에는 지도를 붙이지 않는다 — 그리는 순간 카메라 영역이 Google 로 나간다.
+            safeLaunch(onError = {}) {
+                isMapRenderAllowed = mapRenderGate.isMapRenderAllowed()
+                updateState { copy(isMapRenderAllowed = isMapRenderAllowed) }
+            }
             safeLaunch {
                 sessionStore.preparation.collect { preparation ->
                     when {

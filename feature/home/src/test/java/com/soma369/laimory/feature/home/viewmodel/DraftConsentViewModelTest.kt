@@ -71,6 +71,7 @@ class DraftConsentViewModelTest {
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val termsCoordinator = FakeTermsAgreementCoordinator()
+    private var mapRenderAllowed = false
 
     @Test
     fun `새 스냅샷이 들어오면 내용을 구성하고 체크 상태를 초기화한다`() =
@@ -367,6 +368,34 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `지도는 게이트가 허용할 때만 켜진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 게이트는 저장된 위치정보 약관 동의를 본다. 조회 전·실패는 false 라 지도를 붙이지 않는다.
+            mapRenderAllowed = true
+            val allowed = createViewModel()
+            runCurrent()
+            assertTrue(allowed.state.value.isMapRenderAllowed)
+
+            mapRenderAllowed = false
+            val blocked = createViewModel()
+            runCurrent()
+            assertFalse(blocked.state.value.isMapRenderAllowed)
+        }
+
+    @Test
+    fun `새 스냅샷이 들어와도 지도 허용 판정은 유지된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            mapRenderAllowed = true
+            val viewModel = createViewModel()
+            runCurrent()
+
+            prepare(listOf(stayItem("stay-1")))
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isMapRenderAllowed)
+        }
+
+    @Test
     fun `제출 중에는 위치 Switch 를 바꿀 수 없다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(stayItem("stay-1"), calendarItem("cal-1")))
@@ -573,7 +602,7 @@ class DraftConsentViewModelTest {
             navigationHelper = navigationHelper,
             termsCoordinator = termsCoordinator,
             getDisplayTerms = GetDisplayTermsUseCase(EmptyTermsRepository),
-            mapRenderGate = LocationMapRenderGate { false },
+            mapRenderGate = LocationMapRenderGate { mapRenderAllowed },
         )
 
     private fun prepare(

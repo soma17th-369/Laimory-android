@@ -13,6 +13,7 @@ import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
+import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DraftPollingPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
@@ -101,14 +102,21 @@ object DraftTaskRuntimeModule {
     /**
      * 지도 렌더링 허용 여부.
      *
-     * 정본은 계정 단위 최초 1회 동의(#238)인데 그 저장소가 아직 없다. 그때까지는 제출 게이트와
-     * 같은 방식으로 debug 빌드에서만 열어 둔다 — 실기기로 지도·마커를 확인할 수 있어야 하고,
-     * 릴리즈 사용자에게는 동의 없이 지도가 뜨지 않는다. #238 이 들어오면 저장된 동의를 읽도록 바꾼다.
+     * 빌드 타입으로 가르지 않는다. 지도를 그릴 때 나가는 것은 사용자의 위치이지 개발용 기능이
+     * 아니므로, 판정은 **저장된 위치정보 약관 동의**여야 한다. 온보딩이 이 단계를 필수로 받으므로
+     * 정상 경로로 들어온 사용자는 이미 동의한 상태다.
      *
-     * API 키가 비어 있으면 SDK 인증이 실패하므로 아예 붙이지 않고 대체 안내로 넘긴다.
+     * catalog 가 비어 있으면 요구가 없어 만족으로 본다 — 서버의 fail-open 과 같은 판정이다.
+     * 반대로 조회에 실패하면 동의 여부를 모르는 것이므로 그리지 않는다.
+     *
+     * API 키가 비어 있으면 SDK 인증이 실패하므로 아예 붙이지 않고 대체 안내로 넘긴다. 키 조회가
+     * 먼저라 키가 없는 환경에서는 약관 조회를 하지 않는다.
      */
     @Provides
     @Singleton
-    fun provideLocationMapRenderGate(): LocationMapRenderGate =
-        LocationMapRenderGate { BuildConfig.DEBUG && BuildConfig.MAPS_API_KEY.isNotBlank() }
+    fun provideLocationMapRenderGate(termsCoordinator: TermsAgreementCoordinator): LocationMapRenderGate =
+        LocationMapRenderGate {
+            BuildConfig.MAPS_API_KEY.isNotBlank() &&
+                termsCoordinator.requirementOf(TermStage.TIMELINE_LOCATION).getOrNull()?.isSatisfied == true
+        }
 }
