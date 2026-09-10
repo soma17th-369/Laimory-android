@@ -402,18 +402,30 @@ class HomeViewModel
          * 전송 예정 수(N)는 후보 수만으로 알 수 없다 — 타입별 상한과 정제를 거친 뒤의 값이라
          * 선택 정책을 돌려야 나온다. **측정 리포트는 발행하지 않는다**(제출 시점만 발행).
          *
-         * 제외 집합은 아직 상세 화면이 갖고 있어 여기서는 비어 있다. 소유가 세션 스토어로 옮겨오면
-         * 그 값을 읽어 넘긴다(홈 화면 개편 이슈).
+         * 제외 집합은 세션 스토어가 소유한다 — 홈이 본문 건수를 세고 상세가 토글하므로 한쪽이
+         * 가지면 다른 쪽이 못 본다.
          */
         private fun HomeUiState.withSourceSummary(
             items: List<SourceItem>,
             photoCandidates: List<PhotoCandidate>,
         ): HomeUiState {
+            val window = recordDateWindow(zone)
             val selection =
-                recordDateWindow(zone)?.let { window ->
-                    prepareTimelineDraftSelectionUseCase(window, items, reportsMeasurement = false).getOrNull()
-                }
-            return refreshSourceSummary(items, photoCandidates, zone, selection)
+                window?.let { prepareTimelineDraftSelectionUseCase(it, items, reportsMeasurement = false).getOrNull() }
+            // 카드가 CTA 전에도 상세를 열 수 있도록 스냅샷을 상시로 유지한다. 같은 내용이면
+            // 스토어가 갱신 번호를 올리지 않으므로 여기서 몇 번 불러도 상세가 흔들리지 않는다.
+            if (window != null && selection != null) {
+                draftConsentSessionStore.updateSelection(selectedDate, zone, window, selection)
+            } else {
+                draftConsentSessionStore.clearSelection()
+            }
+            return refreshSourceSummary(
+                items = items,
+                photoCandidates = photoCandidates,
+                zone = zone,
+                selection = selection,
+                excludedRawIds = draftConsentSessionStore.excludedRawIds.value,
+            )
         }
 
         private fun selectDate(date: LocalDate) {
@@ -511,7 +523,8 @@ class HomeViewModel
         private fun prepareDraftConsent() {
             if (state.value.draftStatus.isInputLocked) return
             if (consentPreparationJob?.isActive == true) return
-            // 동의 화면이 소비하지 않은 시도가 남아 있으면 중복 진입하지 않는다.
+            // 제출이 이미 시작됐으면 중복 진입하지 않는다. **상시 스냅샷이 아니라 제출용
+            // 스냅샷을 본다** — 상시 쪽은 늘 들어 있으므로 그것을 보면 CTA 가 영구히 막힌다.
             if (draftConsentSessionStore.preparation.value != null) return
             val current = state.value
             val window = current.recordDateWindow(zone)

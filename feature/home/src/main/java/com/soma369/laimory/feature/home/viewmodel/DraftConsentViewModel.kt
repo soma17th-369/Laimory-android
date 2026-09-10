@@ -178,7 +178,9 @@ class DraftConsentViewModel
                 draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
                 // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
                 loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
-                sessionStore.clearPreparation()
+                // 선택 상태를 비우는 것은 **제출 성공뿐**이다. 그 시도의 선택은 이미 서버로 갔다.
+                // 취소·약관 이동·사진 실패는 제출용 스냅샷만 버리고 홈 선택은 남긴다.
+                sessionStore.clearAfterSubmission()
                 activePreparation = null
                 // 동의 화면을 백스택에서 빼고 로딩 화면을 올린다 — 로딩에서 뒤로가면 홈이다.
                 navigationHelper.navigateToBack()
