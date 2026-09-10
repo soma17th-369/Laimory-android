@@ -82,21 +82,27 @@ internal class AndroidLocationAddressResolver
          * - [ResolvedAddress.city] = 시·군·구(`locality` → `subAdminArea` → `adminArea`)
          * - [ResolvedAddress.district] = 읍·면·동(`subLocality` → `thoroughfare`)
          *
-         * 지역마다 어느 필드가 차는지 달라 순서대로 훑고, 광역은 시·군·구가 둘 다 비었을 때만
-         * 마지막으로 쓴다 — 광역시는 `locality` 가 비고 `adminArea` 에 `서울특별시` 만 오기도 한다.
+         * 지역마다 어느 필드가 차는지 달라 순서대로 훑는다. 필드가 모두 비면 한 줄 주소에서
+         * 읽어 내고([addressLineLayers]), 광역은 그래도 시·군·구가 없을 때만 마지막으로 쓴다 —
+         * 광역시는 `locality` 가 비고 `adminArea` 에 `서울특별시` 만 오기도 한다.
          *
          * 한 줄 주소가 없으면 층위가 있어도 버린다 — 목록·말풍선이 쓰는 값이 없으면 표시가 반쪽이다.
          */
         private fun List<Address>.firstDisplayAddress(): ResolvedAddress? =
             firstNotNullOfOrNull { address ->
                 val line = address.getAddressLine(0).normalized() ?: return@firstNotNullOfOrNull null
+                val fromLine = addressLineLayers(line)
                 ResolvedAddress(
                     line = line,
                     city =
                         address.locality.normalized()
                             ?: address.subAdminArea.normalized()
+                            ?: fromLine.city
                             ?: address.adminArea.normalized(),
-                    district = address.subLocality.normalized() ?: address.thoroughfare.normalized(),
+                    district =
+                        address.subLocality.normalized()
+                            ?: fromLine.district
+                            ?: address.thoroughfare.normalized(),
                 )
             }
 
