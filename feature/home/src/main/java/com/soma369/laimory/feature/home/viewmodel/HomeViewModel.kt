@@ -2,12 +2,14 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
@@ -26,6 +28,7 @@ import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -36,6 +39,7 @@ import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomePhotoItem
+import com.soma369.laimory.feature.home.state.HomeSourcePermissions
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
@@ -72,6 +76,8 @@ class HomeViewModel
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
+        private val termsCoordinator: TermsAgreementCoordinator,
+        private val resolveStayAddress: ResolveStayAddressUseCase,
         collectionLabAccessGate: CollectionLabAccessGate,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
             HomeUiState(
@@ -88,6 +94,17 @@ class HomeViewModel
         private var photoCandidates: List<PhotoCandidate> = emptyList()
         private var photoAccessGranted = false
         private var photoCandidatesJob: Job? = null
+
+        /**
+         * 저장된 위치정보 약관 동의. 알아내기 전과 조회 실패는 false 다.
+         *
+         * 주소 해석은 좌표를 기기 밖으로 보내는 일이라(`Geocoder`) 동의 없이 시작하지 않는다(#330).
+         * 이 ViewModel 도 계정 경계를 넘어 살아남으므로 진입·복귀마다 다시 판정한다.
+         */
+        private var isLocationConsentGranted = false
+
+        /** 층위를 채우러 이미 물어본 체류. 같은 항목을 반복해서 묻지 않는다. */
+        private val attemptedStayRawIds = mutableSetOf<String>()
         private var lastLoadedPhotoWindow: RecordDateWindow? = null
         private var requestedPhotoWindow: RecordDateWindow? = null
         private var preparedPhotoCache: PreparedPhotoCache? = null
@@ -155,6 +172,8 @@ class HomeViewModel
                 HomeUiIntent.StartNewDraft -> startNewDraft()
                 HomeUiIntent.ViewDraft -> viewDraft()
                 HomeUiIntent.OpenDraftLoading -> navigationHelper.navigateTo(DraftLoadingPage)
+                is HomeUiIntent.RefreshSourcePermissions -> refreshSourcePermissions(intent)
+                HomeUiIntent.RefreshLocationConsent -> refreshLocationConsent()
                 HomeUiIntent.SyncPastRecords -> syncPastRecords()
                 is HomeUiIntent.SelectPastRecord ->
                     navigationHelper.navigateTo(TimelinePage(intent.recordDate))
@@ -726,6 +745,70 @@ class HomeViewModel
             }
 
         /** 지난 기록 목록을 서버와 동기화한다. 진행 중이면 중복 요청하지 않는다. */
+        private fun refreshSourcePermissions(intent: HomeUiIntent.RefreshSourcePermissions) {
+            updateState {
+                copy(
+                    permissions =
+                        HomeSourcePermissions(
+                            photo = intent.photo,
+                            calendar = intent.calendar,
+                            location = intent.location,
+                            notification = intent.notification,
+                            isNotificationSupported = intent.isNotificationSupported,
+                        ),
+                )
+            }
+        }
+
+        /**
+         * 저장된 위치정보 약관 동의를 판정하고, 허용되면 가장 오래 머문 곳의 주소를 채운다.
+         *
+         * 알아내기 전과 조회 실패는 모두 "허용되지 않음"이다 — `Geocoder` 는 좌표를 기기 밖으로
+         * 보내므로 모르는 상태에서 부르지 않는다(#330).
+         */
+        private fun refreshLocationConsent() =
+            safeLaunch(onError = {}) {
+                val isGranted =
+                    termsCoordinator
+                        .requirementOf(TermStage.TIMELINE_LOCATION)
+                        .getOrNull()
+                        ?.isSatisfied == true
+                updateState { copy(isLocationConsentGranted = isGranted) }
+                if (isGranted) resolveStayPlaceAddress()
+            }
+
+        /**
+         * 위치 카드가 `시 · 동` 두 층위를 쓰는데 층위가 비어 있으면 채운다.
+         *
+         * 한 줄 주소가 있어도 층위가 없으면 다시 묻는다 — 예전에 한 줄만 저장된 항목을 해석
+         * 완료로 보면 새 체류와 기존 저장분이 서로 다른 모양으로 뜬다. 해석 결과는 저장되므로
+         * 항목당 한 번이고, 같은 항목을 반복해서 묻지 않는다.
+         */
+        private suspend fun resolveStayPlaceAddress() {
+            val place = state.value.summary.stayPlace ?: return
+            if (!place.needsResolution) return
+            if (!attemptedStayRawIds.add(place.rawId)) return
+            val resolved = resolveStayAddress(place.rawId, place.latitude, place.longitude) ?: return
+            updateState {
+                // 해석하는 사이 창이나 수집이 바뀌었으면 지금 화면의 장소가 아니다.
+                if (summary.stayPlace?.rawId != place.rawId) {
+                    this
+                } else {
+                    copy(
+                        summary =
+                            summary.copy(
+                                stayPlace =
+                                    summary.stayPlace.copy(
+                                        city = resolved.city,
+                                        district = resolved.district,
+                                        line = resolved.line,
+                                    ),
+                            ),
+                    )
+                }
+            }
+        }
+
         private fun syncPastRecords() {
             if (pastRecordsJob?.isActive == true) return
             pastRecordsJob =

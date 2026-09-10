@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -292,6 +293,70 @@ class HomeUiStateTest {
 
         assertEquals(HomeSourceCount(candidate = 2, sending = 1), summary.calendar)
     }
+
+    @Test
+    fun `가장 오래 머문 곳은 전체 체류가 아니라 기록 창과 겹친 시간으로 고른다`() {
+        // 창 포함 판정은 구간이 겹치면 참이라, 전날부터 이어진 긴 체류가 오늘 창에 잠깐만
+        // 걸쳐도 후보가 된다. 전체 길이로 재면 그것이 오늘 오래 머문 곳을 이긴다.
+        val overnight =
+            stay(
+                id = "overnight",
+                start = date.minusDays(1).atTime(18, 0),
+                end = date.atTime(0, 10),
+                city = "밤샘시",
+            )
+        val today =
+            stay(
+                id = "today",
+                start = date.atTime(13, 0),
+                end = date.atTime(16, 0),
+                city = "서울특별시",
+            )
+
+        val place = HomeUiState(selectedDate = date).refreshSourceSummary(listOf(overnight, today), emptyList(), zone).summary.stayPlace
+
+        assertEquals("today", place?.rawId)
+    }
+
+    @Test
+    fun `체류가 없으면 가장 오래 머문 곳도 없다`() {
+        val items = listOf(item("cal", date.atTime(9, 0), CalendarPayload("일정", null, null, false)))
+
+        val place = HomeUiState(selectedDate = date).refreshSourceSummary(items, emptyList(), zone).summary.stayPlace
+
+        assertNull(place)
+    }
+
+    @Test
+    fun `층위가 있으면 두 층으로 적고 없으면 한 줄 주소를 쓴다`() {
+        val layered = HomeStayPlace("a", 37.5, 126.9, city = "서울특별시", district = "역삼동", line = "서울특별시 강남구 역삼동 823")
+        val lineOnly = HomeStayPlace("b", 37.5, 126.9, line = "서울특별시 강남구 역삼동 823")
+        val nothing = HomeStayPlace("c", 37.5, 126.9)
+
+        assertEquals("서울특별시 · 역삼동", layered.label)
+        assertEquals("서울특별시 강남구 역삼동 823", lineOnly.label)
+        assertNull(nothing.label)
+        // 한 줄만 저장된 기존 항목을 해석 완료로 보면 층위가 영영 안 채워진다.
+        assertEquals(false, layered.needsResolution)
+        assertEquals(true, lineOnly.needsResolution)
+    }
+
+    private fun stay(
+        id: String,
+        start: LocalDateTime,
+        end: LocalDateTime,
+        city: String? = null,
+    ): SourceItem =
+        SourceItem(
+            rawId = id,
+            startAt = start.atZone(zone).toInstant(),
+            endAt = end.atZone(zone).toInstant(),
+            timeZoneId = zone,
+            payload = StayPayload(latitude = 37.5, longitude = 126.9, addressCity = city),
+            sourceName = SourceName.LOCATION_PROVIDER,
+            sourceKey = id,
+            collectedAt = start.atZone(zone).toInstant(),
+        )
 
     private fun notification(
         appName: String,

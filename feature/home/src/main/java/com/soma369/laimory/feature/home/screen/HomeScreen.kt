@@ -43,7 +43,12 @@ import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
 import com.soma369.laimory.core.ui.greeting.GreetingEmphasis
 import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
+import com.soma369.laimory.core.ui.permission.LocationPermissionStep
+import com.soma369.laimory.core.ui.permission.locationPermissionStep
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.util.permission.CalendarPermission
+import com.soma369.laimory.core.util.permission.LocationPermission
+import com.soma369.laimory.core.util.permission.NotificationListenerAccess
 import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
@@ -80,6 +85,26 @@ fun HomeRoute(
                 limited = PhotoPermission.isLimited(context),
             ),
         )
+        // 권한은 사용자가 언제든 바꾸므로 캐시하지 않고 복귀마다 다시 본다.
+        viewModel.sendIntent(
+            HomeUiIntent.RefreshSourcePermissions(
+                photo = PhotoPermission.canRead(context) && !PhotoPermission.isLimited(context),
+                calendar = CalendarPermission.isGranted(context),
+                // `항상 허용` 까지만 본다. 활동 인식은 이동수단 추론에만 쓰이고 없으면 평균
+                // 속도로 보완하므로, 그것 때문에 회색을 띄우면 무엇을 더 해야 하는지 알 수 없다.
+                // `hasBackground` 만 보면 안 된다 — Q 미만에서는 전경을 거부해도 true 다.
+                location =
+                    locationPermissionStep(
+                        hasForeground = LocationPermission.canCollect(context),
+                        hasBackground = LocationPermission.hasBackground(context),
+                        hasActivityRecognition = true,
+                    ) == LocationPermissionStep.GRANTED,
+                notification = NotificationListenerAccess.isGranted(context),
+                isNotificationSupported = NotificationListenerAccess.hasSettings(context),
+            ),
+        )
+        // 약관 화면에 다녀와 동의하고 돌아오는 경로가 있어 복귀마다 다시 판정한다.
+        viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeContent(

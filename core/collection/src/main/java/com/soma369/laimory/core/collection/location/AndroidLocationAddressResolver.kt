@@ -5,6 +5,7 @@ import android.location.Address
 import android.location.Geocoder
 import android.os.Build
 import androidx.annotation.RequiresApi
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -26,7 +27,7 @@ internal class AndroidLocationAddressResolver
         override suspend fun resolve(
             latitude: Double,
             longitude: Double,
-        ): String? {
+        ): ResolvedAddress? {
             if (!Geocoder.isPresent()) return null
             val geocoder = Geocoder(context, Locale.getDefault())
             return try {
@@ -46,7 +47,7 @@ internal class AndroidLocationAddressResolver
         private suspend fun Geocoder.resolveAsync(
             latitude: Double,
             longitude: Double,
-        ): String? =
+        ): ResolvedAddress? =
             suspendCancellableCoroutine { continuation ->
                 getFromLocation(
                     latitude,
@@ -68,15 +69,31 @@ internal class AndroidLocationAddressResolver
         private suspend fun Geocoder.resolveBlocking(
             latitude: Double,
             longitude: Double,
-        ): String? =
+        ): ResolvedAddress? =
             withContext(Dispatchers.IO) {
                 getFromLocation(latitude, longitude, MAX_RESULTS).orEmpty().firstDisplayAddress()
             }
 
-        private fun List<Address>.firstDisplayAddress(): String? =
+        /**
+         * 한 줄 주소가 있는 첫 결과를 표시용 주소로 옮긴다.
+         *
+         * 층위는 지역마다 어느 필드가 차는지 달라 순서대로 훑는다.
+         * - 시 = 광역(`adminArea`) → 시·군·구(`locality` → `subAdminArea`)
+         * - 동 = 읍·면·동(`subLocality`) → 도로명(`thoroughfare`)
+         *
+         * 한 줄 주소가 없으면 층위가 있어도 버린다 — 목록·말풍선이 쓰는 값이 없으면 표시가 반쪽이다.
+         */
+        private fun List<Address>.firstDisplayAddress(): ResolvedAddress? =
             firstNotNullOfOrNull { address ->
-                address.getAddressLine(0)?.trim()?.takeIf(String::isNotEmpty)
+                val line = address.getAddressLine(0).normalized() ?: return@firstNotNullOfOrNull null
+                ResolvedAddress(
+                    line = line,
+                    city = address.adminArea.normalized() ?: address.locality.normalized() ?: address.subAdminArea.normalized(),
+                    district = address.subLocality.normalized() ?: address.thoroughfare.normalized(),
+                )
             }
+
+        private fun String?.normalized(): String? = this?.trim()?.takeIf(String::isNotEmpty)
 
         private companion object {
             const val MAX_RESULTS = 1

@@ -6,6 +6,7 @@ import com.soma369.laimory.core.collection.database.SourceItemDao
 import com.soma369.laimory.core.collection.mapper.toDomain
 import com.soma369.laimory.core.collection.mapper.toEntity
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.repository.MovementAddressRepository
 import com.soma369.laimory.core.domain.repository.StayAddressRepository
@@ -23,16 +24,20 @@ internal class RoomLocationAddressRepository
         MovementAddressRepository {
         override suspend fun updateAddress(
             rawId: String,
-            address: String,
+            address: ResolvedAddress,
         ): Boolean {
-            val normalizedAddress = address.normalized() ?: return false
+            val normalizedLine = address.line.normalized() ?: return false
             return database.withTransaction {
                 val entity = sourceItemDao.findByRawId(rawId) ?: return@withTransaction false
                 val item = entity.toDomain()
                 val payload = item.payload as? StayPayload ?: return@withTransaction false
-                sourceItemDao.insertOrReplace(
-                    listOf(item.copy(payload = payload.copy(address = normalizedAddress)).toEntity()),
-                )
+                val updated =
+                    payload.copy(
+                        address = normalizedLine,
+                        addressCity = address.city.normalized(),
+                        addressDistrict = address.district.normalized(),
+                    )
+                sourceItemDao.insertOrReplace(listOf(item.copy(payload = updated).toEntity()))
                 true
             }
         }

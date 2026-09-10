@@ -28,13 +28,14 @@ class ResolveMovementAddressesUseCase
             end: GeoPoint,
         ): ResolvedMovementAddresses =
             coroutineScope {
+                // 이동은 목록에 한 줄로만 보이므로 층위는 쓰지 않는다.
                 val startAddress =
                     async {
-                        start.address.normalized() ?: resolver.resolve(start.latitude, start.longitude).normalized()
+                        start.address.normalized() ?: resolver.resolve(start.latitude, start.longitude)?.line.normalized()
                     }
                 val endAddress =
                     async {
-                        end.address.normalized() ?: resolver.resolve(end.latitude, end.longitude).normalized()
+                        end.address.normalized() ?: resolver.resolve(end.latitude, end.longitude)?.line.normalized()
                     }
                 ResolvedMovementAddresses(startAddress.await(), endAddress.await())
                     .also { repository.updateAddresses(rawId, it.start, it.end) }

@@ -288,8 +288,9 @@ class DraftConsentViewModel
                         if (payload.address != null) return@forEach
                         if (!attemptedAddressRawIds.add(item.rawId)) return@forEach
                         launchAddressResolution(attemptId) {
+                            // 목록·말풍선은 한 줄 주소만 쓴다. 시·동 층위는 홈 위치 카드가 쓴다.
                             resolveStayAddress(item.rawId, payload.latitude, payload.longitude)
-                                ?.let { mapOf(stayAddressKey(item.rawId) to it) }
+                                ?.let { mapOf(stayAddressKey(item.rawId) to it.line) }
                                 .orEmpty()
                         }
                     }

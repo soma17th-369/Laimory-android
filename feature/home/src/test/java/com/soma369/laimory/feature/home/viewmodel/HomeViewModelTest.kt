@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
@@ -14,8 +15,16 @@ import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.NotificationPrivacyPolicy
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
+import com.soma369.laimory.core.domain.model.terms.TermDocument
+import com.soma369.laimory.core.domain.model.terms.TermRequirement
+import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.terms.TermStageRequirement
+import com.soma369.laimory.core.domain.model.terms.TermType
+import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
@@ -36,7 +45,9 @@ import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelinePage
+import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
+import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
@@ -46,6 +57,7 @@ import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.theme.Emotion
@@ -96,6 +108,8 @@ class HomeViewModelTest {
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val userProfileCoordinator = FakeUserProfileCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
+    private val termsCoordinator = FakeHomeTermsCoordinator()
+    private val addressResolver = FakeHomeAddressResolver()
 
     @Test
     fun `빈 범위에서는 동의 화면으로 이동하지 않는다`() =
@@ -1085,8 +1099,61 @@ class HomeViewModelTest {
             globalLoadingHelper = NoOpGlobalLoadingHelper,
             autoCollectionCoordinator = autoCollectionCoordinator,
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
+            termsCoordinator = termsCoordinator,
+            resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
             collectionLabAccessGate = { isCollectionLabAccessible },
         )
+
+    private class FakeHomeTermsCoordinator : TermsAgreementCoordinator {
+        var isLocationAgreed = false
+
+        override val loginGate: StateFlow<TermsGateState> = MutableStateFlow(TermsGateState.Satisfied)
+
+        override fun refresh() = Unit
+
+        override suspend fun requirementOf(stage: TermStage): Result<TermStageRequirement> =
+            Result.success(
+                TermStageRequirement(
+                    stage = stage,
+                    items =
+                        stage.requiredTypes.map { type ->
+                            TermRequirement(document(type), isAgreed = isLocationAgreed)
+                        },
+                ),
+            )
+
+        override suspend fun documentOf(type: TermType): TermDocument = document(type)
+
+        override suspend fun agree(documents: List<TermDocument>): Result<Unit> = Result.success(Unit)
+
+        private fun document(type: TermType) =
+            TermDocument(
+                termType = type,
+                version = "1.0",
+                title = type.name,
+                contentUrl = "https://laimory.app/terms/${type.name}/1.0",
+            )
+    }
+
+    private class FakeHomeAddressResolver : LocationAddressResolver {
+        var answer: ResolvedAddress? = null
+        var resolveCount = 0
+
+        override suspend fun resolve(
+            latitude: Double,
+            longitude: Double,
+        ): ResolvedAddress? {
+            resolveCount++
+            return answer
+        }
+    }
+
+    private object NoOpStayAddressRepository : StayAddressRepository {
+        override suspend fun updateAddress(
+            rawId: String,
+            address: ResolvedAddress,
+        ): Boolean = true
+    }
 
     private fun pastTimeline(
         dailyRecordId: Long,
@@ -1135,6 +1202,84 @@ class HomeViewModelTest {
         endAt = null,
         photoUrl = photoUrl,
     )
+
+    @Test
+    fun `위치 약관 동의가 없으면 주소를 해석하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // Geocoder 는 좌표를 기기 밖으로 보낸다. 동의 없이 부르지 않는다.
+            addressResolver.answer = ResolvedAddress(line = "서울특별시 강남구 역삼동 823", city = "서울특별시", district = "역삼동")
+            sourceRepository.items.value = listOf(todayStay("stay-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isLocationConsentGranted)
+            assertEquals(0, addressResolver.resolveCount)
+            assertNull(viewModel.state.value.summary.stayPlace?.label)
+        }
+
+    @Test
+    fun `동의가 있으면 가장 오래 머문 곳의 층위를 채우고 같은 항목을 다시 묻지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            termsCoordinator.isLocationAgreed = true
+            addressResolver.answer = ResolvedAddress(line = "서울특별시 강남구 역삼동 823", city = "서울특별시", district = "역삼동")
+            sourceRepository.items.value = listOf(todayStay("stay-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.isLocationConsentGranted)
+            assertEquals("서울특별시 · 역삼동", viewModel.state.value.summary.stayPlace?.label)
+
+            // 복귀마다 재판정하므로 같은 항목을 반복해서 물으면 Geocoder 를 계속 때린다.
+            repeat(3) { viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent) }
+            runCurrent()
+
+            assertEquals(1, addressResolver.resolveCount)
+        }
+
+    @Test
+    fun `권한 도트는 화면이 넘긴 값을 그대로 담는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(
+                HomeUiIntent.RefreshSourcePermissions(
+                    photo = true,
+                    calendar = false,
+                    location = true,
+                    notification = false,
+                    isNotificationSupported = false,
+                ),
+            )
+            runCurrent()
+
+            val permissions = viewModel.state.value.permissions
+            assertTrue(permissions.photo)
+            assertFalse(permissions.calendar)
+            assertTrue(permissions.location)
+            assertFalse(permissions.isNotificationSupported)
+        }
+
+    private fun todayStay(id: String): SourceItem {
+        val zone = ZoneId.systemDefault()
+        val start = LocalDate.now(zone).atTime(13, 0).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = id,
+            startAt = start,
+            endAt = start.plusSeconds(3_600),
+            timeZoneId = zone,
+            payload = StayPayload(latitude = 37.5, longitude = 126.9),
+            sourceName = SourceName.LOCATION_PROVIDER,
+            sourceKey = id,
+            collectedAt = start,
+        )
+    }
 
     private fun todayItem(id: String): SourceItem {
         val zone = ZoneId.systemDefault()

@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
@@ -26,6 +27,15 @@ data class HomeUiState(
     val endDay: DraftEndDay = DraftEndDay.NEXT_DAY,
     val endTime: LocalTime = LocalTime.MIDNIGHT,
     val summary: HomeSourceSummary = HomeSourceSummary(),
+    /** 원천별 권한 도트. 화면이 복귀마다 다시 보고 넣어 준다. */
+    val permissions: HomeSourcePermissions = HomeSourcePermissions(),
+    /**
+     * 저장된 위치정보 약관 동의.
+     *
+     * 없으면 위치 카드가 주소 대신 동의가 먼저라는 문구를 쓴다 — 좌표 숫자는 사용자에게 보이지
+     * 않는다. 주소 해석 자체도 이 동의 뒤에만 시작한다(#330).
+     */
+    val isLocationConsentGranted: Boolean = false,
     val availablePhotos: List<HomePhotoItem> = emptyList(),
     val selectedPhotoIds: Set<Long> = emptySet(),
     val pendingPhotoIds: Set<Long> = emptySet(),
@@ -98,6 +108,8 @@ data class HomeSourceSummary(
     val photoPreviewUris: List<String> = emptyList(),
     val calendarItems: List<HomeCalendarItem> = emptyList(),
     val notificationApps: List<HomeNotificationApp> = emptyList(),
+    /** 위치 카드의 `가장 오래 머문 곳`. 창 안에 체류가 없으면 null 이다. */
+    val stayPlace: HomeStayPlace? = null,
     val totalItemCount: Int = 0,
 )
 
@@ -193,6 +205,7 @@ internal fun HomeUiState.refreshSourceSummary(
                 photoPreviewUris = availablePhotos.take(PHOTO_PREVIEW_LIMIT).map(HomePhotoItem::uri),
                 calendarItems = inWindowNonPhotos.toCalendarItems(),
                 notificationApps = inWindowNonPhotos.toNotificationApps(),
+                stayPlace = inWindowNonPhotos.longestStayPlace(window),
                 totalItemCount = inWindowNonPhotos.size + selectedIds.size,
             ),
         availablePhotos = availablePhotos,
@@ -223,6 +236,39 @@ private fun countOf(
         candidate = inWindowNonPhotos.count { it.itemType in types },
         sending = sending,
     )
+}
+
+/**
+ * 기록 창과 **겹친 시간**이 가장 긴 체류.
+ *
+ * 전체 `endAt - startAt` 으로 재면 안 된다 — 창 포함 판정은 구간이 겹치면 참이라, 전날 밤부터
+ * 이어져 오늘 창에 10분만 걸친 체류가 오늘 세 시간 머문 장소를 이긴다. 동률이면 늦게 시작한
+ * 쪽(최신)을 고른다.
+ */
+private fun List<SourceItem>.longestStayPlace(window: RecordDateWindow): HomeStayPlace? =
+    asSequence()
+        .mapNotNull { item ->
+            val payload = item.payload as? StayPayload ?: return@mapNotNull null
+            item to payload
+        }.maxWithOrNull(
+            compareBy({ (item, _) -> item.overlapMillis(window) }, { (item, _) -> item.startAt }),
+        )?.let { (item, payload) ->
+            HomeStayPlace(
+                rawId = item.rawId,
+                latitude = payload.latitude,
+                longitude = payload.longitude,
+                city = payload.addressCity,
+                district = payload.addressDistrict,
+                line = payload.address,
+            )
+        }
+
+/** 기록 창과 겹친 길이(ms). 겹치지 않으면 0 이다. */
+private fun SourceItem.overlapMillis(window: RecordDateWindow): Long {
+    val end = endAt ?: startAt
+    val from = maxOf(startAt, window.start)
+    val to = minOf(end, window.end)
+    return (to.toEpochMilli() - from.toEpochMilli()).coerceAtLeast(0L)
 }
 
 /** 시작 시각 오름차순. 같은 시각이면 `rawId` 로 고정해 회전 순서가 흔들리지 않게 한다. */
