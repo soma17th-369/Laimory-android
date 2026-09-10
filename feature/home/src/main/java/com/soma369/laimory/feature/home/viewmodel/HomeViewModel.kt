@@ -46,7 +46,6 @@ import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
-import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeSourceKind
@@ -490,12 +489,11 @@ class HomeViewModel
             startAutoCollectionAhead()
             updateState {
                 if (date == selectedDate) return@updateState copy(isDatePickerVisible = false)
+                // 시간 범위는 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
+                // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
                 val next =
                     copy(
                         selectedDate = date,
-                        startTime = LocalTime.MIDNIGHT,
-                        endDay = DraftEndDay.NEXT_DAY,
-                        endTime = LocalTime.MIDNIGHT,
                         isDatePickerVisible = false,
                         draftStatus = DraftCreationStatus.IDLE,
                         draftRetryMode = null,

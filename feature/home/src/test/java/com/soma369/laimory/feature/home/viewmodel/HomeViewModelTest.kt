@@ -661,6 +661,30 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `날짜를 바꿔도 맞춰 둔 기록 범위는 그대로다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 범위를 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길 때마다 자정으로 되돌아가면,
+            // 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(2)))
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(today.minusDays(2), state.selectedDate)
+            assertEquals(LocalTime.of(6, 0), state.startTime)
+            assertEquals(DraftEndDay.NEXT_DAY, state.endDay)
+            assertEquals(LocalTime.of(6, 0), state.endTime)
+        }
+
+    @Test
     fun `시트를 닫으면 고르던 값을 버린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
