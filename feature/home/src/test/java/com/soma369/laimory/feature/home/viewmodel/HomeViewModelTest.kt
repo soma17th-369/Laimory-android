@@ -1244,6 +1244,26 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `동의 판정이 수집보다 먼저 와도 주소를 채운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 복귀 시점에는 아직 수집이 안 실려 머문 곳이 없다. 그때 한 번만 묻고 말면
+            // 뒤늦게 실려 들어온 체류의 주소가 영영 안 채워진다.
+            termsCoordinator.isLocationAgreed = true
+            addressResolver.answer = ResolvedAddress(line = "대한민국 경기도 오산시 원동 123", city = "오산시", district = "원동")
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent)
+            runCurrent()
+            assertEquals(0, addressResolver.resolveCount)
+
+            sourceRepository.items.value = listOf(todayStay("stay-1"))
+            runCurrent()
+
+            assertEquals("오산시 원동", viewModel.state.value.summary.stayPlace?.label)
+            assertEquals(1, addressResolver.resolveCount)
+        }
+
+    @Test
     fun `권한 도트는 화면이 넘긴 값을 그대로 담는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()

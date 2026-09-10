@@ -185,6 +185,9 @@ class HomeViewModel
                 observeSourceItemsUseCase().collect { items ->
                     sourceItems = items
                     updateState { withSourceSummary(items, photoCandidates) }
+                    // 복귀 시점의 동의 판정만으로는 늦다 — 그때는 수집이 아직 안 실려 머문 곳이
+                    // 없고, 실려 들어온 뒤에는 다시 물을 계기가 없어 주소가 영영 안 채워진다.
+                    if (state.value.isLocationConsentGranted) resolveStayPlaceAddress()
                 }
             }
 
@@ -782,6 +785,9 @@ class HomeViewModel
          * 한 줄 주소가 있어도 층위가 없으면 다시 묻는다 — 예전에 한 줄만 저장된 항목을 해석
          * 완료로 보면 새 체류와 기존 저장분이 서로 다른 모양으로 뜬다. 해석 결과는 저장되므로
          * 항목당 한 번이고, 같은 항목을 반복해서 묻지 않는다.
+         *
+         * 부르는 자리가 둘이다 — 동의를 판정한 직후와 수집이 실려 요약이 바뀔 때. 둘 중 어느
+         * 쪽이 먼저인지 정해져 있지 않아서다. [attemptedStayRawIds] 가 겹치는 호출을 막는다.
          */
         private suspend fun resolveStayPlaceAddress() {
             val place = state.value.summary.stayPlace ?: return

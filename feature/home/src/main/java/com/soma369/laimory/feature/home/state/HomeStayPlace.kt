@@ -50,9 +50,12 @@ data class HomeStayPlace(
      *
      * 광역 이름만 들어 있는 값도 다시 묻는다 — 그때는 [city] 가 차 있지만 `서울특별시` 한
      * 마디라 카드가 어디였는지 말해 주지 못한다.
+     *
+     * 두 층위가 같은 이름인 것도 다시 묻는다. 지금 해석기는 그런 값을 만들지 않으므로,
+     * 위 층위와 같은 값을 아래에 그대로 싣던 시절의 저장분이라는 표시다.
      */
     val needsResolution: Boolean
-        get() = city == null || city.isProvinceName()
+        get() = city == null || city.isProvinceName() || city == district
 
     /** `경기도`·`서울특별시` 처럼 광역 이름인가. 시·군·구는 `시`·`군`·`구` 로 끝난다. */
     private fun String.isProvinceName(): Boolean = PROVINCE_SUFFIXES.any { endsWith(it) }

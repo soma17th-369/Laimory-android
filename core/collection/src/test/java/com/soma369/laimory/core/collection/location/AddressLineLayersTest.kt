@@ -31,6 +31,15 @@ class AddressLineLayersTest {
     }
 
     @Test
+    fun `구가 시 자리에 오면 동은 그 뒤에서 찾는다`() {
+        // `locality`·`subLocality` 가 똑같이 `마포구` 로 오는 지역이라 한 줄에서 동을 읽어야 한다.
+        val layers = addressLineLayers("대한민국 서울특별시 마포구 공덕동 461")
+
+        assertEquals("마포구", layers.city)
+        assertEquals("공덕동", layers.district)
+    }
+
+    @Test
     fun `찾을 것이 없으면 비운다`() {
         val layers = addressLineLayers("Some Street 12")
 

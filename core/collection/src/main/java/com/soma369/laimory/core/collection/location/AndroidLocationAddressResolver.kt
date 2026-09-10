@@ -97,18 +97,17 @@ internal class AndroidLocationAddressResolver
                         ?: address.subAdminArea.normalized()
                         ?: fromLine.city
                         ?: address.adminArea.normalized()
+                // 위 층위와 같은 이름은 아래 층위가 아니다 — `locality` 와 `subLocality` 에 똑같이
+                // `마포구` 가 실려 오는 지역이 있다. 버리고 넘어가야 한 줄에 있는 `공덕동` 에
+                // 닿는다. 여기서 멈추면 `마포구 마포구` 이거나 동이 없는 반쪽이 된다.
                 val district =
-                    address.subLocality.normalized()
-                        ?: fromLine.district
-                        ?: address.thoroughfare.normalized()
-                ResolvedAddress(
-                    line = line,
-                    city = city,
-                    // 같은 이름이면 아래 층위를 버린다 — `locality` 와 `subLocality` 에 똑같이
-                    // `마포구` 가 실려 오는 지역이 있어, 그대로 두면 `마포구 마포구` 가 된다.
-                    district = district?.takeIf { it != city },
-                )
+                    address.subLocality.normalized().notSameAs(city)
+                        ?: fromLine.district.notSameAs(city)
+                        ?: address.thoroughfare.normalized().notSameAs(city)
+                ResolvedAddress(line = line, city = city, district = district)
             }
+
+        private fun String?.notSameAs(other: String?): String? = this?.takeIf { it != other }
 
         private fun String?.normalized(): String? = this?.trim()?.takeIf(String::isNotEmpty)
 
