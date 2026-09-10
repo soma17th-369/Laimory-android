@@ -138,4 +138,14 @@ sealed interface HomeUiIntent : UiIntent {
 
     /** 지난 기록 전용 화면을 연다. 목록·동기화는 그 화면이 소유한다. */
     data object OpenPastRecords : HomeUiIntent
+
+    /**
+     * 원천 카드를 눌렀다. 어디로 갈지는 ViewModel 이 데이터로 정한다.
+     *
+     * 사진은 선택 시트, 나머지는 유형 상세다. 볼 것도 권한도 없으면 화면이 권한 흐름을 대신
+     * 태우므로 이 인텐트가 오지 않는다.
+     */
+    data class OpenSourceDetail(
+        val kind: HomeSourceKind,
+    ) : HomeUiIntent
 }

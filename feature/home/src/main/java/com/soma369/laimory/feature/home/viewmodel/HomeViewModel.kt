@@ -17,6 +17,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
+import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.PastRecordsPage
@@ -33,10 +34,12 @@ import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
+import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomePhotoItem
+import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeSourcePermissions
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeTimeSheetState
@@ -183,6 +186,7 @@ class HomeViewModel
                 is HomeUiIntent.RefreshSourcePermissions -> refreshSourcePermissions(intent)
                 HomeUiIntent.RefreshLocationConsent -> refreshLocationConsent()
                 HomeUiIntent.OpenPastRecords -> navigationHelper.navigateTo(PastRecordsPage)
+                is HomeUiIntent.OpenSourceDetail -> openSourceDetail(intent.kind)
             }
         }
 
@@ -766,7 +770,29 @@ class HomeViewModel
                 navigationHelper.navigateTo(TimelinePage(trackingState.task.recordDate))
             }
 
-        /** 지난 기록 목록을 서버와 동기화한다. 진행 중이면 중복 요청하지 않는다. */
+        /**
+         * 원천 카드에서 상세로 들어간다.
+         *
+         * 사진만 시트로 간다 — 고른 사진이 정본이라 목록에서 빼는 것이 아니라 다시 고르는 일이다.
+         * 나머지는 유형 상세로 가고, 상세는 홈이 상시로 유지하는 스냅샷을 읽는다.
+         */
+        private fun openSourceDetail(kind: HomeSourceKind) {
+            if (state.value.draftStatus.isInputLocked) return
+            if (kind == HomeSourceKind.PHOTO) {
+                startPhotoSelection()
+                return
+            }
+            navigationHelper.navigateTo(DraftConsentDetailPage(kind.detailGroup().name))
+        }
+
+        private fun HomeSourceKind.detailGroup(): DraftConsentTypeGroup =
+            when (this) {
+                HomeSourceKind.PHOTO -> DraftConsentTypeGroup.PHOTO
+                HomeSourceKind.CALENDAR -> DraftConsentTypeGroup.CALENDAR
+                HomeSourceKind.LOCATION -> DraftConsentTypeGroup.LOCATION
+                HomeSourceKind.NOTIFICATION -> DraftConsentTypeGroup.NOTIFICATION
+            }
+
         private fun refreshSourcePermissions(intent: HomeUiIntent.RefreshSourcePermissions) {
             updateState {
                 copy(

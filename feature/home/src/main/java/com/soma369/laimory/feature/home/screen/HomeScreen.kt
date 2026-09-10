@@ -5,15 +5,26 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,15 +33,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
@@ -45,18 +61,34 @@ import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.util.permission.PhotoPermission
-import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
+import com.soma369.laimory.feature.home.component.HomePhotoGrid
+import com.soma369.laimory.feature.home.component.HomeRotatingContent
+import com.soma369.laimory.feature.home.component.HomeSourceCard
+import com.soma369.laimory.feature.home.component.HomeTimelineButton
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
+import com.soma369.laimory.feature.home.component.cardBody
+import com.soma369.laimory.feature.home.component.cardClick
+import com.soma369.laimory.feature.home.component.permissionAction
+import com.soma369.laimory.feature.home.component.timeRangeLabel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.HomeCalendarItem
+import com.soma369.laimory.feature.home.state.HomeNotificationApp
+import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import com.soma369.laimory.core.ui.R as UiR
 
 @Composable
 fun HomeRoute(
@@ -94,6 +126,7 @@ fun HomeRoute(
         innerPadding = innerPadding,
         state = state,
         onIntent = viewModel::sendIntent,
+        onRequestPermission = permissionState::act,
         snackbarFlow = viewModel.snackbar,
         sideEffectFlow = viewModel.sideEffect,
     )
@@ -104,6 +137,7 @@ private fun HomeContent(
     innerPadding: PaddingValues,
     state: HomeUiState,
     onIntent: (HomeUiIntent) -> Unit,
+    onRequestPermission: (DataPermission) -> Unit,
     snackbarFlow: Flow<String>,
     sideEffectFlow: Flow<HomeUiSideEffect>,
 ) {
@@ -142,7 +176,12 @@ private fun HomeContent(
         }
     }
 
-    HomeScreen(innerPadding = innerPadding, state = state, onIntent = onIntent)
+    HomeScreen(
+        innerPadding = innerPadding,
+        state = state,
+        onIntent = onIntent,
+        onRequestPermission = onRequestPermission,
+    )
 
     if (state.isPhotoSheetVisible) {
         PhotoSelectionSheet(
@@ -233,26 +272,100 @@ private fun HomeScreen(
     innerPadding: PaddingValues,
     state: HomeUiState,
     onIntent: (HomeUiIntent) -> Unit,
+    onRequestPermission: (DataPermission) -> Unit,
 ) {
-    // 인사·오늘 초안 카드·지난 기록을 중첩 스크롤 없이 하나의 lazy list로 구성한다.
+    // 헤더·날짜 줄·원천 카드 4종·CTA 를 중첩 스크롤 없이 하나의 lazy list 로 구성한다.
     LazyColumn(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding),
-        contentPadding = PaddingValues(horizontal = Spacing.extraLarge, vertical = Spacing.extraLarge2),
+        contentPadding = PaddingValues(horizontal = Spacing.extraLarge, vertical = Spacing.large),
         verticalArrangement = Arrangement.spacedBy(Spacing.large),
     ) {
-        item(key = "greeting") {
-            HomeGreeting(nickname = state.nickname)
+        item(key = "header") {
+            HomeHeaderRow(
+                nickname = state.nickname,
+                onPastRecordsClick = { onIntent(HomeUiIntent.OpenPastRecords) },
+            )
         }
 
-        item(key = "todayDraftCard") {
-            DateHeaderCard(
-                state = state,
-                onClick = { onIntent(HomeUiIntent.ShowDatePicker) },
-                onActionClick = {
+        item(key = "dateRow") {
+            HomeDateRow(
+                selectedDate = state.selectedDate,
+                windowText = state.timeRangeLabel(),
+                enabled = !state.draftStatus.isDateLocked,
+                onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
+                onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
+            )
+        }
+
+        item(key = "photoCard") {
+            HomeSourceCard(
+                kind = HomeSourceKind.PHOTO,
+                status = state.permissions.photo,
+                body = state.cardBody(HomeSourceKind.PHOTO),
+                onClick = state.cardClick(HomeSourceKind.PHOTO, onIntent, onRequestPermission),
+                permissionAction = state.permissionAction(HomeSourceKind.PHOTO, onRequestPermission),
+            ) {
+                HomePhotoGrid(photoUris = state.summary.photoPreviewUris)
+            }
+        }
+
+        item(key = "calendarCard") {
+            HomeSourceCard(
+                kind = HomeSourceKind.CALENDAR,
+                status = state.permissions.calendar,
+                body = state.cardBody(HomeSourceKind.CALENDAR),
+                onClick = state.cardClick(HomeSourceKind.CALENDAR, onIntent, onRequestPermission),
+                permissionAction = state.permissionAction(HomeSourceKind.CALENDAR, onRequestPermission),
+            ) {
+                HomeCalendarSlot(items = state.summary.calendarItems)
+            }
+        }
+
+        item(key = "locationNotificationRow") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                HomeSourceCard(
+                    kind = HomeSourceKind.LOCATION,
+                    status = state.permissions.location,
+                    body = state.cardBody(HomeSourceKind.LOCATION),
+                    onClick = state.cardClick(HomeSourceKind.LOCATION, onIntent, onRequestPermission),
+                    modifier = Modifier.weight(1f),
+                    permissionAction = state.permissionAction(HomeSourceKind.LOCATION, onRequestPermission),
+                ) {
+                    HomeLabeledSlot(
+                        label = "가장 오래 머문 곳",
+                        value =
+                            when {
+                                !state.isLocationConsentGranted -> "동의 후 표시"
+                                else -> state.summary.stayPlace?.label ?: "주소 미확인"
+                            },
+                    )
+                }
+                HomeSourceCard(
+                    kind = HomeSourceKind.NOTIFICATION,
+                    status = state.permissions.notification,
+                    body = state.cardBody(HomeSourceKind.NOTIFICATION),
+                    onClick = state.cardClick(HomeSourceKind.NOTIFICATION, onIntent, onRequestPermission),
+                    modifier = Modifier.weight(1f),
+                    permissionAction = state.permissionAction(HomeSourceKind.NOTIFICATION, onRequestPermission),
+                ) {
+                    HomeNotificationSlot(apps = state.summary.notificationApps)
+                }
+            }
+        }
+
+        item(key = "createTimeline") {
+            HomeTimelineButton(
+                status = state.draftStatus,
+                selectedDate = state.selectedDate,
+                today = LocalDate.now(),
+                onClick = {
                     onIntent(
                         when (state.draftStatus) {
                             DraftCreationStatus.SUCCESS -> HomeUiIntent.ViewDraft
@@ -260,17 +373,15 @@ private fun HomeScreen(
                             DraftCreationStatus.PROCESSING,
                             DraftCreationStatus.LONG_RUNNING,
                             -> HomeUiIntent.OpenDraftLoading
-                            // 초안 만들기는 사진 선택으로 들어간다. 고른 사진만 초안에 실리므로
-                            // 만들기 흐름의 첫 단계다.
+                            // 사진 선택이 만들기 흐름의 첫 단계다.
                             DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.OpenPhotoSheet
                         },
                     )
                 },
-                onTimeRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
             )
         }
 
-        // 수집 실험실은 개발 도구라 release 에서는 진입 버튼 자체를 두지 않는다.
+        // 수집 실험실은 개발 도구라 release 에서는 진입 버튼 자체를 두지 않는다. CTA 아래로 내린다.
         if (state.isCollectionLabAccessible) {
             item(key = "collectionEntry") {
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -283,20 +394,194 @@ private fun HomeScreen(
                 }
             }
         }
+    }
+}
 
-        // 목록은 전용 화면이 맡는다. 홈은 진입만 둔다 — 헤더 알약 버튼은 홈 개편 이슈가 맞춘다.
-        item(key = "pastRecordsEntry") {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                TextButton(
-                    onClick = { onIntent(HomeUiIntent.OpenPastRecords) },
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                ) {
-                    Text("지난 기록 보기")
-                }
+/** 인사말 + `지난 기록` 알약. */
+@Composable
+private fun HomeHeaderRow(
+    nickname: String?,
+    onPastRecordsClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HomeGreeting(nickname = nickname)
+        Surface(
+            onClick = onPastRecordsClick,
+            modifier = Modifier.size(width = 90.dp, height = 44.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "지난 기록",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Icon(
+                    painter = painterResource(UiR.drawable.ico_default_arrow_right),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
 }
+
+/** 날짜 + 기록 범위 칩. 날짜를 누르면 피커, 칩을 누르면 타임 피커다. */
+@Composable
+private fun HomeDateRow(
+    selectedDate: LocalDate,
+    windowText: String,
+    enabled: Boolean,
+    onDateClick: () -> Unit,
+    onRangeClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = HOME_DATE_FORMAT.format(selectedDate),
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(Spacing.small))
+                    .clickable(enabled = enabled, onClick = onDateClick)
+                    .padding(vertical = Spacing.extraSmall),
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Surface(
+            onClick = onRangeClick,
+            enabled = enabled,
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Text(
+                text = windowText,
+                modifier = Modifier.padding(horizontal = Spacing.extraSmall, vertical = 2.dp),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+    }
+}
+
+/** 일정 카드 내용. 3초마다 한 건씩 넘기고 우측에 순번을 적는다. */
+@Composable
+private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
+    if (items.isEmpty()) {
+        HomeLabeledSlot(label = "오늘의 일정", value = "일정이 없어요")
+        return
+    }
+    HomeRotatingContent(items = items, modifier = Modifier.fillMaxWidth().height(40.dp)) { item, index ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.timeText(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = "${index + 1} / ${items.size}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** 알림 카드 내용. 앱 아이콘 + `토스 4` 를 3초마다 넘긴다. */
+@Composable
+private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
+    if (apps.isEmpty()) {
+        HomeLabeledSlot(label = "앱 별 알림 건수", value = "알림이 없어요")
+        return
+    }
+    Column(modifier = Modifier.fillMaxWidth().height(50.dp)) {
+        Text(
+            text = "앱 별 알림 건수",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        HomeRotatingContent(items = apps) { app, _ ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val icon = rememberAppIcon(packageName = app.packageName, size = 24.dp)
+                if (icon == null) {
+                    // 삭제된 앱은 아이콘을 읽을 수 없다. 자리를 비우면 글자가 흔들린다.
+                    Box(modifier = Modifier.size(24.dp))
+                } else {
+                    Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                }
+                Text(
+                    text = "${app.appName} ${app.count}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** 위 라벨 + 아래 값 두 줄. 위치 카드와 빈 상태가 같이 쓴다. */
+@Composable
+private fun HomeLabeledSlot(
+    label: String,
+    value: String,
+) {
+    Column(modifier = Modifier.fillMaxWidth().height(50.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun HomeCalendarItem.timeText(): String =
+    if (allDay) {
+        "종일"
+    } else {
+        val start = SLOT_TIME_FORMAT.format(startAt.atZone(ZoneId.systemDefault()))
+        val end = endAt?.let { SLOT_TIME_FORMAT.format(it.atZone(ZoneId.systemDefault())) }
+        if (end == null) start else "$start ~ $end"
+    }
+
+private val HOME_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
+private val SLOT_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA)
 
 /**
  * 위치 도트가 보는 상태.

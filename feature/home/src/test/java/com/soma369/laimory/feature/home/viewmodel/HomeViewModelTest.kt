@@ -42,6 +42,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.user.UserProfile
+import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.PastRecordsPage
@@ -65,6 +66,7 @@ import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
@@ -1175,6 +1177,52 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(listOf<Page>(PastRecordsPage), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `원천 카드는 유형 상세로 가고 사진만 시트를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.CALENDAR))
+            runCurrent()
+
+            assertEquals(listOf<Page>(DraftConsentDetailPage("CALENDAR")), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `홈이 스냅샷을 상시로 유지해 CTA 전에도 상세가 볼 것이 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 종전에는 CTA 를 눌러야 스냅샷이 생겨 카드에서 상세를 열 수 없었다.
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertNotNull(sessionStore.selection.value)
+            assertNull(sessionStore.preparation.value)
+            // 상시 스냅샷이 있어도 CTA 는 막히지 않는다.
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertNotNull(sessionStore.preparation.value)
+        }
+
+    @Test
+    fun `제외한 항목은 홈 본문 전송 예정 수에서 빠진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("cal-1"), todayItem("cal-2"))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals(2, viewModel.state.value.summary.calendar.sending)
+
+            sessionStore.toggleExcluded("cal-2")
+            sourceRepository.items.value = listOf(todayItem("cal-1"), todayItem("cal-2"), todayItem("cal-3"))
+            runCurrent()
+
+            val calendar = viewModel.state.value.summary.calendar
+            assertEquals(3, calendar.candidate)
+            assertEquals(2, calendar.sending)
         }
 
     private fun todayStay(id: String): SourceItem {
