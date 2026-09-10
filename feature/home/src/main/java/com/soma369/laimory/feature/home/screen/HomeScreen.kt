@@ -5,7 +5,6 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,7 +23,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +38,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -373,8 +372,8 @@ private fun HomeScreen(
                             DraftCreationStatus.PROCESSING,
                             DraftCreationStatus.LONG_RUNNING,
                             -> HomeUiIntent.OpenDraftLoading
-                            // 사진 선택이 만들기 흐름의 첫 단계다.
-                            DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.OpenPhotoSheet
+                            // 사진은 이제 카드에서 고른다. CTA 는 곧장 확인 다이얼로그로 간다.
+                            DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.CreateDraft
                         },
                     )
                 },
@@ -409,30 +408,17 @@ private fun HomeHeaderRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         HomeGreeting(nickname = nickname)
-        Surface(
-            onClick = onPastRecordsClick,
-            modifier = Modifier.size(width = 90.dp, height = 44.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "지난 기록",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Icon(
-                    painter = painterResource(UiR.drawable.ico_default_arrow_right),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        Icon(
+            painter = painterResource(UiR.drawable.ico_home_past_records),
+            // 아이콘만 서 있어 뜻을 그림으로만 전한다 — 스크린 리더가 읽을 이름을 붙인다.
+            contentDescription = "지난 기록",
+            modifier =
+                Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onPastRecordsClick)
+                    .size(32.dp),
+            tint = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -460,19 +446,16 @@ private fun HomeDateRow(
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )
-        Surface(
-            onClick = onRangeClick,
-            enabled = enabled,
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-        ) {
-            Text(
-                text = windowText,
-                modifier = Modifier.padding(horizontal = Spacing.extraSmall, vertical = 2.dp),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        }
+        Text(
+            text = windowText,
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(enabled = enabled, onClick = onRangeClick)
+                    .padding(horizontal = Spacing.extraSmall, vertical = 2.dp),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
     }
 }
 
@@ -480,12 +463,12 @@ private fun HomeDateRow(
 @Composable
 private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
     if (items.isEmpty()) {
-        HomeLabeledSlot(label = "오늘의 일정", value = "일정이 없어요")
+        HomeEmptySlot(message = "일정이 없어요", height = CALENDAR_SLOT_HEIGHT)
         return
     }
-    HomeRotatingContent(items = items, modifier = Modifier.fillMaxWidth().height(40.dp)) { item, index ->
+    HomeRotatingContent(items = items, modifier = Modifier.fillMaxWidth().height(CALENDAR_SLOT_HEIGHT)) { item, index ->
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -516,10 +499,17 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
 @Composable
 private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
     if (apps.isEmpty()) {
-        HomeLabeledSlot(label = "앱 별 알림 건수", value = "알림이 없어요")
+        HomeEmptySlot(message = "알림이 없어요", height = HALF_CARD_SLOT_HEIGHT)
         return
     }
-    Column(modifier = Modifier.fillMaxWidth().height(50.dp)) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(HALF_CARD_SLOT_HEIGHT)
+                .padding(vertical = Spacing.extraSmall),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
         Text(
             text = "앱 별 알림 건수",
             style = MaterialTheme.typography.bodySmall,
@@ -549,13 +539,44 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
     }
 }
 
-/** 위 라벨 + 아래 값 두 줄. 위치 카드와 빈 상태가 같이 쓴다. */
+/**
+ * 모인 것이 없을 때의 내용 슬롯.
+ *
+ * 라벨을 두지 않는다 — 분류 행이 이미 `일정`·`알림` 이라 말하고 있고, `오늘의 일정` 처럼 날짜를
+ * 붙이면 홈에서 다른 날을 고른 순간 틀린 말이 된다.
+ */
+@Composable
+private fun HomeEmptySlot(
+    message: String,
+    height: Dp,
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth().height(height),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** 위 라벨 + 아래 값 두 줄. 위치 카드가 쓴다. */
 @Composable
 private fun HomeLabeledSlot(
     label: String,
     value: String,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().height(50.dp)) {
+    // 라벨과 값을 위아래로 벌린다. 붙여 두면 두 줄이 한 덩어리로 읽혀 무엇이 제목인지 흐려진다.
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(HALF_CARD_SLOT_HEIGHT)
+                .padding(vertical = Spacing.extraSmall),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
@@ -579,6 +600,12 @@ private fun HomeCalendarItem.timeText(): String =
         val end = endAt?.let { SLOT_TIME_FORMAT.format(it.atZone(ZoneId.systemDefault())) }
         if (end == null) start else "$start ~ $end"
     }
+
+/** 일정 카드 내용 높이. 카드 전체 126 에서 분류 행·본문·패딩을 뺀 값이다. */
+private val CALENDAR_SLOT_HEIGHT = 50.dp
+
+/** 위치·알림 반쪽 카드의 내용 높이. 카드 전체는 144 다. */
+private val HALF_CARD_SLOT_HEIGHT = 58.dp
 
 private val HOME_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
 private val SLOT_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA)

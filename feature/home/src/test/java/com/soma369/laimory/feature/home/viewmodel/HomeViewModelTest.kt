@@ -395,7 +395,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `사진 없이 계속하면 선택을 비운 채 동의 화면으로 이동한다`() =
+    fun `사진 없이 닫으면 선택만 비우고 생성으로 넘어가지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("calendar"))
             photoSource.candidates = listOf(todayPhotoCandidate(1L))
@@ -412,13 +412,14 @@ class HomeViewModelTest {
             val state = viewModel.state.value
             assertFalse(state.isPhotoSheetVisible)
             assertEquals(emptySet<Long>(), state.selectedPhotoIds)
-            assertEquals(listOf<Page>(DraftConsentPage), navigationHelper.destinations)
+            assertTrue(navigationHelper.destinations.isEmpty())
         }
 
     @Test
-    fun `사진 선택을 확정하면 곧바로 동의 화면으로 이어진다`() =
+    fun `사진 선택을 확정하면 홈에 돌려주고 닫기만 한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 확정과 생성 사이에 홈으로 돌아가는 단계를 두지 않는다 — 만들기 흐름의 한 걸음이다.
+            // 사진은 카드에서 고르는 것이다. 확정이 만들기를 시작하면 고르기만 하려던 사용자가
+            // 곧장 다음 화면을 마주한다.
             sourceRepository.items.value = listOf(todayItem("calendar"))
             photoSource.candidates = listOf(todayPhotoCandidate(1L))
             val viewModel = createViewModel()
@@ -431,7 +432,8 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(setOf(1L), viewModel.state.value.selectedPhotoIds)
-            assertEquals(listOf<Page>(DraftConsentPage), navigationHelper.destinations)
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            assertTrue(navigationHelper.destinations.isEmpty())
         }
 
     @Test
@@ -546,7 +548,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `선택 사진이 삭제되면 동의 화면으로 이동하지 않고 재선택을 유도한다`() =
+    fun `선택 사진이 삭제되면 만들지 않고 재선택을 유도한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("calendar"))
             photoSource.candidates = listOf(todayPhotoCandidate(1L), todayPhotoCandidate(2L))
@@ -556,9 +558,12 @@ class HomeViewModelTest {
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
             runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
             photoSource.unavailableIds = setOf(1L)
 
-            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            // 삭제는 CTA 시점 준비에서 드러난다 — 시트는 이제 고르고 닫히기만 한다.
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
             assertNull(sessionStore.preparation.value)

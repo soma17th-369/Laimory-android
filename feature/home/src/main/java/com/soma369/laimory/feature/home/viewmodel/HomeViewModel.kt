@@ -339,13 +339,20 @@ class HomeViewModel
             if (idsToAdd.size < datePhotoIds.count { it !in current.pendingPhotoIds }) showPhotoLimitMessage()
         }
 
-        /** 고른 사진으로 확정하고 곧장 데이터 확인으로 넘어간다. */
-        private fun confirmPhotoSelection() = closePhotoSheetAndPrepare { pendingPhotoIds }
+        /** 고른 사진을 홈에 돌려주고 닫는다. */
+        private fun confirmPhotoSelection() = closePhotoSheet { pendingPhotoIds }
 
-        /** 사진 없이 이어 간다. 이전에 고른 것이 있어도 이번 초안에는 싣지 않는다. */
-        private fun continueWithoutPhotos() = closePhotoSheetAndPrepare { emptySet() }
+        /** 고르지 않고 닫는다. 이전에 고른 것도 비운다. */
+        private fun continueWithoutPhotos() = closePhotoSheet { emptySet() }
 
-        private fun closePhotoSheetAndPrepare(selected: HomeUiState.() -> Set<Long>) {
+        /**
+         * 사진 시트를 닫는다. **생성으로 넘어가지 않는다.**
+         *
+         * 종전에는 시트가 만들기 흐름의 첫 단계라 확정하면 곧장 다음 화면으로 갔다. 이제 사진은
+         * 홈 카드에서 고르는 것이라, 확정은 고른 결과를 홈에 돌려주고 닫는 일까지다 — 만들기는
+         * 사용자가 CTA 를 눌러 시작한다.
+         */
+        private fun closePhotoSheet(selected: HomeUiState.() -> Set<Long>) {
             if (state.value.draftStatus.isInputLocked) return
             preparedPhotoCache = null
             updateState {
@@ -359,7 +366,6 @@ class HomeViewModel
                     draftMessage = null,
                 ).withSourceSummary(sourceItems, photoCandidates)
             }
-            prepareDraftConsent()
         }
 
         /**
