@@ -15,6 +15,13 @@ data class DraftConsentUiState(
     val content: DraftConsentUiContent? = null,
     /** 현재 생성 시도에서 사용자가 전송에서 제외한 항목의 rawId. 스냅샷 항목의 부분집합이다. */
     val excludedRawIds: Set<String> = emptySet(),
+    /**
+     * 위치 전체 전송 여부. 제외 집합과 **따로** 소유한다.
+     *
+     * `위치 항목 중 하나라도 제외돼 있으면 OFF` 같은 파생 규칙을 쓰지 않는다 — 스위치를 끈 뒤
+     * 새 위치가 수집되면 그 항목은 제외 집합에 없어 파생값이 ON 으로 되돌아간다.
+     */
+    val isLocationSendEnabled: Boolean = true,
     val isSubmitting: Boolean = false,
     val submitError: String? = null,
     /**
@@ -26,21 +33,19 @@ data class DraftConsentUiState(
      */
     val isMapRenderAllowed: Boolean = false,
 ) : UiState {
-    /** 제외를 반영한 실제 전송 예정 건수. */
+    /** 제외와 위치 전송 여부를 반영한 실제 전송 예정 건수. */
     val includedTotal: Int
-        get() = (content?.sentTotal ?: 0) - excludedRawIds.size
+        get() {
+            val locationRawIds = content?.locationRawIds.orEmpty()
+            val excluded =
+                if (isLocationSendEnabled) excludedRawIds else excludedRawIds + locationRawIds
+            return (content?.sentTotal ?: 0) - excluded.size
+        }
 
     fun isIncluded(itemKey: String): Boolean = itemKey !in excludedRawIds
 
-    /**
-     * 위치정보 전송 Switch 의 상태.
-     *
-     * 위치 항목 하나라도 제외돼 있으면 OFF 로 본다 — 위치는 개별 토글을 제공하지 않으므로 중간
-     * 상태가 생기지 않지만, 이전 시도에서 넘어온 값이나 다른 경로로 섞여도 켜짐으로 보이지 않게 한다.
-     * 표시할 위치가 없으면 켜 둔 것으로 본다(끌 대상이 없다).
-     */
-    val isLocationIncluded: Boolean
-        get() = content?.locationRawIds.orEmpty().none { it in excludedRawIds }
+    /** 위치정보 전송 Switch 의 상태. 소유한 값을 그대로 보여 준다. */
+    val isLocationIncluded: Boolean get() = isLocationSendEnabled
 
     /** 유형 안에서 사용자가 제외한 건수. */
     fun excludedCountOf(group: DraftConsentTypeGroup): Int {

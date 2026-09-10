@@ -81,7 +81,7 @@ class DraftConsentViewModelTest {
     private var mapKeyPresent = true
 
     @Test
-    fun `새 스냅샷이 들어오면 내용을 구성하고 체크 상태를 초기화한다`() =
+    fun `새 스냅샷이 들어오면 내용을 다시 구성하고 고른 것은 남긴다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
             runCurrent()
@@ -92,14 +92,14 @@ class DraftConsentViewModelTest {
             runCurrent()
             assertEquals(setOf("cal"), viewModel.state.value.excludedRawIds)
 
-            // 뒤로가기 후 재진입 = 같은 데이터라도 새 attemptId → 새 생성 시도로 초기화
+            // 수집이 갱신돼도 사용자가 고른 것은 남는다 — 매번 비우면 카드에서 무엇을 뺄 수가 없다.
             prepare(listOf(calendarItem("cal")))
             runCurrent()
 
             val state = viewModel.state.value
+            assertEquals(setOf("cal"), state.excludedRawIds)
             assertNotNull(state.content)
             assertEquals(1, state.content!!.sentTotal)
-            assertTrue(state.excludedRawIds.isEmpty())
         }
 
     @Test
@@ -287,7 +287,7 @@ class DraftConsentViewModelTest {
     // --- 위치정보 전송 Switch ---
 
     @Test
-    fun `위치정보 전송을 끄면 현재 시도의 체류와 이동을 모두 제외한다`() =
+    fun `위치정보 전송을 끄면 제외 집합을 건드리지 않고 전송에서만 뺀다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(stayItem("stay-1"), movementItem("move-1"), calendarItem("cal-1")))
             val viewModel = createViewModel()
@@ -297,9 +297,10 @@ class DraftConsentViewModelTest {
             viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
             runCurrent()
 
-            assertEquals(setOf("stay-1", "move-1"), viewModel.state.value.excludedRawIds)
+            // 그 시점 rawId 를 제외 집합에 넣지 않는다 — 그러면 뒤에 수집된 위치가 샌다.
+            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
             assertFalse(viewModel.state.value.isLocationIncluded)
-            // 다른 유형은 건드리지 않는다.
+            // 전송 건수에서는 빠지고, 다른 유형은 건드리지 않는다.
             assertEquals(1, viewModel.state.value.includedTotal)
         }
 
@@ -549,7 +550,7 @@ class DraftConsentViewModelTest {
             runCurrent()
             viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
             runCurrent()
-            val attemptId = viewModel.state.value.content?.attemptId
+            val attemptId = viewModel.state.value.content?.revision
             assertFalse(viewModel.state.value.isMapRenderAllowed)
             assertTrue(addressResolver.requested.isEmpty())
 
@@ -560,7 +561,7 @@ class DraftConsentViewModelTest {
             assertTrue(viewModel.state.value.isMapRenderAllowed)
             assertEquals("해석한 주소", viewModel.state.value.content?.locationMarkers?.single()?.title)
             // 스냅샷과 제외 선택은 그대로여야 한다.
-            assertEquals(attemptId, viewModel.state.value.content?.attemptId)
+            assertEquals(attemptId, viewModel.state.value.content?.revision)
             assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
         }
 
@@ -677,20 +678,22 @@ class DraftConsentViewModelTest {
         }
 
     @Test
-    fun `새 스냅샷이 들어오면 제외 상태도 초기화된다`() =
+    fun `스냅샷이 갱신돼도 제외는 남고 사라진 항목만 걷힌다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal-1")))
+            // 수집이 돌 때마다 사용자가 뺀 것이 되살아나면 카드에서 무엇을 뺄 수가 없다.
+            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2")))
             val viewModel = createViewModel()
             runCurrent()
             viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-2"))
             runCurrent()
-            assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
+            assertEquals(setOf("cal-1", "cal-2"), viewModel.state.value.excludedRawIds)
 
+            // cal-2 가 창 밖으로 나갔다.
             prepare(listOf(calendarItem("cal-1")))
             runCurrent()
 
-            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
-            assertEquals(1, viewModel.state.value.includedTotal)
+            assertEquals(setOf("cal-1"), viewModel.state.value.excludedRawIds)
         }
 
     @Test
@@ -727,8 +730,6 @@ class DraftConsentViewModelTest {
             assertTrue(sessionStore.consumePhotoReselectionNeeded())
             assertEquals(1, navigationHelper.backCount)
             assertEquals(0, draftRepository.createCount)
-            // 폐기와 함께 민감 표시 모델도 남지 않는다.
-            assertNull(viewModel.state.value.content)
         }
 
     @Test

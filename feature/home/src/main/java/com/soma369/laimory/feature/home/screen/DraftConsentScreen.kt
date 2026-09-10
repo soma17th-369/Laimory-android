@@ -325,7 +325,7 @@ private val CHECK_CIRCLE_SIZE = 20.dp
 
 internal fun previewConsentContent(): DraftConsentUiContent =
     DraftConsentUiContent(
-        attemptId = 1L,
+        revision = 1L,
         recordDate = LocalDate.of(2026, 8, 11),
         windowText = "8월 11일 00:00 ~ 8월 12일 00:00",
         sentTotal = 156,

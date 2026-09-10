@@ -125,7 +125,13 @@ class DraftConsentSessionStore
             mutableLocationSendEnabled.value = enabled
         }
 
-        /** 새 생성 시도를 시작한다. 같은 데이터라도 항상 새 attemptId 를 받아 이전 시도와 구분된다. */
+        /**
+         * CTA 로 제출용 스냅샷을 확정한다. 같은 데이터라도 항상 새 attemptId 를 받아 이전 시도와
+         * 구분된다.
+         *
+         * 상시 스냅샷도 같은 내용으로 맞춰 둔다 — 확정 직후 상세를 열면 제출할 것과 같은 것을
+         * 봐야 한다.
+         */
         fun prepare(
             recordDate: LocalDate,
             zone: ZoneId,
@@ -133,13 +139,11 @@ class DraftConsentSessionStore
             selection: DraftSourceItemSelection,
             discardActiveTask: Boolean,
         ) {
+            updateSelection(recordDate, zone, window, selection)
             mutablePreparation.value =
                 DraftConsentPreparation(
                     attemptId = nextAttemptId++,
-                    recordDate = recordDate,
-                    zone = zone,
-                    window = window,
-                    selection = selection,
+                    snapshot = checkNotNull(mutableSelection.value),
                     discardActiveTask = discardActiveTask,
                 )
         }

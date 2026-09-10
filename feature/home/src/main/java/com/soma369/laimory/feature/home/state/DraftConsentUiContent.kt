@@ -10,7 +10,8 @@ import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.StayPayload
-import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
+import com.soma369.laimory.feature.home.draft.DraftConsentSelectionSnapshot
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -20,12 +21,13 @@ import java.util.Locale
 /**
  * 동의 화면 본문의 표시 모델.
  *
- * 생성 시도 스냅샷([DraftConsentPreparation])에서 한 번 파생되며,
+ * 선택 스냅샷([DraftConsentSelectionSnapshot])에서 파생되며,
  * 요약 건수·유형별 상세가 모두 같은 스냅샷을 근거로 한다.
  */
 @Immutable
 data class DraftConsentUiContent(
-    val attemptId: Long,
+    /** 파생된 스냅샷의 갱신 번호. 표시 모델이 어느 판에서 나왔는지 가린다. */
+    val revision: Long,
     val recordDate: LocalDate,
     val windowText: String,
     val sentTotal: Int,
@@ -35,9 +37,14 @@ data class DraftConsentUiContent(
 ) {
     fun summaryOf(group: DraftConsentTypeGroup): DraftConsentTypeSummary? = typeSummaries.firstOrNull { it.group == group }
 
-    /** 현재 생성 시도의 위치 항목 rawId. 위치정보 전송 Switch 가 한 번에 켜고 끄는 대상이다. */
+    /** 현재 스냅샷의 위치 항목 rawId. 위치정보 전송 Switch 가 한 번에 켜고 끄는 대상이다. */
     val locationRawIds: Set<String> get() = locationMarkers.mapTo(linkedSetOf()) { it.sourceRawId }
 }
+
+/** 스냅샷의 위치 항목 rawId. 제출 직전에 위치를 통째로 뺄 때 쓴다. */
+internal fun DraftSourceItemSelection.locationRawIds(): Set<String> =
+    items.filterTo(mutableListOf()) { it.itemType in DraftConsentTypeGroup.LOCATION.memberTypes }
+        .mapTo(linkedSetOf()) { it.rawId }
 
 /**
  * 스냅샷에서 화면 본문을 만든다. 건수는 선택 정책 리포트를 그대로 사용하고 재계산하지 않는다.
@@ -48,7 +55,7 @@ data class DraftConsentUiContent(
  *
  * 지도 마커와 아래 목록이 같은 맵을 보므로 두 곳의 주소가 어긋날 수 없다.
  */
-internal fun DraftConsentPreparation.toConsentContent(resolvedAddresses: Map<String, String> = emptyMap()): DraftConsentUiContent {
+internal fun DraftConsentSelectionSnapshot.toConsentContent(resolvedAddresses: Map<String, String> = emptyMap()): DraftConsentUiContent {
     val report = selection.report
     val summaries =
         DraftConsentTypeGroup.entries.map { group ->
@@ -60,7 +67,7 @@ internal fun DraftConsentPreparation.toConsentContent(resolvedAddresses: Map<Str
             )
         }
     return DraftConsentUiContent(
-        attemptId = attemptId,
+        revision = revision,
         recordDate = recordDate,
         windowText = formatWindow(window.start, window.end, zone),
         sentTotal = report.selectedTotal,
