@@ -77,9 +77,13 @@ internal class AndroidLocationAddressResolver
         /**
          * 한 줄 주소가 있는 첫 결과를 표시용 주소로 옮긴다.
          *
-         * 층위는 지역마다 어느 필드가 차는지 달라 순서대로 훑는다.
-         * - 시 = 광역(`adminArea`) → 시·군·구(`locality` → `subAdminArea`)
-         * - 동 = 읍·면·동(`subLocality`) → 도로명(`thoroughfare`)
+         * 층위는 **광역 + 시·군·구** 다 — `경기도 오산시`, `서울특별시 강남구`. 지역마다 어느 필드가
+         * 차는지 달라 순서대로 훑는다.
+         * - [ResolvedAddress.city] = 광역(`adminArea`)
+         * - [ResolvedAddress.district] = 시·군·구(`locality` → `subAdminArea`)
+         *
+         * 읍·면·동(`subLocality`)까지 내려가지 않는다 — 카드가 보여 주는 것은 "어느 지역에 있었나"
+         * 이고, 동 단위는 반쪽 화면에 담기지도 않는다.
          *
          * 한 줄 주소가 없으면 층위가 있어도 버린다 — 목록·말풍선이 쓰는 값이 없으면 표시가 반쪽이다.
          */
@@ -88,8 +92,8 @@ internal class AndroidLocationAddressResolver
                 val line = address.getAddressLine(0).normalized() ?: return@firstNotNullOfOrNull null
                 ResolvedAddress(
                     line = line,
-                    city = address.adminArea.normalized() ?: address.locality.normalized() ?: address.subAdminArea.normalized(),
-                    district = address.subLocality.normalized() ?: address.thoroughfare.normalized(),
+                    city = address.adminArea.normalized(),
+                    district = address.locality.normalized() ?: address.subAdminArea.normalized(),
                 )
             }
 

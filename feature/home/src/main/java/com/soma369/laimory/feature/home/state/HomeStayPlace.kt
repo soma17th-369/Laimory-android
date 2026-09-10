@@ -16,20 +16,20 @@ data class HomeStayPlace(
     val rawId: String,
     val latitude: Double,
     val longitude: Double,
-    /** 시 단위(광역 또는 시·군·구). */
+    /** 광역 — `경기도`, `서울특별시`. */
     val city: String? = null,
-    /** 동 단위(읍·면·동 또는 도로명). */
+    /** 시·군·구 — `오산시`, `강남구`. */
     val district: String? = null,
     /** 한 줄 전체 주소. 층위가 없을 때 대신 쓴다. */
     val line: String? = null,
 ) {
     /**
-     * 카드에 적을 문구. 층위가 있으면 `서울시 · 역삼동`, 없으면 한 줄 주소, 둘 다 없으면 null.
+     * 카드에 적을 문구. 층위가 있으면 `경기도 오산시`, 없으면 한 줄 주소, 둘 다 없으면 null.
      *
-     * 한쪽 층위만 있으면 그것만 적는다 — 빈 자리에 구분점만 남기지 않는다.
+     * 한쪽 층위만 있으면 그것만 적는다.
      */
     val label: String?
-        get() = listOfNotNull(city, district).takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: line
+        get() = listOfNotNull(city, district).takeIf { it.isNotEmpty() }?.joinToString(" ") ?: line
 
     /**
      * 층위를 채우러 다시 해석해야 하는가.

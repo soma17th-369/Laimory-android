@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.state
 
 import com.soma369.laimory.core.ui.base.UiIntent
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -107,11 +108,10 @@ sealed interface HomeUiIntent : UiIntent {
      * 권한은 사용자가 언제든 바꾸므로 캐시하지 않고 홈 재진입(ON_RESUME)마다 다시 본다.
      */
     data class RefreshSourcePermissions(
-        val photo: Boolean,
-        val calendar: Boolean,
-        val location: Boolean,
-        val notification: Boolean,
-        val isNotificationSupported: Boolean,
+        val photo: DataSourceStatus,
+        val calendar: DataSourceStatus,
+        val location: DataSourceStatus,
+        val notification: DataSourceStatus,
     ) : HomeUiIntent
 
     /**

@@ -60,6 +60,7 @@ import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseC
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
@@ -1207,7 +1208,7 @@ class HomeViewModelTest {
     fun `위치 약관 동의가 없으면 주소를 해석하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // Geocoder 는 좌표를 기기 밖으로 보낸다. 동의 없이 부르지 않는다.
-            addressResolver.answer = ResolvedAddress(line = "서울특별시 강남구 역삼동 823", city = "서울특별시", district = "역삼동")
+            addressResolver.answer = ResolvedAddress(line = "경기도 오산시 원동 123", city = "경기도", district = "오산시")
             sourceRepository.items.value = listOf(todayStay("stay-1"))
             val viewModel = createViewModel()
             runCurrent()
@@ -1224,7 +1225,7 @@ class HomeViewModelTest {
     fun `동의가 있으면 가장 오래 머문 곳의 층위를 채우고 같은 항목을 다시 묻지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             termsCoordinator.isLocationAgreed = true
-            addressResolver.answer = ResolvedAddress(line = "서울특별시 강남구 역삼동 823", city = "서울특별시", district = "역삼동")
+            addressResolver.answer = ResolvedAddress(line = "경기도 오산시 원동 123", city = "경기도", district = "오산시")
             sourceRepository.items.value = listOf(todayStay("stay-1"))
             val viewModel = createViewModel()
             runCurrent()
@@ -1233,7 +1234,7 @@ class HomeViewModelTest {
             runCurrent()
 
             assertTrue(viewModel.state.value.isLocationConsentGranted)
-            assertEquals("서울특별시 · 역삼동", viewModel.state.value.summary.stayPlace?.label)
+            assertEquals("경기도 오산시", viewModel.state.value.summary.stayPlace?.label)
 
             // 복귀마다 재판정하므로 같은 항목을 반복해서 물으면 Geocoder 를 계속 때린다.
             repeat(3) { viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent) }
@@ -1250,20 +1251,20 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(
                 HomeUiIntent.RefreshSourcePermissions(
-                    photo = true,
-                    calendar = false,
-                    location = true,
-                    notification = false,
-                    isNotificationSupported = false,
+                    photo = DataSourceStatus.LIMITED,
+                    calendar = DataSourceStatus.DENIED,
+                    location = DataSourceStatus.GRANTED,
+                    notification = DataSourceStatus.UNSUPPORTED,
                 ),
             )
             runCurrent()
 
             val permissions = viewModel.state.value.permissions
-            assertTrue(permissions.photo)
-            assertFalse(permissions.calendar)
-            assertTrue(permissions.location)
-            assertFalse(permissions.isNotificationSupported)
+            // 일부 허용·미지원을 `꺼짐` 으로 뭉치지 않는다.
+            assertEquals(DataSourceStatus.LIMITED, permissions.photo)
+            assertEquals(DataSourceStatus.DENIED, permissions.calendar)
+            assertEquals(DataSourceStatus.GRANTED, permissions.location)
+            assertEquals(DataSourceStatus.UNSUPPORTED, permissions.notification)
         }
 
     private fun todayStay(id: String): SourceItem {

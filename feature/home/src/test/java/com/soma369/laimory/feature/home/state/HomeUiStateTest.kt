@@ -329,11 +329,11 @@ class HomeUiStateTest {
 
     @Test
     fun `층위가 있으면 두 층으로 적고 없으면 한 줄 주소를 쓴다`() {
-        val layered = HomeStayPlace("a", 37.5, 126.9, city = "서울특별시", district = "역삼동", line = "서울특별시 강남구 역삼동 823")
+        val layered = HomeStayPlace("a", 37.5, 126.9, city = "경기도", district = "오산시", line = "경기도 오산시 원동 123")
         val lineOnly = HomeStayPlace("b", 37.5, 126.9, line = "서울특별시 강남구 역삼동 823")
         val nothing = HomeStayPlace("c", 37.5, 126.9)
 
-        assertEquals("서울특별시 · 역삼동", layered.label)
+        assertEquals("경기도 오산시", layered.label)
         assertEquals("서울특별시 강남구 역삼동 823", lineOnly.label)
         assertNull(nothing.label)
         // 한 줄만 저장된 기존 항목을 해석 완료로 보면 층위가 영영 안 채워진다.

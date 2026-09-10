@@ -754,7 +754,6 @@ class HomeViewModel
                             calendar = intent.calendar,
                             location = intent.location,
                             notification = intent.notification,
-                            isNotificationSupported = intent.isNotificationSupported,
                         ),
                 )
             }

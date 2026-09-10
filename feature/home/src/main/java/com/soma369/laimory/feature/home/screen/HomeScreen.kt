@@ -43,12 +43,12 @@ import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
 import com.soma369.laimory.core.ui.greeting.GreetingEmphasis
 import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
+import com.soma369.laimory.core.ui.permission.DataPermission
+import com.soma369.laimory.core.ui.permission.DataPermissionState
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
-import com.soma369.laimory.core.ui.permission.locationPermissionStep
+import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.Spacing
-import com.soma369.laimory.core.util.permission.CalendarPermission
-import com.soma369.laimory.core.util.permission.LocationPermission
-import com.soma369.laimory.core.util.permission.NotificationListenerAccess
 import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
@@ -75,6 +75,8 @@ fun HomeRoute(
         viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
     }
     val context = LocalContext.current
+    // 판정은 설정·온보딩이 쓰는 공용 상태를 그대로 쓴다. 스스로 ON_RESUME 마다 다시 본다.
+    val permissionState = rememberDataPermissionState()
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         // 동의 화면에서 제출을 마치고 복귀한 경우를 1회 소비한다.
         viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
@@ -88,19 +90,10 @@ fun HomeRoute(
         // 권한은 사용자가 언제든 바꾸므로 캐시하지 않고 복귀마다 다시 본다.
         viewModel.sendIntent(
             HomeUiIntent.RefreshSourcePermissions(
-                photo = PhotoPermission.canRead(context) && !PhotoPermission.isLimited(context),
-                calendar = CalendarPermission.isGranted(context),
-                // `항상 허용` 까지만 본다. 활동 인식은 이동수단 추론에만 쓰이고 없으면 평균
-                // 속도로 보완하므로, 그것 때문에 회색을 띄우면 무엇을 더 해야 하는지 알 수 없다.
-                // `hasBackground` 만 보면 안 된다 — Q 미만에서는 전경을 거부해도 true 다.
-                location =
-                    locationPermissionStep(
-                        hasForeground = LocationPermission.canCollect(context),
-                        hasBackground = LocationPermission.hasBackground(context),
-                        hasActivityRecognition = true,
-                    ) == LocationPermissionStep.GRANTED,
-                notification = NotificationListenerAccess.isGranted(context),
-                isNotificationSupported = NotificationListenerAccess.hasSettings(context),
+                photo = permissionState.statusOf(DataPermission.PHOTO),
+                calendar = permissionState.statusOf(DataPermission.CALENDAR),
+                location = permissionState.locationDotStatus(),
+                notification = permissionState.statusOf(DataPermission.NOTIFICATION_LISTENER),
             ),
         )
         // 약관 화면에 다녀와 동의하고 돌아오는 경로가 있어 복귀마다 다시 판정한다.
@@ -334,6 +327,20 @@ private fun HomeScreen(
         }
     }
 }
+
+/**
+ * 위치 도트가 보는 상태.
+ *
+ * 공용 판정([DataPermissionState.statusOf])은 활동 인식까지 있어야 `GRANTED` 라 그대로 쓰면
+ * **항상 허용을 다 해 준 사용자에게도 노란 도트**가 뜬다. 활동 인식은 이동수단 추론에만 쓰이고
+ * 없으면 평균 속도로 보완하므로 수집 자체는 멀쩡하다 — 도트는 `항상 허용` 까지만 본다.
+ */
+private fun DataPermissionState.locationDotStatus(): DataSourceStatus =
+    when (locationStep) {
+        LocationPermissionStep.FOREGROUND -> DataSourceStatus.DENIED
+        LocationPermissionStep.BACKGROUND -> DataSourceStatus.LIMITED
+        LocationPermissionStep.ACTIVITY, LocationPermissionStep.GRANTED -> DataSourceStatus.GRANTED
+    }
 
 /**
  * 홈 인사말.
