@@ -1,11 +1,13 @@
 package com.soma369.laimory.feature.home.state
 
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
+import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemPayload
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -155,8 +157,9 @@ class HomeUiStateTest {
 
         assertEquals(listOf(2L, 1L), state.availablePhotos.map(HomePhotoItem::mediaStoreId))
         assertEquals(emptySet<Long>(), state.selectedPhotoIds)
-        assertEquals(0, state.summary.photoCount)
-        assertEquals(emptyList<String>(), state.summary.photoPreviewUris)
+        assertEquals(HomeSourceCount(candidate = 2, sending = 0), state.summary.photo)
+        // 미리보기는 **후보 기준**이다 — 카드는 무엇이 모였는지를 보여 주고 고른 수는 본문이 말한다.
+        assertEquals(listOf("content://photo/2", "content://photo/1"), state.summary.photoPreviewUris)
         assertEquals(1, state.summary.totalItemCount)
     }
 
@@ -205,9 +208,10 @@ class HomeUiStateTest {
                 selectedPhotoIds = setOf(2L),
             ).refreshSourceSummary(items, candidates, zone)
 
-        assertEquals(1, selected.summary.photoCount)
+        assertEquals(HomeSourceCount(candidate = 2, sending = 1), selected.summary.photo)
         assertEquals(2, selected.summary.totalItemCount)
-        assertEquals(listOf("content://photo/2"), selected.summary.photoPreviewUris)
+        // 고른 것은 2L 하나지만 격자에는 후보 둘이 다 뜬다.
+        assertEquals(listOf("content://photo/2", "content://photo/1"), selected.summary.photoPreviewUris)
         assertEquals(listOf("calendar"), selected.nonPhotoSourceItems(items, zone).map(SourceItem::rawId))
     }
 
@@ -220,6 +224,84 @@ class HomeUiStateTest {
         id = id,
         contentUri = "content://photo/$id",
         takenAt = dateTime.atZone(zone).toInstant(),
+    )
+
+    @Test
+    fun `일정 목록은 시작 시각순이고 같은 시각이면 rawId 로 고정한다`() {
+        // 카드가 3초마다 넘기며 읽으므로 정렬이 흔들리면 순번이 튄다.
+        val items =
+            listOf(
+                item("cal-b", date.atTime(9, 0), CalendarPayload("나중", null, null, false)),
+                item("cal-a", date.atTime(9, 0), CalendarPayload("같은 시각", null, null, false)),
+                item("cal-c", date.atTime(8, 0), CalendarPayload("가장 이른", null, null, true)),
+            )
+
+        val summary = HomeUiState(selectedDate = date).refreshSourceSummary(items, emptyList(), zone).summary
+
+        assertEquals(listOf("cal-c", "cal-a", "cal-b"), summary.calendarItems.map(HomeCalendarItem::rawId))
+        assertEquals(true, summary.calendarItems.first().allDay)
+    }
+
+    @Test
+    fun `알림은 앱별로 묶어 건수 내림차순으로 두고 표시명은 가장 최근 것을 쓴다`() {
+        val items =
+            listOf(
+                item("n1", date.atTime(8, 0), notification("옛 이름", "com.toss")),
+                item("n2", date.atTime(9, 0), notification("토스", "com.toss")),
+                item("n3", date.atTime(10, 0), notification("카카오톡", "com.kakao")),
+            )
+
+        val apps = HomeUiState(selectedDate = date).refreshSourceSummary(items, emptyList(), zone).summary.notificationApps
+
+        assertEquals(listOf("com.toss", "com.kakao"), apps.map(HomeNotificationApp::packageName))
+        assertEquals(listOf(2, 1), apps.map(HomeNotificationApp::count))
+        // 앱 이름이 바뀌었을 수 있어 가장 최근 알림의 수집 당시 이름을 쓴다.
+        assertEquals("토스", apps.first().appName)
+    }
+
+    @Test
+    fun `전송 예정 수는 선택 정책 결과에서 나오고 없으면 0 이다`() {
+        val items =
+            listOf(
+                item("cal-1", date.atTime(9, 0), CalendarPayload("일정", null, null, false)),
+                item("cal-2", date.atTime(10, 0), CalendarPayload("일정", null, null, false)),
+            )
+        val state = HomeUiState(selectedDate = date)
+        val window = state.recordDateWindow(zone)!!
+        val selection = DraftSourceItemSelectionPolicy().select(window, items).getOrThrow()
+
+        val counted = state.refreshSourceSummary(items, emptyList(), zone, selection).summary.calendar
+        // 후보 수로 대신 채우면 실제보다 많이 보낸다고 말하게 된다.
+        val uncounted = state.refreshSourceSummary(items, emptyList(), zone).summary.calendar
+
+        assertEquals(HomeSourceCount(candidate = 2, sending = 2), counted)
+        assertEquals(HomeSourceCount(candidate = 2, sending = 0), uncounted)
+    }
+
+    @Test
+    fun `사용자가 제외한 항목은 전송 예정 수에서 빠진다`() {
+        val items =
+            listOf(
+                item("cal-1", date.atTime(9, 0), CalendarPayload("일정", null, null, false)),
+                item("cal-2", date.atTime(10, 0), CalendarPayload("일정", null, null, false)),
+            )
+        val state = HomeUiState(selectedDate = date)
+        val selection = DraftSourceItemSelectionPolicy().select(state.recordDateWindow(zone)!!, items).getOrThrow()
+
+        val summary = state.refreshSourceSummary(items, emptyList(), zone, selection, setOf("cal-2")).summary
+
+        assertEquals(HomeSourceCount(candidate = 2, sending = 1), summary.calendar)
+    }
+
+    private fun notification(
+        appName: String,
+        packageName: String,
+    ) = NotificationPayload(
+        appName = appName,
+        packageName = packageName,
+        title = "제목",
+        text = "본문",
+        collectReason = NotificationPayload.CollectReason.KEYWORD,
     )
 
     private fun item(

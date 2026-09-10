@@ -165,7 +165,7 @@ class HomeViewModel
             safeLaunch {
                 observeSourceItemsUseCase().collect { items ->
                     sourceItems = items
-                    updateState { refreshSourceSummary(items, photoCandidates, zone) }
+                    updateState { withSourceSummary(items, photoCandidates) }
                 }
             }
 
@@ -325,7 +325,7 @@ class HomeViewModel
                     draftStatus = DraftCreationStatus.IDLE,
                     draftRetryMode = null,
                     draftMessage = null,
-                ).refreshSourceSummary(sourceItems, photoCandidates, zone)
+                ).withSourceSummary(sourceItems, photoCandidates)
             }
             prepareDraftConsent()
         }
@@ -368,6 +368,26 @@ class HomeViewModel
             }
         }
 
+        /**
+         * 카드 건수를 다시 센다.
+         *
+         * 전송 예정 수(N)는 후보 수만으로 알 수 없다 — 타입별 상한과 정제를 거친 뒤의 값이라
+         * 선택 정책을 돌려야 나온다. **측정 리포트는 발행하지 않는다**(제출 시점만 발행).
+         *
+         * 제외 집합은 아직 상세 화면이 갖고 있어 여기서는 비어 있다. 소유가 세션 스토어로 옮겨오면
+         * 그 값을 읽어 넘긴다(홈 화면 개편 이슈).
+         */
+        private fun HomeUiState.withSourceSummary(
+            items: List<SourceItem>,
+            photoCandidates: List<PhotoCandidate>,
+        ): HomeUiState {
+            val selection =
+                recordDateWindow(zone)?.let { window ->
+                    prepareTimelineDraftSelectionUseCase(window, items, reportsMeasurement = false).getOrNull()
+                }
+            return refreshSourceSummary(items, photoCandidates, zone, selection)
+        }
+
         private fun selectDate(date: LocalDate) {
             if (state.value.draftStatus.isDateLocked) return
             // 피커가 회색으로 만들기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면
@@ -390,7 +410,7 @@ class HomeViewModel
                         draftMessage = null,
                     )
                 next
-                    .refreshSourceSummary(sourceItems, photoCandidates, zone)
+                    .withSourceSummary(sourceItems, photoCandidates)
                     .withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value)
             }
             onRecordWindowChanged()
@@ -448,7 +468,7 @@ class HomeViewModel
                         draftRetryMode = null,
                         draftMessage = null,
                     )
-                next.refreshSourceSummary(sourceItems, photoCandidates, zone)
+                next.withSourceSummary(sourceItems, photoCandidates)
             }
             onRecordWindowChanged()
         }
@@ -583,7 +603,7 @@ class HomeViewModel
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
                     draftMessage = message,
                     isPhotoSheetVisible = true,
-                ).refreshSourceSummary(sourceItems, photoCandidates, zone)
+                ).withSourceSummary(sourceItems, photoCandidates)
             }
             sendEffect(HomeUiSideEffect.ShowSnackbar(message))
         }
@@ -623,7 +643,7 @@ class HomeViewModel
                 photoCandidatesJob = null
                 requestedPhotoWindow = null
                 updateState {
-                    refreshSourceSummary(sourceItems, photoCandidates, zone)
+                    withSourceSummary(sourceItems, photoCandidates)
                         .copy(isPhotoLoading = false)
                 }
                 return
@@ -652,7 +672,7 @@ class HomeViewModel
                             cache.ids.all(availableIds::contains)
                         }
                     updateState {
-                        refreshSourceSummary(sourceItems, candidates, zone)
+                        withSourceSummary(sourceItems, candidates)
                             .copy(isPhotoLoading = false)
                     }
                 }
@@ -660,7 +680,7 @@ class HomeViewModel
 
         private fun onRecordWindowChanged() {
             preparedPhotoCache = null
-            updateState { refreshSourceSummary(sourceItems, photoCandidates, zone) }
+            updateState { withSourceSummary(sourceItems, photoCandidates) }
             loadPhotoCandidates(force = false)
         }
 
@@ -676,7 +696,7 @@ class HomeViewModel
                     isPhotoLoading = false,
                     isPhotoSheetVisible = false,
                     isPhotoAccessLimited = false,
-                ).refreshSourceSummary(sourceItems, emptyList(), zone)
+                ).withSourceSummary(sourceItems, emptyList())
             }
         }
 
@@ -755,7 +775,7 @@ class HomeViewModel
             val alignedState =
                 if (trackingTask != null && trackingTask.recordDate != selectedDate) {
                     copy(selectedDate = trackingTask.recordDate)
-                        .refreshSourceSummary(sourceItems, photoCandidates, zone)
+                        .withSourceSummary(sourceItems, photoCandidates)
                 } else {
                     this
                 }

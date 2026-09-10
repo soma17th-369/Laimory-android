@@ -32,6 +32,7 @@ import com.soma369.laimory.core.ui.R
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
+import com.soma369.laimory.feature.home.state.HomeSourceCount
 import com.soma369.laimory.feature.home.state.HomeSourceSummary
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.isInputLocked
@@ -96,7 +97,7 @@ internal fun DateHeaderCard(
             // 고른 것이 실리는지 알 수 없어, 미리보기는 표시만 맡는다.
             PhotoPreviewRow(
                 previewUris = state.summary.photoPreviewUris,
-                photoCount = state.summary.photoCount,
+                photoCount = state.summary.photo.candidate,
             )
 
             Box(
@@ -113,9 +114,8 @@ internal fun DateHeaderCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text =
-                        "사진 ${state.summary.photoCount} · 일정 ${state.summary.calendarCount} · " +
-                            "걸음 ${formatNumber(state.summary.stepCount)}",
+                    // 걸음은 새 홈 카드에서 빠지므로 요약에서도 뺐다. 전송은 그대로다.
+                    text = "사진 ${state.summary.photo.sending} · 일정 ${state.summary.calendar.sending}",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -282,8 +282,6 @@ private fun draftActionLabel(status: DraftCreationStatus): String =
         DraftCreationStatus.FAILED -> "다시 시도"
     }
 
-private fun formatNumber(value: Long): String = String.format(Locale.KOREA, "%,d", value)
-
 private val CARD_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
 
 @Preview(name = "초안 처리 중", showBackground = true)
@@ -309,7 +307,11 @@ private fun DraftStatusPreview(status: DraftCreationStatus) {
             state =
                 HomeUiState(
                     selectedDate = LocalDate.of(2026, 7, 22),
-                    summary = HomeSourceSummary(photoCount = 3, calendarCount = 2, stepCount = 4_821),
+                    summary =
+                        HomeSourceSummary(
+                            photo = HomeSourceCount(candidate = 8, sending = 3),
+                            calendar = HomeSourceCount(candidate = 2, sending = 2),
+                        ),
                     draftStatus = status,
                 ),
             onClick = {},

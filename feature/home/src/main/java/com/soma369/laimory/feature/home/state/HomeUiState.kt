@@ -2,18 +2,18 @@ package com.soma369.laimory.feature.home.state
 
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
-import com.soma369.laimory.core.domain.model.collection.HealthPayload
+import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.ui.base.UiState
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
-import kotlin.math.roundToLong
 
 @Immutable
 data class HomeUiState(
@@ -82,12 +82,22 @@ data class HomePhotoItem(
     val capturedAt: Instant,
 )
 
+/**
+ * 홈 원천 카드가 그리는 값.
+ *
+ * 카드 본문은 유형마다 `M개 중 N개` 이고, 그 위 내용 슬롯은 유형마다 다르다 — 사진은 격자,
+ * 일정·알림은 3초마다 넘기는 목록이다. 걸음(건강)은 카드에 없어 여기서도 빠진다. 전송은 그대로다.
+ */
 @Immutable
 data class HomeSourceSummary(
-    val photoCount: Int = 0,
-    val calendarCount: Int = 0,
-    val stepCount: Long = 0,
+    val photo: HomeSourceCount = HomeSourceCount(),
+    val calendar: HomeSourceCount = HomeSourceCount(),
+    val location: HomeSourceCount = HomeSourceCount(),
+    val notification: HomeSourceCount = HomeSourceCount(),
+    /** 사진 격자에 그릴 후보. **선택분이 아니라 후보 기준**이다 — 카드는 무엇이 모였는지를 보여 준다. */
     val photoPreviewUris: List<String> = emptyList(),
+    val calendarItems: List<HomeCalendarItem> = emptyList(),
+    val notificationApps: List<HomeNotificationApp> = emptyList(),
     val totalItemCount: Int = 0,
 )
 
@@ -128,10 +138,22 @@ internal val DraftCreationStatus.isDateLocked: Boolean
 internal val DraftCreationStatus.isInputLocked: Boolean
     get() = isDateLocked || this == DraftCreationStatus.SUCCESS
 
+/**
+ * 기록 창 안에 모인 것을 홈 카드가 그릴 값으로 옮긴다.
+ *
+ * [selection] 은 홈이 상시로 돌린 선택 정책 결과다. 전송 예정 수(N)는 타입별 상한과 사용자 제외를
+ * 반영한 값이라 후보 수(M)만으로는 알 수 없다. 아직 없으면 N 을 0 으로 둔다 — 없는 값을 후보 수로
+ * 대신 채우면 카드가 실제보다 많이 보낸다고 말하게 된다.
+ *
+ * [excludedRawIds] 는 사용자가 상세에서 뺀 항목이다. 소유는 세션 스토어로 옮겨가며(후속 이슈),
+ * 여기서는 입력으로 받아 N 에서 덜어 낸다.
+ */
 internal fun HomeUiState.refreshSourceSummary(
     items: List<SourceItem>,
     photoCandidates: List<PhotoCandidate>,
     zone: ZoneId,
+    selection: DraftSourceItemSelection? = null,
+    excludedRawIds: Set<String> = emptySet(),
 ): HomeUiState {
     val window =
         recordDateWindow(zone)
@@ -159,22 +181,19 @@ internal fun HomeUiState.refreshSourceSummary(
             }.toList()
     val availableIds = availablePhotos.mapTo(linkedSetOf(), HomePhotoItem::mediaStoreId)
     val selectedIds = selectedPhotoIds.intersect(availableIds)
-    val selectedPhotos = availablePhotos.filter { it.mediaStoreId in selectedIds }
-    val steps =
-        inWindowNonPhotos
-            .mapNotNull { it.payload as? HealthPayload }
-            .filter { it.metric == HealthPayload.Metric.STEPS }
-            .sumOf { it.value }
-            .roundToLong()
 
     return copy(
         summary =
             HomeSourceSummary(
-                photoCount = selectedPhotos.size,
-                calendarCount = inWindowNonPhotos.count { it.payload is CalendarPayload },
-                stepCount = steps,
-                photoPreviewUris = selectedPhotos.take(PHOTO_PREVIEW_LIMIT).map(HomePhotoItem::uri),
-                totalItemCount = inWindowNonPhotos.size + selectedPhotos.size,
+                // 사진은 자동 절삭이 없어 전송 예정 수가 곧 고른 수다.
+                photo = HomeSourceCount(candidate = availablePhotos.size, sending = selectedIds.size),
+                calendar = countOf(DraftConsentTypeGroup.CALENDAR, inWindowNonPhotos, selection, excludedRawIds),
+                location = countOf(DraftConsentTypeGroup.LOCATION, inWindowNonPhotos, selection, excludedRawIds),
+                notification = countOf(DraftConsentTypeGroup.NOTIFICATION, inWindowNonPhotos, selection, excludedRawIds),
+                photoPreviewUris = availablePhotos.take(PHOTO_PREVIEW_LIMIT).map(HomePhotoItem::uri),
+                calendarItems = inWindowNonPhotos.toCalendarItems(),
+                notificationApps = inWindowNonPhotos.toNotificationApps(),
+                totalItemCount = inWindowNonPhotos.size + selectedIds.size,
             ),
         availablePhotos = availablePhotos,
         selectedPhotoIds = selectedIds,
@@ -186,6 +205,58 @@ internal fun HomeUiState.refreshSourceSummary(
             },
     )
 }
+
+/** 한 유형의 `M개 중 N개`. 위치는 STAY·MOVEMENT 를 합친 한 건수다. */
+private fun countOf(
+    group: DraftConsentTypeGroup,
+    inWindowNonPhotos: List<SourceItem>,
+    selection: DraftSourceItemSelection?,
+    excludedRawIds: Set<String>,
+): HomeSourceCount {
+    val types = group.memberTypes.toSet()
+    val sending =
+        selection
+            ?.items
+            .orEmpty()
+            .count { it.itemType in types && it.rawId !in excludedRawIds }
+    return HomeSourceCount(
+        candidate = inWindowNonPhotos.count { it.itemType in types },
+        sending = sending,
+    )
+}
+
+/** 시작 시각 오름차순. 같은 시각이면 `rawId` 로 고정해 회전 순서가 흔들리지 않게 한다. */
+private fun List<SourceItem>.toCalendarItems(): List<HomeCalendarItem> =
+    asSequence()
+        .mapNotNull { item ->
+            val payload = item.payload as? CalendarPayload ?: return@mapNotNull null
+            HomeCalendarItem(
+                rawId = item.rawId,
+                title = payload.title,
+                startAt = item.startAt,
+                endAt = item.endAt,
+                allDay = payload.allDay,
+            )
+        }.sortedWith(compareBy({ it.startAt }, { it.rawId }))
+        .toList()
+
+/**
+ * 앱별 알림 건수. 건수 내림차순, 같으면 패키지명으로 고정한다.
+ *
+ * 표시명은 **가장 최근 알림의 수집 당시 이름**이다 — 앱 이름이 바뀌었을 수 있어 지금 이름을 다시
+ * 읽지 않는다. 표시명이 같아도 패키지가 다르면 다른 앱이다.
+ */
+private fun List<SourceItem>.toNotificationApps(): List<HomeNotificationApp> =
+    asSequence()
+        .filter { it.payload is NotificationPayload }
+        .groupBy { (it.payload as NotificationPayload).packageName }
+        .map { (packageName, appItems) ->
+            HomeNotificationApp(
+                packageName = packageName,
+                appName = (appItems.maxBy(SourceItem::startAt).payload as NotificationPayload).appName,
+                count = appItems.size,
+            )
+        }.sortedWith(compareByDescending<HomeNotificationApp> { it.count }.thenBy { it.packageName })
 
 internal fun HomeUiState.nonPhotoSourceItems(
     items: List<SourceItem>,
