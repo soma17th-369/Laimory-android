@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.screen
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +19,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -125,20 +126,22 @@ private fun PastRecordsHeader(
         horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Surface(
-            onClick = onBackClick,
-            modifier = Modifier.size(44.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surface,
+        // 배경을 두지 않는다 — 배경색 위에 흰 원만 떠 아이콘이 버튼 안에 갇힌 것처럼 보인다.
+        // 누를 자리는 44dp 로 그대로 두고 물결만 원으로 자른다.
+        Box(
+            modifier =
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onBackClick),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    painter = painterResource(UiR.drawable.ico_default_arrow_left),
-                    contentDescription = "뒤로",
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            Icon(
+                painter = painterResource(UiR.drawable.ico_default_arrow_left),
+                contentDescription = "뒤로",
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
         }
         Text(
             text = "지난 기록",
