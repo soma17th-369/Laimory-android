@@ -309,7 +309,7 @@ private fun HomeScreen(
                 onClick = state.cardClick(HomeSourceKind.PHOTO, onIntent, onRequestPermission),
                 permissionAction = state.permissionAction(HomeSourceKind.PHOTO, onRequestPermission),
             ) {
-                HomePhotoGrid(photoUris = state.summary.photoPreviewUris)
+                HomePhotoGrid(cells = state.summary.photoCells)
             }
         }
 

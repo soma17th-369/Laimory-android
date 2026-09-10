@@ -105,8 +105,8 @@ data class HomeSourceSummary(
     val calendar: HomeSourceCount = HomeSourceCount(),
     val location: HomeSourceCount = HomeSourceCount(),
     val notification: HomeSourceCount = HomeSourceCount(),
-    /** 사진 격자에 그릴 후보 최신 [HOME_PHOTO_GRID_CELLS] 장. **선택분이 아니라 후보 기준**이다. */
-    val photoPreviewUris: List<String> = emptyList(),
+    /** 사진 격자에 그릴 칸 최대 [HOME_PHOTO_GRID_CELLS] 개. 고른 사진이 앞에 온다. */
+    val photoCells: List<HomePhotoCell> = emptyList(),
     val calendarItems: List<HomeCalendarItem> = emptyList(),
     val notificationApps: List<HomeNotificationApp> = emptyList(),
     /** 위치 카드의 `가장 오래 머문 곳`. 창 안에 체류가 없으면 null 이다. */
@@ -203,7 +203,7 @@ internal fun HomeUiState.refreshSourceSummary(
                 calendar = countOf(DraftConsentTypeGroup.CALENDAR, inWindowNonPhotos, selection, excludedRawIds),
                 location = countOf(DraftConsentTypeGroup.LOCATION, inWindowNonPhotos, selection, excludedRawIds),
                 notification = countOf(DraftConsentTypeGroup.NOTIFICATION, inWindowNonPhotos, selection, excludedRawIds),
-                photoPreviewUris = availablePhotos.take(HOME_PHOTO_GRID_CELLS).map(HomePhotoItem::uri),
+                photoCells = availablePhotos.toPhotoCells(selectedIds),
                 calendarItems = inWindowNonPhotos.toCalendarItems(),
                 notificationApps = inWindowNonPhotos.toNotificationApps(),
                 stayPlace = inWindowNonPhotos.longestStayPlace(window),
@@ -314,6 +314,17 @@ internal fun HomeUiState.nonPhotoSourceItems(
 }
 
 internal const val MAX_PHOTO_SELECTION = DraftSourceItemLimits.DEFAULT_PHOTO
+
+/**
+ * 격자에 담을 칸. **고른 사진이 앞이고, 각 묶음 안에서는 후보 순서(최신순)를 지킨다.**
+ *
+ * 후보 최신순만 쓰면 오래된 사진을 골랐을 때 여섯 칸 어디에도 안 보여, 카드가 무엇을 보내는지
+ * 말하지 못한다. 반대로 고른 것만 보여 주면 무엇이 모였는지를 알 수 없어 둘을 함께 담는다.
+ */
+private fun List<HomePhotoItem>.toPhotoCells(selectedIds: Set<Long>): List<HomePhotoCell> =
+    sortedByDescending { it.mediaStoreId in selectedIds }
+        .take(HOME_PHOTO_GRID_CELLS)
+        .map { photo -> HomePhotoCell(uri = photo.uri, isSelected = photo.mediaStoreId in selectedIds) }
 
 /**
  * 사진 카드 격자의 칸 수.
