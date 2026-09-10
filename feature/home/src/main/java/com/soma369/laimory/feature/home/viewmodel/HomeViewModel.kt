@@ -3,8 +3,13 @@ package com.soma369.laimory.feature.home.viewmodel
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
+import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.message.DialogRequest
+import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
@@ -12,16 +17,18 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
+import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
-import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.PastRecordsPage
+import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
+import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
@@ -33,7 +40,10 @@ import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
+import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
@@ -47,8 +57,10 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
+import com.soma369.laimory.feature.home.state.confirmDialogBody
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -79,6 +91,9 @@ class HomeViewModel
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
+        private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
+        private val loadingSessionStore: DraftLoadingSessionStore,
+        private val messageHelper: MessageHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
         collectionLabAccessGate: CollectionLabAccessGate,
@@ -593,8 +608,99 @@ class HomeViewModel
                         selection = selection,
                         discardActiveTask = shouldDiscardPreviousTask,
                     )
-                    navigationHelper.navigateTo(DraftConsentPage)
+                    confirmAndSubmit()
                 }
+        }
+
+        /**
+         * 확인 다이얼로그를 띄우고, 만들기를 고르면 그대로 제출한다.
+         *
+         * 화면을 한 장 더 두지 않는다 — 보낼 데이터를 보여 주고 유형 상세로 들어가는 일은 이미
+         * 홈 카드가 하므로, 남는 것은 "이 건수로 만들겠습니까" 라는 마지막 확인뿐이다.
+         */
+        private suspend fun confirmAndSubmit() {
+            val preparation = draftConsentSessionStore.preparation.value ?: return
+            // 제출 목록은 **소유자인 스토어**를 읽어 만든다. 위치가 꺼져 있으면 이 시점 스냅샷의
+            // 위치 항목 전체를 함께 뺀다 — 스위치를 끈 뒤 수집된 것까지 덮어야 어긋나지 않는다.
+            val excluded =
+                draftConsentSessionStore.excludedRawIds.value +
+                    if (draftConsentSessionStore.isLocationSendEnabled.value) {
+                        emptySet()
+                    } else {
+                        preparation.selection.locationRawIds()
+                    }
+            val submission = preparation.selection.excluding(excluded)
+            if (submission.items.isEmpty()) {
+                draftConsentSessionStore.clearPreparation()
+                sendEffect(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요."))
+                return
+            }
+            val result =
+                messageHelper.showTwoButtonDialog(
+                    DialogRequest.TwoButton(
+                        title = "타임라인을 만들까요?",
+                        body = submission.confirmDialogBody(),
+                        primaryLabel = "만들기",
+                        secondaryLabel = "취소",
+                    ),
+                )
+            // 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은
+            // 남긴다 — 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
+            if (result != DialogResult.Primary) {
+                draftConsentSessionStore.clearPreparation()
+                return
+            }
+            submitDraft(preparation, submission)
+        }
+
+        private suspend fun submitDraft(
+            preparation: DraftConsentPreparation,
+            submission: DraftSourceItemSelection,
+        ) {
+            if (preparation.discardActiveTask) draftTaskCoordinator.discard()
+            createTimelineDraftUseCase(
+                preparation.recordDate,
+                preparation.zone,
+                preparation.window,
+                submission,
+            ).onSuccess { handle ->
+                draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
+                // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
+                loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
+                draftConsentSessionStore.clearAfterSubmission()
+                navigationHelper.navigateTo(DraftLoadingPage)
+            }.onFailure(::handleDraftSubmitFailure)
+        }
+
+        /**
+         * 확인 화면이 받던 제출 실패를 홈이 받는다.
+         *
+         * 어느 경우든 **제출용 스냅샷만 버리고** 홈 선택 상태는 남긴다. 복귀가 홈이라 사진을 다시
+         * 고를 필요도 없다.
+         */
+        private fun handleDraftSubmitFailure(error: Throwable) {
+            draftConsentSessionStore.clearPreparation()
+            when {
+                // 서버가 단계 동의를 다시 요구한다 — 약관이 개정됐거나 구버전으로 온보딩을 마친
+                // 계정이다. 받는 자리로 보내되 **자동으로 재개하지 않는다.**
+                error is ApiException && error.errorCode == TERMS_AGREEMENT_REQUIRED -> {
+                    navigationHelper.navigateTo(StageTermsPage(DRAFT_CONSENT_STAGES.map(TermStage::name)))
+                }
+
+                // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 실패로만 보이면 이유를 알 수 없다.
+                error is ApiException && error.errorCode == APPEND_NO_NEW_ITEMS -> {
+                    sendEffect(HomeUiSideEffect.ShowSnackbar("이미 기록에 들어간 것뿐이라 새로 더할 게 없어요."))
+                }
+
+                // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 사진으로는 복구되지
+                // 않으므로 고르는 자리를 다시 연다.
+                error is DraftPhotoAccessException -> {
+                    handleUnavailablePhotos(emptySet())
+                    startPhotoSelection()
+                }
+
+                else -> handleDraftCreationFailure(error)
+            }
         }
 
         /**
@@ -980,6 +1086,19 @@ class HomeViewModel
         )
 
         private companion object {
+            /** 서버가 단계 동의를 요구할 때 주는 코드. */
+            const val TERMS_AGREEMENT_REQUIRED = -3001
+
+            /** 이어 붙일 새 항목이 없을 때 서버가 주는 코드. */
+            const val APPEND_NO_NEW_ITEMS = -1013
+
+            /**
+             * `-3001` 을 받았을 때 다시 받아야 할 후보 단계.
+             *
+             * 오류가 어느 단계인지 알려 주지 않으므로 온보딩이 받는 것과 **같은 집합**을 싣고,
+             * 실제로 남은 것만 받는 판단은 약관 화면이 다시 조회해서 한다.
+             */
+            val DRAFT_CONSENT_STAGES = listOf(TermStage.TIMELINE_FIRST_CREATE, TermStage.TIMELINE_LOCATION)
             const val AUTO_COLLECTION_LOADING_KEY = "home-auto-collection"
 
             /**
