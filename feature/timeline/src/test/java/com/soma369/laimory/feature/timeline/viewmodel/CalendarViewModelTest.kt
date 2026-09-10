@@ -15,9 +15,9 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
+import com.soma369.laimory.core.ui.component.calendar.CALENDAR_FIRST_MONTH
+import com.soma369.laimory.core.ui.component.calendar.CALENDAR_LAST_MONTH
 import com.soma369.laimory.core.ui.theme.Emotion
-import com.soma369.laimory.feature.timeline.model.CALENDAR_FIRST_MONTH
-import com.soma369.laimory.feature.timeline.model.CALENDAR_LAST_MONTH
 import com.soma369.laimory.feature.timeline.state.CalendarUiIntent
 import com.soma369.laimory.feature.timeline.state.MonthlyRecordsUiContent
 import kotlinx.coroutines.CompletableDeferred

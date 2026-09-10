@@ -1,4 +1,4 @@
-package com.soma369.laimory.feature.timeline.model
+package com.soma369.laimory.core.ui.component.calendar
 
 import androidx.compose.runtime.Immutable
 import java.time.LocalDate

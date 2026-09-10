@@ -4,9 +4,9 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
-import com.soma369.laimory.feature.timeline.model.CALENDAR_YEAR_RANGE
+import com.soma369.laimory.core.ui.component.calendar.CALENDAR_YEAR_RANGE
+import com.soma369.laimory.core.ui.component.calendar.coerceToCalendarRange
 import com.soma369.laimory.feature.timeline.model.CalendarRecordUiModel
-import com.soma369.laimory.feature.timeline.model.coerceToCalendarRange
 import com.soma369.laimory.feature.timeline.model.toCalendarRecordsByDate
 import com.soma369.laimory.feature.timeline.state.CalendarMonthPickerState
 import com.soma369.laimory.feature.timeline.state.CalendarUiIntent
