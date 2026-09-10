@@ -12,7 +12,6 @@ import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.navigation.CalendarPage
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
-import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
 import com.soma369.laimory.core.domain.navigation.HomePage
@@ -30,7 +29,6 @@ import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.feature.collection.screen.CollectionLabRoute
 import com.soma369.laimory.feature.feature1.screen.Feature1Route
 import com.soma369.laimory.feature.home.screen.DraftConsentDetailRoute
-import com.soma369.laimory.feature.home.screen.DraftConsentRoute
 import com.soma369.laimory.feature.home.screen.DraftLoadingRoute
 import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.home.screen.PastRecordsRoute
@@ -173,10 +171,6 @@ val appRoutes: List<AppRoute> =
         AppRoute(
             path = DraftLoadingPage.PATH,
             render = { innerPadding, _ -> DraftLoadingRoute(innerPadding = innerPadding) },
-        ),
-        AppRoute(
-            path = DraftConsentPage.PATH,
-            render = { innerPadding, _ -> DraftConsentRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = DraftConsentDetailPage.PATH,

@@ -2,8 +2,6 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
-import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
@@ -11,8 +9,6 @@ import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
-import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
-import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveMovementAddressesUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
@@ -22,11 +18,9 @@ import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSelectionSnapshot
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
-import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import com.soma369.laimory.feature.home.state.DraftConsentUiSideEffect
 import com.soma369.laimory.feature.home.state.DraftConsentUiState
-import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.movementEndAddressKey
 import com.soma369.laimory.feature.home.state.movementStartAddressKey
 import com.soma369.laimory.feature.home.state.stayAddressKey
@@ -133,8 +127,6 @@ class DraftConsentViewModel
                 DraftConsentUiIntent.ToggleLocationInclusion -> toggleLocationInclusion()
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
-                DraftConsentUiIntent.Submit -> submit()
-                DraftConsentUiIntent.NavigateBack -> navigateBack()
             }
         }
 
@@ -163,95 +155,6 @@ class DraftConsentViewModel
             val summary = state.value.content?.summaryOf(intent.group) ?: return
             if (!summary.isSent) return
             navigationHelper.navigateTo(DraftConsentDetailPage(intent.group.name))
-        }
-
-        private fun submit() {
-            val preparation = activePreparation ?: return
-            if (!state.value.canSubmit) return
-            // 스냅샷에서 사용자 제외 항목만 뺀 결과를 전송한다. 제외로 생긴 상한 여유는 재충원하지 않는다.
-            // 위치 전송이 꺼져 있으면 **이 시점 스냅샷의 위치 항목 전체**를 함께 뺀다 — 스위치를
-            // 끈 뒤 수집된 것까지 덮어야 스위치와 실제 전송이 어긋나지 않는다.
-            // 상태가 아니라 **소유자인 스토어**를 읽는다. 상태는 스토어를 비추는 값이라, 토글
-            // 직후 제출하면 아직 반영되지 않은 값을 볼 수 있다.
-            val excluded =
-                sessionStore.excludedRawIds.value +
-                    if (sessionStore.isLocationSendEnabled.value) emptySet() else preparation.selection.locationRawIds()
-            val submission = preparation.selection.excluding(excluded)
-            // 보낼 것이 없으면 시작하지 않는다. `canSubmit` 은 스토어를 비추는 상태에서 나오므로
-            // 토글 직후 제출하면 아직 따라오지 않은 값을 볼 수 있다 — 실제 전송 목록으로 다시 본다.
-            if (submission.items.isEmpty()) return
-            updateState { copy(isSubmitting = true, submitError = null) }
-            safeLaunch(onError = ::handleSubmitFailure) {
-                if (preparation.discardActiveTask) draftTaskCoordinator.discard()
-                val result =
-                    createTimelineDraftUseCase(
-                        preparation.recordDate,
-                        preparation.zone,
-                        preparation.window,
-                        submission,
-                    )
-                val handle =
-                    result.getOrElse {
-                        handleSubmitFailure(it)
-                        return@safeLaunch
-                    }
-                draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
-                // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
-                loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
-                // 선택 상태를 비우는 것은 **제출 성공뿐**이다. 그 시도의 선택은 이미 서버로 갔다.
-                // 취소·약관 이동·사진 실패는 제출용 스냅샷만 버리고 홈 선택은 남긴다.
-                sessionStore.clearAfterSubmission()
-                activePreparation = null
-                // 동의 화면을 백스택에서 빼고 로딩 화면을 올린다 — 로딩에서 뒤로가면 홈이다.
-                navigationHelper.navigateToBack()
-                navigationHelper.navigateTo(DraftLoadingPage)
-            }
-        }
-
-        private fun handleSubmitFailure(error: Throwable) {
-            // 서버가 이 단계 동의를 다시 요구한다 — 약관이 개정됐거나, 온보딩이 동의를 받기
-            // 전 버전으로 온보딩을 마친 계정이다. 이 화면은 동의를 받지 않으므로 받는 자리로
-            // 보낸다. **어느 단계가 비었는지는 오류가 알려 주지 않아** 후보를 모두 싣고,
-            // 그 화면이 다시 조회해 실제로 남은 것만 받는다.
-            //
-            // 준비는 폐기하지 않는다 — 돌아오면 같은 스냅샷으로 다시 제출할 수 있고, 그래야
-            // 사진을 다시 고르지 않는다. 생성을 자동으로 재개하지도 않는다.
-            if (error is ApiException && error.errorCode == TERMS_AGREEMENT_REQUIRED) {
-                updateState { copy(isSubmitting = false, submitError = AGREEMENT_REQUIRED_MESSAGE) }
-                navigationHelper.navigateTo(StageTermsPage(DRAFT_CONSENT_STAGES.map(TermStage::name)))
-                return
-            }
-            // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 서버는 초안이 있는 날짜의
-            // 생성을 덮어쓰기가 아니라 **이어 붙이기**로 처리하므로, 새로 더할 것이 없으면
-            // 409 `-1013` 으로 거절한다. 실패로만 보이면 사용자는 이유를 알 수 없다.
-            if (error is ApiException && error.errorCode == APPEND_NO_NEW_ITEMS) {
-                updateState { copy(isSubmitting = false, submitError = NO_NEW_ITEMS_MESSAGE) }
-                return
-            }
-            // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 스냅샷 재시도로는 복구되지
-            // 않으므로 준비를 폐기하고 홈의 사진 재선택 흐름으로 복귀시킨다.
-            if (error is DraftPhotoAccessException) {
-                sessionStore.clearPreparation()
-                sessionStore.markPhotoReselectionNeeded()
-                activePreparation = null
-                navigationHelper.navigateToBack()
-                return
-            }
-            // 그 외에는 같은 스냅샷으로 재시도할 수 있게 화면에 머물러 안내한다.
-            updateState {
-                copy(
-                    isSubmitting = false,
-                    submitError = "초안 생성 요청을 보내지 못했어요. 잠시 후 다시 시도해주세요.",
-                )
-            }
-            handleFailure(error)
-        }
-
-        private fun navigateBack() {
-            if (state.value.isSubmitting) return
-            sessionStore.clearPreparation()
-            activePreparation = null
-            navigationHelper.navigateToBack()
         }
 
         /** 화면 복귀 신호. 진행 중인 시도가 없으면 판정할 대상도 없다. */

@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -111,8 +112,6 @@ fun HomeRoute(
         )
     LaunchedEffect(sourcePermissions) { viewModel.sendIntent(sourcePermissions) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        // 동의 화면에서 제출을 마치고 복귀한 경우를 1회 소비한다.
-        viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
         viewModel.sendIntent(HomeUiIntent.RefreshProfile)
         viewModel.sendIntent(
             HomeUiIntent.RefreshPhotos(
@@ -370,6 +369,18 @@ private fun HomeScreen(
                     permissionAction = state.permissionAction(HomeSourceKind.NOTIFICATION, onRequestPermission),
                 ) {
                     HomeNotificationSlot(apps = state.summary.notificationApps)
+                }
+            }
+
+            // 건강은 카드에 없고 릴리즈에서는 뺄 수단도 없다. 개발 중 항목을 확인할 자리로 debug 에만
+            // 남긴다 — 릴리즈에 다시 열 때는 빌드 타입이 아니라 제품 규칙으로 판정해야 한다.
+            // 고정된 CTA 아래가 아니라 카드 영역 끝에 둔다. 거기 두면 개발 빌드에서만 카드 자리가 준다.
+            if (state.isCollectionLabAccessible) {
+                TextButton(
+                    onClick = { onIntent(HomeUiIntent.OpenHealthDetail) },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text("건강 상세")
                 }
             }
         }

@@ -122,9 +122,6 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object RefreshLocationConsent : HomeUiIntent
 
-    /** 동의 화면에서 제출을 마치고 복귀했는지 확인한다. 홈 재진입(ON_RESUME)마다 1회 소비한다. */
-    data object ConsumeDraftConsentResult : HomeUiIntent
-
     data object RetryDraft : HomeUiIntent
 
     data object ContinueWaiting : HomeUiIntent
@@ -148,4 +145,12 @@ sealed interface HomeUiIntent : UiIntent {
     data class OpenSourceDetail(
         val kind: HomeSourceKind,
     ) : HomeUiIntent
+
+    /**
+     * 건강 상세를 연다. **debug 전용 진입점**이다.
+     *
+     * 건강은 홈 카드에 없고 릴리즈에서는 항목 단위로 뺄 수단도 없다(제품 결정). 개발 중 무엇이
+     * 실리는지 확인할 자리가 필요해 수집 실험실과 같은 자리에 임시로 둔다.
+     */
+    data object OpenHealthDetail : HomeUiIntent
 }

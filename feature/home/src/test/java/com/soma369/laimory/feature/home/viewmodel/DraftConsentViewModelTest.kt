@@ -2,8 +2,6 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
-import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
@@ -32,7 +30,6 @@ import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
-import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.MovementAddressRepository
 import com.soma369.laimory.core.domain.repository.StayAddressRepository
@@ -110,124 +107,6 @@ class DraftConsentViewModelTest {
 
             assertNull(viewModel.state.value.content)
             assertFalse(viewModel.state.value.canSubmit)
-        }
-
-    @Test
-    fun `모든 동의 후 제출하면 스냅샷 그대로 전송하고 홈으로 복귀한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal"), photoItem(7L)))
-            val snapshotItems = sessionStore.preparation.value!!.selection.items
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertEquals(1, draftRepository.createCount)
-            assertEquals(snapshotItems, draftRepository.createdItems)
-            assertEquals(listOf("content://photo/7"), draftRepository.uploadedUris)
-            assertEquals(listOf("task-1"), draftTaskCoordinator.startedTaskIds)
-            assertNull(sessionStore.preparation.value)
-            assertEquals(1, navigationHelper.backCount)
-        }
-
-    @Test
-    fun `제출 중 중복 요청과 체크 변경을 무시한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal")))
-            draftRepository.createGate = CompletableDeferred()
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal"))
-            runCurrent()
-
-            assertEquals(1, draftRepository.createCount)
-            assertTrue(viewModel.state.value.isSubmitting)
-            // 제출 중에는 전송 목록도 바뀌지 않는다.
-            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
-
-            draftRepository.createGate?.complete(DraftTaskHandle("task-1"))
-            runCurrent()
-            assertEquals(1, navigationHelper.backCount)
-        }
-
-    @Test
-    fun `제출 실패 시 동의 화면에 머물러 같은 스냅샷으로 재시도할 수 있다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal")))
-            draftRepository.createFailure = IllegalStateException("failed")
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertNotNull(viewModel.state.value.submitError)
-            assertFalse(viewModel.state.value.isSubmitting)
-            assertEquals(0, navigationHelper.backCount)
-            assertNotNull(sessionStore.preparation.value)
-
-            draftRepository.createFailure = null
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertEquals(2, draftRepository.createCount)
-            assertEquals(1, navigationHelper.backCount)
-        }
-
-    @Test
-    fun `뒤로가기는 준비 상태를 폐기하고 네트워크를 호출하지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal"), photoItem(7L)))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.NavigateBack)
-            runCurrent()
-
-            assertNull(sessionStore.preparation.value)
-            assertEquals(1, navigationHelper.backCount)
-            assertEquals(0, draftRepository.uploadCount)
-            assertEquals(0, draftRepository.createCount)
-        }
-
-    @Test
-    fun `제출 중에는 뒤로가기를 무시한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal")))
-            draftRepository.createGate = CompletableDeferred()
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-            viewModel.sendIntent(DraftConsentUiIntent.NavigateBack)
-            runCurrent()
-
-            assertEquals(0, navigationHelper.backCount)
-            assertNotNull(sessionStore.preparation.value)
-
-            draftRepository.createGate?.complete(DraftTaskHandle("task-1"))
-            runCurrent()
-            assertEquals(1, navigationHelper.backCount)
-        }
-
-    @Test
-    fun `이전 작업 폐기 플래그가 있으면 제출 직전에 폐기한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal")), discardActiveTask = true)
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertEquals(1, draftTaskCoordinator.discardCount)
-            assertEquals(listOf("task-1"), draftTaskCoordinator.startedTaskIds)
         }
 
     @Test
@@ -349,20 +228,6 @@ class DraftConsentViewModelTest {
         }
 
     @Test
-    fun `위치를 끈 채 제출하면 위치가 빠진 목록만 전송한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(stayItem("stay-1"), movementItem("move-1"), calendarItem("cal-1")))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertEquals(listOf("cal-1"), draftRepository.createdItems.map(SourceItem::rawId))
-        }
-
-    @Test
     fun `지도 마커는 체류 한 개 이동 두 개로 만들어진다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(stayItem("stay-1"), movementItem("move-1")))
@@ -418,26 +283,6 @@ class DraftConsentViewModelTest {
             assertEquals(3, addressResolver.requested.size)
             assertEquals(3, addressResolver.requested.distinct().size)
             assertTrue(viewModel.state.value.content?.locationMarkers.orEmpty().all { it.title == "주소 미확인" })
-        }
-
-    @Test
-    fun `전송 스냅샷의 payload 에는 해석한 주소를 써넣지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            // 화면에 보인 것과 보내는 것이 같다는 보장은 스냅샷 하나에서 나온다. 주소는 표시용
-            // 덧입힘이라 payload 를 바꾸면 전송 바이트가 달라진다.
-            agreeLocationTerms()
-            addressResolver.answer = { _, _ -> "해석한 주소" }
-            prepare(listOf(stayItem("stay-1", address = null)))
-            val viewModel = createViewModel()
-            runCurrent()
-            assertEquals("해석한 주소", viewModel.state.value.content?.locationMarkers?.single()?.title)
-
-            // 제출에 성공하면 준비가 폐기되므로 화면 상태는 여기서 먼저 본다.
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            val sent = draftRepository.createdItems.single().payload as StayPayload
-            assertNull(sent.address)
         }
 
     @Test
@@ -595,89 +440,6 @@ class DraftConsentViewModelTest {
         }
 
     @Test
-    fun `제출 중에는 위치 Switch 를 바꿀 수 없다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(stayItem("stay-1"), calendarItem("cal-1")))
-            draftRepository.createGate = CompletableDeferred()
-            val viewModel = createViewModel()
-            runCurrent()
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
-            runCurrent()
-
-            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
-        }
-
-    @Test
-    fun `제외 항목을 뺀 결과만 제출한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2"), photoItem(7L)))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertEquals(1, draftRepository.createCount)
-            assertEquals(listOf("cal-2", "photo-7"), draftRepository.createdItems.map(SourceItem::rawId))
-            assertEquals(listOf("content://photo/7"), draftRepository.uploadedUris)
-        }
-
-    @Test
-    fun `제출에 성공하면 로딩 화면이 쓸 스냅샷을 남긴다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2"), photoItem(7L)))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            // 동의 준비 상태는 폐기되지만 로딩 스냅샷은 남아야 한다.
-            assertNull(sessionStore.preparation.value)
-            val session = loadingSessionStore.session.value
-            assertEquals("task-1", session?.taskId)
-            assertEquals(date, session?.recordDate)
-            assertEquals(listOf("content://photo/7"), session?.photoUris)
-            assertEquals(1, session?.photoCount)
-            assertEquals(2, session?.calendarCount)
-            assertEquals(0, session?.stayCount)
-        }
-
-    @Test
-    fun `제출 스냅샷의 건수는 사용자가 제외한 항목을 빼고 센다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal-1"), calendarItem("cal-2")))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertEquals(1, loadingSessionStore.session.value?.calendarCount)
-        }
-
-    @Test
-    fun `모든 항목을 제외하면 제출할 수 없다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal-1")))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertFalse(viewModel.state.value.canSubmit)
-            assertEquals(0, draftRepository.createCount)
-            assertFalse(viewModel.state.value.isSubmitting)
-        }
-
-    @Test
     fun `스냅샷이 갱신돼도 제외는 남고 사라진 항목만 걷힌다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 수집이 돌 때마다 사용자가 뺀 것이 되살아나면 카드에서 무엇을 뺄 수가 없다.
@@ -716,23 +478,6 @@ class DraftConsentViewModelTest {
         }
 
     @Test
-    fun `제출 중 사진 접근 실패는 준비를 폐기하고 사진 재선택 복귀를 기록한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            prepare(listOf(calendarItem("cal"), photoItem(7L)))
-            draftRepository.uploadFailure = DraftPhotoAccessException("사진에 접근할 수 없습니다")
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertNull(sessionStore.preparation.value)
-            assertTrue(sessionStore.consumePhotoReselectionNeeded())
-            assertEquals(1, navigationHelper.backCount)
-            assertEquals(0, draftRepository.createCount)
-        }
-
-    @Test
     fun `유형 상세에서의 복귀는 준비 상태를 유지한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             prepare(listOf(calendarItem("cal")))
@@ -744,48 +489,6 @@ class DraftConsentViewModelTest {
 
             assertEquals(1, navigationHelper.backCount)
             assertNotNull(sessionStore.preparation.value)
-        }
-
-    @Test
-    fun `새로 더할 항목이 없으면 이유를 알려 준다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            // 서버는 초안이 있는 날짜의 생성을 덮어쓰기가 아니라 이어 붙이기로 처리한다. 이미
-            // 들어간 항목만 다시 보내면 409 -1013 이고, 실패로만 보이면 이유를 알 수 없다.
-            draftRepository.createFailure = ApiException.ConflictException(errorCode = -1013, rawCode = 409)
-            prepare(listOf(calendarItem("cal")))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            assertTrue(viewModel.state.value.submitError.orEmpty().contains("새로 추가할 것이 없어요"))
-            assertFalse(viewModel.state.value.isSubmitting)
-            // 같은 스냅샷으로 다시 제출할 수 있게 준비는 남긴다.
-            assertNotNull(sessionStore.preparation.value)
-        }
-
-    @Test
-    fun `서버가 동의를 다시 요구하면 단계 동의 화면으로 보내고 준비는 지킨다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            // 약관 개정이나 구버전 온보딩으로 남은 동의가 있는 경우다. 이 화면은 동의를 받지
-            // 않으므로 받는 자리로 보내고, 돌아와 같은 스냅샷으로 다시 제출할 수 있어야 한다.
-            draftRepository.createFailure = ApiException.UnauthorizedException(errorCode = -3001, rawCode = 403)
-            prepare(listOf(calendarItem("cal")))
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(DraftConsentUiIntent.Submit)
-            runCurrent()
-
-            val destination = navigationHelper.destinations.filterIsInstance<StageTermsPage>().single()
-            // 어느 단계가 비었는지 오류가 알려 주지 않으므로 후보를 모두 싣는다.
-            assertEquals(
-                listOf(TermStage.TIMELINE_FIRST_CREATE.name, TermStage.TIMELINE_LOCATION.name),
-                destination.stages,
-            )
-            assertNotNull(sessionStore.preparation.value)
-            assertFalse(viewModel.state.value.isSubmitting)
         }
 
     private fun createViewModel(): DraftConsentViewModel =

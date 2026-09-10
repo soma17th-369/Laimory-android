@@ -58,7 +58,6 @@ class DraftConsentSessionStore
 
         private var nextAttemptId = 1L
         private var nextRevision = 1L
-        private var needsPhotoReselection = false
 
         private val mutableAccountSession = MutableStateFlow(0L)
 
@@ -177,18 +176,6 @@ class DraftConsentSessionStore
             mutableLocationSendEnabled.value = true
         }
 
-        /** 제출 시점 사진 접근 실패를 기록한다. 홈이 복귀 시 [consumePhotoReselectionNeeded]로 한 번만 소비한다. */
-        fun markPhotoReselectionNeeded() {
-            needsPhotoReselection = true
-        }
-
-        /** 사진 재선택 필요 신호를 일회성으로 소비한다. 소비 후에는 false 를 반환한다. */
-        fun consumePhotoReselectionNeeded(): Boolean {
-            val result = needsPhotoReselection
-            needsPhotoReselection = false
-            return result
-        }
-
         /**
          * 인증 경계 교체(로그아웃·세션 만료) 시 시도 상태 전체를 초기화한다.
          * 이전 계정의 스냅샷·일회성 결과가 다음 계정으로 이월되지 않게 하는 계정 경계 계약이다.
@@ -198,7 +185,6 @@ class DraftConsentSessionStore
             mutableSelection.value = null
             mutableExcludedRawIds.value = emptySet()
             mutableLocationSendEnabled.value = true
-            needsPhotoReselection = false
             mutableAccountSession.value += 1
         }
     }

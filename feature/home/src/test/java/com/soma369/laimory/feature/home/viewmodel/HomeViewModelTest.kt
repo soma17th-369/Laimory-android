@@ -84,8 +84,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -267,70 +265,6 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(2, recordRepository.monthlyCallCount)
-        }
-
-    @Test
-    fun `제출 결과가 없는 복귀는 화면 상태를 바꾸지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
-            runCurrent()
-
-            val state = viewModel.state.value
-            assertEquals(DraftCreationStatus.IDLE, state.draftStatus)
-            assertFalse(state.isPhotoSheetVisible)
-        }
-
-    @Test
-    fun `동의 제출 중 사진 접근 실패 복귀는 사진 재선택 흐름을 연다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            sourceRepository.items.value = listOf(todayItem("first"))
-            val viewModel = createViewModel()
-            runCurrent()
-            sessionStore.markPhotoReselectionNeeded()
-            val effects = async { viewModel.sideEffect.take(2).toList() }
-            runCurrent()
-
-            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
-            runCurrent()
-
-            val state = viewModel.state.value
-            assertEquals(DraftCreationStatus.FAILED, state.draftStatus)
-            assertEquals(
-                listOf(
-                    HomeUiSideEffect.ShowSnackbar("선택한 사진에 접근할 수 없어요. 사진을 다시 선택해주세요."),
-                    HomeUiSideEffect.RequestPhotoAccess(),
-                ),
-                effects.await(),
-            )
-        }
-
-    @Test
-    fun `인증 경계 초기화는 이전 계정 시도 흔적을 지우고 새 생성 시작을 허용한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            // 제출까지 가면 추적 상태가 바뀌어 경계 초기화만 보기 어렵다. 확인에서 멈춘다.
-            dialogHelper.answer = DialogResult.Secondary
-            sourceRepository.items.value = listOf(todayItem("first"))
-            val viewModel = createViewModel()
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
-            sessionStore.markPhotoReselectionNeeded()
-
-            // 세션 만료·로그아웃으로 인증 root 가 교체되는 순간(MainActivity onAuthRootReplaced 경로)
-            sessionStore.clearAll()
-
-            // 이전 계정의 일회성 결과가 새 계정 홈에서 소비되지 않는다.
-            viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
-            runCurrent()
-            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
-
-            // 남은 준비물 가드에 걸리지 않고 새 시도를 시작할 수 있다.
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
-            assertEquals(2, dialogHelper.twoButtonRequests.size)
         }
 
     @Test

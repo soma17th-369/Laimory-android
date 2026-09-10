@@ -46,6 +46,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
@@ -77,6 +79,12 @@ fun DraftConsentDetailRoute(
     viewModel: DraftConsentViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // 약관 화면에 다녀와 동의하고 돌아오는 경로가 있다. 같은 스냅샷으로 돌아오므로 스냅샷 갱신만
+    // 봐서는 재판정 계기가 없어, 복귀를 알려 지도와 주소 해석을 다시 연다.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.sendIntent(DraftConsentUiIntent.Sync)
+    }
     val group = typeGroup?.let { name -> DraftConsentTypeGroup.entries.firstOrNull { it.name == name } }
     DraftConsentDetailContent(
         innerPadding = innerPadding,
