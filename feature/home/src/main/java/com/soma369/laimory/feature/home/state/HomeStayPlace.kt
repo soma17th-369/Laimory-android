@@ -26,12 +26,15 @@ data class HomeStayPlace(
     /**
      * 카드에 적을 문구. 층위가 있으면 `오산시 부산동`, 없으면 한 줄 주소, 둘 다 없으면 null.
      *
-     * 한쪽 층위만 있으면 그것만 적는다. 한 줄 주소로 물러설 때는 나라 이름을 뗀다 — 국내
-     * 사용자에게 `대한민국` 은 알려 주는 것이 없으면서 반쪽 카드의 가로폭만 먹는다.
+     * 한쪽 층위만 있으면 그것만 적는다. 두 층위가 같은 이름이면 한 번만 적는다 — 예전에
+     * 두 필드에 같은 값이 실려 저장된 항목이 `마포구 마포구` 로 뜨지 않게 한다.
+     *
+     * 한 줄 주소로 물러설 때는 나라 이름을 뗀다 — 국내 사용자에게 `대한민국` 은 알려 주는
+     * 것이 없으면서 반쪽 카드의 가로폭만 먹는다.
      */
     val label: String?
         get() =
-            listOfNotNull(city, district).takeIf { it.isNotEmpty() }?.joinToString(" ")
+            listOfNotNull(city, district).distinct().takeIf { it.isNotEmpty() }?.joinToString(" ")
                 ?: line?.removePrefix(COUNTRY_PREFIX)
 
     /**

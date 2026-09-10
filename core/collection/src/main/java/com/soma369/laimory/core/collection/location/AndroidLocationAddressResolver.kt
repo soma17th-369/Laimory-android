@@ -92,17 +92,21 @@ internal class AndroidLocationAddressResolver
             firstNotNullOfOrNull { address ->
                 val line = address.getAddressLine(0).normalized() ?: return@firstNotNullOfOrNull null
                 val fromLine = addressLineLayers(line)
+                val city =
+                    address.locality.normalized()
+                        ?: address.subAdminArea.normalized()
+                        ?: fromLine.city
+                        ?: address.adminArea.normalized()
+                val district =
+                    address.subLocality.normalized()
+                        ?: fromLine.district
+                        ?: address.thoroughfare.normalized()
                 ResolvedAddress(
                     line = line,
-                    city =
-                        address.locality.normalized()
-                            ?: address.subAdminArea.normalized()
-                            ?: fromLine.city
-                            ?: address.adminArea.normalized(),
-                    district =
-                        address.subLocality.normalized()
-                            ?: fromLine.district
-                            ?: address.thoroughfare.normalized(),
+                    city = city,
+                    // 같은 이름이면 아래 층위를 버린다 — `locality` 와 `subLocality` 에 똑같이
+                    // `마포구` 가 실려 오는 지역이 있어, 그대로 두면 `마포구 마포구` 가 된다.
+                    district = district?.takeIf { it != city },
                 )
             }
 

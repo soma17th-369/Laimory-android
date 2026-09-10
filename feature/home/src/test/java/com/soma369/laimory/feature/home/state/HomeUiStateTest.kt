@@ -343,6 +343,14 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun `두 층위가 같은 이름이면 한 번만 적는다`() {
+        // `locality` 와 `subLocality` 에 똑같이 `마포구` 가 실려 저장된 항목이 있다.
+        val duplicated = HomeStayPlace("a", 37.5, 126.9, city = "마포구", district = "마포구")
+
+        assertEquals("마포구", duplicated.label)
+    }
+
+    @Test
     fun `광역 이름만 저장된 예전 값은 다시 해석한다`() {
         // 층위를 시·군·구로 내리기 전에 저장된 값이다. 완료로 보면 `서울특별시` 한 마디가 남는다.
         val province = HomeStayPlace("a", 37.5, 126.9, city = "서울특별시", line = "대한민국 서울특별시 강남구")
