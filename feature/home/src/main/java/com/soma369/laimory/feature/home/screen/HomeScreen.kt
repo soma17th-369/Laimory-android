@@ -8,16 +8,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -29,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -52,11 +47,9 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DateHeaderCard
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
-import com.soma369.laimory.feature.home.component.PastRecordCard
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
-import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
@@ -70,10 +63,6 @@ fun HomeRoute(
     innerPadding: PaddingValues,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
-    // 홈 진입·복귀 시 지난 기록을 서버와 재동기화한다. (중복 요청 방지는 ViewModel이 소유)
-    LaunchedEffect(Unit) {
-        viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-    }
     val context = LocalContext.current
     // 판정은 설정·온보딩이 쓰는 공용 상태를 그대로 쓴다. 스스로 ON_RESUME 마다 다시 본다.
     val permissionState = rememberDataPermissionState()
@@ -295,36 +284,16 @@ private fun HomeScreen(
             }
         }
 
-        item(key = "pastRecordsHeader") {
-            Text(
-                text = "지난 기록",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        when (val pastRecords = state.pastRecords) {
-            HomePastRecordsUiState.Loading ->
-                item(key = "pastRecordsLoading") { PastRecordsLoading() }
-
-            HomePastRecordsUiState.Empty ->
-                item(key = "pastRecordsEmpty") { PastRecordsEmpty() }
-
-            HomePastRecordsUiState.LoadFailed ->
-                item(key = "pastRecordsLoadFailed") {
-                    PastRecordsLoadFailed(onRetryClick = { onIntent(HomeUiIntent.SyncPastRecords) })
+        // 목록은 전용 화면이 맡는다. 홈은 진입만 둔다 — 헤더 알약 버튼은 홈 개편 이슈가 맞춘다.
+        item(key = "pastRecordsEntry") {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = { onIntent(HomeUiIntent.OpenPastRecords) },
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                ) {
+                    Text("지난 기록 보기")
                 }
-
-            is HomePastRecordsUiState.Content ->
-                items(
-                    items = pastRecords.records,
-                    key = { it.dailyRecordId },
-                ) { record ->
-                    PastRecordCard(
-                        record = record,
-                        onClick = { onIntent(HomeUiIntent.SelectPastRecord(record.recordDate)) },
-                    )
-                }
+            }
         }
     }
 }
@@ -368,55 +337,4 @@ private fun HomeGreeting(nickname: String?) {
             }
         }
     Text(text = greeting, style = MaterialTheme.typography.titleLarge)
-}
-
-@Composable
-private fun PastRecordsLoading() {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = Spacing.extraLarge2),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator()
-    }
-}
-
-@Composable
-private fun PastRecordsEmpty() {
-    Text(
-        text = "아직 저장된 기록이 없어요.\n초안을 만들어 하루를 기록해보세요.",
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = Spacing.extraLarge),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
-}
-
-@Composable
-private fun PastRecordsLoadFailed(onRetryClick: () -> Unit) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = Spacing.extraLarge),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = "지난 기록을 불러오지 못했어요.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-        OutlinedButton(
-            onClick = onRetryClick,
-            modifier = Modifier.padding(top = Spacing.medium),
-        ) {
-            Text("다시 시도")
-        }
-    }
 }

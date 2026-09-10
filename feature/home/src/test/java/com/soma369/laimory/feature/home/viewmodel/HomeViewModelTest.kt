@@ -44,6 +44,7 @@ import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.navigation.PastRecordsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
@@ -61,11 +62,9 @@ import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
-import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
-import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
@@ -684,156 +683,6 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `지난 기록 동기화는 서버 정렬 그대로 카드 표시 데이터로 전달한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.dailyRecords =
-                listOf(
-                    pastTimeline(dailyRecordId = 32L, date = LocalDate.of(2026, 7, 27)),
-                    pastTimeline(
-                        dailyRecordId = 31L,
-                        date = LocalDate.of(2026, 7, 26),
-                        emotion = null,
-                        events = emptyList(),
-                    ),
-                )
-            val viewModel = createViewModel()
-
-            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-            runCurrent()
-
-            val content = viewModel.state.value.pastRecords as HomePastRecordsUiState.Content
-            assertEquals(listOf(32L, 31L), content.records.map { it.dailyRecordId })
-            val latest = content.records.first()
-            assertEquals(Emotion.CALM, latest.emotion)
-            assertEquals("점심 · 파스타", latest.summary)
-            assertEquals("https://cdn/photo.jpg", latest.photoUrl)
-            val emptyRecord = content.records.last()
-            assertEquals(null, emptyRecord.emotion)
-            assertEquals(null, emptyRecord.summary)
-            assertEquals(null, emptyRecord.photoUrl)
-        }
-
-    @Test
-    fun `대표 이미지는 전체 Event를 통틀어 가장 이른 PHOTO를 선택한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val earlierEventWithLatePhoto =
-                TimelineEvent(
-                    timelineEventId = 41L,
-                    eventType = TimelineEventType.WAKE_UP,
-                    startAt = LocalDateTime.of(2026, 7, 27, 9, 0),
-                    endAt = null,
-                    title = "기상",
-                    subtitle = null,
-                    memo = null,
-                    question = null,
-                    items =
-                        listOf(
-                            photoItem(
-                                timelineItemId = 51L,
-                                startAt = LocalDateTime.of(2026, 7, 27, 21, 0),
-                                photoUrl = "https://cdn/late.jpg",
-                            ),
-                        ),
-                )
-            val laterEventWithEarlyPhotos =
-                TimelineEvent(
-                    timelineEventId = 42L,
-                    eventType = TimelineEventType.MEAL,
-                    startAt = LocalDateTime.of(2026, 7, 27, 12, 0),
-                    endAt = null,
-                    title = "점심",
-                    subtitle = null,
-                    memo = null,
-                    question = null,
-                    items =
-                        listOf(
-                            photoItem(
-                                timelineItemId = 53L,
-                                startAt = LocalDateTime.of(2026, 7, 27, 10, 0),
-                                photoUrl = "https://cdn/early.jpg",
-                            ),
-                            photoItem(timelineItemId = 52L, startAt = null, photoUrl = "https://cdn/null-first.jpg"),
-                        ),
-                )
-            recordRepository.dailyRecords =
-                listOf(
-                    pastTimeline(
-                        dailyRecordId = 32L,
-                        events = listOf(earlierEventWithLatePhoto, laterEventWithEarlyPhotos),
-                    ),
-                )
-            val viewModel = createViewModel()
-
-            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-            runCurrent()
-
-            val content = viewModel.state.value.pastRecords as HomePastRecordsUiState.Content
-            assertEquals("https://cdn/null-first.jpg", content.records.single().photoUrl)
-        }
-
-    @Test
-    fun `지난 기록이 없으면 빈 상태를 표시한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
-
-            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-            runCurrent()
-
-            assertEquals(HomePastRecordsUiState.Empty, viewModel.state.value.pastRecords)
-        }
-
-    @Test
-    fun `지난 기록 조회 실패는 초안 생성을 차단하지 않고 재시도로 복구한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.dailyRecordsFailure = ApiException.NetworkException()
-            val viewModel = createViewModel()
-
-            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-            runCurrent()
-
-            assertEquals(HomePastRecordsUiState.LoadFailed, viewModel.state.value.pastRecords)
-            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
-
-            recordRepository.dailyRecordsFailure = null
-            recordRepository.dailyRecords = listOf(pastTimeline(dailyRecordId = 32L))
-            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-            runCurrent()
-
-            assertTrue(viewModel.state.value.pastRecords is HomePastRecordsUiState.Content)
-        }
-
-    @Test
-    fun `지난 기록 동기화 중 중복 요청을 보내지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.dailyRecordsGate = CompletableDeferred()
-            val viewModel = createViewModel()
-
-            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-            viewModel.sendIntent(HomeUiIntent.SyncPastRecords)
-            runCurrent()
-
-            assertEquals(1, recordRepository.dailyRecordsCallCount)
-
-            recordRepository.dailyRecordsGate?.complete(listOf(pastTimeline(dailyRecordId = 32L)))
-            runCurrent()
-
-            assertTrue(viewModel.state.value.pastRecords is HomePastRecordsUiState.Content)
-        }
-
-    @Test
-    fun `지난 기록 선택은 해당 기록의 타임라인 화면으로 이동한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val recordDate = LocalDate.of(2026, 7, 27)
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(HomeUiIntent.SelectPastRecord(recordDate = recordDate))
-            runCurrent()
-
-            assertEquals(listOf<Page>(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
-        }
-
-    @Test
     fun `시각 시트는 확인 전까지 기록 범위를 바꾸지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
@@ -1313,6 +1162,19 @@ class HomeViewModelTest {
             assertEquals(DataSourceStatus.DENIED, permissions.calendar)
             assertEquals(DataSourceStatus.GRANTED, permissions.location)
             assertEquals(DataSourceStatus.UNSUPPORTED, permissions.notification)
+        }
+
+    @Test
+    fun `지난 기록은 전용 화면으로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 목록·동기화는 홈이 더 갖지 않는다.
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenPastRecords)
+            runCurrent()
+
+            assertEquals(listOf<Page>(PastRecordsPage), navigationHelper.destinations)
         }
 
     private fun todayStay(id: String): SourceItem {

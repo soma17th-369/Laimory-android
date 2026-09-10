@@ -56,7 +56,6 @@ data class HomeUiState(
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
-    val pastRecords: HomePastRecordsUiState = HomePastRecordsUiState.Loading,
     /**
      * 이미 저장이 끝난 기록의 날짜. 날짜 피커에서 고를 수 없게 하는 데 쓴다.
      *

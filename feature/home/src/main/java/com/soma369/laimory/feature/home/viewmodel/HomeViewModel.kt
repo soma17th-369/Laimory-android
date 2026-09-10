@@ -11,7 +11,6 @@ import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
-import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
@@ -20,6 +19,7 @@ import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
+import com.soma369.laimory.core.domain.navigation.PastRecordsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
@@ -33,11 +33,9 @@ import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
-import com.soma369.laimory.feature.home.model.toPastRecordUiModel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
-import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeSourcePermissions
 import com.soma369.laimory.feature.home.state.HomeTimeField
@@ -102,7 +100,6 @@ class HomeViewModel
         private var requestedPhotoWindow: RecordDateWindow? = null
         private var preparedPhotoCache: PreparedPhotoCache? = null
         private var hasUserSelectedDate = false
-        private var pastRecordsJob: Job? = null
         private var consentPreparationJob: Job? = null
         private var locationConsentJob: Job? = null
 
@@ -185,9 +182,7 @@ class HomeViewModel
                 HomeUiIntent.OpenDraftLoading -> navigationHelper.navigateTo(DraftLoadingPage)
                 is HomeUiIntent.RefreshSourcePermissions -> refreshSourcePermissions(intent)
                 HomeUiIntent.RefreshLocationConsent -> refreshLocationConsent()
-                HomeUiIntent.SyncPastRecords -> syncPastRecords()
-                is HomeUiIntent.SelectPastRecord ->
-                    navigationHelper.navigateTo(TimelinePage(intent.recordDate))
+                HomeUiIntent.OpenPastRecords -> navigationHelper.navigateTo(PastRecordsPage)
             }
         }
 
@@ -825,50 +820,6 @@ class HomeViewModel
                                     ),
                             ),
                     )
-                }
-            }
-        }
-
-        private fun syncPastRecords() {
-            if (pastRecordsJob?.isActive == true) return
-            pastRecordsJob =
-                safeLaunch(
-                    onError = {
-                        markPastRecordsFailure()
-                        handleFailure(it)
-                    },
-                ) {
-                    // 이미 목록을 보여주는 중이면 유지한 채 재동기화한다. (깜빡임 방지)
-                    if (state.value.pastRecords !is HomePastRecordsUiState.Content) {
-                        updateState { copy(pastRecords = HomePastRecordsUiState.Loading) }
-                    }
-                    getDailyRecordsUseCase()
-                        .onSuccess { timelines ->
-                            updateState {
-                                copy(
-                                    pastRecords =
-                                        if (timelines.isEmpty()) {
-                                            HomePastRecordsUiState.Empty
-                                        } else {
-                                            HomePastRecordsUiState.Content(
-                                                timelines.map(DailyTimeline::toPastRecordUiModel),
-                                            )
-                                        },
-                                )
-                            }
-                        }.onFailure { error ->
-                            markPastRecordsFailure()
-                            handleFailure(error)
-                        }
-                }
-        }
-
-        private fun markPastRecordsFailure() {
-            updateState {
-                if (pastRecords is HomePastRecordsUiState.Content) {
-                    this
-                } else {
-                    copy(pastRecords = HomePastRecordsUiState.LoadFailed)
                 }
             }
         }

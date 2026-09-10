@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma `Arrow / Back`(2497:1101) 원본 벡터. 프로젝트의 caret 은 꺾쇠라 글리프가 다르다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+  <path
+      android:pathData="M15.8333,10H4.16667M9.16667,15L4.16667,10L9.16667,5"
+      android:strokeColor="#1F1C18"
+      android:strokeWidth="1.5"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round" />
+</vector>

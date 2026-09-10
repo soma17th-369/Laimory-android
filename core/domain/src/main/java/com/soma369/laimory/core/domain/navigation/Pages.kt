@@ -87,6 +87,17 @@ data object Feature1Page : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/**
+ * 저장된 지난 기록 목록. 홈 우측 상단에서 연다.
+ *
+ * 홈이 바텀 탭의 바닥이므로 그 위에 쌓이는 일반 화면이다 — 탭이 아니다.
+ */
+data object PastRecordsPage : Page {
+    const val PATH = "/past-records"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data class TimelinePage(
     val recordDate: LocalDate,
 ) : Page {

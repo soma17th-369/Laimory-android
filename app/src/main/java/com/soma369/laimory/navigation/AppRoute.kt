@@ -19,6 +19,7 @@ import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.navigation.OnboardingPage
+import com.soma369.laimory.core.domain.navigation.PastRecordsPage
 import com.soma369.laimory.core.domain.navigation.SettingsPage
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TermsPage
@@ -32,6 +33,7 @@ import com.soma369.laimory.feature.home.screen.DraftConsentDetailRoute
 import com.soma369.laimory.feature.home.screen.DraftConsentRoute
 import com.soma369.laimory.feature.home.screen.DraftLoadingRoute
 import com.soma369.laimory.feature.home.screen.HomeRoute
+import com.soma369.laimory.feature.home.screen.PastRecordsRoute
 import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.onboarding.screen.OnboardingRoute
 import com.soma369.laimory.feature.settings.screen.NotificationSettingsRoute
@@ -184,6 +186,10 @@ val appRoutes: List<AppRoute> =
                     typeGroup = DraftConsentDetailPage.typeGroupFrom(args),
                 )
             },
+        ),
+        AppRoute(
+            path = PastRecordsPage.PATH,
+            render = { innerPadding, _ -> PastRecordsRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = TimelinePage.PATH,
