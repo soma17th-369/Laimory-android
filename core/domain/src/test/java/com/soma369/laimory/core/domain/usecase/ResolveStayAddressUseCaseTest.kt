@@ -9,7 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ResolveStayAddressUseCaseTest {
-    private val seoul = ResolvedAddress(line = "서울특별시 강남구 역삼동 823", city = "서울특별시", district = "역삼동")
+    private val seoul = ResolvedAddress(line = "대한민국 서울특별시 강남구 역삼동 823", city = "강남구", district = "역삼동")
 
     @Test
     fun `해석한 주소를 돌려주고 층위까지 같은 rawId에 저장한다`() {

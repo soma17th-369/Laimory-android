@@ -89,7 +89,7 @@ class LocationCollectionViewModelTest {
         ): ResolvedAddress? {
             resolveCount++
             failure?.let { throw it }
-            return ResolvedAddress(line = "서울특별시 마포구", city = "서울특별시", district = "마포구")
+            return ResolvedAddress(line = "서울특별시 마포구", city = "마포구", district = null)
         }
     }
 

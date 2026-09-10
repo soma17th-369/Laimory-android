@@ -1208,7 +1208,7 @@ class HomeViewModelTest {
     fun `위치 약관 동의가 없으면 주소를 해석하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // Geocoder 는 좌표를 기기 밖으로 보낸다. 동의 없이 부르지 않는다.
-            addressResolver.answer = ResolvedAddress(line = "경기도 오산시 원동 123", city = "경기도", district = "오산시")
+            addressResolver.answer = ResolvedAddress(line = "대한민국 경기도 오산시 원동 123", city = "오산시", district = "원동")
             sourceRepository.items.value = listOf(todayStay("stay-1"))
             val viewModel = createViewModel()
             runCurrent()
@@ -1225,7 +1225,7 @@ class HomeViewModelTest {
     fun `동의가 있으면 가장 오래 머문 곳의 층위를 채우고 같은 항목을 다시 묻지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             termsCoordinator.isLocationAgreed = true
-            addressResolver.answer = ResolvedAddress(line = "경기도 오산시 원동 123", city = "경기도", district = "오산시")
+            addressResolver.answer = ResolvedAddress(line = "대한민국 경기도 오산시 원동 123", city = "오산시", district = "원동")
             sourceRepository.items.value = listOf(todayStay("stay-1"))
             val viewModel = createViewModel()
             runCurrent()
@@ -1234,7 +1234,7 @@ class HomeViewModelTest {
             runCurrent()
 
             assertTrue(viewModel.state.value.isLocationConsentGranted)
-            assertEquals("경기도 오산시", viewModel.state.value.summary.stayPlace?.label)
+            assertEquals("오산시 원동", viewModel.state.value.summary.stayPlace?.label)
 
             // 복귀마다 재판정하므로 같은 항목을 반복해서 물으면 Geocoder 를 계속 때린다.
             repeat(3) { viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent) }
