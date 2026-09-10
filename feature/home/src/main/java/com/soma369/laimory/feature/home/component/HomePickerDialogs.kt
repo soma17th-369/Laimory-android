@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.soma369.laimory.core.ui.component.calendar.CALENDAR_FIRST_MONTH
 import com.soma369.laimory.core.ui.component.calendar.CALENDAR_LAST_MONTH
+import com.soma369.laimory.core.ui.component.calendar.CALENDAR_MAX_WEEKS
 import com.soma369.laimory.core.ui.component.calendar.CalendarWeekdayHeader
 import com.soma369.laimory.core.ui.component.calendar.LaimoryCalendarGrid
 import com.soma369.laimory.core.ui.component.calendar.toCalendarMonthGrid
@@ -126,21 +128,29 @@ internal fun HomeDatePickerDialog(
                     onNextMonth = { visibleMonth = visibleMonth.plusMonths(1) },
                 )
                 CalendarWeekdayHeader(modifier = Modifier.padding(bottom = Spacing.extraSmall))
-                val grid = remember(visibleMonth) { visibleMonth.toCalendarMonthGrid() }
+                // 달마다 4~6주로 달라지는 것을 늘 6주로 편다. 그러지 않으면 달을 넘길 때마다
+                // 다이얼로그 높이가 달라져 아래 버튼이 손가락 밑에서 움직인다.
+                val grid = remember(visibleMonth) { visibleMonth.toCalendarMonthGrid(minWeeks = CALENDAR_MAX_WEEKS) }
                 LaimoryCalendarGrid(
                     grid = grid,
                     selectedDate = selectedDate,
                     today = today,
                     onSelectDate = { selectedDate = it },
-                    // 주 수는 달마다 4~6으로 달라진다. 높이를 주 수에서 셈해 남는 칸이 생기지 않게 한다.
-                    modifier = Modifier.height(DayCellHeight * grid.weeks.size),
+                    modifier = Modifier.height(DayCellHeight * CALENDAR_MAX_WEEKS),
                     isSelectable = isSelectable,
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = Spacing.large),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = onDismiss) { Text("취소") }
+                    // 되돌리는 쪽과 확정하는 쪽을 색으로 가른다. 같은 색이면 어느 것이 진행인지
+                    // 문구를 읽어야 안다.
+                    TextButton(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                    ) {
+                        Text("취소")
+                    }
                     TextButton(
                         onClick = { onSelect(selectedDate) },
                         // 조회가 끝나기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다.
