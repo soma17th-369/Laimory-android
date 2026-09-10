@@ -466,7 +466,8 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
         HomeEmptySlot(message = "일정이 없어요", height = CALENDAR_SLOT_HEIGHT)
         return
     }
-    HomeRotatingContent(items = items, modifier = Modifier.fillMaxWidth().height(CALENDAR_SLOT_HEIGHT)) { item, index ->
+    HomeRotatingContent(items = items, modifier = Modifier.fillMaxWidth().height(CALENDAR_SLOT_HEIGHT)) { slot ->
+        val item = slot.value
         Row(
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -487,7 +488,7 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
                 )
             }
             Text(
-                text = "${index + 1} / ${items.size}",
+                text = slot.positionLabel,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -515,7 +516,8 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        HomeRotatingContent(items = apps) { app, _ ->
+        HomeRotatingContent(items = apps) { slot ->
+            val app = slot.value
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
                 verticalAlignment = Alignment.CenterVertically,

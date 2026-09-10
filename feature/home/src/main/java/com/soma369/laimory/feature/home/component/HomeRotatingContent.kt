@@ -28,12 +28,13 @@ import kotlinx.coroutines.delay
 internal fun <T> HomeRotatingContent(
     items: List<T>,
     modifier: Modifier = Modifier,
-    item: @Composable (value: T, index: Int) -> Unit,
+    item: @Composable (slot: HomeRotatingSlot<T>) -> Unit,
 ) {
-    if (items.isEmpty()) return
-    val index = rememberRotatingIndex(items.size)
-    Crossfade(targetState = index.coerceIn(items.indices), modifier = modifier, label = "홈 원천 카드 회전") { current ->
-        item(items[current], current)
+    // 자리가 아니라 **칸을** 넘긴다. Crossfade 는 사라지는 칸을 한 프레임 더 그리는데, 자리만
+    // 넘기면 그 프레임이 이미 줄어든 새 목록을 그 자리로 뒤져 터진다.
+    val slot = items.rotatingSlotAt(rememberRotatingIndex(items.size)) ?: return
+    Crossfade(targetState = slot, modifier = modifier, label = "홈 원천 카드 회전") { current ->
+        item(current)
     }
 }
 

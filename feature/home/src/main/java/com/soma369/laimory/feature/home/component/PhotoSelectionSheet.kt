@@ -168,9 +168,11 @@ internal fun PhotoSelectionSheet(
                 }
             }
 
-            // 버튼은 하나이고 **문구가 상태를 말한다.** 0장일 때 `0장으로 만들기` 를 잠가 두면
-            // 만들 수 있다고 쓰인 버튼이 눌리지 않고, 왜 막혔는지도 알려 주지 못한다. 사진 없이
-            // 만드는 것은 정상 경로이므로 문구로 분명히 하고 그대로 진행시킨다.
+            // 버튼은 하나이고 **문구가 상태를 말한다.** 0장일 때 버튼을 잠가 두면 왜 막혔는지
+            // 알려 주지 못한다. 사진 없이 두는 것은 정상 경로이므로 문구로 분명히 한다.
+            //
+            // `만들기` 라 하지 않는다 — 이 시트는 고른 결과를 홈에 돌려주고 닫힐 뿐이고,
+            // 만들기는 사용자가 홈 CTA 를 눌러 시작한다.
             val hasSelection = state.pendingPhotoIds.isNotEmpty()
             Button(
                 onClick = {
@@ -184,7 +186,7 @@ internal fun PhotoSelectionSheet(
                 shape = MaterialTheme.shapes.large,
             ) {
                 Text(
-                    if (hasSelection) "${state.pendingPhotoIds.size}장으로 초안 만들기" else "사진 없이 초안 만들기",
+                    if (hasSelection) "${state.pendingPhotoIds.size}장 선택 완료" else "사진 없이 닫기",
                 )
             }
             Spacer(modifier = Modifier.height(Spacing.large))
