@@ -71,8 +71,19 @@ internal class RoomLocationSegmentStore
             return when (val incoming = payload) {
                 is StayPayload -> {
                     if (!incoming.address.isNullOrBlank()) return this
-                    val storedAddress = (stored.payload as? StayPayload)?.address?.takeIf(String::isNotBlank) ?: return this
-                    copy(payload = incoming.copy(address = storedAddress))
+                    val storedPayload = stored.payload as? StayPayload ?: return this
+                    val storedAddress = storedPayload.address?.takeIf(String::isNotBlank) ?: return this
+                    // 층위도 함께 이어받는다. 한 줄만 이어받으면 **진행 중인 체류**가 갱신될
+                    // 때마다 층위가 지워진다 — 재해석은 항목당 한 번이라 그 뒤로는 다시 채워지지
+                    // 않고, 카드가 한 줄 주소로 되돌아간다.
+                    copy(
+                        payload =
+                            incoming.copy(
+                                address = storedAddress,
+                                addressCity = storedPayload.addressCity,
+                                addressDistrict = storedPayload.addressDistrict,
+                            ),
+                    )
                 }
                 is MovementPayload -> {
                     val storedPayload = stored.payload as? MovementPayload ?: return this
