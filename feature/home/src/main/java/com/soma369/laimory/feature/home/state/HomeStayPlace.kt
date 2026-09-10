@@ -43,11 +43,16 @@ data class HomeStayPlace(
      * 판정 기준이 [line] 유무가 **아니다.** 한 줄만 저장된 기존 항목을 해석 완료로 보면 층위가
      * 영영 비어, 새 체류는 `강남구 역삼동` 인데 기존 저장분은 한 줄 전체가 뜨는 두 모양이 섞인다.
      *
-     * 광역 이름만 들어 있는 값도 다시 묻는다 — 층위를 시·군·구로 내리기 전에 저장된 값이라,
-     * 해석 완료로 보면 `서울특별시` 한 마디가 카드에 남는다.
+     * 기준은 **[city] 유무**다. 지금 해석기는 성공하면 시·군·구를 반드시 채운다(필드 → 한 줄
+     * → 광역 순으로 물러선다). 그러니 [city] 가 비었다는 것은 지금 규칙으로 해석된 적이
+     * 없다는 뜻이다 — 층위를 내리기 전에 저장된 항목은 [district] 에 `오산시` 가 들어 있고
+     * [city] 는 비어 있어, `둘 다 null` 로 가리면 걸러지지 않는다.
+     *
+     * 광역 이름만 들어 있는 값도 다시 묻는다 — 그때는 [city] 가 차 있지만 `서울특별시` 한
+     * 마디라 카드가 어디였는지 말해 주지 못한다.
      */
     val needsResolution: Boolean
-        get() = (city == null && district == null) || city?.isProvinceName() == true
+        get() = city == null || city.isProvinceName()
 
     /** `경기도`·`서울특별시` 처럼 광역 이름인가. 시·군·구는 `시`·`군`·`구` 로 끝난다. */
     private fun String.isProvinceName(): Boolean = PROVINCE_SUFFIXES.any { endsWith(it) }

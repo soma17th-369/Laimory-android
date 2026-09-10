@@ -351,6 +351,15 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun `시·군·구가 아래 칸에 저장된 예전 값은 다시 해석한다`() {
+        // 층위를 내리기 전에는 광역이 `city`, 시·군·구가 `district` 였다. `adminArea` 가 비어 오는
+        // 지역에서는 `city` 만 비어, `둘 다 null` 로 가리면 이 항목이 완료로 보인다.
+        val legacy = HomeStayPlace("a", 37.1, 127.0, district = "오산시", line = "대한민국 오산시 부산동 302")
+
+        assertEquals(true, legacy.needsResolution)
+    }
+
+    @Test
     fun `광역 이름만 저장된 예전 값은 다시 해석한다`() {
         // 층위를 시·군·구로 내리기 전에 저장된 값이다. 완료로 보면 `서울특별시` 한 마디가 남는다.
         val province = HomeStayPlace("a", 37.5, 126.9, city = "서울특별시", line = "대한민국 서울특별시 강남구")
