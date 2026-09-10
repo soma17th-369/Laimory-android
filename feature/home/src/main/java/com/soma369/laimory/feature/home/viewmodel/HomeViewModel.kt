@@ -52,6 +52,7 @@ import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.drop
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -95,14 +96,6 @@ class HomeViewModel
         private var photoAccessGranted = false
         private var photoCandidatesJob: Job? = null
 
-        /**
-         * 저장된 위치정보 약관 동의. 알아내기 전과 조회 실패는 false 다.
-         *
-         * 주소 해석은 좌표를 기기 밖으로 보내는 일이라(`Geocoder`) 동의 없이 시작하지 않는다(#330).
-         * 이 ViewModel 도 계정 경계를 넘어 살아남으므로 진입·복귀마다 다시 판정한다.
-         */
-        private var isLocationConsentGranted = false
-
         /** 층위를 채우러 이미 물어본 체류. 같은 항목을 반복해서 묻지 않는다. */
         private val attemptedStayRawIds = mutableSetOf<String>()
         private var lastLoadedPhotoWindow: RecordDateWindow? = null
@@ -111,12 +104,30 @@ class HomeViewModel
         private var hasUserSelectedDate = false
         private var pastRecordsJob: Job? = null
         private var consentPreparationJob: Job? = null
+        private var locationConsentJob: Job? = null
 
         init {
             observeSummary()
             observeDraftTask()
             observeUserProfile()
+            observeAccountSession()
         }
+
+        /**
+         * 계정이 바뀌면 위치 동의 판정을 버린다.
+         *
+         * 이 ViewModel 은 Activity 범위라 계정 경계를 넘어 살아남는데, 판정값만 남으면 새 계정이
+         * 동의하지 않았는데도 원천 갱신이 그 값을 보고 `Geocoder` 를 부른다. 진행 중이던 조회도
+         * 끊는다 — 이전 계정의 응답이 늦게 도착해 새 계정의 판정으로 앉는다.
+         */
+        private fun observeAccountSession() =
+            safeLaunch {
+                draftConsentSessionStore.accountSession.drop(1).collect {
+                    locationConsentJob?.cancel()
+                    attemptedStayRawIds.clear()
+                    updateState { copy(isLocationConsentGranted = false) }
+                }
+            }
 
         /**
          * 공용 회원 정보를 인사말에 반영한다.
@@ -768,16 +779,20 @@ class HomeViewModel
          * 알아내기 전과 조회 실패는 모두 "허용되지 않음"이다 — `Geocoder` 는 좌표를 기기 밖으로
          * 보내므로 모르는 상태에서 부르지 않는다(#330).
          */
-        private fun refreshLocationConsent() =
-            safeLaunch(onError = {}) {
-                val isGranted =
-                    termsCoordinator
-                        .requirementOf(TermStage.TIMELINE_LOCATION)
-                        .getOrNull()
-                        ?.isSatisfied == true
-                updateState { copy(isLocationConsentGranted = isGranted) }
-                if (isGranted) resolveStayPlaceAddress()
-            }
+        private fun refreshLocationConsent() {
+            // 앞선 조회가 남아 있으면 끊는다. 늦게 도착한 이전 판정이 최신 판정을 덮어쓴다.
+            locationConsentJob?.cancel()
+            locationConsentJob =
+                safeLaunch(onError = {}) {
+                    val isGranted =
+                        termsCoordinator
+                            .requirementOf(TermStage.TIMELINE_LOCATION)
+                            .getOrNull()
+                            ?.isSatisfied == true
+                    updateState { copy(isLocationConsentGranted = isGranted) }
+                    if (isGranted) resolveStayPlaceAddress()
+                }
+        }
 
         /**
          * 위치 카드가 `오산시 부산동` 두 층위를 쓰는데 층위가 비어 있으면 채운다.

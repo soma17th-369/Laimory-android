@@ -1264,6 +1264,34 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `계정이 바뀌면 이전 계정의 위치 동의로 주소를 해석하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 이 ViewModel 은 Activity 범위라 계정 경계를 넘어 살아남는다. 판정값만 남으면
+            // 새 계정이 동의하지 않았는데도 원천 갱신이 그 값을 보고 Geocoder 를 부른다.
+            termsCoordinator.isLocationAgreed = true
+            addressResolver.answer = ResolvedAddress(line = "대한민국 경기도 오산시 원동 123", city = "오산시", district = "원동")
+            sourceRepository.items.value = listOf(todayStay("stay-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent)
+            runCurrent()
+            assertEquals(1, addressResolver.resolveCount)
+
+            // 로그아웃·재로그인. 새 계정은 아직 동의하지 않았다.
+            termsCoordinator.isLocationAgreed = false
+            sessionStore.clearAll()
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isLocationConsentGranted)
+
+            // 새 계정의 판정이 끝나기 전에 들어온 원천 갱신이 이전 판정을 쓰면 안 된다.
+            sourceRepository.items.value = listOf(todayStay("stay-1"), todayStay("stay-2"))
+            runCurrent()
+
+            assertEquals(1, addressResolver.resolveCount)
+        }
+
+    @Test
     fun `권한 도트는 화면이 넘긴 값을 그대로 담는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()

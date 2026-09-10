@@ -77,6 +77,16 @@ fun HomeRoute(
     val context = LocalContext.current
     // 판정은 설정·온보딩이 쓰는 공용 상태를 그대로 쓴다. 스스로 ON_RESUME 마다 다시 본다.
     val permissionState = rememberDataPermissionState()
+    // 그 "다시 봄"은 **다음 재구성**에 반영된다. 같은 ON_RESUME 안에서 읽으면 직전 재구성의
+    // 값이라, 설정에서 허용하고 돌아와도 홈에는 이전 상태가 남는다. 값이 바뀔 때 싣는다.
+    val sourcePermissions =
+        HomeUiIntent.RefreshSourcePermissions(
+            photo = permissionState.statusOf(DataPermission.PHOTO),
+            calendar = permissionState.statusOf(DataPermission.CALENDAR),
+            location = permissionState.locationDotStatus(),
+            notification = permissionState.statusOf(DataPermission.NOTIFICATION_LISTENER),
+        )
+    LaunchedEffect(sourcePermissions) { viewModel.sendIntent(sourcePermissions) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         // 동의 화면에서 제출을 마치고 복귀한 경우를 1회 소비한다.
         viewModel.sendIntent(HomeUiIntent.ConsumeDraftConsentResult)
@@ -85,15 +95,6 @@ fun HomeRoute(
             HomeUiIntent.RefreshPhotos(
                 hasAccess = PhotoPermission.canRead(context),
                 limited = PhotoPermission.isLimited(context),
-            ),
-        )
-        // 권한은 사용자가 언제든 바꾸므로 캐시하지 않고 복귀마다 다시 본다.
-        viewModel.sendIntent(
-            HomeUiIntent.RefreshSourcePermissions(
-                photo = permissionState.statusOf(DataPermission.PHOTO),
-                calendar = permissionState.statusOf(DataPermission.CALENDAR),
-                location = permissionState.locationDotStatus(),
-                notification = permissionState.statusOf(DataPermission.NOTIFICATION_LISTENER),
             ),
         )
         // 약관 화면에 다녀와 동의하고 돌아오는 경로가 있어 복귀마다 다시 판정한다.

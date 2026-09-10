@@ -30,10 +30,12 @@ data class HomeUiState(
     /** 원천별 권한 도트. 화면이 복귀마다 다시 보고 넣어 준다. */
     val permissions: HomeSourcePermissions = HomeSourcePermissions(),
     /**
-     * 저장된 위치정보 약관 동의.
+     * 저장된 위치정보 약관 동의. **알아내기 전과 조회 실패도 false** 다.
      *
      * 없으면 위치 카드가 주소 대신 동의가 먼저라는 문구를 쓴다 — 좌표 숫자는 사용자에게 보이지
-     * 않는다. 주소 해석 자체도 이 동의 뒤에만 시작한다(#330).
+     * 않는다. 주소 해석 자체도 이 동의 뒤에만 시작한다 — 좌표를 기기 밖으로 보내는 일이다(#330).
+     *
+     * 홈은 계정 경계를 넘어 살아남으므로 진입·복귀마다 다시 판정하고, 계정이 바뀌면 버린다.
      */
     val isLocationConsentGranted: Boolean = false,
     val availablePhotos: List<HomePhotoItem> = emptyList(),
