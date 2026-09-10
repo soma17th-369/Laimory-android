@@ -105,7 +105,7 @@ data class HomeSourceSummary(
     val calendar: HomeSourceCount = HomeSourceCount(),
     val location: HomeSourceCount = HomeSourceCount(),
     val notification: HomeSourceCount = HomeSourceCount(),
-    /** 사진 격자에 그릴 후보. **선택분이 아니라 후보 기준**이다 — 카드는 무엇이 모였는지를 보여 준다. */
+    /** 사진 격자에 그릴 후보 최신 [HOME_PHOTO_GRID_CELLS] 장. **선택분이 아니라 후보 기준**이다. */
     val photoPreviewUris: List<String> = emptyList(),
     val calendarItems: List<HomeCalendarItem> = emptyList(),
     val notificationApps: List<HomeNotificationApp> = emptyList(),
@@ -203,7 +203,7 @@ internal fun HomeUiState.refreshSourceSummary(
                 calendar = countOf(DraftConsentTypeGroup.CALENDAR, inWindowNonPhotos, selection, excludedRawIds),
                 location = countOf(DraftConsentTypeGroup.LOCATION, inWindowNonPhotos, selection, excludedRawIds),
                 notification = countOf(DraftConsentTypeGroup.NOTIFICATION, inWindowNonPhotos, selection, excludedRawIds),
-                photoPreviewUris = availablePhotos.take(PHOTO_PREVIEW_LIMIT).map(HomePhotoItem::uri),
+                photoPreviewUris = availablePhotos.take(HOME_PHOTO_GRID_CELLS).map(HomePhotoItem::uri),
                 calendarItems = inWindowNonPhotos.toCalendarItems(),
                 notificationApps = inWindowNonPhotos.toNotificationApps(),
                 stayPlace = inWindowNonPhotos.longestStayPlace(window),
@@ -314,4 +314,11 @@ internal fun HomeUiState.nonPhotoSourceItems(
 }
 
 internal const val MAX_PHOTO_SELECTION = DraftSourceItemLimits.DEFAULT_PHOTO
-private const val PHOTO_PREVIEW_LIMIT = 3
+
+/**
+ * 사진 카드 격자의 칸 수.
+ *
+ * 격자(`HomePhotoGrid`)가 이 수만큼 칸을 그리고 모자란 자리는 자리표시자로 채우므로, **여기서
+ * 덜 담으면 후보가 있어도 빈 칸이 뜬다.** 두 곳이 어긋나지 않도록 이 값 하나만 본다.
+ */
+internal const val HOME_PHOTO_GRID_CELLS = 6

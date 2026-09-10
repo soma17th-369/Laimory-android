@@ -228,6 +228,19 @@ class HomeUiStateTest {
     )
 
     @Test
+    fun `사진 격자에는 후보를 칸 수만큼 최신순으로 담는다`() {
+        // 격자가 여섯 칸을 그리는데 상태가 셋만 담으면 후보가 있어도 빈 칸이 뜬다.
+        val candidates = (1L..8L).map { id -> candidate(id = id, dateTime = date.atTime(8, id.toInt())) }
+
+        val summary = HomeUiState(selectedDate = date).refreshSourceSummary(emptyList(), candidates, zone).summary
+
+        assertEquals(HOME_PHOTO_GRID_CELLS, summary.photoPreviewUris.size)
+        // 최신순이라 마지막에 찍은 것이 앞에 온다.
+        assertEquals("content://photo/8", summary.photoPreviewUris.first())
+        assertEquals(8, summary.photo.candidate)
+    }
+
+    @Test
     fun `일정 목록은 시작 시각순이고 같은 시각이면 rawId 로 고정한다`() {
         // 카드가 3초마다 넘기며 읽으므로 정렬이 흔들리면 순번이 튄다.
         val items =

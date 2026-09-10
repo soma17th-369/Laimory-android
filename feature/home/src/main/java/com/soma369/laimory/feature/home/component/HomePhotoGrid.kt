@@ -15,11 +15,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.soma369.laimory.feature.home.state.HOME_PHOTO_GRID_CELLS
 
 /**
  * 사진 카드의 3×2 격자(Figma 2529:13315).
  *
- * **후보가 6장보다 적거나 0장이어도 격자 크기를 유지한다.** 빈 셀은 자리표시자로 채운다 — 장수에
+ * **후보가 칸 수보다 적거나 0장이어도 격자 크기를 유지한다.** 빈 셀은 자리표시자로 채운다 — 장수에
  * 따라 카드 높이가 달라지면 아래 카드들이 매번 밀린다.
  *
  * `LazyVerticalGrid` 를 쓰지 않는다. 칸이 여섯으로 고정이라 지연 배치가 얻을 것이 없고, 세로
@@ -34,7 +35,7 @@ internal fun HomePhotoGrid(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(CELL_GAP),
     ) {
-        photoUris.take(MAX_CELLS).padToCells().chunked(COLUMNS).forEach { row ->
+        photoUris.take(HOME_PHOTO_GRID_CELLS).padToCells().chunked(COLUMNS).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(CELL_GAP),
@@ -70,8 +71,7 @@ private fun PhotoCell(
 }
 
 /** 빈 칸을 null 로 채워 항상 여섯 칸을 만든다. */
-private fun List<String>.padToCells(): List<String?> = this + List(MAX_CELLS - size) { null }
+private fun List<String>.padToCells(): List<String?> = this + List(HOME_PHOTO_GRID_CELLS - size) { null }
 
 private const val COLUMNS = 3
-private const val MAX_CELLS = 6
 private val CELL_GAP = 4.dp
