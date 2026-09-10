@@ -1230,6 +1230,25 @@ class HomeViewModelTest {
             assertEquals(2, calendar.sending)
         }
 
+    @Test
+    fun `위치 전송을 끄면 홈 건수도 곧바로 줄어든다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 카드의 `M개 중 N개` 가 실제 제출과 다른 규칙으로 세면, 0건을 보내면서 카드는
+            // `1개 중 1개` 라고 적는다. 상세는 스토어만 바꾸고 돌아오므로 그 변화도 받아야 한다.
+            sourceRepository.items.value = listOf(todayStay("stay-1"), todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals(1, viewModel.state.value.summary.location.sending)
+
+            sessionStore.setLocationSendEnabled(false)
+            runCurrent()
+
+            assertEquals(1, viewModel.state.value.summary.location.candidate)
+            assertEquals(0, viewModel.state.value.summary.location.sending)
+            // 다른 유형은 그대로다.
+            assertEquals(1, viewModel.state.value.summary.calendar.sending)
+        }
+
     private fun todayStay(id: String): SourceItem {
         val zone = ZoneId.systemDefault()
         val start = LocalDate.now(zone).atTime(13, 0).atZone(zone).toInstant()

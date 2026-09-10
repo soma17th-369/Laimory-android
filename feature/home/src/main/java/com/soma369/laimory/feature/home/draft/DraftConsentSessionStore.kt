@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.draft
 
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import com.soma369.laimory.feature.home.state.locationRawIds
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -107,6 +108,17 @@ class DraftConsentSessionStore
         fun clearSelection() {
             mutableSelection.value = null
         }
+
+        /**
+         * 이 스냅샷에서 **실제로 전송에서 빠질** rawId 전부.
+         *
+         * 위치 스위치가 꺼져 있으면 그 스냅샷의 위치 항목도 함께 뺀다 — 제외 집합에 미리 넣어
+         * 두지 않기 때문이다(그러면 뒤에 수집된 위치가 샌다). 홈 카드의 `M개 중 N개` 와 실제
+         * 제출이 **같은 규칙**을 써야 하므로 판단을 여기 한 자리에 둔다.
+         */
+        fun excludedRawIdsFor(selection: DraftSourceItemSelection): Set<String> =
+            excludedRawIds.value +
+                if (isLocationSendEnabled.value) emptySet() else selection.locationRawIds()
 
         /** 상세에서 항목 하나를 넣고 뺀다. */
         fun toggleExcluded(rawId: String) {

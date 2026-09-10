@@ -53,6 +53,7 @@ import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import java.time.LocalDate
 import java.time.LocalTime
@@ -111,7 +112,24 @@ class HomeViewModel
             observeDraftTask()
             observeUserProfile()
             observeAccountSession()
+            observeSubmissionExclusions()
         }
+
+        /**
+         * 상세에서 뺀 항목·위치 스위치가 바뀌면 홈 건수를 다시 센다.
+         *
+         * 상세는 스토어만 바꾸고 돌아온다. 홈이 수집 갱신을 기다리면, 위치를 끄고 돌아온 화면이
+         * 한동안 끄기 전 건수를 그대로 적고 있는다.
+         */
+        private fun observeSubmissionExclusions() =
+            safeLaunch {
+                combine(
+                    draftConsentSessionStore.excludedRawIds,
+                    draftConsentSessionStore.isLocationSendEnabled,
+                ) { excluded, isLocationEnabled -> excluded to isLocationEnabled }
+                    .drop(1)
+                    .collect { updateState { withSourceSummary(sourceItems, photoCandidates) } }
+            }
 
         /**
          * 계정이 바뀌면 위치 동의 판정을 버린다.
@@ -434,7 +452,10 @@ class HomeViewModel
                 photoCandidates = photoCandidates,
                 zone = zone,
                 selection = selection,
-                excludedRawIds = draftConsentSessionStore.excludedRawIds.value,
+                // 카드의 `M개 중 N개` 는 실제 제출과 같은 규칙으로 세야 한다. 위치를 통째로
+                // 끈 경우가 제외 집합에 들어 있지 않아, 집합만 보면 0건을 보내면서 카드는
+                // `1개 중 1개` 라고 적는다.
+                excludedRawIds = selection?.let(draftConsentSessionStore::excludedRawIdsFor).orEmpty(),
             )
         }
 
