@@ -70,6 +70,28 @@ class CalendarMonthGridTest {
     }
 
     @Test
+    fun `minWeeks 를 주면 짧은 달도 같은 주 수로 편다`() {
+        // 달을 넘길 때마다 격자 높이가 달라지면 다이얼로그의 버튼이 손가락 밑에서 움직인다.
+        val shortMonth = YearMonth.of(2026, 2).toCalendarMonthGrid(minWeeks = CALENDAR_MAX_WEEKS)
+        val longMonth = YearMonth.of(2026, 5).toCalendarMonthGrid(minWeeks = CALENDAR_MAX_WEEKS)
+
+        assertEquals(CALENDAR_MAX_WEEKS, shortMonth.weeks.size)
+        assertEquals(CALENDAR_MAX_WEEKS, longMonth.weeks.size)
+        // 채운 주는 빈 칸뿐이고 날짜는 하나도 잃지 않는다.
+        assertEquals(28, shortMonth.weeks.flatten().count { it != null })
+        assertTrue(shortMonth.weeks.last().all { it == null })
+    }
+
+    @Test
+    fun `minWeeks 를 넘겨도 최대 주 수보다 늘리지 않는다`() {
+        // 금요일에 시작하는 31일 달이 6주를 다 쓴다.
+        val sixWeeks = YearMonth.of(2026, 5).toCalendarMonthGrid()
+
+        assertEquals(CALENDAR_MAX_WEEKS, sixWeeks.weeks.size)
+        assertEquals(sixWeeks.weeks.size, sixWeeks.weeks.size.coerceAtMost(CALENDAR_MAX_WEEKS))
+    }
+
+    @Test
     fun `12월과 1월 경계에서도 각 월의 날짜만 담긴다`() {
         val december = YearMonth.of(2026, 12).toCalendarMonthGrid()
         val january = YearMonth.of(2027, 1).toCalendarMonthGrid()

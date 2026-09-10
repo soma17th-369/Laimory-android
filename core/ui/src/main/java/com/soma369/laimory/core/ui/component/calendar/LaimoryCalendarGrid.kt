@@ -30,6 +30,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.ui.theme.laimoryColors
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -37,7 +38,10 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 /**
- * 일요일 시작 요일 헤더. 일요일만 error 계열로 구분한다(공휴일 색은 정본 데이터가 없어 범위 밖).
+ * 일요일 시작 요일 헤더.
+ *
+ * 주말만 색으로 구분한다 — 일요일은 error 계열, 토요일은 info 계열이다. 공휴일 색은 정본
+ * 데이터가 없어 범위 밖이다.
  */
 @Composable
 fun CalendarWeekdayHeader(modifier: Modifier = Modifier) {
@@ -48,10 +52,10 @@ fun CalendarWeekdayHeader(modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
                 color =
-                    if (dayOfWeek == DayOfWeek.SUNDAY) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    when (dayOfWeek) {
+                        DayOfWeek.SUNDAY -> MaterialTheme.colorScheme.error
+                        DayOfWeek.SATURDAY -> MaterialTheme.laimoryColors.info
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 textAlign = TextAlign.Center,
             )
