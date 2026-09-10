@@ -39,12 +39,21 @@ data class HomeStayPlace(
      *
      * 판정 기준이 [line] 유무가 **아니다.** 한 줄만 저장된 기존 항목을 해석 완료로 보면 층위가
      * 영영 비어, 새 체류는 `강남구 역삼동` 인데 기존 저장분은 한 줄 전체가 뜨는 두 모양이 섞인다.
+     *
+     * 광역 이름만 들어 있는 값도 다시 묻는다 — 층위를 시·군·구로 내리기 전에 저장된 값이라,
+     * 해석 완료로 보면 `서울특별시` 한 마디가 카드에 남는다.
      */
     val needsResolution: Boolean
-        get() = city == null && district == null
+        get() = (city == null && district == null) || city?.isProvinceName() == true
+
+    /** `경기도`·`서울특별시` 처럼 광역 이름인가. 시·군·구는 `시`·`군`·`구` 로 끝난다. */
+    private fun String.isProvinceName(): Boolean = PROVINCE_SUFFIXES.any { endsWith(it) }
 
     private companion object {
         /** `Geocoder` 의 한 줄 주소는 나라 이름으로 시작한다. */
         const val COUNTRY_PREFIX = "대한민국 "
+
+        /** `오산시`·`강남구` 와 겹치지 않도록 광역만 골라내는 꼬리말. */
+        val PROVINCE_SUFFIXES = listOf("특별시", "광역시", "특별자치시", "특별자치도", "도")
     }
 }

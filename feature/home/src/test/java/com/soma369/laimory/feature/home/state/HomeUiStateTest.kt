@@ -342,6 +342,20 @@ class HomeUiStateTest {
         assertEquals(true, lineOnly.needsResolution)
     }
 
+    @Test
+    fun `광역 이름만 저장된 예전 값은 다시 해석한다`() {
+        // 층위를 시·군·구로 내리기 전에 저장된 값이다. 완료로 보면 `서울특별시` 한 마디가 남는다.
+        val province = HomeStayPlace("a", 37.5, 126.9, city = "서울특별시", line = "대한민국 서울특별시 강남구")
+        val province2 = HomeStayPlace("b", 37.5, 126.9, city = "경기도", line = "대한민국 경기도 오산시")
+
+        assertEquals(true, province.needsResolution)
+        assertEquals(true, province2.needsResolution)
+        // 시·군·구는 광역과 꼬리말이 겹치지 않는다.
+        assertEquals(false, HomeStayPlace("c", 37.5, 126.9, city = "오산시").needsResolution)
+        assertEquals(false, HomeStayPlace("d", 37.5, 126.9, city = "강남구").needsResolution)
+        assertEquals(false, HomeStayPlace("e", 37.5, 126.9, city = "울릉군").needsResolution)
+    }
+
     private fun stay(
         id: String,
         start: LocalDateTime,
