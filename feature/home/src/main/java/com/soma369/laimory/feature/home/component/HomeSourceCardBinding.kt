@@ -42,6 +42,9 @@ private fun HomeSourceKind.permission(): DataPermission =
  * 규칙은 `후보 M개 중 N개` 다. 다만 **볼 것도 권한도 없을 때만** 문구를 바꾼다 — 도트가 꺼졌어도
  * 모인 것이 있으면 건수를 보여 주는 편이 사용자가 아는 것에 가깝다. 지원하지 않는 기기에는
  * 허용하라고 하지 않는다.
+ *
+ * 빈 문구는 유형을 말하지 않는다 — 내용 슬롯이 이미 `일정이 없어요` 라 적고 있어, 본문까지
+ * 유형을 되풀이하면 카드에 같은 말이 두 줄로 선다.
  */
 internal fun HomeUiState.cardBody(kind: HomeSourceKind): String {
     val count = countOf(kind)
@@ -50,8 +53,6 @@ internal fun HomeUiState.cardBody(kind: HomeSourceKind): String {
         status == DataSourceStatus.UNSUPPORTED -> "이 기기에서는 지원하지 않아요"
         count.candidate > 0 -> "${count.candidate}개 중 ${count.sending}개"
         status != DataSourceStatus.GRANTED -> "탭하여 허용"
-        kind == HomeSourceKind.PHOTO -> "아직 모인 사진이 없어요"
-        kind == HomeSourceKind.CALENDAR -> "일정이 없어요"
         else -> "아직 모인 것이 없어요"
     }
 }
