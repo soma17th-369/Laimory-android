@@ -63,7 +63,7 @@ internal fun HomeUiState.cardClick(
     onIntent: (HomeUiIntent) -> Unit,
     onRequestPermission: (DataPermission) -> Unit,
 ): (() -> Unit)? {
-    if (draftStatus.isInputLocked) return null
+    if (isInputLocked) return null
     return when (homeSourceTapTarget(countOf(kind).candidate, statusOf(kind))) {
         HomeSourceTapTarget.DETAIL -> ({ onIntent(HomeUiIntent.OpenSourceDetail(kind)) })
         HomeSourceTapTarget.PERMISSION -> ({ onRequestPermission(kind.permission()) })
@@ -76,7 +76,7 @@ internal fun HomeUiState.permissionAction(
     kind: HomeSourceKind,
     onRequestPermission: (DataPermission) -> Unit,
 ): (() -> Unit)? {
-    if (draftStatus.isInputLocked) return null
+    if (isInputLocked) return null
     if (!showsPermissionAction(countOf(kind).candidate, statusOf(kind))) return null
     return { onRequestPermission(kind.permission()) }
 }

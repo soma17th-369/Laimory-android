@@ -269,7 +269,7 @@ class HomeViewModel
          * 사진을 고르는 동안 수집이 돌아, 확인 화면에서 기다리는 시간이 짧아진다.
          */
         private fun startPhotoSelection() {
-            if (state.value.draftStatus.isInputLocked) return
+            if (state.value.isInputLocked) return
             startAutoCollectionAhead()
             sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
@@ -387,7 +387,7 @@ class HomeViewModel
          * 사용자가 CTA 를 눌러 시작한다.
          */
         private fun closePhotoSheet(selected: HomeUiState.() -> Set<Long>) {
-            if (state.value.draftStatus.isInputLocked) return
+            if (state.value.isInputLocked) return
             preparedPhotoCache = null
             updateState {
                 copy(
@@ -476,7 +476,7 @@ class HomeViewModel
         }
 
         private fun selectDate(date: LocalDate) {
-            if (state.value.draftStatus.isDateLocked) return
+            if (state.value.isDateLocked) return
             // 피커가 회색으로 만들기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면
             // 표시와 별개로 경계에서 한 번 더 막는다 — 서버가 409 로 거절할 날짜다.
             if (date in state.value.savedRecordDates) return
@@ -504,7 +504,7 @@ class HomeViewModel
         }
 
         private fun showTimeSheet(field: HomeTimeField) {
-            if (state.value.draftStatus.isInputLocked) return
+            if (state.value.isInputLocked) return
             updateState {
                 copy(
                     timeSheet =
@@ -543,7 +543,7 @@ class HomeViewModel
 
         private fun confirmTimeSheet() {
             val sheet = state.value.timeSheet ?: return
-            if (state.value.draftStatus.isInputLocked || !sheet.isConfirmEnabled) return
+            if (state.value.isInputLocked || !sheet.isConfirmEnabled) return
             updateState {
                 val next =
                     copy(
@@ -568,7 +568,7 @@ class HomeViewModel
          * 오류는 동의 화면으로 이동하지 않고 홈에서 바로 수정하도록 안내한다.
          */
         private fun prepareDraftConsent() {
-            if (state.value.draftStatus.isInputLocked) return
+            if (state.value.isInputLocked) return
             if (consentPreparationJob?.isActive == true) return
             // 제출이 이미 시작됐으면 중복 진입하지 않는다. **상시 스냅샷이 아니라 제출용
             // 스냅샷을 본다** — 상시 쪽은 늘 들어 있으므로 그것을 보면 CTA 가 영구히 막힌다.
@@ -659,6 +659,9 @@ class HomeViewModel
             submission: DraftSourceItemSelection,
         ) {
             if (preparation.discardActiveTask) draftTaskCoordinator.discard()
+            // 여기부터 응답까지 입력을 잠근다. `draftStatus` 는 서버가 작업을 받아야 움직이므로
+            // 이 구간에는 아직 IDLE 이고, 그동안 날짜를 바꾸면 요청은 이전 스냅샷으로 진행된다.
+            updateState { copy(isSubmitting = true) }
             createTimelineDraftUseCase(
                 preparation.recordDate,
                 preparation.zone,
@@ -669,6 +672,7 @@ class HomeViewModel
                 // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
                 loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
                 draftConsentSessionStore.clearAfterSubmission()
+                updateState { copy(isSubmitting = false) }
                 navigationHelper.navigateTo(DraftLoadingPage)
             }.onFailure(::handleDraftSubmitFailure)
         }
@@ -681,6 +685,8 @@ class HomeViewModel
          */
         private fun handleDraftSubmitFailure(error: Throwable) {
             draftConsentSessionStore.clearPreparation()
+            // 실패하면 잠금을 푼다. 남겨 두면 다시 시도할 수도, 날짜를 바꿀 수도 없다.
+            updateState { copy(isSubmitting = false) }
             when {
                 // 서버가 단계 동의를 다시 요구한다 — 약관이 개정됐거나 구버전으로 온보딩을 마친
                 // 계정이다. 받는 자리로 보내되 **자동으로 재개하지 않는다.**
@@ -768,6 +774,8 @@ class HomeViewModel
         }
 
         private fun handleDraftCreationFailure(error: Throwable) {
+            // 준비·제출 어느 쪽에서 튀어나왔든 잠금을 푼다. 남겨 두면 다시 시도할 길이 없다.
+            updateState { copy(isSubmitting = false) }
             if (error is DraftPhotoLimitExceededException) {
                 val message = "${error.message}\n사진 선택에서 개수를 줄여주세요."
                 updateState {
@@ -891,7 +899,7 @@ class HomeViewModel
          * 나머지는 유형 상세로 가고, 상세는 홈이 상시로 유지하는 스냅샷을 읽는다.
          */
         private fun openSourceDetail(kind: HomeSourceKind) {
-            if (state.value.draftStatus.isInputLocked) return
+            if (state.value.isInputLocked) return
             if (kind == HomeSourceKind.PHOTO) {
                 startPhotoSelection()
                 return

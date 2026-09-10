@@ -54,6 +54,13 @@ data class HomeUiState(
     val isDatePickerVisible: Boolean = false,
     val timeSheet: HomeTimeSheetState? = null,
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
+    /**
+     * `만들기` 를 누른 뒤 사진 업로드·생성 요청의 응답을 기다리는 중.
+     *
+     * [draftStatus] 는 서버가 작업을 받아야 움직이므로 이 구간에는 아직 IDLE 이다. 그동안
+     * 입력이 열려 있으면, 화면에서는 새 날짜를 고르는데 요청은 이미 확정한 스냅샷으로 진행된다.
+     */
+    val isSubmitting: Boolean = false,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
     /**
@@ -150,6 +157,19 @@ internal val DraftCreationStatus.isDateLocked: Boolean
 
 internal val DraftCreationStatus.isInputLocked: Boolean
     get() = isDateLocked || this == DraftCreationStatus.SUCCESS
+
+/**
+ * 날짜를 바꿀 수 없는 구간.
+ *
+ * 진행 중인 작업뿐 아니라 **제출을 기다리는 동안**도 잠근다. 서버 요청은 이미 확정한 스냅샷으로
+ * 진행되는데 화면에서 날짜를 바꾸면, 성공했을 때 방금 고른 날이 아닌 이전 날의 로딩으로 간다.
+ */
+internal val HomeUiState.isDateLocked: Boolean
+    get() = isSubmitting || draftStatus.isDateLocked
+
+/** 날짜·시각·사진·원천 상세를 모두 잠그는 구간. */
+internal val HomeUiState.isInputLocked: Boolean
+    get() = isSubmitting || draftStatus.isInputLocked
 
 /**
  * 기록 창 안에 모인 것을 홈 카드가 그릴 값으로 옮긴다.

@@ -43,6 +43,7 @@ internal fun HomeTimelineButton(
     today: LocalDate,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val title = status.actionTitle()
     val subtitle = momentSubtitle(selectedDate, today)
@@ -52,7 +53,7 @@ internal fun HomeTimelineButton(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(20.dp))
                 .background(status.gradient())
-                .clickable(onClick = onClick)
+                .clickable(enabled = enabled, onClick = onClick)
                 // 높이를 고정하지 않는다(시안 72 = 위아래 12 + 원 48). 고정하면 큰 글꼴에서 부제가 잘린다.
                 .padding(horizontal = Spacing.large, vertical = Spacing.medium)
                 // 제목·부제·화살표를 따로 읽으면 한 버튼을 세 번 지난다.

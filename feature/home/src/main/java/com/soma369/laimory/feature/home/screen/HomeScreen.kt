@@ -312,7 +312,7 @@ private fun HomeScreen(
                 HomeDateRow(
                     selectedDate = state.selectedDate,
                     windowText = state.timeRangeLabel(),
-                    enabled = !state.draftStatus.isDateLocked,
+                    enabled = !state.isDateLocked,
                     onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
                     onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
                 )
@@ -389,6 +389,8 @@ private fun HomeScreen(
             status = state.draftStatus,
             selectedDate = state.selectedDate,
             today = LocalDate.now(),
+            // 제출을 기다리는 동안에는 다시 눌러도 아무 일이 없어야 한다.
+            enabled = !state.isSubmitting,
             onClick = {
                 onIntent(
                     when (state.draftStatus) {

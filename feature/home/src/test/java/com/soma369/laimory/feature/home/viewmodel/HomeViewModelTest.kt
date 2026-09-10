@@ -918,6 +918,9 @@ class HomeViewModelTest {
         var createFailure: Throwable? = null
         var createdItems: List<SourceItem> = emptyList()
 
+        /** 값을 넣으면 그때까지 `createDraft` 가 응답하지 않는다. 제출 대기 구간을 재현한다. */
+        var createGate: CompletableDeferred<Unit>? = null
+
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> =
             clientPhotoUris.mapIndexed { index, _ -> "uploaded-$index.jpg" }
 
@@ -930,6 +933,7 @@ class HomeViewModelTest {
         ): DraftTaskHandle {
             createCount++
             createdItems = items
+            createGate?.await()
             createFailure?.let { throw it }
             return DraftTaskHandle("task-$createCount")
         }
@@ -1240,6 +1244,36 @@ class HomeViewModelTest {
             assertEquals(0, viewModel.state.value.summary.location.sending)
             // 다른 유형은 그대로다.
             assertEquals(1, viewModel.state.value.summary.calendar.sending)
+        }
+
+    @Test
+    fun `제출 응답을 기다리는 동안 날짜를 바꿀 수 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 요청은 이미 확정한 스냅샷으로 진행된다. 그동안 날짜를 바꾸면 성공했을 때 방금 고른
+            // 날이 아니라 이전 날의 로딩으로 간다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            dialogHelper.answer = DialogResult.Primary
+            val gate = CompletableDeferred<Unit>()
+            draftRepository.createGate = gate
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertTrue(viewModel.state.value.isSubmitting)
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(1)))
+            viewModel.sendIntent(HomeUiIntent.OpenPhotoSheet)
+            runCurrent()
+
+            assertEquals(today, viewModel.state.value.selectedDate)
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+
+            gate.complete(Unit)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isSubmitting)
         }
 
     private fun todayStay(id: String): SourceItem {
