@@ -159,8 +159,8 @@ class HomeUiStateTest {
         assertEquals(listOf(2L, 1L), state.availablePhotos.map(HomePhotoItem::mediaStoreId))
         assertEquals(emptySet<Long>(), state.selectedPhotoIds)
         assertEquals(HomeSourceCount(candidate = 2, sending = 0), state.summary.photo)
-        // 미리보기는 **후보 기준**이다 — 카드는 무엇이 모였는지를 보여 주고 고른 수는 본문이 말한다.
-        assertEquals(listOf("content://photo/2", "content://photo/1"), state.summary.photoPreviewUris)
+        // 격자는 **후보 기준**이다 — 카드는 무엇이 모였는지를 보여 주고 고른 수는 본문이 말한다.
+        assertEquals(listOf("content://photo/2", "content://photo/1"), state.summary.photoCells.map { it.uri })
         assertEquals(1, state.summary.totalItemCount)
     }
 
@@ -211,8 +211,9 @@ class HomeUiStateTest {
 
         assertEquals(HomeSourceCount(candidate = 2, sending = 1), selected.summary.photo)
         assertEquals(2, selected.summary.totalItemCount)
-        // 고른 것은 2L 하나지만 격자에는 후보 둘이 다 뜬다.
-        assertEquals(listOf("content://photo/2", "content://photo/1"), selected.summary.photoPreviewUris)
+        // 고른 것은 2L 하나지만 격자에는 후보 둘이 다 뜬다. 고른 것이 앞이다.
+        assertEquals(listOf("content://photo/2", "content://photo/1"), selected.summary.photoCells.map { it.uri })
+        assertEquals(listOf(true, false), selected.summary.photoCells.map { it.isSelected })
         assertEquals(listOf("calendar"), selected.nonPhotoSourceItems(items, zone).map(SourceItem::rawId))
     }
 
@@ -226,6 +227,35 @@ class HomeUiStateTest {
         contentUri = "content://photo/$id",
         takenAt = dateTime.atZone(zone).toInstant(),
     )
+
+    @Test
+    fun `사진 격자에는 후보를 칸 수만큼 최신순으로 담는다`() {
+        // 격자가 여섯 칸을 그리는데 상태가 셋만 담으면 후보가 있어도 빈 칸이 뜬다.
+        val candidates = (1L..8L).map { id -> candidate(id = id, dateTime = date.atTime(8, id.toInt())) }
+
+        val summary = HomeUiState(selectedDate = date).refreshSourceSummary(emptyList(), candidates, zone).summary
+
+        assertEquals(HOME_PHOTO_GRID_CELLS, summary.photoCells.size)
+        // 최신순이라 마지막에 찍은 것이 앞에 온다.
+        assertEquals("content://photo/8", summary.photoCells.first().uri)
+        assertEquals(8, summary.photo.candidate)
+    }
+
+    @Test
+    fun `오래된 사진을 골라도 격자 앞자리에 온다`() {
+        // 후보 최신순만 쓰면 오래 전에 찍은 사진을 골랐을 때 여섯 칸 어디에도 안 보여,
+        // 카드가 무엇을 보내는지 말하지 못한다.
+        val candidates = (1L..8L).map { id -> candidate(id = id, dateTime = date.atTime(8, id.toInt())) }
+        val state = HomeUiState(selectedDate = date, selectedPhotoIds = setOf(1L, 2L))
+
+        val cells = state.refreshSourceSummary(emptyList(), candidates, zone).summary.photoCells
+
+        assertEquals(listOf("content://photo/2", "content://photo/1"), cells.take(2).map { it.uri })
+        assertEquals(listOf(true, true), cells.take(2).map { it.isSelected })
+        // 뒷자리는 남은 후보의 최신순 그대로다.
+        assertEquals("content://photo/8", cells[2].uri)
+        assertEquals(false, cells[2].isSelected)
+    }
 
     @Test
     fun `일정 목록은 시작 시각순이고 같은 시각이면 rawId 로 고정한다`() {

@@ -2,8 +2,6 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
-import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
@@ -11,17 +9,15 @@ import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
-import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
-import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveMovementAddressesUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
+import com.soma369.laimory.feature.home.draft.DraftConsentSelectionSnapshot
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
-import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import com.soma369.laimory.feature.home.state.DraftConsentUiSideEffect
 import com.soma369.laimory.feature.home.state.DraftConsentUiState
@@ -30,6 +26,7 @@ import com.soma369.laimory.feature.home.state.movementStartAddressKey
 import com.soma369.laimory.feature.home.state.stayAddressKey
 import com.soma369.laimory.feature.home.state.toConsentContent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.combine
 import javax.inject.Inject
 
 /**
@@ -61,6 +58,14 @@ class DraftConsentViewModel
         private var activePreparation: DraftConsentPreparation? = null
 
         /**
+         * 상세가 지금 보고 있는 스냅샷.
+         *
+         * 제출용이 확정돼 있으면 그것이고, 아니면 홈이 상시로 유지하는 것이다 — 카드에서 CTA 전에
+         * 들어오는 경로가 후자다.
+         */
+        private var activeSnapshot: DraftConsentSelectionSnapshot? = null
+
+        /**
          * 표시 시점에 해석한 주소. 키는 [stayAddressKey] 계열이다.
          *
          * 전송 스냅샷이 아니라 화면 모델에만 덧입힌다. 새 생성 시도가 오면 비운다 — 스냅샷이
@@ -79,23 +84,38 @@ class DraftConsentViewModel
 
         init {
             safeLaunch {
-                sessionStore.preparation.collect { preparation ->
+                // 제출용이 확정돼 있으면 그것을 본다 — 확정 뒤에는 수집이 갱신돼도 보낼 것이
+                // 바뀌지 않아야 한다. 확정 전에는 홈이 상시로 유지하는 것을 본다.
+                combine(sessionStore.preparation, sessionStore.selection) { preparation, browsing ->
+                    activePreparation = preparation
+                    preparation?.snapshot ?: browsing
+                }.collect { snapshot ->
                     when {
                         // 폐기(null) 시 activity 범위 ViewModel 에 알림 본문·사진 URI 같은
-                        // 민감 표시 모델과 체크 상태가 남지 않도록 즉시 초기화한다.
-                        preparation == null -> {
-                            activePreparation = null
+                        // 민감 표시 모델이 남지 않도록 즉시 초기화한다.
+                        snapshot == null -> {
+                            activeSnapshot = null
                             clearResolvedAddresses()
                             updateState { DraftConsentUiState() }
                         }
 
-                        preparation.attemptId != activePreparation?.attemptId -> {
-                            activePreparation = preparation
-                            clearResolvedAddresses()
-                            updateState { DraftConsentUiState(content = preparation.toConsentContent()) }
-                            applyLocationConsent(preparation)
+                        // 갱신 번호가 오르면 **표시 모델만** 다시 만든다. 제외·주소·동의 판정은
+                        // 그대로다 — 수집이 돌 때마다 사용자가 고른 것이 사라지면 안 된다.
+                        snapshot.revision != activeSnapshot?.revision -> {
+                            activeSnapshot = snapshot
+                            pruneResolvedAddresses(snapshot)
+                            updateState { copy(content = snapshot.toConsentContent(resolvedAddresses)) }
+                            applyLocationConsent(snapshot)
                         }
                     }
+                }
+            }
+            // 제외 집합과 위치 전송 여부는 스토어가 소유한다 — 홈이 본문 건수를 세고 상세가
+            // 토글하므로 한쪽이 가지면 다른 쪽이 못 본다.
+            safeLaunch { sessionStore.excludedRawIds.collect { excluded -> updateState { copy(excludedRawIds = excluded) } } }
+            safeLaunch {
+                sessionStore.isLocationSendEnabled.collect { enabled ->
+                    updateState { copy(isLocationSendEnabled = enabled) }
                 }
             }
         }
@@ -107,46 +127,28 @@ class DraftConsentViewModel
                 DraftConsentUiIntent.ToggleLocationInclusion -> toggleLocationInclusion()
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
-                DraftConsentUiIntent.Submit -> submit()
-                DraftConsentUiIntent.NavigateBack -> navigateBack()
             }
         }
 
         private fun toggleItemInclusion(intent: DraftConsentUiIntent.ToggleItemInclusion) {
             if (state.value.isSubmitting) return
-            val preparation = activePreparation ?: return
-            val item = preparation.selection.items.firstOrNull { it.rawId == intent.itemKey } ?: return
+            val snapshot = activeSnapshot ?: return
+            val item = snapshot.selection.items.firstOrNull { it.rawId == intent.itemKey } ?: return
             // 사진은 홈 사진 시트 선택이 정본이므로 여기서 제외할 수 없다.
             if (item.itemType == ItemType.PHOTO) return
-            updateState {
-                copy(
-                    excludedRawIds =
-                        if (intent.itemKey in excludedRawIds) {
-                            excludedRawIds - intent.itemKey
-                        } else {
-                            excludedRawIds + intent.itemKey
-                        },
-                )
-            }
+            sessionStore.toggleExcluded(intent.itemKey)
         }
 
         /**
-         * 현재 생성 시도의 위치 항목 전체를 한 번에 포함·제외한다.
+         * 위치 전송을 한 번에 켜고 끈다.
          *
-         * 켤 때 최초 스냅샷의 위치 rawId 만 제외 집합에서 뺀다 — 다른 유형이 제외한 항목을 함께
-         * 되살리지 않기 위해서다. 상한 여유 재충원은 [DraftSourceItemSelection.excluding] 정책 그대로
-         * 하지 않는다.
+         * 끌 때 **그 시점 rawId 를 제외 집합에 넣지 않는다.** 그렇게 하면 그 뒤 수집된
+         * STAY·MOVEMENT 가 제외 집합에 없어, 스위치는 OFF 인데 위치가 나간다. 무엇을 뺄지는
+         * 제출 직전에 그때의 스냅샷으로 판단한다.
          */
         private fun toggleLocationInclusion() {
             if (state.value.isSubmitting) return
-            val locationRawIds = state.value.content?.locationRawIds.orEmpty()
-            if (locationRawIds.isEmpty()) return
-            updateState {
-                copy(
-                    excludedRawIds =
-                        if (isLocationIncluded) excludedRawIds + locationRawIds else excludedRawIds - locationRawIds,
-                )
-            }
+            sessionStore.setLocationSendEnabled(!state.value.isLocationSendEnabled)
         }
 
         private fun openTypeDetail(intent: DraftConsentUiIntent.OpenTypeDetail) {
@@ -155,86 +157,9 @@ class DraftConsentViewModel
             navigationHelper.navigateTo(DraftConsentDetailPage(intent.group.name))
         }
 
-        private fun submit() {
-            val preparation = activePreparation ?: return
-            if (!state.value.canSubmit) return
-            // 스냅샷에서 사용자 제외 항목만 뺀 결과를 전송한다. 제외로 생긴 상한 여유는 재충원하지 않는다.
-            val submission = preparation.selection.excluding(state.value.excludedRawIds)
-            updateState { copy(isSubmitting = true, submitError = null) }
-            safeLaunch(onError = ::handleSubmitFailure) {
-                if (preparation.discardActiveTask) draftTaskCoordinator.discard()
-                val result =
-                    createTimelineDraftUseCase(
-                        preparation.recordDate,
-                        preparation.zone,
-                        preparation.window,
-                        submission,
-                    )
-                val handle =
-                    result.getOrElse {
-                        handleSubmitFailure(it)
-                        return@safeLaunch
-                    }
-                draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
-                // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
-                loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
-                sessionStore.clearPreparation()
-                activePreparation = null
-                // 동의 화면을 백스택에서 빼고 로딩 화면을 올린다 — 로딩에서 뒤로가면 홈이다.
-                navigationHelper.navigateToBack()
-                navigationHelper.navigateTo(DraftLoadingPage)
-            }
-        }
-
-        private fun handleSubmitFailure(error: Throwable) {
-            // 서버가 이 단계 동의를 다시 요구한다 — 약관이 개정됐거나, 온보딩이 동의를 받기
-            // 전 버전으로 온보딩을 마친 계정이다. 이 화면은 동의를 받지 않으므로 받는 자리로
-            // 보낸다. **어느 단계가 비었는지는 오류가 알려 주지 않아** 후보를 모두 싣고,
-            // 그 화면이 다시 조회해 실제로 남은 것만 받는다.
-            //
-            // 준비는 폐기하지 않는다 — 돌아오면 같은 스냅샷으로 다시 제출할 수 있고, 그래야
-            // 사진을 다시 고르지 않는다. 생성을 자동으로 재개하지도 않는다.
-            if (error is ApiException && error.errorCode == TERMS_AGREEMENT_REQUIRED) {
-                updateState { copy(isSubmitting = false, submitError = AGREEMENT_REQUIRED_MESSAGE) }
-                navigationHelper.navigateTo(StageTermsPage(DRAFT_CONSENT_STAGES.map(TermStage::name)))
-                return
-            }
-            // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 서버는 초안이 있는 날짜의
-            // 생성을 덮어쓰기가 아니라 **이어 붙이기**로 처리하므로, 새로 더할 것이 없으면
-            // 409 `-1013` 으로 거절한다. 실패로만 보이면 사용자는 이유를 알 수 없다.
-            if (error is ApiException && error.errorCode == APPEND_NO_NEW_ITEMS) {
-                updateState { copy(isSubmitting = false, submitError = NO_NEW_ITEMS_MESSAGE) }
-                return
-            }
-            // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 스냅샷 재시도로는 복구되지
-            // 않으므로 준비를 폐기하고 홈의 사진 재선택 흐름으로 복귀시킨다.
-            if (error is DraftPhotoAccessException) {
-                sessionStore.clearPreparation()
-                sessionStore.markPhotoReselectionNeeded()
-                activePreparation = null
-                navigationHelper.navigateToBack()
-                return
-            }
-            // 그 외에는 같은 스냅샷으로 재시도할 수 있게 화면에 머물러 안내한다.
-            updateState {
-                copy(
-                    isSubmitting = false,
-                    submitError = "초안 생성 요청을 보내지 못했어요. 잠시 후 다시 시도해주세요.",
-                )
-            }
-            handleFailure(error)
-        }
-
-        private fun navigateBack() {
-            if (state.value.isSubmitting) return
-            sessionStore.clearPreparation()
-            activePreparation = null
-            navigationHelper.navigateToBack()
-        }
-
         /** 화면 복귀 신호. 진행 중인 시도가 없으면 판정할 대상도 없다. */
         private fun syncLocationConsent() {
-            applyLocationConsent(activePreparation ?: return)
+            applyLocationConsent(activeSnapshot ?: return)
         }
 
         /**
@@ -252,18 +177,18 @@ class DraftConsentViewModel
          * 알아내기 전과 조회 실패는 모두 "허용되지 않음"이다. 모르는 상태에서 좌표를 내보내지 않는다.
          * catalog 가 비면 요구가 없어 만족으로 보는데, 이는 서버의 fail-open 과 같은 판정이다.
          */
-        private fun applyLocationConsent(preparation: DraftConsentPreparation) {
-            val attemptId = preparation.attemptId
+        private fun applyLocationConsent(snapshot: DraftConsentSelectionSnapshot) {
+            val revision = snapshot.revision
             safeLaunch(onError = {}) {
                 val isGranted =
                     termsCoordinator
                         .requirementOf(TermStage.TIMELINE_LOCATION)
                         .getOrNull()
                         ?.isSatisfied == true
-                if (activePreparation?.attemptId != attemptId) return@safeLaunch
+                if (activeSnapshot?.revision != revision) return@safeLaunch
                 val isMapAllowed = isGranted && isMapKeyPresent
                 updateState { copy(isMapRenderAllowed = isMapAllowed) }
-                if (isGranted) resolveMissingAddresses(preparation)
+                if (isGranted) resolveMissingAddresses(snapshot)
             }
         }
 
@@ -280,14 +205,14 @@ class DraftConsentViewModel
          * 도는데 그때 이미 물어본 좌표를 또 물으면 같은 요청이 쌓인다. 실패해도 이번 시도 안에서는
          * 다시 부르지 않고 `주소 미확인` 으로 남긴다 — 재시도 기회는 홈에서 새 시도를 시작할 때 생긴다.
          */
-        private fun resolveMissingAddresses(preparation: DraftConsentPreparation) {
-            val attemptId = preparation.attemptId
-            preparation.selection.items.forEach { item ->
+        private fun resolveMissingAddresses(snapshot: DraftConsentSelectionSnapshot) {
+            val revision = snapshot.revision
+            snapshot.selection.items.forEach { item ->
                 when (val payload = item.payload) {
                     is StayPayload -> {
                         if (payload.address != null) return@forEach
                         if (!attemptedAddressRawIds.add(item.rawId)) return@forEach
-                        launchAddressResolution(attemptId) {
+                        launchAddressResolution(revision) {
                             // 목록·말풍선은 한 줄 주소만 쓴다. 시·동 층위는 홈 위치 카드가 쓴다.
                             resolveStayAddress(item.rawId, payload.latitude, payload.longitude)
                                 ?.let { mapOf(stayAddressKey(item.rawId) to it.line) }
@@ -298,7 +223,7 @@ class DraftConsentViewModel
                     is MovementPayload -> {
                         if (payload.start.address != null && payload.end.address != null) return@forEach
                         if (!attemptedAddressRawIds.add(item.rawId)) return@forEach
-                        launchAddressResolution(attemptId) {
+                        launchAddressResolution(revision) {
                             val resolved = resolveMovementAddresses(item.rawId, payload.start, payload.end)
                             buildMap {
                                 resolved.start?.let { put(movementStartAddressKey(item.rawId), it) }
@@ -319,17 +244,24 @@ class DraftConsentViewModel
          * 주소는 보조 표시라 실패는 삼키고 `주소 미확인` 으로 남긴다.
          */
         private fun launchAddressResolution(
-            attemptId: Long,
+            revision: Long,
             resolve: suspend () -> Map<String, String>,
         ) {
             safeLaunch(onError = {}) {
                 val resolved = resolve()
                 if (resolved.isEmpty()) return@safeLaunch
-                // 늦게 도착한 이전 생성 시도의 결과는 버린다. 지금 화면의 스냅샷과 맞지 않는다.
-                val preparation = activePreparation?.takeIf { it.attemptId == attemptId } ?: return@safeLaunch
+                // 늦게 도착한 이전 판의 결과는 버린다. 지금 화면의 스냅샷과 맞지 않는다.
+                val snapshot = activeSnapshot?.takeIf { it.revision == revision } ?: return@safeLaunch
                 resolvedAddresses += resolved
-                updateState { copy(content = preparation.toConsentContent(resolvedAddresses)) }
+                updateState { copy(content = snapshot.toConsentContent(resolvedAddresses)) }
             }
+        }
+
+        /** 사라진 항목의 주소만 걷어 낸다. 갱신마다 비우면 수집이 돌 때마다 `Geocoder` 를 때린다. */
+        private fun pruneResolvedAddresses(snapshot: DraftConsentSelectionSnapshot) {
+            val alive = snapshot.selection.items.mapTo(mutableSetOf()) { it.rawId }
+            resolvedAddresses.keys.retainAll { key -> key.substringBefore(':') in alive }
+            attemptedAddressRawIds.retainAll(alive)
         }
 
         private fun clearResolvedAddresses() {

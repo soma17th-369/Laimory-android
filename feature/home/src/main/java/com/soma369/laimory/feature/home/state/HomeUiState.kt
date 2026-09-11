@@ -54,9 +54,15 @@ data class HomeUiState(
     val isDatePickerVisible: Boolean = false,
     val timeSheet: HomeTimeSheetState? = null,
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
+    /**
+     * `만들기` 를 누른 뒤 사진 업로드·생성 요청의 응답을 기다리는 중.
+     *
+     * [draftStatus] 는 서버가 작업을 받아야 움직이므로 이 구간에는 아직 IDLE 이다. 그동안
+     * 입력이 열려 있으면, 화면에서는 새 날짜를 고르는데 요청은 이미 확정한 스냅샷으로 진행된다.
+     */
+    val isSubmitting: Boolean = false,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
-    val pastRecords: HomePastRecordsUiState = HomePastRecordsUiState.Loading,
     /**
      * 이미 저장이 끝난 기록의 날짜. 날짜 피커에서 고를 수 없게 하는 데 쓴다.
      *
@@ -106,8 +112,8 @@ data class HomeSourceSummary(
     val calendar: HomeSourceCount = HomeSourceCount(),
     val location: HomeSourceCount = HomeSourceCount(),
     val notification: HomeSourceCount = HomeSourceCount(),
-    /** 사진 격자에 그릴 후보. **선택분이 아니라 후보 기준**이다 — 카드는 무엇이 모였는지를 보여 준다. */
-    val photoPreviewUris: List<String> = emptyList(),
+    /** 사진 격자에 그릴 칸 최대 [HOME_PHOTO_GRID_CELLS] 개. 고른 사진이 앞에 온다. */
+    val photoCells: List<HomePhotoCell> = emptyList(),
     val calendarItems: List<HomeCalendarItem> = emptyList(),
     val notificationApps: List<HomeNotificationApp> = emptyList(),
     /** 위치 카드의 `가장 오래 머문 곳`. 창 안에 체류가 없으면 null 이다. */
@@ -151,6 +157,19 @@ internal val DraftCreationStatus.isDateLocked: Boolean
 
 internal val DraftCreationStatus.isInputLocked: Boolean
     get() = isDateLocked || this == DraftCreationStatus.SUCCESS
+
+/**
+ * 날짜를 바꿀 수 없는 구간.
+ *
+ * 진행 중인 작업뿐 아니라 **제출을 기다리는 동안**도 잠근다. 서버 요청은 이미 확정한 스냅샷으로
+ * 진행되는데 화면에서 날짜를 바꾸면, 성공했을 때 방금 고른 날이 아닌 이전 날의 로딩으로 간다.
+ */
+internal val HomeUiState.isDateLocked: Boolean
+    get() = isSubmitting || draftStatus.isDateLocked
+
+/** 날짜·시각·사진·원천 상세를 모두 잠그는 구간. */
+internal val HomeUiState.isInputLocked: Boolean
+    get() = isSubmitting || draftStatus.isInputLocked
 
 /**
  * 기록 창 안에 모인 것을 홈 카드가 그릴 값으로 옮긴다.
@@ -204,7 +223,7 @@ internal fun HomeUiState.refreshSourceSummary(
                 calendar = countOf(DraftConsentTypeGroup.CALENDAR, inWindowNonPhotos, selection, excludedRawIds),
                 location = countOf(DraftConsentTypeGroup.LOCATION, inWindowNonPhotos, selection, excludedRawIds),
                 notification = countOf(DraftConsentTypeGroup.NOTIFICATION, inWindowNonPhotos, selection, excludedRawIds),
-                photoPreviewUris = availablePhotos.take(PHOTO_PREVIEW_LIMIT).map(HomePhotoItem::uri),
+                photoCells = availablePhotos.toPhotoCells(selectedIds),
                 calendarItems = inWindowNonPhotos.toCalendarItems(),
                 notificationApps = inWindowNonPhotos.toNotificationApps(),
                 stayPlace = inWindowNonPhotos.longestStayPlace(window),
@@ -315,4 +334,22 @@ internal fun HomeUiState.nonPhotoSourceItems(
 }
 
 internal const val MAX_PHOTO_SELECTION = DraftSourceItemLimits.DEFAULT_PHOTO
-private const val PHOTO_PREVIEW_LIMIT = 3
+
+/**
+ * 격자에 담을 칸. **고른 사진이 앞이고, 각 묶음 안에서는 후보 순서(최신순)를 지킨다.**
+ *
+ * 후보 최신순만 쓰면 오래된 사진을 골랐을 때 여섯 칸 어디에도 안 보여, 카드가 무엇을 보내는지
+ * 말하지 못한다. 반대로 고른 것만 보여 주면 무엇이 모였는지를 알 수 없어 둘을 함께 담는다.
+ */
+private fun List<HomePhotoItem>.toPhotoCells(selectedIds: Set<Long>): List<HomePhotoCell> =
+    sortedByDescending { it.mediaStoreId in selectedIds }
+        .take(HOME_PHOTO_GRID_CELLS)
+        .map { photo -> HomePhotoCell(uri = photo.uri, isSelected = photo.mediaStoreId in selectedIds) }
+
+/**
+ * 사진 카드 격자의 칸 수.
+ *
+ * 격자(`HomePhotoGrid`)가 이 수만큼 칸을 그리고 모자란 자리는 자리표시자로 채우므로, **여기서
+ * 덜 담으면 후보가 있어도 빈 칸이 뜬다.** 두 곳이 어긋나지 않도록 이 값 하나만 본다.
+ */
+internal const val HOME_PHOTO_GRID_CELLS = 6

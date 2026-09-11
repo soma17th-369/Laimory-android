@@ -122,9 +122,6 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object RefreshLocationConsent : HomeUiIntent
 
-    /** 동의 화면에서 제출을 마치고 복귀했는지 확인한다. 홈 재진입(ON_RESUME)마다 1회 소비한다. */
-    data object ConsumeDraftConsentResult : HomeUiIntent
-
     data object RetryDraft : HomeUiIntent
 
     data object ContinueWaiting : HomeUiIntent
@@ -136,10 +133,24 @@ sealed interface HomeUiIntent : UiIntent {
     /** 생성 중인 초안의 로딩 화면으로 들어간다. */
     data object OpenDraftLoading : HomeUiIntent
 
-    /** 홈 진입·복귀·재시도 시 지난 기록 목록을 서버와 동기화한다. */
-    data object SyncPastRecords : HomeUiIntent
+    /** 지난 기록 전용 화면을 연다. 목록·동기화는 그 화면이 소유한다. */
+    data object OpenPastRecords : HomeUiIntent
 
-    data class SelectPastRecord(
-        val recordDate: LocalDate,
+    /**
+     * 원천 카드를 눌렀다. 어디로 갈지는 ViewModel 이 데이터로 정한다.
+     *
+     * 사진은 선택 시트, 나머지는 유형 상세다. 볼 것도 권한도 없으면 화면이 권한 흐름을 대신
+     * 태우므로 이 인텐트가 오지 않는다.
+     */
+    data class OpenSourceDetail(
+        val kind: HomeSourceKind,
     ) : HomeUiIntent
+
+    /**
+     * 건강 상세를 연다. **debug 전용 진입점**이다.
+     *
+     * 건강은 홈 카드에 없고 릴리즈에서는 항목 단위로 뺄 수단도 없다(제품 결정). 개발 중 무엇이
+     * 실리는지 확인할 자리가 필요해 수집 실험실과 같은 자리에 임시로 둔다.
+     */
+    data object OpenHealthDetail : HomeUiIntent
 }

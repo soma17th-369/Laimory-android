@@ -87,6 +87,17 @@ data object Feature1Page : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/**
+ * 저장된 지난 기록 목록. 홈 우측 상단에서 연다.
+ *
+ * 홈이 바텀 탭의 바닥이므로 그 위에 쌓이는 일반 화면이다 — 탭이 아니다.
+ */
+data object PastRecordsPage : Page {
+    const val PATH = "/past-records"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data class TimelinePage(
     val recordDate: LocalDate,
 ) : Page {
@@ -144,17 +155,6 @@ data class TimelineEventEditorPage(
 
         fun timelineEventIdFrom(args: Map<String, String>): Long? = args[TIMELINE_EVENT_ID_ARG]?.toLongOrNull()
     }
-}
-
-/**
- * 타임라인 초안 생성 전 데이터 전송 확인·동의 화면.
- *
- * 전송 스냅샷은 nav args 로 직렬화하지 않고 feature:home 의 인메모리 준비 상태로 전달한다.
- */
-data object DraftConsentPage : Page {
-    const val PATH = "/home/draft-consent"
-
-    override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
 /** 초안 생성 로딩. 표시 대상은 인자가 아니라 현재 활성 작업이 정본이라 인자를 받지 않는다. */

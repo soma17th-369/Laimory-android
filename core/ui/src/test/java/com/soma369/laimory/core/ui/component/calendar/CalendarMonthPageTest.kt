@@ -1,4 +1,4 @@
-package com.soma369.laimory.feature.timeline.model
+package com.soma369.laimory.core.ui.component.calendar
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

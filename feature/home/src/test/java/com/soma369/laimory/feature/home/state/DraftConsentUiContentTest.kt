@@ -12,7 +12,7 @@ import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionPolicy
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
-import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
+import com.soma369.laimory.feature.home.draft.DraftConsentSelectionSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -52,20 +52,19 @@ class DraftConsentUiContentTest {
     private fun preparation(
         items: List<SourceItem>,
         limits: DraftSourceItemLimits = DraftSourceItemLimits(),
-    ): DraftConsentPreparation {
+    ): DraftConsentSelectionSnapshot {
         val window =
             RecordDateWindow(
                 start = date.atStartOfDay(zone).toInstant(),
                 end = date.plusDays(2).atStartOfDay(zone).toInstant(),
             )
         val selection = DraftSourceItemSelectionPolicy(limits).select(window, items).getOrThrow()
-        return DraftConsentPreparation(
-            attemptId = 1L,
+        return DraftConsentSelectionSnapshot(
+            revision = 1L,
             recordDate = date,
             zone = zone,
             window = window,
             selection = selection,
-            discardActiveTask = false,
         )
     }
 
