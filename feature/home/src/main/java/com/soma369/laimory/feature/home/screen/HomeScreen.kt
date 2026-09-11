@@ -11,11 +11,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -337,7 +340,8 @@ private fun HomeScreen(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                // 두 반쪽 카드의 높이를 맞춘다. 큰 글꼴에서 한쪽만 늘면(빈 알림은 한 줄) 테두리가 어긋난다.
+                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 HomeSourceCard(
@@ -345,7 +349,7 @@ private fun HomeScreen(
                     status = state.permissions.location,
                     body = state.cardBody(HomeSourceKind.LOCATION),
                     onClick = state.cardClick(HomeSourceKind.LOCATION, onIntent, onRequestPermission),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     permissionAction = state.permissionAction(HomeSourceKind.LOCATION, onRequestPermission),
                 ) {
                     HomeLabeledSlot(
@@ -362,7 +366,7 @@ private fun HomeScreen(
                     status = state.permissions.notification,
                     body = state.cardBody(HomeSourceKind.NOTIFICATION),
                     onClick = state.cardClick(HomeSourceKind.NOTIFICATION, onIntent, onRequestPermission),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     permissionAction = state.permissionAction(HomeSourceKind.NOTIFICATION, onRequestPermission),
                 ) {
                     HomeNotificationSlot(apps = state.summary.notificationApps)
@@ -475,13 +479,14 @@ private fun HomeDateRow(
 @Composable
 private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
     if (items.isEmpty()) {
-        HomeEmptySlot(message = "일정이 없어요", height = CALENDAR_SLOT_HEIGHT)
+        HomeEmptySlot(message = "일정이 없어요", minHeight = CALENDAR_SLOT_HEIGHT)
         return
     }
-    HomeRotatingContent(items = items, modifier = Modifier.fillMaxWidth().height(CALENDAR_SLOT_HEIGHT)) { slot ->
+    HomeRotatingContent(items = items, modifier = Modifier.fillMaxWidth()) { slot ->
         val item = slot.value
         Row(
-            modifier = Modifier.fillMaxSize(),
+            // 시안 높이는 최소값이다. 큰 글꼴에서는 시간·제목 두 줄이 다 들어가도록 늘어난다.
+            modifier = Modifier.fillMaxWidth().heightIn(min = CALENDAR_SLOT_HEIGHT),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -512,14 +517,14 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
 @Composable
 private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
     if (apps.isEmpty()) {
-        HomeEmptySlot(message = "알림이 없어요", height = HALF_CARD_SLOT_HEIGHT)
+        HomeEmptySlot(message = "알림이 없어요", minHeight = HALF_CARD_SLOT_HEIGHT)
         return
     }
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(HALF_CARD_SLOT_HEIGHT)
+                .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -562,10 +567,10 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
 @Composable
 private fun HomeEmptySlot(
     message: String,
-    height: Dp,
+    minHeight: Dp,
 ) {
     Box(
-        modifier = Modifier.fillMaxWidth().height(height),
+        modifier = Modifier.fillMaxWidth().heightIn(min = minHeight),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(
@@ -587,7 +592,7 @@ private fun HomeLabeledSlot(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(HALF_CARD_SLOT_HEIGHT)
+                .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -615,10 +620,14 @@ private fun HomeCalendarItem.timeText(): String =
         if (end == null) start else "$start ~ $end"
     }
 
-/** 일정 카드 내용 높이. 카드 126 = 패딩 12 + 분류 24 + 8 + **40** + 8 + 본문 22 + 패딩 12. */
+/**
+ * 일정 카드 내용의 **최소** 높이. 카드 126 = 패딩 12 + 분류 24 + 8 + **40** + 8 + 본문 22 + 패딩 12.
+ *
+ * 고정값으로 두지 않는다. 시간·제목 두 줄은 큰 글꼴(1.3배)에서 45 가까이 되어, 고정하면 제목이 잘린다.
+ */
 private val CALENDAR_SLOT_HEIGHT = 40.dp
 
-/** 위치·알림 반쪽 카드의 내용 높이. 카드 전체는 144 다. */
+/** 위치·알림 반쪽 카드 내용의 **최소** 높이. 카드 전체는 144 다. 큰 글꼴에서는 내용만큼 늘어난다. */
 private val HALF_CARD_SLOT_HEIGHT = 58.dp
 
 private val HOME_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
