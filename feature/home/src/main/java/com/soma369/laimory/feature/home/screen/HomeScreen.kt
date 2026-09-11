@@ -25,7 +25,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -299,6 +298,14 @@ private fun HomeScreen(
                 HomeHeaderRow(
                     nickname = state.nickname,
                     onPastRecordsClick = { onIntent(HomeUiIntent.OpenPastRecords) },
+                    // 수집 실험실은 개발 도구라 버튼을 두지 않고 인사말에 숨긴다. release 에는
+                    // 진입점 자체가 없다(ViewModel 도 호출 경계에서 한 번 더 막는다).
+                    onGreetingClick =
+                        if (state.isCollectionLabAccessible) {
+                            { onIntent(HomeUiIntent.NavigateToCollection) }
+                        } else {
+                            null
+                        },
                 )
                 HomeDateRow(
                     selectedDate = state.selectedDate,
@@ -361,19 +368,6 @@ private fun HomeScreen(
                     HomeNotificationSlot(apps = state.summary.notificationApps)
                 }
             }
-
-            // 수집 실험실은 개발 도구라 release 에는 진입점이 없다. 고정된 CTA 아래에 두면 개발
-            // 빌드에서만 카드 자리가 한 줄 줄어 release 와 다른 화면을 보게 되므로 카드 영역 끝에 둔다.
-            if (state.isCollectionLabAccessible) {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    TextButton(
-                        onClick = { onIntent(HomeUiIntent.NavigateToCollection) },
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    ) {
-                        Text("수집 데이터 자세히 보기")
-                    }
-                }
-            }
         }
 
         HomeTimelineButton(
@@ -403,18 +397,19 @@ private val HOME_TOP_PADDING = 6.dp
 /** 인사말과 날짜 줄 사이(시안 2). */
 private val HEADER_LINE_GAP = 2.dp
 
-/** 인사말 + `지난 기록` 알약. */
+/** 인사말 + `지난 기록`. [onGreetingClick] 이 있으면 인사말을 눌러 수집 실험실로 간다(debug). */
 @Composable
 private fun HomeHeaderRow(
     nickname: String?,
     onPastRecordsClick: () -> Unit,
+    onGreetingClick: (() -> Unit)?,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HomeGreeting(nickname = nickname)
+        HomeGreeting(nickname = nickname, onClick = onGreetingClick)
         Icon(
             painter = painterResource(UiR.drawable.ico_home_past_records),
             // 아이콘만 서 있어 뜻을 그림으로만 전한다 — 스크린 리더가 읽을 이름을 붙인다.
@@ -640,7 +635,10 @@ private fun DataPermissionState.locationDotStatus(): DataSourceStatus =
  * 않아 목록 첫 줄이 튀지 않는다. 강조는 굵기가 아니라 색 대비다(Figma 규격).
  */
 @Composable
-private fun HomeGreeting(nickname: String?) {
+private fun HomeGreeting(
+    nickname: String?,
+    onClick: (() -> Unit)?,
+) {
     val normalColor = MaterialTheme.colorScheme.onSurfaceVariant
     val nicknameColor = MaterialTheme.colorScheme.onSurface
     // 조각을 나눠 여러 Text 로 두면 접근성 서비스가 따로 읽으므로 한 문장으로 합친다.
@@ -657,5 +655,18 @@ private fun HomeGreeting(nickname: String?) {
                 }
             }
         }
-    Text(text = greeting, style = MaterialTheme.typography.titleLarge)
+    Text(
+        text = greeting,
+        // 겉모습은 그대로 둔다 — 개발 도구로 가는 숨은 입구라 눌러 보라고 권하지 않는다. 대신
+        // 낭독에는 무엇을 여는지 알린다.
+        modifier =
+            if (onClick != null) {
+                Modifier
+                    .clip(RoundedCornerShape(Spacing.small))
+                    .clickable(onClickLabel = "수집 데이터 보기", onClick = onClick)
+            } else {
+                Modifier
+            },
+        style = MaterialTheme.typography.titleLarge,
+    )
 }
