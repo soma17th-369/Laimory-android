@@ -282,7 +282,7 @@ private fun HomeScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
-                .padding(horizontal = Spacing.extraLarge),
+                .padding(start = Spacing.extraLarge, end = Spacing.extraLarge, bottom = HOME_BOTTOM_PADDING),
     ) {
         Column(
             modifier =
@@ -396,6 +396,13 @@ private val HOME_TOP_PADDING = 6.dp
 
 /** 인사말과 날짜 줄 사이(시안 2). */
 private val HEADER_LINE_GAP = 2.dp
+
+/**
+ * CTA 와 바텀바 사이. 붙어 있으면 시그니처 버튼이 바텀바의 일부처럼 보인다.
+ *
+ * 최소 기준으로 카드 사이 간격과 같은 값을 둔다(시안은 23). 이 여백만큼 카드 영역이 줄어든다.
+ */
+private val HOME_BOTTOM_PADDING = Spacing.large
 
 /** 인사말 + `지난 기록`. [onGreetingClick] 이 있으면 인사말을 눌러 수집 실험실로 간다(debug). */
 @Composable
