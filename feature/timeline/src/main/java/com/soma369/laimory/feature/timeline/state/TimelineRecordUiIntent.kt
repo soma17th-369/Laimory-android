@@ -62,7 +62,16 @@ sealed interface TimelineRecordUiIntent : UiIntent {
         val timelineEventId: Long,
     ) : TimelineRecordUiIntent
 
+    /**
+     * 메모 입력칸의 값이 바뀌었다.
+     *
+     * [CommitMemoEdit] 처럼 대상 이벤트를 들고 다닌다. 다른 메모를 눌러 편집이 옮겨 간 뒤에도 앞선
+     * 입력칸은 값을 한 번 더 보낸다 — 컴포지션에서 빠지며 입력 세션을 닫을 때 조합 중이던 글자의 조합
+     * 표시를 떼는데, 그 값이 콜백으로 나온다. id 를 확인하지 않으면 그 글이 방금 연 편집기에 들어가
+     * 다른 이벤트의 메모로 저장된다.
+     */
     data class ChangeMemo(
+        val timelineEventId: Long,
         val value: String,
     ) : TimelineRecordUiIntent
 

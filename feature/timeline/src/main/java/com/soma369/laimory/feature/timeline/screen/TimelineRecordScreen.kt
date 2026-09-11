@@ -322,7 +322,9 @@ private fun TimelineRecordScreen(
                             onEventClick = { onIntent(TimelineRecordUiIntent.SelectEvent(it)) },
                             onEventDeleteClick = { onIntent(TimelineRecordUiIntent.RequestEventDelete(it)) },
                             onMemoClick = { onIntent(TimelineRecordUiIntent.EditMemo(it)) },
-                            onMemoChange = { onIntent(TimelineRecordUiIntent.ChangeMemo(it)) },
+                            onMemoChange = { timelineEventId, value ->
+                                onIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId, value))
+                            },
                             onMemoCommit = { onIntent(TimelineRecordUiIntent.CommitMemoEdit(it)) },
                             onPhotoClick = { photoUrls, initialIndex ->
                                 photoViewerState =
@@ -453,7 +455,7 @@ private fun TimelineRecordBody(
     onEventClick: (Long) -> Unit,
     onEventDeleteClick: (Long) -> Unit,
     onMemoClick: (Long) -> Unit,
-    onMemoChange: (String) -> Unit,
+    onMemoChange: (timelineEventId: Long, value: String) -> Unit,
     onMemoCommit: (Long) -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -482,7 +484,7 @@ private fun TimelineRecordBody(
                 isLast = index == record.events.lastIndex,
                 memoEditor = memoEditor?.takeIf { it.timelineEventId == event.timelineEventId },
                 onMemoClick = { onMemoClick(event.timelineEventId) },
-                onMemoChange = onMemoChange,
+                onMemoChange = { onMemoChange(event.timelineEventId, it) },
                 onMemoCommit = { onMemoCommit(event.timelineEventId) },
             )
         }
