@@ -5,7 +5,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,8 +48,6 @@ class DataPermissionState(
     private val isPhotoLimited: Boolean,
     /** 이 기기에 알림 접근 설정 화면이 있는지. 없으면 사용자가 켤 방법이 없다. */
     private val hasListenerSettings: Boolean,
-    /** Android 11+ 는 `항상 허용` 을 다이얼로그로 주지 않아 앱 설정으로 보내야 한다. */
-    private val needsSettingsForBackgroundLocation: Boolean,
     /** Health Connect 를 쓸 수 있는 기기인지. 미설치·업데이트 필요면 요청 자체가 성립하지 않는다. */
     private val isHealthAvailable: Boolean = false,
     /**
@@ -134,12 +131,11 @@ class DataPermissionState(
                 when {
                     // 다시 고르는 것 자체가 넓히는 길이라, 시스템이 매번 선택 화면을 띄운다.
                     permission == DataPermission.PHOTO -> DataPermissionAction.RESELECT_PHOTOS
-                    permission == DataPermission.LOCATION &&
-                        locationStep == LocationPermissionStep.BACKGROUND &&
-                        needsSettingsForBackgroundLocation -> DataPermissionAction.APP_SETTINGS
                     // 남은 한 단계를 두 번 거부한 경우다. 위치는 `일부 허용` 도 LIMITED 라
                     // DENIED 분기에 닿지 않으므로, 막힌 판정을 여기서도 똑같이 봐야 한다.
                     permission in blocked -> DataPermissionAction.APP_SETTINGS
+                    // 위치의 `항상 허용` 도 요청으로 받는다. Android 11+ 는 다이얼로그 대신 이 앱의
+                    // 위치 권한 화면이 곧장 뜬다 — 앱 정보에서 권한 → 위치를 찾아 들어가지 않아도 된다.
                     else -> DataPermissionAction.REQUEST
                 }
 
@@ -267,7 +263,6 @@ fun rememberDataPermissionState(): DataPermissionState {
             locationStep = locationStep,
             isPhotoLimited = isPhotoLimited,
             hasListenerSettings = hasListenerSettings,
-            needsSettingsForBackgroundLocation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
             isHealthAvailable = isHealthAvailable,
             blocked = blocked,
             onOpenSettings = { permission ->
@@ -301,17 +296,14 @@ fun rememberDataPermissionState(): DataPermissionState {
                             pending = permission
                             runtimeLauncher.launch(LocationPermission.foreground())
                         }
-                        // Android 11+ 는 `항상 허용` 을 다이얼로그로 주지 않는다. 앱 설정으로 보내고
-                        // 돌아왔을 때 ON_RESUME 재조회가 결과를 반영한다.
-                        LocationPermissionStep.BACKGROUND ->
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                settingsLauncher.launch(appDetailsSettingsIntent(context))
-                            } else {
-                                // 다이얼로그를 띄우는 길에는 반드시 pending 을 남긴다 — 남기지
-                                // 않으면 막혔다는 사실을 결과 콜백이 어디에도 기록하지 못한다.
-                                pending = permission
-                                runtimeLauncher.launch(arrayOf(LocationPermission.background()))
-                            }
+                        // `항상 허용`. Android 11+ 는 다이얼로그 대신 이 앱의 위치 권한 화면을 곧장 열고,
+                        // Android 10 은 `항상 허용` 이 든 다이얼로그를 띄운다. 결과는 요청 콜백으로 온다.
+                        // pending 을 반드시 남긴다 — 남기지 않으면 요청이 막혔다는 사실을 결과 콜백이
+                        // 어디에도 기록하지 못해, 막힌 뒤에도 앱 정보 화면으로 길을 바꾸지 못한다.
+                        LocationPermissionStep.BACKGROUND -> {
+                            pending = permission
+                            runtimeLauncher.launch(arrayOf(LocationPermission.background()))
+                        }
 
                         LocationPermissionStep.ACTIVITY -> {
                             pending = permission
@@ -341,6 +333,6 @@ fun rememberDataPermissionState(): DataPermissionState {
     }
 }
 
-/** 앱 상세 설정. 백그라운드 위치는 Android 11+ 에서 여기서만 켤 수 있다. */
+/** 앱 상세 설정. 시스템이 더 이상 묻지 않는 권한을 사용자가 직접 켜러 가는 곳이다. */
 private fun appDetailsSettingsIntent(context: Context): Intent =
     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))

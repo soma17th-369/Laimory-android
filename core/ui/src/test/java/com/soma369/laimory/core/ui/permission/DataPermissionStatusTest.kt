@@ -17,7 +17,6 @@ class DataPermissionStatusTest {
         locationStep: LocationPermissionStep = LocationPermissionStep.FOREGROUND,
         isPhotoLimited: Boolean = false,
         hasListenerSettings: Boolean = true,
-        needsSettingsForBackgroundLocation: Boolean = true,
         isHealthAvailable: Boolean = true,
         blocked: Set<DataPermission> = emptySet(),
     ) = DataPermissionState(
@@ -25,7 +24,6 @@ class DataPermissionStatusTest {
         locationStep = locationStep,
         isPhotoLimited = isPhotoLimited,
         hasListenerSettings = hasListenerSettings,
-        needsSettingsForBackgroundLocation = needsSettingsForBackgroundLocation,
         isHealthAvailable = isHealthAvailable,
         blocked = blocked,
         onRequest = {},
@@ -65,22 +63,25 @@ class DataPermissionStatusTest {
     }
 
     @Test
-    fun `전경 위치만 열린 상태는 제한이며 Android 11 이상은 앱 설정으로 보낸다`() {
+    fun `전경 위치만 열린 상태는 제한이며 항상 허용을 권한 요청으로 받는다`() {
+        // Android 11+ 는 이 요청에 다이얼로그 대신 위치 권한 화면이 뜬다. 앱 정보 화면으로 보내면
+        // 사용자가 권한 → 위치를 직접 찾아 들어가야 한다.
         val subject = state(locationStep = LocationPermissionStep.BACKGROUND)
 
         assertEquals(DataSourceStatus.LIMITED, subject.statusOf(DataPermission.LOCATION))
-        assertEquals(DataPermissionAction.APP_SETTINGS, subject.actionFor(DataPermission.LOCATION))
+        assertEquals(DataPermissionAction.REQUEST, subject.actionFor(DataPermission.LOCATION))
     }
 
     @Test
-    fun `Android 10 이하에서는 백그라운드 위치도 다이얼로그로 받는다`() {
+    fun `항상 허용 요청이 막혔으면 앱 정보 화면으로 보낸다`() {
+        // 시스템이 요청을 삼키면 위치 권한 화면도 뜨지 않는다. 설정에서 직접 고르는 길만 남는다.
         val subject =
             state(
                 locationStep = LocationPermissionStep.BACKGROUND,
-                needsSettingsForBackgroundLocation = false,
+                blocked = setOf(DataPermission.LOCATION),
             )
 
-        assertEquals(DataPermissionAction.REQUEST, subject.actionFor(DataPermission.LOCATION))
+        assertEquals(DataPermissionAction.APP_SETTINGS, subject.actionFor(DataPermission.LOCATION))
     }
 
     @Test

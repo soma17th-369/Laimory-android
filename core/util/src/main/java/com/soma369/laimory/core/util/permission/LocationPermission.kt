@@ -43,7 +43,12 @@ object LocationPermission {
             Manifest.permission.ACCESS_COARSE_LOCATION,
         )
 
-    /** 2단계 요청 권한(백그라운드 위치, "항상 허용"). */
+    /**
+     * 2단계 요청 권한(백그라운드 위치, "항상 허용"). 전경 위치가 허용된 뒤에만 받아 준다.
+     *
+     * Android 11+ 는 이 요청에 다이얼로그 대신 이 앱의 위치 권한 화면을 열고, Android 10 은 `항상 허용` 이
+     * 든 다이얼로그를 띄운다.
+     */
     fun background(): String = Manifest.permission.ACCESS_BACKGROUND_LOCATION
 
     /** 1단계 권한 중 하나라도 미허용이면 true — 위치가 이미 허용돼도 알림·활동 권한을 놓치지 않게 한다. */
