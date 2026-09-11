@@ -233,7 +233,7 @@ class TimelineRecordViewModelTest {
             // 뒤로 한 번은 포커스를 놓는 동작이다. 예전에는 쓰던 글을 버렸다.
             val viewModel = createLoadedViewModel()
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("뒤로 누르기 전에 쓴 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "뒤로 누르기 전에 쓴 메모"))
             runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.NavigateBack)
@@ -252,7 +252,7 @@ class TimelineRecordViewModelTest {
             recordRepository.memoUpdateGate = gate
             val viewModel = createLoadedViewModel()
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("날아가는 중인 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "날아가는 중인 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
 
@@ -317,7 +317,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("오늘의 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "오늘의 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -339,7 +339,7 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("   "))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "   "))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -355,7 +355,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(maxLengthMemo))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = maxLengthMemo))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -374,7 +374,7 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("방금 쓴 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "방금 쓴 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
 
@@ -398,7 +398,7 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("연결되면 다시 보낼 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "연결되면 다시 보낼 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -419,7 +419,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("다시 보내는 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "다시 보내는 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
             val failure = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
@@ -450,11 +450,11 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("first"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "first"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("latest"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "latest"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
             assertEquals("latest", viewModel.state.value.displayedRecord?.events?.single()?.memo)
@@ -482,13 +482,13 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("지난 실패 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "지난 실패 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
             val stale = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("새로 쓴 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "새로 쓴 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
             assertEquals("새로 쓴 메모", repository.timeline.value?.events?.single()?.memo)
@@ -514,7 +514,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "저장 못 한 메모"))
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
             runCurrent()
@@ -537,12 +537,55 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("첫 이벤트 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "첫 이벤트 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 2L))
             advanceUntilIdle()
 
             assertEquals(listOf(1L to "첫 이벤트 메모"), recordRepository.updatedMemos)
             assertEquals(2L, viewModel.state.value.memoEditor?.timelineEventId)
+        }
+
+    @Test
+    fun `다른 메모로 옮긴 뒤 앞선 입력칸이 늦게 보낸 값은 새로 연 메모를 덮지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 앞선 입력칸은 컴포지션에서 빠지며 입력 세션을 닫을 때, 조합 표시만 뗀 마지막 값을 한 번 더
+            // 보낸다(한글 입력). 예전에는 이 값이 방금 연 B 편집기에 들어가 B 원문을 덮고 저장됐다.
+            val viewModel =
+                createLoadedViewModel(
+                    record =
+                        timeline(
+                            events =
+                                listOf(
+                                    event(timelineEventId = 1L),
+                                    event(timelineEventId = 2L, memo = "B 에 원래 있던 메모"),
+                                ),
+                        ),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+            // 조합 중인 글자도 입력할 때마다 값으로 온다 — 마지막 `심` 은 아직 조합 중이다.
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "오늘 점시"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "오늘 점심"))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "오늘 점심"))
+            runCurrent()
+
+            assertEquals(2L, viewModel.state.value.memoEditor?.timelineEventId)
+            assertEquals("B 에 원래 있던 메모", viewModel.state.value.memoEditor?.draftMemo)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 2L))
+            advanceUntilIdle()
+
+            // A 는 마지막 조합 글자까지 저장되고, B 로는 요청이 나가지 않는다.
+            assertEquals(listOf(1L to "오늘 점심"), recordRepository.updatedMemos)
+            assertNull(viewModel.state.value.memoEditor)
+            assertEquals(
+                "B 에 원래 있던 메모",
+                viewModel.state.value.displayedRecord
+                    ?.events
+                    ?.single { it.timelineEventId == 2L }
+                    ?.memo,
+            )
         }
 
     @Test
@@ -555,7 +598,7 @@ class TimelineRecordViewModelTest {
                 )
             viewModel.sendIntent(TimelineRecordUiIntent.EnterEditMode)
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("쓰는 중"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "쓰는 중"))
             runCurrent()
 
             assertTrue(viewModel.state.value.isModeSwitchable)
@@ -577,7 +620,7 @@ class TimelineRecordViewModelTest {
             recordRepository.memoUpdateGate = gate
             val viewModel = createLoadedViewModel()
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("기록보다 먼저 닿아야 할 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "기록보다 먼저 닿아야 할 메모"))
             runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
@@ -604,7 +647,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("503 으로 못 간 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "503 으로 못 간 메모"))
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
             runCurrent()
@@ -630,7 +673,7 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "저장 못 한 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -652,7 +695,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "저장 못 한 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -686,7 +729,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("저장 못 한 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "저장 못 한 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
             val stale = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.MemoCommitFailed
@@ -728,7 +771,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel(record = recordA)
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("old pending answer"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "old pending answer"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
 
@@ -752,7 +795,7 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("latest answer"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "latest answer"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             runCurrent()
 
@@ -781,7 +824,7 @@ class TimelineRecordViewModelTest {
                 )
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("수정할 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "수정할 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -1268,7 +1311,7 @@ class TimelineRecordViewModelTest {
             runCurrent()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("고친 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "고친 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 
@@ -1689,7 +1732,7 @@ class TimelineRecordViewModelTest {
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
             advanceUntilIdle()
-            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo("메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = "메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
             advanceUntilIdle()
 

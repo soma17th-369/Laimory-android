@@ -155,7 +155,7 @@ class TimelineRecordViewModel
                 TimelineRecordUiIntent.DismissEventDelete -> dismissEventDelete()
                 is TimelineRecordUiIntent.SelectEvent -> editEvent(intent.timelineEventId)
                 is TimelineRecordUiIntent.EditMemo -> editMemo(intent.timelineEventId)
-                is TimelineRecordUiIntent.ChangeMemo -> changeMemo(intent.value)
+                is TimelineRecordUiIntent.ChangeMemo -> changeMemo(intent.timelineEventId, intent.value)
                 is TimelineRecordUiIntent.CommitMemoEdit -> commitMemo(intent.timelineEventId)
                 is TimelineRecordUiIntent.RetryMemoCommit ->
                     retryMemoCommit(intent.timelineEventId, intent.commitId, intent.memo)
@@ -679,9 +679,18 @@ class TimelineRecordViewModel
             }
         }
 
-        private fun changeMemo(value: String) {
+        /**
+         * 쓰는 중인 글을 편집기에 옮긴다.
+         *
+         * [timelineEventId] 가 지금 열린 편집기와 다르면 버린다. 편집이 다른 메모로 옮겨 간 뒤 앞선
+         * 입력칸이 보낸 값인데, 조합 표시만 뗀 같은 글이라 그 메모의 커밋에 이미 실려 있다.
+         */
+        private fun changeMemo(
+            timelineEventId: Long,
+            value: String,
+        ) {
             updateState {
-                val editor = memoEditor ?: return@updateState this
+                val editor = memoEditor?.takeIf { it.timelineEventId == timelineEventId } ?: return@updateState this
                 copy(memoEditor = editor.copy(draftMemo = value))
             }
         }
