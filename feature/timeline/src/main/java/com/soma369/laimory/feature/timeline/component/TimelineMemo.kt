@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -17,7 +19,9 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -30,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
@@ -43,19 +48,24 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
+import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
+import com.soma369.laimory.feature.timeline.model.MEMO_PROMPT
 import com.soma369.laimory.feature.timeline.model.TimelineMemoDisplay
 import com.soma369.laimory.feature.timeline.model.timelineMemoDisplay
-import com.soma369.laimory.feature.timeline.model.timelineMemoPrompt
 import com.soma369.laimory.feature.timeline.model.timelineMemoQuestion
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.core.ui.R as UiR
@@ -88,7 +98,7 @@ internal fun TimelineMemo(
     onCommit: () -> Unit,
 ) {
     val bubbleQuestion = timelineMemoQuestion(question = question, isEditable = isEditable)
-    val display = timelineMemoDisplay(memo = memo, question = question, isEditable = isEditable)
+    val display = timelineMemoDisplay(memo = memo, isEditable = isEditable)
     if (bubbleQuestion == null && display == null && editor == null) return
 
     Column(
@@ -100,13 +110,17 @@ internal fun TimelineMemo(
             editor != null ->
                 MemoInputLine(
                     editor = editor,
-                    placeholder = timelineMemoPrompt(question),
+                    placeholder = MEMO_PROMPT,
                     onValueChange = onValueChange,
                     onCommit = onCommit,
                 )
 
             display is TimelineMemoDisplay.Memo ->
-                MemoQuote(text = display.text, onClick = onClick.takeIf { isEditable })
+                MemoQuote(
+                    text = display.text,
+                    onClick = onClick.takeIf { isEditable },
+                    topPadding = if (isEditable) MEMO_LINE_TOP_PADDING else QUOTE_TOP_PADDING,
+                )
 
             display is TimelineMemoDisplay.Prompt ->
                 MemoPromptLine(placeholder = display.text, onClick = onClick)
@@ -171,11 +185,17 @@ private fun MemoQuestionBubble(question: String) {
     }
 }
 
-/** 다 쓴 메모. 편집 모드에서만 눌린다 — 읽기 모드의 메모는 본문의 한 문단이라 누를 곳이 없다. */
+/**
+ * 다 쓴 메모. 편집 모드에서만 눌린다 — 읽기 모드의 메모는 본문의 한 문단이라 누를 곳이 없다.
+ *
+ * 위 여백은 모드마다 시안이 다르다. 편집 모드는 입력 줄과 같은 8(MemoAnswer Filled)이라 쓰기 전과 뒤의
+ * 자리가 같고, 읽기 모드는 본문 문단에 붙는 2(MemoQuote)다.
+ */
 @Composable
 private fun MemoQuote(
     text: String,
     onClick: (() -> Unit)?,
+    topPadding: Dp,
 ) {
     Text(
         text = text,
@@ -183,7 +203,7 @@ private fun MemoQuote(
             Modifier
                 .fillMaxWidth()
                 .then(if (onClick != null) Modifier.clickable(onClickLabel = "메모 편집", onClick = onClick) else Modifier)
-                .memoQuote(MaterialTheme.colorScheme.outline),
+                .memoQuote(MaterialTheme.colorScheme.outline, topPadding),
         style = memoTextStyle(),
         color = MaterialTheme.colorScheme.onSurface,
         maxLines = MEMO_MAX_LINES,
@@ -191,24 +211,82 @@ private fun MemoQuote(
     )
 }
 
-/** 아직 비어 있는 메모 자리. 인용이 아니라 입력칸이라 밑줄을 깐다. */
+/**
+ * 아직 비어 있는 메모 자리. 인용이 아니라 입력칸이라 밑줄을 깐다.
+ *
+ * 안내와 밑줄을 통째로 옅게 둔다(시안 70%) — 이미 쓴 글과 한눈에 갈린다. 위 여백까지 누를 수 있게
+ * `clickable` 을 여백보다 앞에 둔다.
+ */
 @Composable
 private fun MemoPromptLine(
     placeholder: String,
     onClick: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = "메모 작성", onClick = onClick),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClickLabel = "메모 작성", onClick = onClick)
+                .padding(top = MEMO_LINE_TOP_PADDING)
+                .alpha(PROMPT_ALPHA),
         verticalArrangement = Arrangement.spacedBy(INPUT_LINE_GAP),
     ) {
-        Text(
-            text = placeholder,
-            modifier = Modifier.fillMaxWidth(),
-            style = memoTextStyle(),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        MemoPlaceholder(text = placeholder, modifier = Modifier.fillMaxWidth())
         MemoUnderline(color = MaterialTheme.colorScheme.outline, thickness = UNDERLINE_IDLE)
     }
+}
+
+/**
+ * 빈 메모 자리의 안내 — 연필 아이콘이 **글자처럼** 문장 앞에 붙는다.
+ *
+ * 아이콘을 옆 칸이 아니라 글자 자리([InlineTextContent])에 둔다. 문장과 한 몸이라 글꼴 배율을
+ * 키우면 함께 커지고, 좁은 폭에서 접혀도 둘째 줄이 아이콘 밑이 아니라 왼쪽 선에서 시작한다.
+ *
+ * 누르기 전 자리([MemoPromptLine])와 누른 뒤 빈 입력칸([MemoInputLine])이 이것 하나를 쓴다. 따로
+ * 그리면 누르는 순간 아이콘이 사라지거나 글자가 옆으로 튄다. 투명도(시안 70%)는 부르는 쪽이 준다 —
+ * 누르기 전 자리는 밑줄까지 함께 옅어지고, 입력 중에는 밑줄이 강조색이라 안내만 옅어진다.
+ *
+ * 좌우 여백(시안 4dp)은 입력칸 커서의 자리이기도 하다. 빈 입력칸의 커서는 맨 왼쪽에 서므로 여백이
+ * 없으면 아이콘 위에서 깜빡인다.
+ *
+ * TalkBack 은 아이콘을 읽지 않는다 — 글자 자리의 대체 문자를 공백으로 둔다. 기본값(`�`)을 두면
+ * 알 수 없는 문자로 읽힌다.
+ */
+@Composable
+private fun MemoPlaceholder(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+    Text(
+        text =
+            buildAnnotatedString {
+                appendInlineContent(PLACEHOLDER_ICON_ID, alternateText = " ")
+                append(text)
+            },
+        modifier = modifier.padding(horizontal = Spacing.extraSmall),
+        style = memoTextStyle(),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        inlineContent =
+            mapOf(
+                PLACEHOLDER_ICON_ID to
+                    InlineTextContent(
+                        Placeholder(
+                            width = (PLACEHOLDER_ICON_EM + PLACEHOLDER_ICON_GAP_EM).em,
+                            height = PLACEHOLDER_ICON_EM.em,
+                            placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+                        ),
+                    ) {
+                        // 글자 자리의 앞쪽에 정사각형으로 앉힌다. 남는 뒤쪽이 글자와의 간격이 된다.
+                        Icon(
+                            painter = painterResource(UiR.drawable.ico_default_pencil),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxHeight().aspectRatio(1f),
+                            tint = iconTint,
+                        )
+                    },
+            ),
+    )
 }
 
 /**
@@ -274,7 +352,7 @@ private fun MemoInputLine(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoViewRequester),
+        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoViewRequester).padding(top = MEMO_LINE_TOP_PADDING),
         verticalArrangement = Arrangement.spacedBy(INPUT_LINE_GAP),
     ) {
         BasicTextField(
@@ -303,11 +381,7 @@ private fun MemoInputLine(
             decorationBox = { innerTextField ->
                 Box {
                     if (textFieldValue.text.isEmpty()) {
-                        Text(
-                            text = placeholder,
-                            style = memoTextStyle(),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        MemoPlaceholder(text = placeholder, modifier = Modifier.alpha(PROMPT_ALPHA))
                     }
                     innerTextField()
                 }
@@ -370,8 +444,11 @@ private suspend fun WindowInsets.awaitSettled(density: Density) {
  * 접히는 본문이라 미리 재기 어렵다. 그래서 배경으로 직접 그린다 — 어떤 내용이 오든 그려진
  * 높이가 곧 내용의 높이다.
  */
-private fun Modifier.memoQuote(color: Color) =
-    padding(top = QUOTE_TOP_PADDING)
+private fun Modifier.memoQuote(
+    color: Color,
+    topPadding: Dp,
+): Modifier =
+    padding(top = topPadding)
         .drawBehind {
             drawRoundRect(
                 color = color,
@@ -418,11 +495,14 @@ private val INPUT_LINE_GAP = 8.dp
 private val UNDERLINE_IDLE = 1.dp
 private val UNDERLINE_ACTIVE = 2.dp
 
-/** 인용 획. 시안 폭 2, 모서리 1, 본문과의 간격 10, 위 여백 2. */
+/** 인용 획. 시안 폭 2, 모서리 1, 본문과의 간격 10, 위 여백 2(읽기 모드 — 편집 모드는 [MEMO_LINE_TOP_PADDING]). */
 private val QUOTE_RULE_WIDTH = 2.dp
 private val QUOTE_RULE_RADIUS = 1.dp
 private val QUOTE_RULE_GAP = 10.dp
 private val QUOTE_TOP_PADDING = 2.dp
+
+/** 편집 모드 메모 줄의 위 여백. 시안 MemoAnswer 의 input-line·memo-quote `pt spacing/8`. */
+private val MEMO_LINE_TOP_PADDING = Spacing.small
 
 /** 한 줄 높이. 빈 입력칸이 접히지 않게 잡아 둔다. */
 private val EDITOR_MIN_HEIGHT = 22.dp
@@ -431,3 +511,15 @@ private const val EDITOR_MAX_LINES = 8
 
 private const val STABLE_IME_FRAME_COUNT = 2
 private const val MAX_IME_WAIT_FRAME_COUNT = 60
+
+/**
+ * 안내 문구 앞 아이콘 자리. 크기를 메모 글꼴에 대한 배수(`em`)로 잡아 글꼴 배율을 따라간다.
+ *
+ * 메모 글꼴 20sp 에서 아이콘 1em = 20(시안), 뒤쪽 간격 0.2em = 4(시안).
+ */
+private const val PLACEHOLDER_ICON_ID = "memo-placeholder-icon"
+private const val PLACEHOLDER_ICON_EM = 1f
+private const val PLACEHOLDER_ICON_GAP_EM = 0.2f
+
+/** 빈 자리 안내의 투명도. 시안 opacity 70. */
+private const val PROMPT_ALPHA = 0.7f

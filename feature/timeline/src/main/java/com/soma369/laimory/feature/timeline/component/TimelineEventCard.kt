@@ -117,8 +117,12 @@ internal fun TimelineEventCard(
     ) {
         EventTypeIndicator(eventType = event.eventType)
         Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+            // 본문 아래 여백은 시안 content-column 의 하단 패딩이다. 행 사이 간격(rowGap)과 따로 두는
+            // 것은 자리가 달라서다 — 이것은 이벤트 한 칸의 일부라 마지막 이벤트 아래에도 남는다.
+            // 연결선은 행 배경이 그리므로 이 여백까지 끊기지 않고 이어진다.
+            modifier = Modifier.weight(1f).padding(bottom = Spacing.large),
+            // 시각·제목·부제·사진·메모 사이. 시안 content-column 의 gap 8 이다.
+            verticalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
             EventTimeRow(
                 event = event,
@@ -732,7 +736,12 @@ private val THUMBNAIL_CORNER_RADIUS = 8.dp
 /** 사진이 본문인 이벤트의 큰 사진. 시안이 콘텐츠 폭에 두 장을 12 간격으로 둔다. */
 private val MAIN_PHOTO_CORNER_RADIUS = 12.dp
 
-/** 타임라인 행 사이 간격. */
+/**
+ * 타임라인 행 사이 간격. 시안 화면이 이벤트 사이에 두는 16 이다.
+ *
+ * 본문 하단 여백(`Spacing.large`)과 합쳐 이벤트 사이가 32dp 가 된다. 16 만 두었을 때는 메모
+ * 입력 줄 바로 밑에 다음 이벤트가 붙어 보였다.
+ */
 private val TIMELINE_ROW_GAP = 16.dp
 
 /** 표시자 원형 크기. 시안 32dp. */
