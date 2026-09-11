@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -284,7 +286,15 @@ private fun TimelineEventEditorScreen(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding),
+                .padding(innerPadding)
+                // 키보드 높이는 창이 줄어서가 아니라 IME inset 으로만 온다(edge-to-edge). 받지 않으면 목록이
+                // 줄지 않아, 포커스를 잡은 입력칸이 이미 보이는 자리라고 여기고 키보드 뒤에 그대로 남는다.
+                //
+                // 하루 기록 화면과 같은 방식이다 — 여백으로 반영한 시스템 바 inset 을 소비 표시한 뒤 남은
+                // 만큼만 IME 여백으로 준다. 목록이 아니라 화면 전체가 지는 것은 하단 삭제·저장 줄도 키보드
+                // 위로 올라와야 하기 때문이다.
+                .consumeWindowInsets(innerPadding)
+                .imePadding(),
     ) {
         LaimoryTopAppBar(
             // 같은 화면이지만 무엇을 하는 자리인지는 달라야 한다 — 새로 만드는데 `수정` 이라고
