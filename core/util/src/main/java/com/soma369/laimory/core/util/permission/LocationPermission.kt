@@ -32,16 +32,23 @@ object LocationPermission {
         }.toTypedArray()
 
     /**
-     * 전경 위치**만**. 온보딩처럼 권한을 한 장에 하나씩 받는 화면이 쓴다.
+     * 위치 장의 첫 요청(전경 위치 + 이동수단 인식). 전경을 받으면 [background] 를 이어 요청한다.
      *
-     * [required] 는 알림·활동 인식을 함께 실어 수집 실험실의 `추적 켜기` 한 번에 필요한 것을 모두
-     * 받는다. 그 목록을 위치 페이지가 쓰면 다른 페이지가 받을 권한까지 여기서 묻게 된다.
+     * 알림은 싣지 않는다 — 알림은 자기 장에서 받는다. [required] 는 수집 실험실의 `추적 켜기` 한 번에
+     * 필요한 것을 모두 받으려고 알림까지 싣는다. 이동수단 인식은 위치 수집의 일부라 여기서 함께 묻는다 —
+     * 따로 물으면 위치 장에서 버튼을 한 번 더 눌러야 한다.
+     *
+     * @param sdkInt 판정 기준 SDK. 테스트가 버전별 조합을 고정할 수 있게 주입받는다.
      */
-    fun foreground(): Array<String> =
-        arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-        )
+    fun foregroundAndActivity(sdkInt: Int = Build.VERSION.SDK_INT): Array<String> =
+        buildList {
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            // 이동수단 인식(Q+). 거부돼도 수집은 진행되며 속도 추론으로 폴백한다.
+            if (sdkInt >= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }.toTypedArray()
 
     /**
      * 2단계 요청 권한(백그라운드 위치, "항상 허용"). 전경 위치가 허용된 뒤에만 받아 준다.

@@ -10,7 +10,7 @@ package com.soma369.laimory.core.ui.permission
  * 그래서 화면은 "허용/미허용" 이분법이 아니라 **지금 어느 단계인지**를 보고 버튼을 바꾼다.
  */
 enum class LocationPermissionStep {
-    /** 전경 위치부터. 이동수단 인식·알림도 이 요청에 함께 실린다. */
+    /** 전경 위치부터. 이동수단 인식도 이 요청에 함께 싣고, 전경을 받으면 `항상 허용` 을 이어 요청한다. */
     FOREGROUND,
 
     /** 전경은 됐고 `항상 허용` 이 남았다. Android 11+ 는 요청하면 이 앱의 위치 권한 화면이 뜬다. */
