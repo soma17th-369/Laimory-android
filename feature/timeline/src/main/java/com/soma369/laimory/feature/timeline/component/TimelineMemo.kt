@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -17,7 +19,9 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -43,19 +47,24 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
+import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
+import com.soma369.laimory.feature.timeline.model.MEMO_PROMPT
 import com.soma369.laimory.feature.timeline.model.TimelineMemoDisplay
 import com.soma369.laimory.feature.timeline.model.timelineMemoDisplay
-import com.soma369.laimory.feature.timeline.model.timelineMemoPrompt
 import com.soma369.laimory.feature.timeline.model.timelineMemoQuestion
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
 import com.soma369.laimory.core.ui.R as UiR
@@ -88,7 +97,7 @@ internal fun TimelineMemo(
     onCommit: () -> Unit,
 ) {
     val bubbleQuestion = timelineMemoQuestion(question = question, isEditable = isEditable)
-    val display = timelineMemoDisplay(memo = memo, question = question, isEditable = isEditable)
+    val display = timelineMemoDisplay(memo = memo, isEditable = isEditable)
     if (bubbleQuestion == null && display == null && editor == null) return
 
     Column(
@@ -100,7 +109,7 @@ internal fun TimelineMemo(
             editor != null ->
                 MemoInputLine(
                     editor = editor,
-                    placeholder = timelineMemoPrompt(question),
+                    placeholder = MEMO_PROMPT,
                     onValueChange = onValueChange,
                     onCommit = onCommit,
                 )
@@ -201,14 +210,61 @@ private fun MemoPromptLine(
         modifier = Modifier.fillMaxWidth().clickable(onClickLabel = "메모 작성", onClick = onClick),
         verticalArrangement = Arrangement.spacedBy(INPUT_LINE_GAP),
     ) {
-        Text(
-            text = placeholder,
-            modifier = Modifier.fillMaxWidth(),
-            style = memoTextStyle(),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        MemoPlaceholder(text = placeholder, modifier = Modifier.fillMaxWidth())
         MemoUnderline(color = MaterialTheme.colorScheme.outline, thickness = UNDERLINE_IDLE)
     }
+}
+
+/**
+ * 빈 메모 자리의 안내 — 연필 아이콘이 **글자처럼** 문장 앞에 붙는다.
+ *
+ * 아이콘을 옆 칸이 아니라 글자 자리([InlineTextContent])에 둔다. 문장과 한 몸이라 글꼴 배율을
+ * 키우면 함께 커지고, 좁은 폭에서 접혀도 둘째 줄이 아이콘 밑이 아니라 왼쪽 선에서 시작한다.
+ *
+ * 누르기 전 자리([MemoPromptLine])와 누른 뒤 빈 입력칸([MemoInputLine])이 이것 하나를 쓴다. 따로
+ * 그리면 누르는 순간 아이콘이 사라지거나 글자가 옆으로 튄다.
+ *
+ * 좌우 여백(시안 4dp)은 입력칸 커서의 자리이기도 하다. 빈 입력칸의 커서는 맨 왼쪽에 서므로 여백이
+ * 없으면 아이콘 위에서 깜빡인다.
+ *
+ * TalkBack 은 아이콘을 읽지 않는다 — 글자 자리의 대체 문자를 공백으로 둔다. 기본값(`�`)을 두면
+ * 알 수 없는 문자로 읽힌다.
+ */
+@Composable
+private fun MemoPlaceholder(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val iconTint = MaterialTheme.colorScheme.onSurfaceVariant
+    Text(
+        text =
+            buildAnnotatedString {
+                appendInlineContent(PLACEHOLDER_ICON_ID, alternateText = " ")
+                append(text)
+            },
+        modifier = modifier.padding(horizontal = Spacing.extraSmall),
+        style = memoTextStyle(),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        inlineContent =
+            mapOf(
+                PLACEHOLDER_ICON_ID to
+                    InlineTextContent(
+                        Placeholder(
+                            width = (PLACEHOLDER_ICON_EM + PLACEHOLDER_ICON_GAP_EM).em,
+                            height = PLACEHOLDER_ICON_EM.em,
+                            placeholderVerticalAlign = PlaceholderVerticalAlign.Center,
+                        ),
+                    ) {
+                        // 글자 자리의 앞쪽에 정사각형으로 앉힌다. 남는 뒤쪽이 글자와의 간격이 된다.
+                        Icon(
+                            painter = painterResource(UiR.drawable.ico_default_pen),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxHeight().aspectRatio(1f),
+                            tint = iconTint,
+                        )
+                    },
+            ),
+    )
 }
 
 /**
@@ -303,11 +359,7 @@ private fun MemoInputLine(
             decorationBox = { innerTextField ->
                 Box {
                     if (textFieldValue.text.isEmpty()) {
-                        Text(
-                            text = placeholder,
-                            style = memoTextStyle(),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        MemoPlaceholder(text = placeholder)
                     }
                     innerTextField()
                 }
@@ -431,3 +483,12 @@ private const val EDITOR_MAX_LINES = 8
 
 private const val STABLE_IME_FRAME_COUNT = 2
 private const val MAX_IME_WAIT_FRAME_COUNT = 60
+
+/**
+ * 안내 문구 앞 아이콘 자리. 크기를 메모 글꼴에 대한 배수(`em`)로 잡아 글꼴 배율을 따라간다.
+ *
+ * 메모 글꼴 20sp 에서 아이콘 1.2em = 24(시안), 뒤쪽 간격 0.2em = 4(시안).
+ */
+private const val PLACEHOLDER_ICON_ID = "memo-placeholder-icon"
+private const val PLACEHOLDER_ICON_EM = 1.2f
+private const val PLACEHOLDER_ICON_GAP_EM = 0.2f

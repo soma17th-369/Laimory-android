@@ -33,13 +33,12 @@ internal sealed interface TimelineMemoDisplay {
  */
 internal fun timelineMemoDisplay(
     memo: String?,
-    question: String?,
     isEditable: Boolean,
 ): TimelineMemoDisplay? {
     val savedMemo = memo?.takeIf(String::isNotBlank)?.let(TimelineMemoDisplay::Memo)
     if (savedMemo != null) return savedMemo
     if (!isEditable) return null
-    return TimelineMemoDisplay.Prompt(timelineMemoPrompt(question))
+    return TimelineMemoDisplay.Prompt(MEMO_PROMPT)
 }
 
 /**
@@ -54,15 +53,9 @@ internal fun timelineMemoQuestion(
 ): String? = question?.takeIf { isEditable && it.isNotBlank() }
 
 /**
- * 빈 메모 자리의 안내 문구.
+ * 빈 메모 자리의 안내 문구. 인라인 편집기의 입력 placeholder 로도 쓴다.
  *
- * 질문이 있으면 그 질문에 답하라고 말한다 — 질문은 말풍선이 이미 보여 주고 있으므로 여기서
- * 되풀이하지 않는다.
+ * 질문이 있든 없든 같다. 질문은 말풍선이 이미 보여 주고 있으므로, 이 자리는 무엇을 하는 자리인지만
+ * 말한다 — 문장 앞에 붙는 연필 아이콘이 그 뜻을 함께 진다.
  */
-internal fun timelineMemoPrompt(question: String?): String = if (question.isNullOrBlank()) DEFAULT_MEMO_PROMPT else ANSWER_MEMO_PROMPT
-
-/** 질문이 없을 때 쓰는 기본 안내 문구. 인라인 편집기의 입력 placeholder 로도 쓴다. */
-internal const val DEFAULT_MEMO_PROMPT = "이 순간에 대한 메모…"
-
-/** 질문이 있을 때 쓰는 안내 문구. */
-internal const val ANSWER_MEMO_PROMPT = "이 질문에 대한 답…"
+internal const val MEMO_PROMPT = "입력하기"
