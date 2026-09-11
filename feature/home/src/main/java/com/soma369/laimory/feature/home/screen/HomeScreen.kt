@@ -18,9 +18,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -273,34 +274,41 @@ private fun HomeScreen(
     onIntent: (HomeUiIntent) -> Unit,
     onRequestPermission: (DataPermission) -> Unit,
 ) {
-    // 헤더·날짜 줄·원천 카드 4종·CTA 를 중첩 스크롤 없이 하나의 lazy list 로 구성한다.
-    LazyColumn(
+    // CTA 는 **바닥에 고정**하고 카드들만 그 위 영역에 둔다. 사진 칸이 1:1 이라 격자 높이가 화면
+    // 폭을 따라가므로, 좁고 긴 화면이나 큰 글꼴에서는 카드가 다 들어가지 않을 수 있다. 그때도
+    // CTA 는 화면 밖으로 밀리지 않고 카드 영역만 스크롤된다. 다 들어가면 스크롤이 생기지 않는다.
+    Column(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding),
-        contentPadding = PaddingValues(horizontal = Spacing.extraLarge, vertical = Spacing.large),
-        verticalArrangement = Arrangement.spacedBy(Spacing.large),
+                .padding(innerPadding)
+                .padding(horizontal = Spacing.extraLarge),
     ) {
-        item(key = "header") {
-            HomeHeaderRow(
-                nickname = state.nickname,
-                onPastRecordsClick = { onIntent(HomeUiIntent.OpenPastRecords) },
-            )
-        }
+        Column(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    // 시안은 상태 표시줄 아래 6 을 띄운다.
+                    .padding(top = HOME_TOP_PADDING, bottom = Spacing.large),
+            verticalArrangement = Arrangement.spacedBy(Spacing.large),
+        ) {
+            // 인사말과 날짜는 한 덩어리다(시안 간격 2). 카드 사이 간격으로 벌리면 둘이 따로 논다.
+            Column(verticalArrangement = Arrangement.spacedBy(HEADER_LINE_GAP)) {
+                HomeHeaderRow(
+                    nickname = state.nickname,
+                    onPastRecordsClick = { onIntent(HomeUiIntent.OpenPastRecords) },
+                )
+                HomeDateRow(
+                    selectedDate = state.selectedDate,
+                    windowText = state.timeRangeLabel(),
+                    enabled = !state.draftStatus.isDateLocked,
+                    onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
+                    onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
+                )
+            }
 
-        item(key = "dateRow") {
-            HomeDateRow(
-                selectedDate = state.selectedDate,
-                windowText = state.timeRangeLabel(),
-                enabled = !state.draftStatus.isDateLocked,
-                onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
-                onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
-            )
-        }
-
-        item(key = "photoCard") {
             HomeSourceCard(
                 kind = HomeSourceKind.PHOTO,
                 status = state.permissions.photo,
@@ -310,9 +318,7 @@ private fun HomeScreen(
             ) {
                 HomePhotoGrid(cells = state.summary.photoCells)
             }
-        }
 
-        item(key = "calendarCard") {
             HomeSourceCard(
                 kind = HomeSourceKind.CALENDAR,
                 status = state.permissions.calendar,
@@ -322,9 +328,7 @@ private fun HomeScreen(
             ) {
                 HomeCalendarSlot(items = state.summary.calendarItems)
             }
-        }
 
-        item(key = "locationNotificationRow") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -357,32 +361,10 @@ private fun HomeScreen(
                     HomeNotificationSlot(apps = state.summary.notificationApps)
                 }
             }
-        }
 
-        item(key = "createTimeline") {
-            HomeTimelineButton(
-                status = state.draftStatus,
-                selectedDate = state.selectedDate,
-                today = LocalDate.now(),
-                onClick = {
-                    onIntent(
-                        when (state.draftStatus) {
-                            DraftCreationStatus.SUCCESS -> HomeUiIntent.ViewDraft
-                            // 생성 중에는 같은 작업의 로딩 화면으로 다시 들어간다.
-                            DraftCreationStatus.PROCESSING,
-                            DraftCreationStatus.LONG_RUNNING,
-                            -> HomeUiIntent.OpenDraftLoading
-                            // 사진은 이제 카드에서 고른다. CTA 는 곧장 확인 다이얼로그로 간다.
-                            DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.CreateDraft
-                        },
-                    )
-                },
-            )
-        }
-
-        // 수집 실험실은 개발 도구라 release 에서는 진입 버튼 자체를 두지 않는다. CTA 아래로 내린다.
-        if (state.isCollectionLabAccessible) {
-            item(key = "collectionEntry") {
+            // 수집 실험실은 개발 도구라 release 에는 진입점이 없다. 고정된 CTA 아래에 두면 개발
+            // 빌드에서만 카드 자리가 한 줄 줄어 release 와 다른 화면을 보게 되므로 카드 영역 끝에 둔다.
+            if (state.isCollectionLabAccessible) {
                 Box(modifier = Modifier.fillMaxWidth()) {
                     TextButton(
                         onClick = { onIntent(HomeUiIntent.NavigateToCollection) },
@@ -393,8 +375,33 @@ private fun HomeScreen(
                 }
             }
         }
+
+        HomeTimelineButton(
+            status = state.draftStatus,
+            selectedDate = state.selectedDate,
+            today = LocalDate.now(),
+            onClick = {
+                onIntent(
+                    when (state.draftStatus) {
+                        DraftCreationStatus.SUCCESS -> HomeUiIntent.ViewDraft
+                        // 생성 중에는 같은 작업의 로딩 화면으로 다시 들어간다.
+                        DraftCreationStatus.PROCESSING,
+                        DraftCreationStatus.LONG_RUNNING,
+                        -> HomeUiIntent.OpenDraftLoading
+                        // 사진은 이제 카드에서 고른다. CTA 는 곧장 확인 다이얼로그로 간다.
+                        DraftCreationStatus.IDLE, DraftCreationStatus.FAILED -> HomeUiIntent.CreateDraft
+                    },
+                )
+            },
+        )
     }
 }
+
+/** 상태 표시줄 아래 첫 줄까지(시안 6). */
+private val HOME_TOP_PADDING = 6.dp
+
+/** 인사말과 날짜 줄 사이(시안 2). */
+private val HEADER_LINE_GAP = 2.dp
 
 /** 인사말 + `지난 기록` 알약. */
 @Composable
@@ -603,8 +610,8 @@ private fun HomeCalendarItem.timeText(): String =
         if (end == null) start else "$start ~ $end"
     }
 
-/** 일정 카드 내용 높이. 카드 전체 126 에서 분류 행·본문·패딩을 뺀 값이다. */
-private val CALENDAR_SLOT_HEIGHT = 50.dp
+/** 일정 카드 내용 높이. 카드 126 = 패딩 12 + 분류 24 + 8 + **40** + 8 + 본문 22 + 패딩 12. */
+private val CALENDAR_SLOT_HEIGHT = 40.dp
 
 /** 위치·알림 반쪽 카드의 내용 높이. 카드 전체는 144 다. */
 private val HALF_CARD_SLOT_HEIGHT = 58.dp
