@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -52,11 +50,11 @@ internal fun HomeTimelineButton(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(84.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(status.gradient())
                 .clickable(onClick = onClick)
-                .padding(Spacing.large)
+                // 높이를 고정하지 않는다(시안 72 = 위아래 12 + 원 48). 고정하면 큰 글꼴에서 부제가 잘린다.
+                .padding(horizontal = Spacing.large, vertical = Spacing.medium)
                 // 제목·부제·화살표를 따로 읽으면 한 버튼을 세 번 지난다.
                 .clearAndSetSemantics { contentDescription = "$title. $subtitle" },
         horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
@@ -99,7 +97,7 @@ private fun DraftCreationStatus.actionTitle(): String =
         DraftCreationStatus.SUCCESS -> "타임라인 확인하기"
     }
 
-/** 좌→우 그라데이션. 진한 컨테이너색에서 밝은 본색으로 흐른다. */
+/** 좌→우 그라데이션. 진한 컨테이너색에서 밝은 본색으로 흐른다. 양 끝 10% 는 단색이다(시안 10.7%→89.6%). */
 @Composable
 private fun DraftCreationStatus.gradient(): Brush {
     val (start, end) =
@@ -113,7 +111,7 @@ private fun DraftCreationStatus.gradient(): Brush {
             DraftCreationStatus.SUCCESS ->
                 MaterialTheme.colorScheme.onSecondaryContainer to MaterialTheme.colorScheme.secondary
         }
-    return Brush.horizontalGradient(listOf<Color>(start, end))
+    return Brush.horizontalGradient(GRADIENT_START to start, GRADIENT_END to end)
 }
 
 /** 어느 날의 순간인지. 오늘·어제만 말로 부르고 나머지는 날짜를 적는다. */
@@ -129,3 +127,6 @@ private fun momentSubtitle(
         }
     return "${subject}의 순간을 하나로"
 }
+
+private const val GRADIENT_START = 0.107f
+private const val GRADIENT_END = 0.896f
