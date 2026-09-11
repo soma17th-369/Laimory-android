@@ -279,7 +279,7 @@ private fun MemoPlaceholder(
                     ) {
                         // 글자 자리의 앞쪽에 정사각형으로 앉힌다. 남는 뒤쪽이 글자와의 간격이 된다.
                         Icon(
-                            painter = painterResource(UiR.drawable.ico_default_pen),
+                            painter = painterResource(UiR.drawable.ico_default_pencil),
                             contentDescription = null,
                             modifier = Modifier.fillMaxHeight().aspectRatio(1f),
                             tint = iconTint,
