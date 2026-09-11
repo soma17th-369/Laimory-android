@@ -876,6 +876,19 @@ class HomeViewModelTest {
             assertTrue(navigationHelper.destinations.isEmpty())
         }
 
+    @Test
+    fun `건강 상세를 열 수 없으면 진입 요청을 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            isCollectionLabAccessible = false
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenHealthDetail)
+            runCurrent()
+
+            assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             observeSourceItemsUseCase = ObserveSourceItemsUseCase(sourceRepository),

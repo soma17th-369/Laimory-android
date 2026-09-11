@@ -219,8 +219,13 @@ class HomeViewModel
                 HomeUiIntent.RefreshLocationConsent -> refreshLocationConsent()
                 HomeUiIntent.OpenPastRecords -> navigationHelper.navigateTo(PastRecordsPage)
                 is HomeUiIntent.OpenSourceDetail -> openSourceDetail(intent.kind)
+                // 건강 상세도 개발 도구다. 화면에서 숨기는 것과 별개로 호출 경계에서 막는다.
                 HomeUiIntent.OpenHealthDetail ->
-                    navigationHelper.navigateTo(DraftConsentDetailPage(DraftConsentTypeGroup.HEALTH.name))
+                    if (state.value.isCollectionLabAccessible) {
+                        navigationHelper.navigateTo(DraftConsentDetailPage(DraftConsentTypeGroup.HEALTH.name))
+                    } else {
+                        Unit
+                    }
             }
         }
 

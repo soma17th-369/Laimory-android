@@ -28,11 +28,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +51,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
+import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
+import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
@@ -300,11 +303,17 @@ private fun HomeScreen(
                 HomeHeaderRow(
                     nickname = state.nickname,
                     onPastRecordsClick = { onIntent(HomeUiIntent.OpenPastRecords) },
-                    // 수집 실험실은 개발 도구라 버튼을 두지 않고 인사말에 숨긴다. release 에는
-                    // 진입점 자체가 없다(ViewModel 도 호출 경계에서 한 번 더 막는다).
-                    onGreetingClick =
+                    // 개발 도구는 버튼을 두지 않고 인사말 뒤에 숨긴다. release 에는 진입점 자체가 없다
+                    // (ViewModel 도 호출 경계에서 한 번 더 막는다).
+                    onOpenCollectionLab =
                         if (state.isCollectionLabAccessible) {
                             { onIntent(HomeUiIntent.NavigateToCollection) }
+                        } else {
+                            null
+                        },
+                    onOpenHealthDetail =
+                        if (state.isCollectionLabAccessible) {
+                            { onIntent(HomeUiIntent.OpenHealthDetail) }
                         } else {
                             null
                         },
@@ -371,18 +380,6 @@ private fun HomeScreen(
                     HomeNotificationSlot(apps = state.summary.notificationApps)
                 }
             }
-
-            // 건강은 카드에 없고 릴리즈에서는 뺄 수단도 없다. 개발 중 항목을 확인할 자리로 debug 에만
-            // 남긴다 — 릴리즈에 다시 열 때는 빌드 타입이 아니라 제품 규칙으로 판정해야 한다.
-            // 고정된 CTA 아래가 아니라 카드 영역 끝에 둔다. 거기 두면 개발 빌드에서만 카드 자리가 준다.
-            if (state.isCollectionLabAccessible) {
-                TextButton(
-                    onClick = { onIntent(HomeUiIntent.OpenHealthDetail) },
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text("건강 상세")
-                }
-            }
         }
 
         HomeTimelineButton(
@@ -424,19 +421,56 @@ private val HEADER_LINE_GAP = 2.dp
  */
 private val HOME_BOTTOM_PADDING = Spacing.large
 
-/** 인사말 + `지난 기록`. [onGreetingClick] 이 있으면 인사말을 눌러 수집 실험실로 간다(debug). */
+/**
+ * 인사말 + `지난 기록`.
+ *
+ * 개발 도구 진입점이 하나라도 있으면(debug) 인사말을 눌러 **개발 메뉴**를 연다 — 수집 데이터와
+ * 건강 상세. 버튼으로 두면 개발 빌드에서만 홈이 한 줄 늘어 release 와 다른 화면을 보게 된다.
+ */
 @Composable
 private fun HomeHeaderRow(
     nickname: String?,
     onPastRecordsClick: () -> Unit,
-    onGreetingClick: (() -> Unit)?,
+    onOpenCollectionLab: (() -> Unit)?,
+    onOpenHealthDetail: (() -> Unit)?,
 ) {
+    var isDebugMenuExpanded by remember { mutableStateOf(false) }
+    val hasDebugMenu = onOpenCollectionLab != null || onOpenHealthDetail != null
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HomeGreeting(nickname = nickname, onClick = onGreetingClick)
+        // 메뉴는 인사말에 붙여 띄운다. Popup 은 감싼 상자를 기준으로 자리를 잡는다.
+        Box {
+            HomeGreeting(
+                nickname = nickname,
+                onClick = if (hasDebugMenu) ({ isDebugMenuExpanded = true }) else null,
+            )
+            LaimoryDropdownMenu(
+                expanded = isDebugMenuExpanded,
+                onDismissRequest = { isDebugMenuExpanded = false },
+            ) {
+                onOpenCollectionLab?.let { open ->
+                    LaimoryDropdownMenuItem(
+                        label = "수집 데이터 자세히 보기",
+                        onClick = {
+                            isDebugMenuExpanded = false
+                            open()
+                        },
+                    )
+                }
+                onOpenHealthDetail?.let { open ->
+                    LaimoryDropdownMenuItem(
+                        label = "건강 상세",
+                        onClick = {
+                            isDebugMenuExpanded = false
+                            open()
+                        },
+                    )
+                }
+            }
+        }
         Icon(
             painter = painterResource(UiR.drawable.ico_home_past_records),
             // 아이콘만 서 있어 뜻을 그림으로만 전한다 — 스크린 리더가 읽을 이름을 붙인다.
@@ -695,7 +729,7 @@ private fun HomeGreeting(
             if (onClick != null) {
                 Modifier
                     .clip(RoundedCornerShape(Spacing.small))
-                    .clickable(onClickLabel = "수집 데이터 보기", onClick = onClick)
+                    .clickable(onClickLabel = "개발 메뉴 열기", onClick = onClick)
             } else {
                 Modifier
             },
