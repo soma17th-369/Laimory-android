@@ -45,8 +45,8 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             key = "location",
             label = "PLACE",
             title = "머문 곳과 오간 길이 하루의 흐름이 돼요",
-            // 배경 수집은 요청 전에 알려야 한다. 스토어 정책이 요구하고, `항상 허용` 은 시스템 대화상자로
-            // 받을 수 없어 앱 설정으로 나가야 하는데 이유를 모르면 그 화면에서 길을 잃는다.
+            // 배경 수집은 요청 전에 알려야 한다(스토어 정책). `위치 연결하기` 한 번에 위치 팝업 뒤 설정의
+            // 위치 권한 화면이 이어서 뜨므로, 그 화면이 왜 뜨는지 여기서 먼저 말해 둔다.
             description = "머문 곳과 이동한 구간만 남겨 하루의 흐름을 세워요. 주머니에 넣고 다닌 구간까지 이으려면 '항상 허용'이 필요해요.",
             image = R.drawable.img_onboarding_location,
             permission = DataPermission.LOCATION,

@@ -41,6 +41,7 @@ import com.soma369.laimory.feature.onboarding.component.OnboardingConsentCheckli
 import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
+import com.soma369.laimory.feature.onboarding.model.isPageDone
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import com.soma369.laimory.feature.onboarding.viewmodel.OnboardingViewModel
@@ -88,17 +89,18 @@ private fun OnboardingContent(
     // 백그라운드 위치까지 받았으면 수집 상태를 맞춘다. 전환이 아니라 상태를 본다 — 진입 시점에
     // 이미 허용돼 있으면 전환이 없어서, 전환만 보면 그 사용자는 영영 켜지지 않는다. 사용자가 일부러
     // 꺼 둔 수집을 되살리지 않는 판단은 reconcile 이 이미 갖고 있다.
+    // 이동수단 인식만 거부한 사용자도 수집은 돈다 — GRANTED 로 좁히면 그 사용자는 여기서 켜지지 않는다.
     LaunchedEffect(permissionState.locationStep) {
-        if (permissionState.locationStep == LocationPermissionStep.GRANTED) {
+        if (permissionState.locationStep.collectsInBackground) {
             onIntent(OnboardingUiIntent.ReconcileLocationTracking)
         }
     }
 
     val currentPage = state.pages.getOrNull(pagerState.currentPage)
     val isLastPage = pagerState.currentPage == state.pages.lastIndex
-    // 이미 허용된 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
+    // 이미 받은 권한은 다시 묻지 않는다. 시스템이 두 번째 요청을 조용히 무시해 아무 일도
     // 일어나지 않은 것처럼 보이기 때문이다.
-    val needsRequest = currentPage?.permission != null && !permissionState.isGranted(currentPage.permission)
+    val needsRequest = currentPage?.permission != null && !permissionState.isPageDone(currentPage.permission)
     // 아직 받을 것이 남아 있는 장인지. 이미 다 동의했고 연령까지 확인한 사용자에게는 채울 것이
     // 없으므로 마지막 장이 평범한 마무리 장이 된다.
     //
@@ -130,7 +132,7 @@ private fun OnboardingContent(
         // 건너뛰기는 요청이 남아 있을 때만 둔다. 이미 허용했거나 안내 전용 장에서는 건너뛸 것이
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
-        isPageGranted = { page -> permissionState.isGranted(page.permission) },
+        isPageGranted = { page -> permissionState.isPageDone(page.permission) },
         onPrimaryClick = {
             when {
                 needsRequest -> currentPage?.permission?.let(permissionState::request)
@@ -254,8 +256,8 @@ private fun OnboardingScreen(
 /**
  * 주 버튼 문구.
  *
- * 위치만 한 장 안에서 문구가 바뀐다 — 남은 단계가 무엇인지 버튼이 말하지 않으면, 눌렀는데 또
- * 눌러야 하는 화면이 된다.
+ * 위치만 한 장 안에서 문구가 바뀐다. `위치 연결하기` 한 번에 위치 팝업 → `항상 허용` 화면까지 이어지지만,
+ * 그 화면에서 고르지 않고 돌아오면 남은 단계를 버튼이 말해야 한다 — 다시 누르면 그 화면이 곧장 다시 뜬다.
  */
 private fun ctaLabel(
     page: OnboardingPageSpec?,
@@ -272,12 +274,8 @@ private fun ctaLabel(
         // 무엇을 누르는지 버튼이 말한다. `시작하기` 만으로는 동의가 함께 일어나는 줄 알 수 없다.
         needsConsent -> "모두 동의하고 시작하기"
 
-        page?.permission == DataPermission.LOCATION && locationStep != LocationPermissionStep.GRANTED ->
-            when (locationStep) {
-                LocationPermissionStep.BACKGROUND -> "'항상 허용'으로 바꾸기"
-                LocationPermissionStep.ACTIVITY -> "이동수단 인식 켜기"
-                else -> page.primaryCta
-            }
+        page?.permission == DataPermission.LOCATION && locationStep == LocationPermissionStep.BACKGROUND ->
+            "'항상 허용'으로 바꾸기"
 
         needsRequest -> page?.primaryCta.orEmpty()
         isLastPage -> page?.primaryCta.orEmpty()
