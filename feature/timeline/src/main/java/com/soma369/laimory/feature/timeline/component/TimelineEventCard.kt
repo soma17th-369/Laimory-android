@@ -121,7 +121,8 @@ internal fun TimelineEventCard(
             // 것은 자리가 달라서다 — 이것은 이벤트 한 칸의 일부라 마지막 이벤트 아래에도 남는다.
             // 연결선은 행 배경이 그리므로 이 여백까지 끊기지 않고 이어진다.
             modifier = Modifier.weight(1f).padding(bottom = Spacing.large),
-            verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+            // 시각·제목·부제·사진·메모 사이. 시안 content-column 의 gap 8 이다.
+            verticalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
             EventTimeRow(
                 event = event,
