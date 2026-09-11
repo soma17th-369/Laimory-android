@@ -25,11 +25,17 @@ data class GeoPoint(
  * 체류 시간은 payload 에 중복 저장하지 않고 [SourceItem.startAt]/[SourceItem.endAt] 에서
  * 파생한다. 업로드 payload 에 체류 시간 필드가 필요하면 projection 시 계산해서 채운다.
  * [address]는 화면 표시를 위해 기기에서 해석한 로컬 전용 값이며 서버 업로드 projection 에서 제외한다.
+ * [addressCity]·[addressDistrict]도 같다 — 홈 위치 카드가 `강남구 역삼동` 두 층위로 보여 주려고
+ * 함께 저장한다. 저장하지 않으면 홈에 들어올 때마다 좌표를 다시 해석하게 된다.
  */
 data class StayPayload(
     val latitude: Double,
     val longitude: Double,
     val address: String? = null,
+    /** 시 단위(광역 또는 시·군·구). 로컬 표시 전용이며 업로드 projection 에서 제외한다. */
+    val addressCity: String? = null,
+    /** 동 단위(읍·면·동 또는 도로명). 로컬 표시 전용이며 업로드 projection 에서 제외한다. */
+    val addressDistrict: String? = null,
 ) : SourceItemPayload {
     override val itemType: ItemType get() = ItemType.STAY
 }

@@ -65,6 +65,9 @@ internal data class StayPayloadDto(
     val longitude: Double,
     // 로컬 화면 표시 전용. 기존 저장분에는 없으므로 null 기본값으로 호환한다.
     val address: String? = null,
+    // 홈 위치 카드가 `시 · 동` 두 층위로 쓰는 값. 마찬가지로 로컬 표시 전용이다.
+    val addressCity: String? = null,
+    val addressDistrict: String? = null,
 )
 
 @Serializable
@@ -114,9 +117,23 @@ private fun GeoPoint.toDto() = GeoPointDto(latitude = latitude, longitude = long
 
 private fun GeoPointDto.toDomain() = GeoPoint(latitude = latitude, longitude = longitude, address = address)
 
-private fun StayPayload.toDto() = StayPayloadDto(latitude = latitude, longitude = longitude, address = address)
+private fun StayPayload.toDto() =
+    StayPayloadDto(
+        latitude = latitude,
+        longitude = longitude,
+        address = address,
+        addressCity = addressCity,
+        addressDistrict = addressDistrict,
+    )
 
-private fun StayPayloadDto.toDomain() = StayPayload(latitude = latitude, longitude = longitude, address = address)
+private fun StayPayloadDto.toDomain() =
+    StayPayload(
+        latitude = latitude,
+        longitude = longitude,
+        address = address,
+        addressCity = addressCity,
+        addressDistrict = addressDistrict,
+    )
 
 private fun MovementPayload.toDto() =
     MovementPayloadDto(

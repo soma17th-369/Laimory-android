@@ -29,6 +29,16 @@ class DraftConsentSessionStore
         private var nextAttemptId = 1L
         private var needsPhotoReselection = false
 
+        private val mutableAccountSession = MutableStateFlow(0L)
+
+        /**
+         * 계정 경계를 넘을 때마다 오르는 번호.
+         *
+         * 스토어를 비우는 것만으로는 계정 경계를 넘어 살아남는 화면(Activity 범위 ViewModel)
+         * 안에 남은 판정이 그대로다. 그쪽이 이전 계정의 값을 버릴 계기가 필요하다.
+         */
+        val accountSession: StateFlow<Long> = mutableAccountSession.asStateFlow()
+
         /** 새 생성 시도를 시작한다. 같은 데이터라도 항상 새 attemptId 를 받아 이전 시도와 구분된다. */
         fun prepare(
             recordDate: LocalDate,
@@ -72,5 +82,6 @@ class DraftConsentSessionStore
         fun clearAll() {
             mutablePreparation.value = null
             needsPhotoReselection = false
+            mutableAccountSession.value += 1
         }
     }

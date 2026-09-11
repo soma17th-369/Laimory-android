@@ -7,6 +7,7 @@ import com.soma369.laimory.core.collection.database.CollectionDatabase
 import com.soma369.laimory.core.collection.mapper.toDomain
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
@@ -82,20 +83,31 @@ internal class LocationSegmentPersistenceTest {
                     database = database,
                     sourceItemDao = database.sourceItemDao(),
                 )
-            addressRepository.updateAddress("stay-raw", "경기도 오산시")
+            addressRepository.updateAddress(
+                "stay-raw",
+                ResolvedAddress(line = "대한민국 경기도 오산시 부산동 302", city = "오산시", district = "부산동"),
+            )
 
             // 위치 수집기가 주소 없는 최신 구간을 저장해도 기존 로컬 주소를 이어받아야 한다.
             persistence.persist(createSnapshot(25 * MINUTE), listOf(createStay(25 * MINUTE)))
 
             val stored = database.sourceItemDao().observeAll().first().single().toDomain()
             assertEquals(Instant.ofEpochMilli(25 * MINUTE), stored.endAt)
-            assertEquals("경기도 오산시", (stored.payload as StayPayload).address)
+            val storedPayload = stored.payload as StayPayload
+            assertEquals("대한민국 경기도 오산시 부산동 302", storedPayload.address)
+            // 층위까지 이어받아야 한다. 한 줄만 이어받으면 진행 중인 체류가 갱신될 때마다 층위가
+            // 지워지고, 재해석은 항목당 한 번이라 카드가 한 줄 주소로 되돌아간다.
+            assertEquals("오산시", storedPayload.addressCity)
+            assertEquals("부산동", storedPayload.addressDistrict)
 
             // 반대 순서에서도 주소 쓰기가 최신 열린 구간의 시각을 되돌리지 않아야 한다.
-            addressRepository.updateAddress("stay-raw", "경기도 오산시 세교동")
+            addressRepository.updateAddress(
+                "stay-raw",
+                ResolvedAddress(line = "대한민국 경기도 오산시 세교동 1", city = "오산시", district = "세교동"),
+            )
             val addressUpdated = database.sourceItemDao().observeAll().first().single().toDomain()
             assertEquals(Instant.ofEpochMilli(25 * MINUTE), addressUpdated.endAt)
-            assertEquals("경기도 오산시 세교동", (addressUpdated.payload as StayPayload).address)
+            assertEquals("세교동", (addressUpdated.payload as StayPayload).addressDistrict)
         }
 
     @Test

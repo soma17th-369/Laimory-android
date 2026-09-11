@@ -11,6 +11,7 @@ import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
@@ -842,16 +843,16 @@ class DraftConsentViewModelTest {
         override suspend fun resolve(
             latitude: Double,
             longitude: Double,
-        ): String? {
+        ): ResolvedAddress? {
             requested += latitude to longitude
-            return answer(latitude, longitude)
+            return answer(latitude, longitude)?.let { ResolvedAddress(line = it) }
         }
     }
 
     private object NoOpStayAddressRepository : StayAddressRepository {
         override suspend fun updateAddress(
             rawId: String,
-            address: String,
+            address: ResolvedAddress,
         ): Boolean = true
     }
 

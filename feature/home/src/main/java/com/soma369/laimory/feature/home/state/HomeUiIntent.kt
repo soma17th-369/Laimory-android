@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.state
 
 import com.soma369.laimory.core.ui.base.UiIntent
+import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -100,6 +101,26 @@ sealed interface HomeUiIntent : UiIntent {
 
     /** 전송 스냅샷을 확정하고 데이터 전송 동의 화면으로 이동한다. 생성 API 는 동의 완료 후에만 호출된다. */
     data object CreateDraft : HomeUiIntent
+
+    /**
+     * 원천별 권한 도트를 다시 본다. 판정은 화면이 하고 결과만 싣는다.
+     *
+     * 권한은 사용자가 언제든 바꾸므로 캐시하지 않고 홈 재진입(ON_RESUME)마다 다시 본다.
+     */
+    data class RefreshSourcePermissions(
+        val photo: DataSourceStatus,
+        val calendar: DataSourceStatus,
+        val location: DataSourceStatus,
+        val notification: DataSourceStatus,
+    ) : HomeUiIntent
+
+    /**
+     * 저장된 위치정보 약관 동의를 다시 판정한다.
+     *
+     * 이 ViewModel 은 계정 경계를 넘어 살아남고, 약관 화면에 다녀와 동의하고 돌아오는 경로도
+     * 있으므로 진입·복귀마다 다시 본다.
+     */
+    data object RefreshLocationConsent : HomeUiIntent
 
     /** 동의 화면에서 제출을 마치고 복귀했는지 확인한다. 홈 재진입(ON_RESUME)마다 1회 소비한다. */
     data object ConsumeDraftConsentResult : HomeUiIntent

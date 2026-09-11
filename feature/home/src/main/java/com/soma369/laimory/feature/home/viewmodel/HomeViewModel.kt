@@ -2,12 +2,14 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
@@ -26,6 +28,7 @@ import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
+import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -36,6 +39,7 @@ import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomePastRecordsUiState
 import com.soma369.laimory.feature.home.state.HomePhotoItem
+import com.soma369.laimory.feature.home.state.HomeSourcePermissions
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
@@ -48,6 +52,7 @@ import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.drop
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -72,6 +77,8 @@ class HomeViewModel
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
+        private val termsCoordinator: TermsAgreementCoordinator,
+        private val resolveStayAddress: ResolveStayAddressUseCase,
         collectionLabAccessGate: CollectionLabAccessGate,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
             HomeUiState(
@@ -88,18 +95,39 @@ class HomeViewModel
         private var photoCandidates: List<PhotoCandidate> = emptyList()
         private var photoAccessGranted = false
         private var photoCandidatesJob: Job? = null
+
+        /** 층위를 채우러 이미 물어본 체류. 같은 항목을 반복해서 묻지 않는다. */
+        private val attemptedStayRawIds = mutableSetOf<String>()
         private var lastLoadedPhotoWindow: RecordDateWindow? = null
         private var requestedPhotoWindow: RecordDateWindow? = null
         private var preparedPhotoCache: PreparedPhotoCache? = null
         private var hasUserSelectedDate = false
         private var pastRecordsJob: Job? = null
         private var consentPreparationJob: Job? = null
+        private var locationConsentJob: Job? = null
 
         init {
             observeSummary()
             observeDraftTask()
             observeUserProfile()
+            observeAccountSession()
         }
+
+        /**
+         * 계정이 바뀌면 위치 동의 판정을 버린다.
+         *
+         * 이 ViewModel 은 Activity 범위라 계정 경계를 넘어 살아남는데, 판정값만 남으면 새 계정이
+         * 동의하지 않았는데도 원천 갱신이 그 값을 보고 `Geocoder` 를 부른다. 진행 중이던 조회도
+         * 끊는다 — 이전 계정의 응답이 늦게 도착해 새 계정의 판정으로 앉는다.
+         */
+        private fun observeAccountSession() =
+            safeLaunch {
+                draftConsentSessionStore.accountSession.drop(1).collect {
+                    locationConsentJob?.cancel()
+                    attemptedStayRawIds.clear()
+                    updateState { copy(isLocationConsentGranted = false) }
+                }
+            }
 
         /**
          * 공용 회원 정보를 인사말에 반영한다.
@@ -155,6 +183,8 @@ class HomeViewModel
                 HomeUiIntent.StartNewDraft -> startNewDraft()
                 HomeUiIntent.ViewDraft -> viewDraft()
                 HomeUiIntent.OpenDraftLoading -> navigationHelper.navigateTo(DraftLoadingPage)
+                is HomeUiIntent.RefreshSourcePermissions -> refreshSourcePermissions(intent)
+                HomeUiIntent.RefreshLocationConsent -> refreshLocationConsent()
                 HomeUiIntent.SyncPastRecords -> syncPastRecords()
                 is HomeUiIntent.SelectPastRecord ->
                     navigationHelper.navigateTo(TimelinePage(intent.recordDate))
@@ -165,7 +195,10 @@ class HomeViewModel
             safeLaunch {
                 observeSourceItemsUseCase().collect { items ->
                     sourceItems = items
-                    updateState { refreshSourceSummary(items, photoCandidates, zone) }
+                    updateState { withSourceSummary(items, photoCandidates) }
+                    // 복귀 시점의 동의 판정만으로는 늦다 — 그때는 수집이 아직 안 실려 머문 곳이
+                    // 없고, 실려 들어온 뒤에는 다시 물을 계기가 없어 주소가 영영 안 채워진다.
+                    if (state.value.isLocationConsentGranted) resolveStayPlaceAddress()
                 }
             }
 
@@ -325,7 +358,7 @@ class HomeViewModel
                     draftStatus = DraftCreationStatus.IDLE,
                     draftRetryMode = null,
                     draftMessage = null,
-                ).refreshSourceSummary(sourceItems, photoCandidates, zone)
+                ).withSourceSummary(sourceItems, photoCandidates)
             }
             prepareDraftConsent()
         }
@@ -368,6 +401,26 @@ class HomeViewModel
             }
         }
 
+        /**
+         * 카드 건수를 다시 센다.
+         *
+         * 전송 예정 수(N)는 후보 수만으로 알 수 없다 — 타입별 상한과 정제를 거친 뒤의 값이라
+         * 선택 정책을 돌려야 나온다. **측정 리포트는 발행하지 않는다**(제출 시점만 발행).
+         *
+         * 제외 집합은 아직 상세 화면이 갖고 있어 여기서는 비어 있다. 소유가 세션 스토어로 옮겨오면
+         * 그 값을 읽어 넘긴다(홈 화면 개편 이슈).
+         */
+        private fun HomeUiState.withSourceSummary(
+            items: List<SourceItem>,
+            photoCandidates: List<PhotoCandidate>,
+        ): HomeUiState {
+            val selection =
+                recordDateWindow(zone)?.let { window ->
+                    prepareTimelineDraftSelectionUseCase(window, items, reportsMeasurement = false).getOrNull()
+                }
+            return refreshSourceSummary(items, photoCandidates, zone, selection)
+        }
+
         private fun selectDate(date: LocalDate) {
             if (state.value.draftStatus.isDateLocked) return
             // 피커가 회색으로 만들기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면
@@ -390,7 +443,7 @@ class HomeViewModel
                         draftMessage = null,
                     )
                 next
-                    .refreshSourceSummary(sourceItems, photoCandidates, zone)
+                    .withSourceSummary(sourceItems, photoCandidates)
                     .withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value)
             }
             onRecordWindowChanged()
@@ -448,7 +501,7 @@ class HomeViewModel
                         draftRetryMode = null,
                         draftMessage = null,
                     )
-                next.refreshSourceSummary(sourceItems, photoCandidates, zone)
+                next.withSourceSummary(sourceItems, photoCandidates)
             }
             onRecordWindowChanged()
         }
@@ -583,7 +636,7 @@ class HomeViewModel
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
                     draftMessage = message,
                     isPhotoSheetVisible = true,
-                ).refreshSourceSummary(sourceItems, photoCandidates, zone)
+                ).withSourceSummary(sourceItems, photoCandidates)
             }
             sendEffect(HomeUiSideEffect.ShowSnackbar(message))
         }
@@ -623,7 +676,7 @@ class HomeViewModel
                 photoCandidatesJob = null
                 requestedPhotoWindow = null
                 updateState {
-                    refreshSourceSummary(sourceItems, photoCandidates, zone)
+                    withSourceSummary(sourceItems, photoCandidates)
                         .copy(isPhotoLoading = false)
                 }
                 return
@@ -652,7 +705,7 @@ class HomeViewModel
                             cache.ids.all(availableIds::contains)
                         }
                     updateState {
-                        refreshSourceSummary(sourceItems, candidates, zone)
+                        withSourceSummary(sourceItems, candidates)
                             .copy(isPhotoLoading = false)
                     }
                 }
@@ -660,7 +713,7 @@ class HomeViewModel
 
         private fun onRecordWindowChanged() {
             preparedPhotoCache = null
-            updateState { refreshSourceSummary(sourceItems, photoCandidates, zone) }
+            updateState { withSourceSummary(sourceItems, photoCandidates) }
             loadPhotoCandidates(force = false)
         }
 
@@ -676,7 +729,7 @@ class HomeViewModel
                     isPhotoLoading = false,
                     isPhotoSheetVisible = false,
                     isPhotoAccessLimited = false,
-                ).refreshSourceSummary(sourceItems, emptyList(), zone)
+                ).withSourceSummary(sourceItems, emptyList())
             }
         }
 
@@ -706,6 +759,76 @@ class HomeViewModel
             }
 
         /** 지난 기록 목록을 서버와 동기화한다. 진행 중이면 중복 요청하지 않는다. */
+        private fun refreshSourcePermissions(intent: HomeUiIntent.RefreshSourcePermissions) {
+            updateState {
+                copy(
+                    permissions =
+                        HomeSourcePermissions(
+                            photo = intent.photo,
+                            calendar = intent.calendar,
+                            location = intent.location,
+                            notification = intent.notification,
+                        ),
+                )
+            }
+        }
+
+        /**
+         * 저장된 위치정보 약관 동의를 판정하고, 허용되면 가장 오래 머문 곳의 주소를 채운다.
+         *
+         * 알아내기 전과 조회 실패는 모두 "허용되지 않음"이다 — `Geocoder` 는 좌표를 기기 밖으로
+         * 보내므로 모르는 상태에서 부르지 않는다(#330).
+         */
+        private fun refreshLocationConsent() {
+            // 앞선 조회가 남아 있으면 끊는다. 늦게 도착한 이전 판정이 최신 판정을 덮어쓴다.
+            locationConsentJob?.cancel()
+            locationConsentJob =
+                safeLaunch(onError = {}) {
+                    val isGranted =
+                        termsCoordinator
+                            .requirementOf(TermStage.TIMELINE_LOCATION)
+                            .getOrNull()
+                            ?.isSatisfied == true
+                    updateState { copy(isLocationConsentGranted = isGranted) }
+                    if (isGranted) resolveStayPlaceAddress()
+                }
+        }
+
+        /**
+         * 위치 카드가 `오산시 부산동` 두 층위를 쓰는데 층위가 비어 있으면 채운다.
+         *
+         * 한 줄 주소가 있어도 층위가 없으면 다시 묻는다 — 예전에 한 줄만 저장된 항목을 해석
+         * 완료로 보면 새 체류와 기존 저장분이 서로 다른 모양으로 뜬다. 해석 결과는 저장되므로
+         * 항목당 한 번이고, 같은 항목을 반복해서 묻지 않는다.
+         *
+         * 부르는 자리가 둘이다 — 동의를 판정한 직후와 수집이 실려 요약이 바뀔 때. 둘 중 어느
+         * 쪽이 먼저인지 정해져 있지 않아서다. [attemptedStayRawIds] 가 겹치는 호출을 막는다.
+         */
+        private suspend fun resolveStayPlaceAddress() {
+            val place = state.value.summary.stayPlace ?: return
+            if (!place.needsResolution) return
+            if (!attemptedStayRawIds.add(place.rawId)) return
+            val resolved = resolveStayAddress(place.rawId, place.latitude, place.longitude) ?: return
+            updateState {
+                // 해석하는 사이 창이나 수집이 바뀌었으면 지금 화면의 장소가 아니다.
+                if (summary.stayPlace?.rawId != place.rawId) {
+                    this
+                } else {
+                    copy(
+                        summary =
+                            summary.copy(
+                                stayPlace =
+                                    summary.stayPlace.copy(
+                                        city = resolved.city,
+                                        district = resolved.district,
+                                        line = resolved.line,
+                                    ),
+                            ),
+                    )
+                }
+            }
+        }
+
         private fun syncPastRecords() {
             if (pastRecordsJob?.isActive == true) return
             pastRecordsJob =
@@ -755,7 +878,7 @@ class HomeViewModel
             val alignedState =
                 if (trackingTask != null && trackingTask.recordDate != selectedDate) {
                     copy(selectedDate = trackingTask.recordDate)
-                        .refreshSourceSummary(sourceItems, photoCandidates, zone)
+                        .withSourceSummary(sourceItems, photoCandidates)
                 } else {
                     this
                 }

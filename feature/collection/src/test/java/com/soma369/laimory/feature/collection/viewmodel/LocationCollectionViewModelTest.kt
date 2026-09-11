@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.collection.viewmodel
 
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
@@ -85,17 +86,17 @@ class LocationCollectionViewModelTest {
         override suspend fun resolve(
             latitude: Double,
             longitude: Double,
-        ): String? {
+        ): ResolvedAddress? {
             resolveCount++
             failure?.let { throw it }
-            return "서울특별시 마포구"
+            return ResolvedAddress(line = "서울특별시 마포구", city = "마포구", district = null)
         }
     }
 
     private class FakeLocationAddressRepository : StayAddressRepository, MovementAddressRepository {
         override suspend fun updateAddress(
             rawId: String,
-            address: String,
+            address: ResolvedAddress,
         ): Boolean = true
 
         override suspend fun updateAddresses(

@@ -31,13 +31,20 @@ class PrepareTimelineDraftSelectionUseCase
         private val privacyPolicy: NotificationPrivacyPolicy,
         private val selectionReporter: DraftSourceItemSelectionReporter,
     ) {
+        /**
+         * @param reportsMeasurement 선택 측정 리포트를 발행할지. 홈이 카드 건수를 세려고 상시로
+         *   돌리는 호출은 **false** 다 — 수집이 돌 때마다 발행하면 실제 생성 한 번에 리포트가
+         *   수십 건 쌓여 측정이 무의미해진다. 정제·상한·정렬 정책은 그대로 거치므로 카드 건수와
+         *   전송 건수는 어긋나지 않는다.
+         */
         operator fun invoke(
             window: RecordDateWindow,
             items: List<SourceItem>,
+            reportsMeasurement: Boolean = true,
         ): Result<DraftSourceItemSelection> =
             runCatching {
                 selectionPolicy.select(window, items.sanitizeNotifications()).getOrThrow().also { selection ->
-                    if (selectionReporter.isEnabled) selectionReporter.reportSelection(selection.report)
+                    if (reportsMeasurement && selectionReporter.isEnabled) selectionReporter.reportSelection(selection.report)
                 }
             }
 

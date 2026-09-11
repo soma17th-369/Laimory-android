@@ -5,6 +5,7 @@ import android.location.Address
 import android.location.Geocoder
 import android.os.Build
 import androidx.annotation.RequiresApi
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -26,7 +27,7 @@ internal class AndroidLocationAddressResolver
         override suspend fun resolve(
             latitude: Double,
             longitude: Double,
-        ): String? {
+        ): ResolvedAddress? {
             if (!Geocoder.isPresent()) return null
             val geocoder = Geocoder(context, Locale.getDefault())
             return try {
@@ -46,7 +47,7 @@ internal class AndroidLocationAddressResolver
         private suspend fun Geocoder.resolveAsync(
             latitude: Double,
             longitude: Double,
-        ): String? =
+        ): ResolvedAddress? =
             suspendCancellableCoroutine { continuation ->
                 getFromLocation(
                     latitude,
@@ -68,15 +69,47 @@ internal class AndroidLocationAddressResolver
         private suspend fun Geocoder.resolveBlocking(
             latitude: Double,
             longitude: Double,
-        ): String? =
+        ): ResolvedAddress? =
             withContext(Dispatchers.IO) {
                 getFromLocation(latitude, longitude, MAX_RESULTS).orEmpty().firstDisplayAddress()
             }
 
-        private fun List<Address>.firstDisplayAddress(): String? =
+        /**
+         * 한 줄 주소가 있는 첫 결과를 표시용 주소로 옮긴다.
+         *
+         * 층위는 **시·군·구 + 읍·면·동** 이다 — `오산시 부산동`, `강남구 역삼동`. 광역을 앞세우면
+         * 같은 도 안에서 어디를 다녀도 카드 문구가 한 가지라 하루가 구분되지 않는다.
+         * - [ResolvedAddress.city] = 시·군·구(`locality` → `subAdminArea` → `adminArea`)
+         * - [ResolvedAddress.district] = 읍·면·동(`subLocality` → `thoroughfare`)
+         *
+         * 지역마다 어느 필드가 차는지 달라 순서대로 훑는다. 필드가 모두 비면 한 줄 주소에서
+         * 읽어 내고([addressLineLayers]), 광역은 그래도 시·군·구가 없을 때만 마지막으로 쓴다 —
+         * 광역시는 `locality` 가 비고 `adminArea` 에 `서울특별시` 만 오기도 한다.
+         *
+         * 한 줄 주소가 없으면 층위가 있어도 버린다 — 목록·말풍선이 쓰는 값이 없으면 표시가 반쪽이다.
+         */
+        private fun List<Address>.firstDisplayAddress(): ResolvedAddress? =
             firstNotNullOfOrNull { address ->
-                address.getAddressLine(0)?.trim()?.takeIf(String::isNotEmpty)
+                val line = address.getAddressLine(0).normalized() ?: return@firstNotNullOfOrNull null
+                val fromLine = addressLineLayers(line)
+                val city =
+                    address.locality.normalized()
+                        ?: address.subAdminArea.normalized()
+                        ?: fromLine.city
+                        ?: address.adminArea.normalized()
+                // 위 층위와 같은 이름은 아래 층위가 아니다 — `locality` 와 `subLocality` 에 똑같이
+                // `마포구` 가 실려 오는 지역이 있다. 버리고 넘어가야 한 줄에 있는 `공덕동` 에
+                // 닿는다. 여기서 멈추면 `마포구 마포구` 이거나 동이 없는 반쪽이 된다.
+                val district =
+                    address.subLocality.normalized().notSameAs(city)
+                        ?: fromLine.district.notSameAs(city)
+                        ?: address.thoroughfare.normalized().notSameAs(city)
+                ResolvedAddress(line = line, city = city, district = district)
             }
+
+        private fun String?.notSameAs(other: String?): String? = this?.takeIf { it != other }
+
+        private fun String?.normalized(): String? = this?.trim()?.takeIf(String::isNotEmpty)
 
         private companion object {
             const val MAX_RESULTS = 1

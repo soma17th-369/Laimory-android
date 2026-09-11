@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.domain.usecase
 
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
+import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.MovementAddressRepository
 import kotlinx.coroutines.test.runTest
@@ -14,7 +15,7 @@ class ResolveMovementAddressesUseCaseTest {
             val repository = RecordingMovementAddressRepository()
             val resolver =
                 LocationAddressResolver { latitude, _ ->
-                    if (latitude == 37.5) " 출발 주소 " else " 도착 주소 "
+                    ResolvedAddress(line = if (latitude == 37.5) " 출발 주소 " else " 도착 주소 ")
                 }
             val useCase = ResolveMovementAddressesUseCase(resolver, repository)
 
@@ -37,7 +38,7 @@ class ResolveMovementAddressesUseCaseTest {
             val resolver =
                 LocationAddressResolver { _, _ ->
                     resolveCount++
-                    "도착 주소"
+                    ResolvedAddress(line = "도착 주소")
                 }
             val useCase = ResolveMovementAddressesUseCase(resolver, repository)
 
