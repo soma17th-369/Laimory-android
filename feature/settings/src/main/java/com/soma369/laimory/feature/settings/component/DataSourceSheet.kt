@@ -39,7 +39,7 @@ import com.soma369.laimory.feature.settings.model.buttonLabel
  * 데이터 소스 하나의 상태와 다음 행동을 보여주는 시트.
  *
  * 행을 눌렀을 때 시스템 설정으로 곧장 보내지 않는 이유는, 소스마다 갈 수 있는 곳이 다르기
- * 때문이다 — 사진·캘린더는 다이얼로그, 백그라운드 위치는 앱 설정, 알림 읽기는 알림 접근 설정,
+ * 때문이다 — 사진·캘린더는 다이얼로그, 백그라운드 위치는 설정의 위치 권한 화면, 알림 읽기는 알림 접근 설정,
  * 그리고 아무 데도 갈 수 없는 기기도 있다. 시트 하나가 그 차이를 흡수하면 목록은 소스가 늘어도
  * 그대로 둘 수 있다.
  *
@@ -158,7 +158,7 @@ private fun DataSourceSheetContent(
                 onCheckedChange = onCollectionEnabledChange,
             )
         }
-        action.buttonLabel(status)?.let { label ->
+        action.buttonLabel(status, locationStep.takeIf { source == DataSourceUiModel.LOCATION })?.let { label ->
             Button(
                 modifier = Modifier.fillMaxWidth().height(ActionButtonHeight),
                 onClick = onAction,
