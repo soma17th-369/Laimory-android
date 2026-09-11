@@ -93,7 +93,7 @@ internal fun HomeDatePickerDialog(
         ) {
             Column(modifier = Modifier.padding(Spacing.extraLarge)) {
                 Text(
-                    text = "초안을 만들 날짜",
+                    text = "타임라인을 만들 날짜",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
