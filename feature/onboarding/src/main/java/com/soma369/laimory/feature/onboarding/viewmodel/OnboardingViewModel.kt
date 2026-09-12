@@ -17,7 +17,6 @@ import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -213,22 +212,21 @@ class OnboardingViewModel
             // 목록이 버튼 바로 위에 있어 무엇을 확인하고 넘어가는지 보인다 — 약관 항목을 다루는
             // 방식과 같다. 체크박스로 직접 켜고 끄는 길도 그대로 남는다.
             val fillsAgeConfirmation = !state.value.isAgeConfirmed
-            // 이미 다 동의하고 확인까지 마친 사용자에게는 채울 체크가 없다. 그때도 기다리면 화면은
-            // 그대로인 채 버튼만 잠시 먹통이 된다.
             if (recordableConsents.isNotEmpty() || fillsAgeConfirmation) {
-                // 무엇에 동의하고 넘어가는지 눈으로 확인할 틈을 준다. 버튼 문구가 `모두 동의하고
-                // 시작하기` 라 결과는 이미 분명하지만, 체크가 차오르는 것을 보지 못하면 무엇이
-                // 일어났는지 모른 채 화면이 바뀐다.
                 updateState {
                     copy(
                         checkedConsents = documents.mapTo(mutableSetOf()) { it.termType },
                         isAgeConfirmed = true,
                     )
                 }
-                delay(CONSENT_REVEAL_MILLIS)
             }
 
-            if (!recordConsents()) {
+            // 기록을 보내는 동안만 진행 표시를 둔다. 이것만이 사용자가 실제로 기다리는 통신이다 —
+            // 완료 저장은 보내고 잊으므로 기다릴 것이 없다.
+            updateState { copy(isConsentSubmitting = true) }
+            val recorded = recordConsents()
+            updateState { copy(isConsentSubmitting = false) }
+            if (!recorded) {
                 // 동의 기록이 실패하면 확인 상태도 처음으로 되돌린다 — 화면에 체크가 남아 있는데
                 // 서버에는 아무것도 기록되지 않은 상태를 만들지 않는다.
                 updateState {
@@ -255,9 +253,6 @@ class OnboardingViewModel
             val CONSENT_STAGES = listOf(TermStage.TIMELINE_FIRST_CREATE, TermStage.TIMELINE_LOCATION)
 
             val CONSENT_TYPES = CONSENT_STAGES.flatMap { it.requiredTypes }
-
-            /** 체크가 차오르는 것을 보여 주는 시간. 넘기기 전에 한 박자만 둔다. */
-            const val CONSENT_REVEAL_MILLIS = 400L
 
             const val LOAD_FAILURE_MESSAGE = "약관을 불러오지 못했어요. 연결을 확인하고 다시 시도해 주세요."
             const val REVISED_MESSAGE = "약관이 개정돼 다시 확인이 필요해요."

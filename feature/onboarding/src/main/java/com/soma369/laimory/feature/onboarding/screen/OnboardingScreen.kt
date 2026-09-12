@@ -306,7 +306,9 @@ private fun OnboardingScreen(
                 modifier = Modifier.fillMaxWidth().height(CTA_HEIGHT),
                 shape = MaterialTheme.shapes.medium,
             ) {
-                if (state.isCompleting || state.isConsentSubmitting) {
+                // 완료 저장은 보내고 잊으므로 여기서 기다리는 것은 동의 기록뿐이다. 완료까지
+                // 확인한 뒤 넘어가면 버튼만 돌고 화면은 그대로인 자리가 생긴다.
+                if (state.isConsentSubmitting) {
                     CircularProgressIndicator(modifier = Modifier.height(CTA_SPINNER_SIZE), strokeWidth = 2.dp)
                 } else {
                     Text(text = ctaLabel, style = MaterialTheme.typography.titleSmall)
