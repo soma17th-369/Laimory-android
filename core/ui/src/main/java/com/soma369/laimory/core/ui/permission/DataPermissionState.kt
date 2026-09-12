@@ -190,8 +190,6 @@ fun rememberDataPermissionState(): DataPermissionState {
     // 어느 소스를 요청했는지 알아야 결과를 그 소스에 귀속시킬 수 있다.
     var pending by remember { mutableStateOf<DataPermission?>(null) }
     var blocked by remember { mutableStateOf(emptySet<DataPermission>()) }
-    // 위치 첫 요청이 전경을 받으면 `항상 허용` 을 이어 요청할지. 첫 요청을 보낼 때만 켠다.
-    var continuesToBackground by remember { mutableStateOf(false) }
 
     // 결과 맵을 직접 읽지 않고 다시 조회한다. 일부 허용처럼 결과와 실제 상태가 갈리는
     // 경우가 있어, 판정 경로를 하나로 두는 편이 어긋날 여지가 없다.
@@ -210,20 +208,8 @@ fun rememberDataPermissionState(): DataPermissionState {
         pending = null
         refreshKey++
     }
-    // `항상 허용` 전용. 위치 첫 요청의 결과 콜백에서 이어 부르므로 그 런처와 따로 둔다.
-    val backgroundLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions(), settle)
     val runtimeLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            val chains = continuesToBackground
-            continuesToBackground = false
-            settle(result)
-            // 전경을 거부했으면 이어 가지 않는다 — 전경 없는 백그라운드 요청은 시스템이 무시한다.
-            if (chains && LocationPermission.canCollect(context) && !LocationPermission.hasBackground(context)) {
-                pending = DataPermission.LOCATION
-                backgroundLauncher.launch(arrayOf(LocationPermission.background()))
-            }
-        }
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions(), settle)
     val settingsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             refreshKey++
@@ -307,11 +293,13 @@ fun rememberDataPermissionState(): DataPermissionState {
                 }
                 DataPermission.LOCATION ->
                     when (locationStep) {
-                        // 위치와 이동수단 인식을 한 번에 묻는다. 전경을 받으면 결과 콜백이 곧바로 `항상 허용` 을
-                        // 이어 요청한다 — 사용자가 버튼을 다시 누르지 않아도 된다. 알림은 자기 장에서 받는다.
+                        // 위치와 이동수단 인식을 한 번에 묻는다. 알림은 자기 장에서 받는다.
+                        //
+                        // 전경을 받았다고 `항상 허용` 을 곧바로 이어 요청하지 않는다. 이어 보내면
+                        // 사용자가 무엇을 눌러야 하는지 모르는 채 권한 화면에 떨어진다 — 그 사이에
+                        // 안내를 한 번 보여 주고, 다음 단계는 버튼으로 들어간다.
                         LocationPermissionStep.FOREGROUND -> {
                             pending = permission
-                            continuesToBackground = true
                             runtimeLauncher.launch(LocationPermission.foregroundAndActivity())
                         }
                         // `항상 허용`. Android 11+ 는 다이얼로그 대신 이 앱의 위치 권한 화면을 곧장 열고,
@@ -320,7 +308,7 @@ fun rememberDataPermissionState(): DataPermissionState {
                         // 어디에도 기록하지 못해, 막힌 뒤에도 앱 정보 화면으로 길을 바꾸지 못한다.
                         LocationPermissionStep.BACKGROUND -> {
                             pending = permission
-                            backgroundLauncher.launch(arrayOf(LocationPermission.background()))
+                            runtimeLauncher.launch(arrayOf(LocationPermission.background()))
                         }
 
                         LocationPermissionStep.ACTIVITY -> {

@@ -259,8 +259,8 @@ private fun OnboardingScreen(
 /**
  * 주 버튼 문구.
  *
- * 위치만 한 장 안에서 문구가 바뀐다. `위치 연결하기` 한 번에 위치 팝업 → `항상 허용` 화면까지 이어지지만,
- * 그 화면에서 고르지 않고 돌아오면 남은 단계를 버튼이 말해야 한다 — 다시 누르면 그 화면이 곧장 다시 뜬다.
+ * 위치만 한 장 안에서 문구가 바뀐다. 전경 위치를 받고 돌아오면 `항상 허용` 이 남으므로, 버튼이 그
+ * 다음 걸음을 말한다 — 누르면 이 앱의 위치 권한 화면이 곧장 뜬다.
  */
 private fun ctaLabel(
     page: OnboardingPageSpec?,
@@ -278,7 +278,7 @@ private fun ctaLabel(
         needsConsent -> "모두 동의하고 시작하기"
 
         page?.permission == DataPermission.LOCATION && locationStep == LocationPermissionStep.BACKGROUND ->
-            "'항상 허용'으로 바꾸기"
+            "항상 허용하러 가기"
 
         needsRequest -> page?.primaryCta.orEmpty()
         isLastPage -> page?.primaryCta.orEmpty()
