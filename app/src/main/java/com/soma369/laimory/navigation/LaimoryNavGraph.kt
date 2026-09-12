@@ -174,6 +174,7 @@ fun LaimoryNavGraph(
             AppNavHost(
                 backStack = backStack,
                 innerPadding = innerPadding,
+                decidedRootPath = rootPage.toRoute().path,
                 navigationFlow = navigationFlow,
             )
         }

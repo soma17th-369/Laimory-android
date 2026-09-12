@@ -185,6 +185,26 @@ class AuthNavigationTest {
         )
     }
 
+    @Test
+    fun `판정과 같은 경계를 가리키는 신호만 적용한다`() {
+        assertTrue(appliesReplaceRoot(HomePage.PATH, decidedRootPath = HomePage.PATH))
+        assertTrue(appliesReplaceRoot(OnboardingPage.PATH, decidedRootPath = OnboardingPage.PATH))
+    }
+
+    @Test
+    fun `판정 중에 쌓였다가 늦게 도착한 홈 신호가 온보딩을 덮지 않는다`() {
+        // 로그인 성공 신호가 판정 중에 채널에 쌓였다가, 온보딩 루트가 세워진 뒤 재생되던 경로다.
+        assertFalse(appliesReplaceRoot(HomePage.PATH, decidedRootPath = OnboardingPage.PATH))
+        assertFalse(appliesReplaceRoot(HomePage.PATH, decidedRootPath = TermsPage.PATH))
+        assertFalse(appliesReplaceRoot(LoginPage.PATH, decidedRootPath = HomePage.PATH))
+    }
+
+    @Test
+    fun `경계가 아닌 목적지는 판정과 무관하게 적용한다`() {
+        // 타임라인·설정 같은 화면은 판정의 대상이 아니라 흐름이 정한다.
+        assertTrue(appliesReplaceRoot(SettingsPage.PATH, decidedRootPath = HomePage.PATH))
+    }
+
     private fun termsOfService() =
         TermDocument(
             termType = TermType.TERMS_OF_SERVICE,

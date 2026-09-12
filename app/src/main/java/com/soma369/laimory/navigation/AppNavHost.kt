@@ -3,14 +3,19 @@ package com.soma369.laimory.navigation
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.HomePage
+import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NavRoute
 import com.soma369.laimory.core.domain.navigation.NavSignal
+import com.soma369.laimory.core.domain.navigation.OnboardingPage
+import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.flow.Flow
@@ -26,13 +31,21 @@ import kotlinx.coroutines.flow.emptyFlow
 fun AppNavHost(
     backStack: NavBackStack<NavKey>,
     innerPadding: PaddingValues,
+    /** 지금 판정이 정한 경계 루트의 경로. 경계를 가리키는 신호는 이것과 같을 때만 적용한다. */
+    decidedRootPath: String,
     navigationFlow: Flow<NavSignal> = emptyFlow(),
 ) {
+    // 판정 중에는 이 호스트가 컴포지션에 없어 신호가 채널에 쌓였다가 나중에 도착한다. 그때의
+    // 판정을 봐야 하므로 최신 값을 따라간다 — 수집은 한 번만 시작하고 다시 시작하지 않는다.
+    val currentRootPath by rememberUpdatedState(decidedRootPath)
     LaunchedEffect(navigationFlow) {
         navigationFlow.collect { signal ->
             when (signal) {
                 is NavSignal.GoToDestPage -> backStack.navigateTo(signal.route)
-                is NavSignal.ReplaceRoot -> backStack.replaceRoot(signal.route)
+                is NavSignal.ReplaceRoot ->
+                    if (appliesReplaceRoot(signal.route.path, currentRootPath)) {
+                        backStack.replaceRoot(signal.route)
+                    }
                 // 루트(마지막 한 개)에서 pop 하면 스택이 비어 NavDisplay가 크래시한다.
                 // 시스템 back(onBack)은 NavDisplay가 루트에서 자동으로 막지만, 이 공통 back 채널은
                 // 직접 조작이므로 size > 1일 때만 pop 한다(루트 back은 무시).
@@ -98,6 +111,23 @@ internal fun NavBackStack<NavKey>.dropUnknownRoutes(fallbackRoot: NavRoute) {
     if (all(isUnknown)) add(GenericNavKey.of(fallbackRoot))
     removeAll(isUnknown)
 }
+
+/**
+ * 경계 루트를 가리키는 이동 신호를 적용할지.
+ *
+ * 경계(로그인·약관·온보딩·홈)는 인증·약관·온보딩 판정만 정한다. 판정이 끝나기 전에는 [AppNavHost]
+ * 가 컴포지션에 없어 신호가 채널에 쌓이고, 루트가 세워진 **뒤에** 도착한다. 그대로 적용하면 판정이
+ * 정한 루트를 덮어, 온보딩을 마치지 않은 계정이 홈에 남는다.
+ *
+ * 경계가 아닌 목적지(타임라인·설정 등)는 판정의 대상이 아니므로 그대로 적용한다.
+ */
+internal fun appliesReplaceRoot(
+    routePath: String,
+    decidedRootPath: String,
+): Boolean = routePath !in BOUNDARY_ROOT_PATHS || routePath == decidedRootPath
+
+/** 판정이 정하는 앱 경계 루트. */
+internal val BOUNDARY_ROOT_PATHS = setOf(LoginPage.PATH, TermsPage.PATH, OnboardingPage.PATH, HomePage.PATH)
 
 /** 최상단이 초안 생성 로딩 화면인지. 완료 시 자동 이동과 스낵바를 가르는 기준이다. */
 internal fun NavBackStack<NavKey>.isShowingDraftLoading(): Boolean = (lastOrNull() as? GenericNavKey)?.path == DraftLoadingPage.PATH
