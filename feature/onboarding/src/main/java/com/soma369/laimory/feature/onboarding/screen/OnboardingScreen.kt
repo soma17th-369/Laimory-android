@@ -17,7 +17,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -306,13 +305,10 @@ private fun OnboardingScreen(
                 modifier = Modifier.fillMaxWidth().height(CTA_HEIGHT),
                 shape = MaterialTheme.shapes.medium,
             ) {
-                // 완료 저장은 보내고 잊으므로 여기서 기다리는 것은 동의 기록뿐이다. 완료까지
-                // 확인한 뒤 넘어가면 버튼만 돌고 화면은 그대로인 자리가 생긴다.
-                if (state.isConsentSubmitting) {
-                    CircularProgressIndicator(modifier = Modifier.height(CTA_SPINNER_SIZE), strokeWidth = 2.dp)
-                } else {
-                    Text(text = ctaLabel, style = MaterialTheme.typography.titleSmall)
-                }
+                // 버튼 안에서 돌리지 않는다. 글자가 사라졌다 돌아오면 무엇을 누른 버튼인지가 가려지고,
+                // 기다리는 동안 화면이 멈춘 것처럼 보인다. 보내는 사이에는 버튼이 눌리지 않는 것으로
+                // 충분하다(`isPrimaryEnabled`).
+                Text(text = ctaLabel, style = MaterialTheme.typography.titleSmall)
             }
         }
     }
@@ -357,7 +353,6 @@ private val TOP_BAR_SIDE_WIDTH = 64.dp
 private val TOP_BAR_ICON_SIZE = 24.dp
 
 private val CTA_HEIGHT = 52.dp
-private val CTA_SPINNER_SIZE = 18.dp
 
 @Preview(name = "온보딩 / 소개", showBackground = true, widthDp = 360, heightDp = 720)
 @Composable
