@@ -3,11 +3,9 @@ package com.soma369.laimory.feature.login.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.SocialLoginException
-import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.SocialLoginCallback
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
-import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.usecase.auth.CancelSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.CompleteSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.StartSocialLoginUseCase
@@ -33,7 +31,6 @@ class LoginViewModel
         private val completeSocialLogin: CompleteSocialLoginUseCase,
         private val cancelSocialLogin: CancelSocialLoginUseCase,
         private val callbackHandler: SocialLoginCallbackHandler,
-        private val navigationHelper: NavigationHelper,
         private val getPublicTermLinks: GetPublicTermLinksUseCase,
     ) : BaseMviViewModel<LoginUiState, LoginUiIntent, LoginUiSideEffect>(LoginUiState()) {
         private var cancelDetectionJob: Job? = null
@@ -100,8 +97,9 @@ class LoginViewModel
 
             completeSocialLogin(callback)
                 .onSuccess {
+                    // 목적지를 여기서 고르지 않는다. 인증 상태가 바뀌면 앱 루트 판정이 약관·온보딩까지
+                    // 보고 정한다 — 이 화면이 홈을 지목하면 온보딩을 마치지 않은 계정도 홈으로 간다.
                     updateState { copy(phase = LoginPhase.IDLE, activeProvider = null) }
-                    navigationHelper.replaceRoot(HomePage)
                 }.onFailure { error ->
                     if (error is SocialLoginException.MissingAttempt && previousState.phase == LoginPhase.IDLE) {
                         updateState { previousState }

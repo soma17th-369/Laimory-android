@@ -1,6 +1,5 @@
 package com.soma369.laimory.feature.login.viewmodel
 
-import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
@@ -10,8 +9,6 @@ import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
-import com.soma369.laimory.core.domain.navigation.HomePage
-import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
@@ -45,7 +42,6 @@ class LoginViewModelTest {
     private val socialRepository = FakeSocialLoginRepository()
     private val authRepository = FakeAuthRepository()
     private val callbackHandler = FakeCallbackHandler()
-    private val navigationHelper = FakeNavigationHelper()
 
     @Test
     fun `제공자 버튼은 한 번만 시도를 만들고 Custom Tab 주소를 연다`() =
@@ -63,7 +59,7 @@ class LoginViewModelTest {
         }
 
     @Test
-    fun `정상 callback은 token을 발급하고 Home으로 루트를 교체한다`() =
+    fun `정상 callback은 token만 발급하고 목적지는 고르지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             socialRepository.pendingVerifier = "verifier"
             val viewModel = createViewModel()
@@ -74,7 +70,6 @@ class LoginViewModelTest {
 
             assertEquals("code", authRepository.appCode)
             assertEquals("verifier", authRepository.appVerifier)
-            assertEquals(HomePage, navigationHelper.replacedRoot)
             assertEquals(LoginPhase.IDLE, viewModel.state.value.phase)
         }
 
@@ -110,7 +105,6 @@ class LoginViewModelTest {
             assertEquals(0, socialRepository.clearCount)
             assertEquals("code", authRepository.appCode)
             assertEquals("new-verifier", authRepository.appVerifier)
-            assertEquals(HomePage, navigationHelper.replacedRoot)
             assertEquals(LoginPhase.IDLE, viewModel.state.value.phase)
         }
 
@@ -153,7 +147,6 @@ class LoginViewModelTest {
                 ),
             cancelSocialLogin = CancelSocialLoginUseCase(socialRepository),
             callbackHandler = callbackHandler,
-            navigationHelper = navigationHelper,
             getPublicTermLinks = GetPublicTermLinksUseCase(EmptyTermsRepository),
         )
 
@@ -215,17 +208,5 @@ class LoginViewModelTest {
         override fun handle(callback: SocialLoginCallback) {
             flow.tryEmit(callback)
         }
-    }
-
-    private class FakeNavigationHelper : NavigationHelper {
-        var replacedRoot: Page? = null
-
-        override fun navigateTo(page: Page) = Unit
-
-        override fun replaceRoot(page: Page) {
-            replacedRoot = page
-        }
-
-        override fun navigateToBack() = Unit
     }
 }
