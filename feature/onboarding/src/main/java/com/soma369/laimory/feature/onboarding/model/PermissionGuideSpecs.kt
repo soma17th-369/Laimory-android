@@ -20,7 +20,7 @@ internal fun permissionGuideSpec(
         DataPermission.PHOTO ->
             PermissionGuideSpec(
                 caption = "다음 창에서 ‘모두 허용’을 눌러요",
-                title = "Laimory에서 기기의 사진과 동영상에 액세스하도록 허용하시겠습니까?",
+                title = "%s에서 기기의 사진과 동영상에 액세스하도록 허용하시겠습니까?",
                 // 첫 줄은 기기의 권한 모듈 버전이 문구를 정한다(Android 14 QPR3 부터 `제한된 액세스 허용`).
                 options = listOf("제한된 액세스 허용", "모두 허용", "허용 안함"),
                 highlightedIndex = 1,
@@ -29,7 +29,7 @@ internal fun permissionGuideSpec(
         DataPermission.CALENDAR ->
             PermissionGuideSpec(
                 caption = "다음 창에서 ‘허용’을 눌러요",
-                title = "Laimory에서 캘린더에 액세스하도록 허용하시겠습니까?",
+                title = "%s에서 캘린더에 액세스하도록 허용하시겠습니까?",
                 options = listOf("허용", "허용 안함"),
                 highlightedIndex = 0,
             )
@@ -39,7 +39,7 @@ internal fun permissionGuideSpec(
                 LocationPermissionStep.FOREGROUND ->
                     PermissionGuideSpec(
                         caption = "다음 창에서 ‘앱 사용 중에만 허용’을 눌러요",
-                        title = "Laimory에서 기기 위치에 액세스하도록 허용하시겠습니까?",
+                        title = "%s에서 기기 위치에 액세스하도록 허용하시겠습니까?",
                         options = listOf("앱 사용 중에만 허용", "이번만 허용", "허용 안함"),
                         highlightedIndex = 0,
                     )
@@ -56,7 +56,7 @@ internal fun permissionGuideSpec(
                 LocationPermissionStep.ACTIVITY ->
                     PermissionGuideSpec(
                         caption = "다음 창에서 ‘허용’을 눌러요",
-                        title = "Laimory에서 신체 활동에 액세스하도록 허용하시겠습니까?",
+                        title = "%s에서 신체 활동에 액세스하도록 허용하시겠습니까?",
                         options = listOf("허용", "허용 안함"),
                         highlightedIndex = 0,
                     )
@@ -67,7 +67,7 @@ internal fun permissionGuideSpec(
         DataPermission.APP_NOTIFICATION ->
             PermissionGuideSpec(
                 caption = "다음 창에서 ‘허용’을 눌러요",
-                title = "Laimory에서 알림을 보내도록 허용하시겠습니까?",
+                title = "%s에서 알림을 보내도록 허용하시겠습니까?",
                 options = listOf("허용", "허용 안함"),
                 highlightedIndex = 0,
             )

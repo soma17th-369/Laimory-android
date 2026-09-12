@@ -44,7 +44,12 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -253,7 +258,7 @@ private fun GuideDialog(
         verticalArrangement = Arrangement.spacedBy(Spacing.large),
     ) {
         Text(
-            text = spec.title,
+            text = guideTitle(spec.title),
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurface,
@@ -273,6 +278,31 @@ private fun GuideDialog(
                             Modifier
                         },
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 창 제목. 앱 이름 자리를 이 빌드의 실제 이름으로 채우고 **그 부분만 굵게** 쓴다 — 시스템 창이
+ * 그렇게 쓴다.
+ *
+ * 이름은 런처 라벨을 그대로 읽는다. 빌드마다 라벨이 달라(`라이모리` · `라이모리-debug` ·
+ * `라이모리-qa`) 문자열을 박아 두면 debug 로 보는 안내와 실제 창의 이름이 어긋난다.
+ */
+@Composable
+private fun guideTitle(title: String): AnnotatedString {
+    val context = LocalContext.current
+    val appLabel = remember(context) { context.applicationInfo.loadLabel(context.packageManager).toString() }
+    return remember(title, appLabel) {
+        buildAnnotatedString {
+            val index = title.indexOf(APP_LABEL_PLACEHOLDER)
+            if (index < 0) {
+                append(title)
+            } else {
+                append(title.substring(0, index))
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(appLabel) }
+                append(title.substring(index + APP_LABEL_PLACEHOLDER.length))
             }
         }
     }
@@ -370,6 +400,9 @@ private fun BoxScope.GuideFinger(
                 .clearAndSetSemantics { },
     )
 }
+
+/** 제목에서 앱 이름이 들어갈 자리. */
+private const val APP_LABEL_PLACEHOLDER = "%s"
 
 /** 한 바퀴. 시안의 명세(대기 0.6 → 다가가기 0.6 → 누름 0.15 → 반짝 0.5 → 유지 1.2 → 복귀 0.4)다. */
 private const val WAIT_MILLIS = 600

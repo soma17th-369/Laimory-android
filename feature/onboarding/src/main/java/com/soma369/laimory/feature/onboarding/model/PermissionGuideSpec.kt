@@ -9,7 +9,12 @@ package com.soma369.laimory.feature.onboarding.model
 internal data class PermissionGuideSpec(
     /** 창이 뜨기 전에 무엇을 누를지 말하는 한 줄. 그림을 못 보는 사용자는 이 문장만 듣는다. */
     val caption: String,
-    /** 창 제목. */
+    /**
+     * 창 제목.
+     *
+     * `%s` 자리에 이 빌드의 앱 이름이 들어간다. 실제 창이 앱 이름만 굵게 쓰므로 그 자리도 굵게
+     * 그린다. 앱 이름이 없는 제목(위치 권한 화면)은 `%s` 를 두지 않는다.
+     */
     val title: String,
     /** 창의 선택지. 위에서부터 보이는 순서 그대로다. */
     val options: List<String>,
