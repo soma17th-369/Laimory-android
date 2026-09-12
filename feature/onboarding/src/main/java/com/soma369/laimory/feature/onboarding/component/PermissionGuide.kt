@@ -387,6 +387,9 @@ private fun BoxScope.GuideFinger(
         contentDescription = null,
         modifier =
             Modifier
+                // 좌표는 이 상자의 왼쪽 위가 기준이다. 정렬을 두지 않으면 부모의 가운데 정렬이 먼저
+                // 적용되고 그 위에 좌표가 더해져, 손끝이 선택지를 벗어난다.
+                .align(Alignment.TopStart)
                 .size(FINGER_SIZE)
                 .offset {
                     IntOffset(
