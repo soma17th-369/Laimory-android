@@ -10,14 +10,14 @@ import com.soma369.laimory.feature.onboarding.R
  *
  * 제목의 줄바꿈은 폭에 맡긴다 — 글자 크기를 키운 사용자나 좁은 기기에서 손으로 넣은 자리가
  * 오히려 어긋난다. 첫 장만 예외로 손으로 나눈다. `오늘 하루,` 에서 끊어야 문장이 읽히는데,
- * 폭에 맡기면 `오늘 하루, AI가` 로 붙어 의미가 갈리는 자리에서 끊기지 않는다.
+ * 폭에 맡기면 `오늘 하루, 라이모리가` 로 붙어 의미가 갈리는 자리에서 끊기지 않는다.
  */
 val ONBOARDING_PAGES: List<OnboardingPageSpec> =
     listOf(
         OnboardingPageSpec(
             key = "intro",
             // 첫 장은 설명 대신 타임라인 예시가 무엇을 만드는지 보여 준다.
-            title = "오늘 하루,\nAI가 한눈에 정리해드려요.",
+            title = "오늘 하루,\n라이모리가 한눈에 정리해드려요.",
             image = R.drawable.img_onboarding_intro_timeline,
             scrollsImage = true,
             primaryCta = "시작하기",
