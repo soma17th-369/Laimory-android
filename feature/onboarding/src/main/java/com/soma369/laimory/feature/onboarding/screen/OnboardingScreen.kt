@@ -50,6 +50,7 @@ import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 import com.soma369.laimory.feature.onboarding.model.PermissionGuideSpec
+import com.soma369.laimory.feature.onboarding.model.advancesAfterGrant
 import com.soma369.laimory.feature.onboarding.model.isPageDone
 import com.soma369.laimory.feature.onboarding.model.permissionGuideSpec
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
@@ -122,10 +123,28 @@ private fun OnboardingContent(
         currentPage?.showsConsents == true &&
             (state.consentDocuments.any { it.termType !in state.lockedConsents } || !state.isAgeConfirmed)
     val termContentLauncher = rememberTermContentLauncher()
-    // 요청을 보낸 장. 허용될 때까지 안내를 띄운다 — 시스템 창을 닫고 돌아와도 무엇이 남았는지
-    // 계속 보여 준다. 누르지 않은 장에는 띄우지 않는다.
-    var guidedPermissions by remember { mutableStateOf(emptySet<DataPermission>()) }
+    // 이 장에서 우리 버튼으로 요청을 보냈는지. 두 가지가 여기에 달려 있다 — 허용될 때까지 안내를
+    // 띄우는 것과, 허용이 끝나면 다음 장으로 넘기는 것. 누르지 않은 장에는 둘 다 하지 않는다.
+    var requestedPermissions by remember { mutableStateOf(emptySet<DataPermission>()) }
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
+
+    // 허용이 끝나면 버튼을 한 번 더 누르지 않아도 넘어간다. 넘기면서 표시를 지워 **한 번의 허용에
+    // 한 장만** 넘긴다 — 결과 콜백과 복귀 재조회가 잇따라 와도 두 장을 건너뛰지 않는다.
+    val currentPermission = currentPage?.permission
+    val isCurrentPageDone = permissionState.isPageDone(currentPermission)
+    LaunchedEffect(pagerState.currentPage, currentPermission, isCurrentPageDone) {
+        val permission = currentPermission ?: return@LaunchedEffect
+        val advances =
+            advancesAfterGrant(
+                permission = permission,
+                isPageDone = isCurrentPageDone,
+                wasRequestedHere = permission in requestedPermissions,
+                isLastPage = isLastPage,
+            )
+        if (!advances) return@LaunchedEffect
+        requestedPermissions = requestedPermissions - permission
+        goNext()
+    }
 
     OnboardingScreen(
         innerPadding = innerPadding,
@@ -150,7 +169,7 @@ private fun OnboardingContent(
         // 위치는 창이 두 번 뜨므로 남은 단계를 보고 안내도 함께 바뀐다.
         guideFor = { page ->
             page.permission
-                ?.takeIf { it in guidedPermissions && !permissionState.isPageDone(it) }
+                ?.takeIf { it in requestedPermissions && !permissionState.isPageDone(it) }
                 ?.let { permissionGuideSpec(permission = it, locationStep = permissionState.locationStep) }
         },
         onPrimaryClick = {
@@ -160,7 +179,7 @@ private fun OnboardingContent(
                 // 장에서 눌러도 아무 일이 없는 버튼이 된다.
                 needsRequest ->
                     currentPage?.permission?.let { permission ->
-                        guidedPermissions = guidedPermissions + permission
+                        requestedPermissions = requestedPermissions + permission
                         permissionState.act(permission)
                     }
                 // 불러오지 못한 채로 끝낼 수 없다. 같은 자리에서 다시 시도한다.
