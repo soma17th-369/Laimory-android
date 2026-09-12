@@ -333,7 +333,12 @@ fun rememberDataPermissionState(): DataPermissionState {
                     val required = AppNotificationPermission.required()
                     // Android 12 이하는 요청 대상이 아니라 목록이 비어 있다. 빈 배열로 launch 하면
                     // 결과가 즉시 돌아오지만 요청 자체가 성립하지 않으므로 부르지 않는다.
-                    if (required.isNotEmpty()) runtimeLauncher.launch(required)
+                    if (required.isNotEmpty()) {
+                        // 다른 요청처럼 pending 을 남긴다 — 남기지 않으면 결과 콜백이 막힘을 어느
+                        // 소스에도 기록하지 못해, 두 번 거부한 뒤에도 설정으로 길을 바꾸지 못한다.
+                        pending = permission
+                        runtimeLauncher.launch(required)
+                    }
                 }
 
                 // 쓸 수 없는 기기에서 요청 화면을 열면 Health Connect 가 없다는 오류로 끝난다.

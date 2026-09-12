@@ -135,7 +135,10 @@ private fun OnboardingContent(
         isPageGranted = { page -> permissionState.isPageDone(page.permission) },
         onPrimaryClick = {
             when {
-                needsRequest -> currentPage?.permission?.let(permissionState::request)
+                // 요청이 아니라 `act` 로 부른다. 두 번 거부해 시스템이 요청을 삼키는 장에서는 요청
+                // 대신 앱 정보 화면으로 길을 바꿔야 한다 — `request` 는 그 판정을 거치지 않아, 막힌
+                // 장에서 눌러도 아무 일이 없는 버튼이 된다.
+                needsRequest -> currentPage?.permission?.let(permissionState::act)
                 // 불러오지 못한 채로 끝낼 수 없다. 같은 자리에서 다시 시도한다.
                 isLastPage && state.hasConsentLoadFailed -> onIntent(OnboardingUiIntent.RetryConsentLoad)
                 isLastPage -> onIntent(OnboardingUiIntent.Complete)
