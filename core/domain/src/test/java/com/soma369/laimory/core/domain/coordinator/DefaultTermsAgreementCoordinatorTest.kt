@@ -16,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -248,6 +249,24 @@ class DefaultTermsAgreementCoordinatorTest {
             runCurrent()
 
             assertTrue(coordinator.loginGate.value is TermsGateState.Required)
+        }
+
+    @Test
+    fun `대신 기록하는 동안 약관 화면이 잠깐 뜨지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 판정을 먼저 발행하고 기록하면, 약관 화면이 떴다가 사라지는 깜빡임이 된다.
+            val repository = FakeTermsRepository(documents = listOf(termsOfService))
+            val accounts = MutableStateFlow<SignedInAccount?>(null)
+            val coordinator = coordinator(repository, accounts)
+            val seen = mutableListOf<TermsGateState>()
+            backgroundScope.launch { coordinator.loginGate.collect { seen += it } }
+            runCurrent()
+
+            accounts.value = google
+            runCurrent()
+
+            assertTrue(seen.none { it is TermsGateState.Required })
+            assertEquals(TermsGateState.Satisfied, coordinator.loginGate.value)
         }
 
     private fun TestScope.coordinator(
