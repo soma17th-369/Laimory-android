@@ -49,12 +49,29 @@ class DefaultTermsAgreementCoordinator
          */
         private var sessionEpoch = 0L
 
+        /**
+         * 이 프로세스에서 로그아웃 상태를 본 적이 있는지.
+         *
+         * 뒤이어 계정이 들어오면 그것은 사용자가 **방금 누른 로그인**이다. 앱을 켰더니 이미
+         * 로그인돼 있던 경우(첫 방출이 계정)와 갈라야, 동의를 누른 적 없는 사용자에게 동의를
+         * 대신 기록하지 않는다.
+         */
+        private var sawSignedOut = false
+
         override val loginGate: StateFlow<TermsGateState> = mutableLoginGate.asStateFlow()
 
         init {
             applicationScope.launch {
                 observeSignedInAccountUseCase().collect { account ->
-                    if (account == null) clearSession() else evaluateLoginGate(force = false)
+                    if (account == null) {
+                        sawSignedOut = true
+                        clearSession()
+                        return@collect
+                    }
+                    val justSignedIn = sawSignedOut
+                    sawSignedOut = false
+                    evaluateLoginGate(force = false)
+                    if (justSignedIn) agreeLoginTermsOnBehalf()
                 }
             }
             applicationScope.launch {
@@ -118,6 +135,24 @@ class DefaultTermsAgreementCoordinator
                 }
                 publishLoginGate(result.getOrNull())
             }
+        }
+
+        /**
+         * 방금 로그인한 사용자의 이용약관 동의를 대신 기록한다.
+         *
+         * 로그인 버튼이 동의 시점이다 — 그 화면이 `로그인 시 ... 동의하는 것으로 간주합니다` 라고
+         * 말하고 원문 링크를 함께 둔다. 기록을 남길 자리가 없어서 다음 화면이 같은 동의를 한 번 더
+         * 묻던 것을 없앤다.
+         *
+         * **개정은 대신 기록하지 않는다.** 개정본은 사용자가 열람하지 않은 문서이고, 그때는 로그인
+         * 버튼을 누를 일도 없다 — 이 함수는 로그아웃을 본 뒤 계정이 들어온 경우에만 불린다.
+         *
+         * 기록에 실패하면 판정이 `Required` 로 남아 **약관 화면이 대신 받는다.** 화면을 없애는 것이
+         * 아니라 건너뛰는 것이다.
+         */
+        private suspend fun agreeLoginTermsOnBehalf() {
+            val pending = (mutableLoginGate.value as? TermsGateState.Required)?.documents ?: return
+            agree(pending)
         }
 
         /** [mutex] 안에서만 부른다. */
