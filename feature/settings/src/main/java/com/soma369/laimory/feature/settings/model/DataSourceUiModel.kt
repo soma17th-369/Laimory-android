@@ -162,10 +162,19 @@ val DataSourceStatus.needsAttention: Boolean
  * 시트 기본 버튼 문구. 누를 것이 없으면 null 이다.
  *
  * 같은 `앱 설정 열기` 라도 이미 허용된 소스에서는 **끄러 가는 길**이라 문구를 나눈다.
+ *
+ * 위치의 `앱 사용 중에만` 은 요청하면 설정의 위치 권한 화면이 뜬다. `허용하기` 로 두면 이미 허용한 것을
+ * 또 허용하라는 말로 읽혀, 무엇으로 바꾸는지 버튼이 말한다. 온보딩 위치 장의 버튼과 같은 말이다.
+ *
+ * @param locationStep 위치 소스일 때만 넘긴다. 다른 소스는 위치 단계와 무관하다.
  */
-fun DataPermissionAction.buttonLabel(status: DataSourceStatus): String? =
+fun DataPermissionAction.buttonLabel(
+    status: DataSourceStatus,
+    locationStep: LocationPermissionStep? = null,
+): String? =
     when (this) {
-        DataPermissionAction.REQUEST -> "허용하기"
+        DataPermissionAction.REQUEST ->
+            if (locationStep == LocationPermissionStep.BACKGROUND) "'항상 허용'으로 바꾸기" else "허용하기"
         DataPermissionAction.RESELECT_PHOTOS -> "사진 다시 선택"
         DataPermissionAction.APP_SETTINGS ->
             when (status) {

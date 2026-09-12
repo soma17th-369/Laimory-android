@@ -32,10 +32,10 @@ object LocationPermission {
         }.toTypedArray()
 
     /**
-     * 전경 위치**만**. 온보딩처럼 권한을 한 장에 하나씩 받는 화면이 쓴다.
+     * 위치 장을 **막고 있는** 권한.
      *
-     * [required] 는 알림·활동 인식을 함께 실어 수집 실험실의 `추적 켜기` 한 번에 필요한 것을 모두
-     * 받는다. 그 목록을 위치 페이지가 쓰면 다른 페이지가 받을 권한까지 여기서 묻게 된다.
+     * 요청에는 이동수단 인식을 함께 싣지만([foregroundAndActivity]), 막혔는지 판정할 때는 이 둘만
+     * 본다 — 곁가지가 허용되면 "하나는 허용됐다" 가 되어 위치의 영구 거부가 가려진다.
      */
     fun foreground(): Array<String> =
         arrayOf(
@@ -43,7 +43,31 @@ object LocationPermission {
             Manifest.permission.ACCESS_COARSE_LOCATION,
         )
 
-    /** 2단계 요청 권한(백그라운드 위치, "항상 허용"). */
+    /**
+     * 위치 장의 첫 요청(전경 위치 + 이동수단 인식). 전경을 받으면 [background] 를 이어 요청한다.
+     *
+     * 알림은 싣지 않는다 — 알림은 자기 장에서 받는다. [required] 는 수집 실험실의 `추적 켜기` 한 번에
+     * 필요한 것을 모두 받으려고 알림까지 싣는다. 이동수단 인식은 위치 수집의 일부라 여기서 함께 묻는다 —
+     * 따로 물으면 위치 장에서 버튼을 한 번 더 눌러야 한다.
+     *
+     * @param sdkInt 판정 기준 SDK. 테스트가 버전별 조합을 고정할 수 있게 주입받는다.
+     */
+    fun foregroundAndActivity(sdkInt: Int = Build.VERSION.SDK_INT): Array<String> =
+        buildList {
+            add(Manifest.permission.ACCESS_FINE_LOCATION)
+            add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            // 이동수단 인식(Q+). 거부돼도 수집은 진행되며 속도 추론으로 폴백한다.
+            if (sdkInt >= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }.toTypedArray()
+
+    /**
+     * 2단계 요청 권한(백그라운드 위치, "항상 허용"). 전경 위치가 허용된 뒤에만 받아 준다.
+     *
+     * Android 11+ 는 이 요청에 다이얼로그 대신 이 앱의 위치 권한 화면을 열고, Android 10 은 `항상 허용` 이
+     * 든 다이얼로그를 띄운다.
+     */
     fun background(): String = Manifest.permission.ACCESS_BACKGROUND_LOCATION
 
     /** 1단계 권한 중 하나라도 미허용이면 true — 위치가 이미 허용돼도 알림·활동 권한을 놓치지 않게 한다. */

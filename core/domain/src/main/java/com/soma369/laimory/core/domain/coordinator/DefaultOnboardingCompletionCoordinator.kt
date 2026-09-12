@@ -50,8 +50,9 @@ class DefaultOnboardingCompletionCoordinator
          * 완료를 확정한다.
          *
          * 서버 응답을 기다리지 않고 값을 먼저 올린다 — 기록이 늦다고 사용자를 온보딩에 묶어 둘
-         * 이유가 없다. 대신 **올리기 전에 대기 표시를 남긴다.** 완료 여부의 정본이 서버라,
-         * 표시 없이 실패하면 다음 실행에서 서버가 `false` 를 주고 끝낸 온보딩을 다시 본다.
+         * 이유가 없다. **전송이 끝나는 것도 기다리지 않는다.** 대신 **올리기 전에 대기 표시를
+         * 남긴다.** 완료 여부의 정본이 서버라, 표시 없이 실패하면 다음 실행에서 서버가 `false` 를
+         * 주고 끝낸 온보딩을 다시 본다.
          *
          * 완료를 남길 때 연령 확인도 같은 쓰기에 담는다 — 마지막 장의 `모두 동의하고 시작하기` 가
          * 확인을 함께 채우고 오므로, 완료된 온보딩은 언제나 확인을 거친 것이다.
@@ -59,8 +60,11 @@ class DefaultOnboardingCompletionCoordinator
         override suspend fun markCompleted() {
             repository.setCompletionPending(true)
             repository.cacheCompletionWithAgeConfirmation()
+            // 서버 전송은 보내고 잊는다. 기록이 닿았는지 확인할 때까지 호출부를 붙잡으면, 화면은
+            // 이미 넘어갔는데 버튼만 돌고 있는 자리가 생긴다. 실패해도 `pending` 표시가 남아
+            // 다음 조회가 다시 올린다.
+            applicationScope.launch { syncPendingCompletion() }
             mutex.withLock { mutableCompleted.value = true }
-            syncPendingCompletion()
         }
 
         override suspend fun resetForCurrentSession() {

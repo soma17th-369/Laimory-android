@@ -5,7 +5,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,8 +48,6 @@ class DataPermissionState(
     private val isPhotoLimited: Boolean,
     /** 이 기기에 알림 접근 설정 화면이 있는지. 없으면 사용자가 켤 방법이 없다. */
     private val hasListenerSettings: Boolean,
-    /** Android 11+ 는 `항상 허용` 을 다이얼로그로 주지 않아 앱 설정으로 보내야 한다. */
-    private val needsSettingsForBackgroundLocation: Boolean,
     /** Health Connect 를 쓸 수 있는 기기인지. 미설치·업데이트 필요면 요청 자체가 성립하지 않는다. */
     private val isHealthAvailable: Boolean = false,
     /**
@@ -134,12 +131,11 @@ class DataPermissionState(
                 when {
                     // 다시 고르는 것 자체가 넓히는 길이라, 시스템이 매번 선택 화면을 띄운다.
                     permission == DataPermission.PHOTO -> DataPermissionAction.RESELECT_PHOTOS
-                    permission == DataPermission.LOCATION &&
-                        locationStep == LocationPermissionStep.BACKGROUND &&
-                        needsSettingsForBackgroundLocation -> DataPermissionAction.APP_SETTINGS
                     // 남은 한 단계를 두 번 거부한 경우다. 위치는 `일부 허용` 도 LIMITED 라
                     // DENIED 분기에 닿지 않으므로, 막힌 판정을 여기서도 똑같이 봐야 한다.
                     permission in blocked -> DataPermissionAction.APP_SETTINGS
+                    // 위치의 `항상 허용` 도 요청으로 받는다. Android 11+ 는 다이얼로그 대신 이 앱의
+                    // 위치 권한 화면이 곧장 뜬다 — 앱 정보에서 권한 → 위치를 찾아 들어가지 않아도 된다.
                     else -> DataPermissionAction.REQUEST
                 }
 
@@ -193,25 +189,37 @@ fun rememberDataPermissionState(): DataPermissionState {
 
     // 어느 소스를 요청했는지 알아야 결과를 그 소스에 귀속시킬 수 있다.
     var pending by remember { mutableStateOf<DataPermission?>(null) }
+
+    /**
+     * 막힘을 판정할 권한.
+     *
+     * 요청에 곁가지를 함께 싣는 자리가 있다 — 위치 첫 요청은 이동수단 인식을 같이 묻는다. 결과
+     * 전체를 보면 **곁가지가 허용된 것만으로** "하나는 허용됐으니 막힌 게 아니다" 가 되어, 정작
+     * 그 단계를 막고 있는 권한의 영구 거부를 놓친다. 그 단계를 막는 권한만 본다.
+     */
+    var judged by remember { mutableStateOf(emptyArray<String>()) }
     var blocked by remember { mutableStateOf(emptySet<DataPermission>()) }
-    val runtimeLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            // 결과 맵을 직접 읽지 않고 다시 조회한다. 일부 허용처럼 결과와 실제 상태가 갈리는
-            // 경우가 있어, 판정 경로를 하나로 두는 편이 어긋날 여지가 없다.
-            val requested = pending
-            if (requested != null) {
-                val keys = result.keys.toTypedArray()
-                // 요청 **직후** 의 rationale=false 는 "물어봤는데 다이얼로그가 안 떴다" 는 뜻이다.
-                blocked =
-                    if (keys.isNotEmpty() && context.isPermanentlyDenied(keys)) {
-                        blocked + requested
-                    } else {
-                        blocked - requested
-                    }
-            }
-            pending = null
-            refreshKey++
+
+    // 결과 맵을 직접 읽지 않고 다시 조회한다. 일부 허용처럼 결과와 실제 상태가 갈리는
+    // 경우가 있어, 판정 경로를 하나로 두는 편이 어긋날 여지가 없다.
+    val settle: (Map<String, Boolean>) -> Unit = { _ ->
+        val requested = pending
+        val keys = judged
+        if (requested != null) {
+            // 요청 **직후** 의 rationale=false 는 "물어봤는데 다이얼로그가 안 떴다" 는 뜻이다.
+            blocked =
+                if (keys.isNotEmpty() && context.isPermanentlyDenied(keys)) {
+                    blocked + requested
+                } else {
+                    blocked - requested
+                }
         }
+        pending = null
+        judged = emptyArray()
+        refreshKey++
+    }
+    val runtimeLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions(), settle)
     val settingsLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             refreshKey++
@@ -267,7 +275,6 @@ fun rememberDataPermissionState(): DataPermissionState {
             locationStep = locationStep,
             isPhotoLimited = isPhotoLimited,
             hasListenerSettings = hasListenerSettings,
-            needsSettingsForBackgroundLocation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
             isHealthAvailable = isHealthAvailable,
             blocked = blocked,
             onOpenSettings = { permission ->
@@ -287,34 +294,41 @@ fun rememberDataPermissionState(): DataPermissionState {
             when (permission) {
                 DataPermission.PHOTO -> {
                     pending = permission
+                    judged = PhotoPermission.required()
                     runtimeLauncher.launch(PhotoPermission.required())
                 }
 
                 DataPermission.CALENDAR -> {
                     pending = permission
+                    judged = CalendarPermission.required()
                     runtimeLauncher.launch(CalendarPermission.required())
                 }
                 DataPermission.LOCATION ->
                     when (locationStep) {
-                        // 위치만 묻는다. 알림·활동 인식은 각자의 자리에서 받는다.
+                        // 위치와 이동수단 인식을 한 번에 묻는다. 알림은 자기 장에서 받는다.
+                        //
+                        // 전경을 받았다고 `항상 허용` 을 곧바로 이어 요청하지 않는다. 이어 보내면
+                        // 사용자가 무엇을 눌러야 하는지 모르는 채 권한 화면에 떨어진다 — 그 사이에
+                        // 안내를 한 번 보여 주고, 다음 단계는 버튼으로 들어간다.
                         LocationPermissionStep.FOREGROUND -> {
                             pending = permission
-                            runtimeLauncher.launch(LocationPermission.foreground())
+                            // 이동수단 인식은 곁가지다. 그것이 허용돼도 전경 위치가 막힌 것은 막힌 것이다.
+                            judged = LocationPermission.foreground()
+                            runtimeLauncher.launch(LocationPermission.foregroundAndActivity())
                         }
-                        // Android 11+ 는 `항상 허용` 을 다이얼로그로 주지 않는다. 앱 설정으로 보내고
-                        // 돌아왔을 때 ON_RESUME 재조회가 결과를 반영한다.
-                        LocationPermissionStep.BACKGROUND ->
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                                settingsLauncher.launch(appDetailsSettingsIntent(context))
-                            } else {
-                                // 다이얼로그를 띄우는 길에는 반드시 pending 을 남긴다 — 남기지
-                                // 않으면 막혔다는 사실을 결과 콜백이 어디에도 기록하지 못한다.
-                                pending = permission
-                                runtimeLauncher.launch(arrayOf(LocationPermission.background()))
-                            }
+                        // `항상 허용`. Android 11+ 는 다이얼로그 대신 이 앱의 위치 권한 화면을 곧장 열고,
+                        // Android 10 은 `항상 허용` 이 든 다이얼로그를 띄운다. 결과는 요청 콜백으로 온다.
+                        // pending 을 반드시 남긴다 — 남기지 않으면 요청이 막혔다는 사실을 결과 콜백이
+                        // 어디에도 기록하지 못해, 막힌 뒤에도 앱 정보 화면으로 길을 바꾸지 못한다.
+                        LocationPermissionStep.BACKGROUND -> {
+                            pending = permission
+                            judged = arrayOf(LocationPermission.background())
+                            runtimeLauncher.launch(arrayOf(LocationPermission.background()))
+                        }
 
                         LocationPermissionStep.ACTIVITY -> {
                             pending = permission
+                            judged = arrayOf(Manifest.permission.ACTIVITY_RECOGNITION)
                             runtimeLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
                         }
                         LocationPermissionStep.GRANTED -> Unit
@@ -323,7 +337,13 @@ fun rememberDataPermissionState(): DataPermissionState {
                     val required = AppNotificationPermission.required()
                     // Android 12 이하는 요청 대상이 아니라 목록이 비어 있다. 빈 배열로 launch 하면
                     // 결과가 즉시 돌아오지만 요청 자체가 성립하지 않으므로 부르지 않는다.
-                    if (required.isNotEmpty()) runtimeLauncher.launch(required)
+                    if (required.isNotEmpty()) {
+                        // 다른 요청처럼 pending 을 남긴다 — 남기지 않으면 결과 콜백이 막힘을 어느
+                        // 소스에도 기록하지 못해, 두 번 거부한 뒤에도 설정으로 길을 바꾸지 못한다.
+                        pending = permission
+                        judged = required
+                        runtimeLauncher.launch(required)
+                    }
                 }
 
                 // 쓸 수 없는 기기에서 요청 화면을 열면 Health Connect 가 없다는 오류로 끝난다.
@@ -341,6 +361,6 @@ fun rememberDataPermissionState(): DataPermissionState {
     }
 }
 
-/** 앱 상세 설정. 백그라운드 위치는 Android 11+ 에서 여기서만 켤 수 있다. */
+/** 앱 상세 설정. 시스템이 더 이상 묻지 않는 권한을 사용자가 직접 켜러 가는 곳이다. */
 private fun appDetailsSettingsIntent(context: Context): Intent =
     Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))

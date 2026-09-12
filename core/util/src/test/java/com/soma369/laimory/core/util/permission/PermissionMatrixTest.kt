@@ -16,6 +16,18 @@ import org.junit.Test
  */
 class PermissionMatrixTest {
     @Test
+    fun `막힘 판정은 전경 위치 두 권한만 본다`() {
+        // 요청에는 이동수단 인식을 함께 싣는다. 그것이 허용되면 위치의 영구 거부가 가려진다.
+        val judged = LocationPermission.foreground().toList()
+
+        assertEquals(
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            judged,
+        )
+        assertFalse(judged.contains(Manifest.permission.ACTIVITY_RECOGNITION))
+    }
+
+    @Test
     fun `사진 권한은 Android 14 이상에서 일부 허용 권한을 함께 요청한다`() {
         assertEquals(
             listOf(
@@ -90,7 +102,7 @@ class PermissionMatrixTest {
 
     @Test
     fun `위치 1단계에 백그라운드 위치를 섞지 않는다`() {
-        // 전경과 함께 요청하면 시스템이 백그라운드 쪽을 조용히 거부한다.
+        // 전경과 함께 요청하면 시스템이 요청 전체를 무시한다.
         listOf(Build.VERSION_CODES.P, Build.VERSION_CODES.Q, Build.VERSION_CODES.TIRAMISU).forEach { sdk ->
             assertFalse(LocationPermission.required(sdk).contains(LocationPermission.background()))
         }
@@ -101,6 +113,35 @@ class PermissionMatrixTest {
         assertEquals(
             listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
             LocationPermission.required(Build.VERSION_CODES.P).toList(),
+        )
+    }
+
+    @Test
+    fun `위치 장의 첫 요청은 전경 위치와 이동수단 인식만 싣는다`() {
+        // 알림은 자기 장에서 받는다. 여기 실으면 위치 장에서 알림까지 묻게 된다.
+        assertEquals(
+            listOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACTIVITY_RECOGNITION,
+            ),
+            LocationPermission.foregroundAndActivity(Build.VERSION_CODES.TIRAMISU).toList(),
+        )
+    }
+
+    @Test
+    fun `위치 장의 첫 요청에도 백그라운드 위치를 섞지 않는다`() {
+        // 백그라운드는 전경을 받은 뒤 결과 콜백이 이어 요청한다. 함께 실으면 요청 전체가 무시된다.
+        listOf(Build.VERSION_CODES.P, Build.VERSION_CODES.Q, Build.VERSION_CODES.TIRAMISU).forEach { sdk ->
+            assertFalse(LocationPermission.foregroundAndActivity(sdk).contains(LocationPermission.background()))
+        }
+    }
+
+    @Test
+    fun `Android 9 의 위치 장 첫 요청은 전경 위치뿐이다`() {
+        assertEquals(
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            LocationPermission.foregroundAndActivity(Build.VERSION_CODES.P).toList(),
         )
     }
 }
