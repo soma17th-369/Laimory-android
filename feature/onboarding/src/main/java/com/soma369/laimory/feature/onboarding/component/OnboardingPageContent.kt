@@ -29,6 +29,7 @@ import com.soma369.laimory.core.ui.greeting.GreetingEmphasis
 import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
+import com.soma369.laimory.feature.onboarding.model.PermissionGuideSpec
 
 /**
  * 온보딩 한 장의 본문.
@@ -43,6 +44,8 @@ internal fun OnboardingPageContent(
     page: OnboardingPageSpec,
     nickname: String?,
     isGranted: Boolean = false,
+    /** 시스템 창에서 무엇을 누를지 보여 주는 안내. 요청을 보낸 뒤 허용될 때까지 들어온다. */
+    guide: PermissionGuideSpec? = null,
     modifier: Modifier = Modifier,
     /** 설명 아래에 장이 따로 붙이는 것. 동의 장의 확인 목록이 여기로 들어온다. */
     extra: (@Composable ColumnScope.() -> Unit)? = null,
@@ -89,21 +92,27 @@ internal fun OnboardingPageContent(
         )
         // 이미지는 제목과 설명 사이에 온다 — 글을 다 읽기 전에 무엇을 연결하는 화면인지 보여 준다.
         // 아직 에셋이 없는 장은 자리를 접는다. 빈 상자를 남기면 이미지를 못 불러온 것처럼 보인다.
-        page.image?.let { image ->
-            if (page.scrollsImage) {
-                AutoScrollingImage(
-                    image = image,
-                    viewportHeight = SCROLLING_IMAGE_HEIGHT,
-                    imageWidth = SCROLLING_IMAGE_WIDTH,
-                )
-            } else {
-                Image(
-                    painter = painterResource(image),
-                    contentDescription = null,
-                    // 원본 비율 그대로 둔다. 예시 그림이라 잘리면 무엇을 보여 주는지 알 수 없다.
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.FillWidth,
-                )
+        if (guide != null) {
+            // 안내가 그림 자리를 대신한다. 시스템 창이 떠 있는 동안 무엇을 누를지가 예시 그림보다
+            // 급하고, 둘을 함께 두면 화면이 길어져 창 뒤에서 안내가 밀려난다.
+            PermissionGuide(spec = guide)
+        } else {
+            page.image?.let { image ->
+                if (page.scrollsImage) {
+                    AutoScrollingImage(
+                        image = image,
+                        viewportHeight = SCROLLING_IMAGE_HEIGHT,
+                        imageWidth = SCROLLING_IMAGE_WIDTH,
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(image),
+                        contentDescription = null,
+                        // 원본 비율 그대로 둔다. 예시 그림이라 잘리면 무엇을 보여 주는지 알 수 없다.
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth,
+                    )
+                }
             }
         }
         page.description?.takeIf(String::isNotBlank)?.let { description ->

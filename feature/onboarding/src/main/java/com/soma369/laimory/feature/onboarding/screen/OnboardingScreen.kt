@@ -21,7 +21,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +44,9 @@ import com.soma369.laimory.feature.onboarding.component.OnboardingConsentCheckli
 import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
+import com.soma369.laimory.feature.onboarding.model.PermissionGuideSpec
 import com.soma369.laimory.feature.onboarding.model.isPageDone
+import com.soma369.laimory.feature.onboarding.model.permissionGuideSpec
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import com.soma369.laimory.feature.onboarding.viewmodel.OnboardingViewModel
@@ -111,6 +116,9 @@ private fun OnboardingContent(
         currentPage?.showsConsents == true &&
             (state.consentDocuments.any { it.termType !in state.lockedConsents } || !state.isAgeConfirmed)
     val termContentLauncher = rememberTermContentLauncher()
+    // 요청을 보낸 장. 허용될 때까지 안내를 띄운다 — 시스템 창을 닫고 돌아와도 무엇이 남았는지
+    // 계속 보여 준다. 누르지 않은 장에는 띄우지 않는다.
+    var guidedPermissions by remember { mutableStateOf(emptySet<DataPermission>()) }
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
 
     OnboardingScreen(
@@ -133,12 +141,22 @@ private fun OnboardingContent(
         // 없어, 버튼만 남으면 무엇을 건너뛰는지 알 수 없다.
         showsSkip = currentPage?.isSkippable == true && needsRequest && !isLastPage,
         isPageGranted = { page -> permissionState.isPageDone(page.permission) },
+        // 위치는 창이 두 번 뜨므로 남은 단계를 보고 안내도 함께 바뀐다.
+        guideFor = { page ->
+            page.permission
+                ?.takeIf { it in guidedPermissions && !permissionState.isPageDone(it) }
+                ?.let { permissionGuideSpec(permission = it, locationStep = permissionState.locationStep) }
+        },
         onPrimaryClick = {
             when {
                 // 요청이 아니라 `act` 로 부른다. 두 번 거부해 시스템이 요청을 삼키는 장에서는 요청
                 // 대신 앱 정보 화면으로 길을 바꿔야 한다 — `request` 는 그 판정을 거치지 않아, 막힌
                 // 장에서 눌러도 아무 일이 없는 버튼이 된다.
-                needsRequest -> currentPage?.permission?.let(permissionState::act)
+                needsRequest ->
+                    currentPage?.permission?.let { permission ->
+                        guidedPermissions = guidedPermissions + permission
+                        permissionState.act(permission)
+                    }
                 // 불러오지 못한 채로 끝낼 수 없다. 같은 자리에서 다시 시도한다.
                 isLastPage && state.hasConsentLoadFailed -> onIntent(OnboardingUiIntent.RetryConsentLoad)
                 isLastPage -> onIntent(OnboardingUiIntent.Complete)
@@ -162,6 +180,7 @@ private fun OnboardingScreen(
     isPrimaryEnabled: Boolean,
     showsSkip: Boolean,
     isPageGranted: (OnboardingPageSpec) -> Boolean,
+    guideFor: (OnboardingPageSpec) -> PermissionGuideSpec? = { null },
     onPrimaryClick: () -> Unit,
     onSkipClick: () -> Unit,
     onConsentToggle: (TermType) -> Unit,
@@ -179,36 +198,54 @@ private fun OnboardingScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding),
     ) {
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxWidth().weight(1f),
-        ) { page ->
-            state.pages.getOrNull(page)?.let { spec ->
-                OnboardingPageContent(
-                    page = spec,
-                    nickname = state.nickname,
-                    isGranted = isPageGranted(spec),
-                    // 문서가 비어도(이미 다 동의했거나 catalog 가 아직 없어도) 목록을 그린다 —
-                    // 연령 확인 줄은 서버 문서와 무관하게 언제나 받아야 한다.
-                    extra =
-                        if (!spec.showsConsents) {
-                            null
-                        } else {
-                            {
-                                OnboardingConsentChecklist(
-                                    documents = state.consentDocuments,
-                                    checked = state.checkedConsents,
-                                    locked = state.lockedConsents,
-                                    isAgeConfirmed = state.isAgeConfirmed,
-                                    isEnabled = !state.isConsentSubmitting,
-                                    errorMessage = state.consentErrorMessage,
-                                    onToggle = onConsentToggle,
-                                    onToggleAge = onAgeConfirmationToggle,
-                                    onOpenTerm = onOpenTerm,
-                                )
-                            }
-                        },
-                )
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                state.pages.getOrNull(page)?.let { spec ->
+                    OnboardingPageContent(
+                        page = spec,
+                        nickname = state.nickname,
+                        isGranted = isPageGranted(spec),
+                        guide = guideFor(spec),
+                        // 문서가 비어도(이미 다 동의했거나 catalog 가 아직 없어도) 목록을 그린다 —
+                        // 연령 확인 줄은 서버 문서와 무관하게 언제나 받아야 한다.
+                        extra =
+                            if (!spec.showsConsents) {
+                                null
+                            } else {
+                                {
+                                    OnboardingConsentChecklist(
+                                        documents = state.consentDocuments,
+                                        checked = state.checkedConsents,
+                                        locked = state.lockedConsents,
+                                        isAgeConfirmed = state.isAgeConfirmed,
+                                        isEnabled = !state.isConsentSubmitting,
+                                        errorMessage = state.consentErrorMessage,
+                                        onToggle = onConsentToggle,
+                                        onToggleAge = onAgeConfirmationToggle,
+                                        onOpenTerm = onOpenTerm,
+                                    )
+                                }
+                            },
+                    )
+                }
+            }
+
+            // `나중에` 는 본문 위에 떠 있다. 자리를 차지하게 두면 라벨 줄이 그만큼 내려가고,
+            // 건너뛸 것이 있는 장에만 보이므로 자리를 차지하면 넘길 때마다 본문이 위아래로 튄다.
+            if (showsSkip) {
+                TextButton(
+                    onClick = onSkipClick,
+                    enabled = !state.isCompleting,
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = SKIP_TOP_PADDING, end = Spacing.extraSmall),
+                ) {
+                    Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
 
@@ -219,25 +256,14 @@ private fun OnboardingScreen(
         ) {
             OnboardingProgress(currentIndex = pagerState.currentPage, pageCount = state.pages.size)
 
-            // 보조 슬롯. 내용이 없어도 높이를 그대로 차지한다 — 장마다 이 자리가 비었다 찼다 하면
-            // 진행 표시와 본문의 y 가 흔들려, 넘길 때마다 화면 전체가 위아래로 튄다.
-            Box(
-                modifier = Modifier.fillMaxWidth().height(SECONDARY_SLOT_HEIGHT),
-                contentAlignment = Alignment.Center,
-            ) {
-                when {
-                    state.hasCompletionFailed ->
-                        Text(
-                            text = "완료를 저장하지 못했어요. 다시 시도해 주세요.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-
-                    showsSkip ->
-                        TextButton(onClick = onSkipClick, enabled = !state.isCompleting) {
-                            Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
-                        }
-                }
+            // `나중에` 가 위로 올라가면서 이 자리는 완료 실패 문구만 쓴다. 높이를 비워 두지 않는다 —
+            // 모든 장이 같은 높이라 넘길 때 튀지 않고, 실패 문구는 마지막 장에서만 잠깐 끼어든다.
+            if (state.hasCompletionFailed) {
+                Text(
+                    text = "완료를 저장하지 못했어요. 다시 시도해 주세요.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             Button(
@@ -287,12 +313,12 @@ private fun ctaLabel(
     }
 
 /**
- * 진행 표시와 주 버튼 사이 보조 슬롯의 높이.
+ * 본문 위에 띄우는 `나중에` 의 윗 여백.
  *
- * `나중에` 와 완료 실패 문구가 이 자리를 나눠 쓴다. 둘은 같은 장에 함께 오지 않는다 — 완료
- * 실패는 마지막 장에서만 나고 그 장은 건너뛸 것이 없다.
+ * 본문의 라벨 줄(위에서 48dp, 높이 28dp)과 나란히 보이도록 버튼의 48dp 터치 영역 가운데를
+ * 그 줄 가운데에 맞춘다.
  */
-private val SECONDARY_SLOT_HEIGHT = 48.dp
+private val SKIP_TOP_PADDING = 38.dp
 
 private val CTA_HEIGHT = 52.dp
 private val CTA_SPINNER_SIZE = 18.dp
