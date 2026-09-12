@@ -428,21 +428,6 @@ private fun LoginCompactPreview() {
     }
 }
 
-@Preview(name = "Login 큰 글자", showBackground = true, widthDp = 360, heightDp = 800, fontScale = 1.5f)
-@Composable
-private fun LoginLargeFontPreview() {
-    LaimoryTheme {
-        Surface(color = MaterialTheme.colorScheme.background) {
-            LoginScreen(
-                innerPadding = PaddingValues(),
-                state = LoginUiState(errorMessage = "소셜 로그인을 완료하지 못했습니다. 다시 시도해 주세요."),
-                onProviderClick = {},
-                onOpenTerm = {},
-            )
-        }
-    }
-}
-
 @Preview(name = "Login Dark", showBackground = true, widthDp = 360, heightDp = 800)
 @Composable
 private fun LoginDarkPreview() {
