@@ -6,15 +6,20 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,13 +33,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
-import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
@@ -53,6 +58,7 @@ import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import com.soma369.laimory.feature.onboarding.viewmodel.OnboardingViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import com.soma369.laimory.core.ui.R as UiR
 
 @Composable
 fun OnboardingRoute(
@@ -201,18 +207,44 @@ private fun OnboardingScreen(
     ) {
         // 진행 표시·뒤로·`나중에` 를 한 줄에 둔다. 어디까지 왔는지와 빠져나갈 길이 같은 자리에
         // 있어야 장마다 눈이 아래위로 옮겨 다니지 않는다.
-        LaimoryTopAppBar(
-            title = { OnboardingProgress(currentIndex = pagerState.currentPage, pageCount = state.pages.size) },
-            // 첫 장에는 뒤로 갈 곳이 없다. 앱 루트라 빠져나가면 빈 화면이 남는다.
-            onBackClick = if (pagerState.currentPage > 0) onBack else null,
-            actions = {
+        //
+        // 가운데 정렬 상단바(`LaimoryTopAppBar`)를 쓰지 않는다 — 그것은 제목 자리의 양옆을 48dp 씩
+        // 비우므로 진행 표시가 폭을 채우지 못한다. 양옆 자리는 버튼이 없는 장에서도 폭을 그대로
+        // 지킨다. 장마다 막대 길이가 달라지면 넘길 때 표시가 늘었다 줄었다 한다.
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(TOP_BAR_HEIGHT)
+                    .padding(horizontal = Spacing.extraSmall),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.width(TOP_BAR_SIDE_WIDTH), contentAlignment = Alignment.CenterStart) {
+                // 첫 장에는 뒤로 갈 곳이 없다. 앱 루트라 빠져나가면 빈 화면이 남는다.
+                if (pagerState.currentPage > 0) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            painter = painterResource(UiR.drawable.ico_default_caret_left),
+                            contentDescription = "뒤로 가기",
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(TOP_BAR_ICON_SIZE),
+                        )
+                    }
+                }
+            }
+            OnboardingProgress(
+                currentIndex = pagerState.currentPage,
+                pageCount = state.pages.size,
+                modifier = Modifier.weight(1f).padding(horizontal = Spacing.small),
+            )
+            Box(modifier = Modifier.width(TOP_BAR_SIDE_WIDTH), contentAlignment = Alignment.CenterEnd) {
                 if (showsSkip) {
                     TextButton(onClick = onSkipClick, enabled = !state.isCompleting) {
                         Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-            },
-        )
+            }
+        }
 
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             HorizontalPager(
@@ -313,6 +345,14 @@ private fun ctaLabel(
         page?.permission != null -> "다음"
         else -> page?.primaryCta.orEmpty()
     }
+
+/** 상단 바. 다른 화면의 상단바와 같은 높이라 장을 넘나들어도 본문 시작 높이가 흔들리지 않는다. */
+private val TOP_BAR_HEIGHT = 52.dp
+
+/** 진행 표시 양옆에 두는 자리. 뒤로·`나중에` 가 없는 장에서도 이 폭은 그대로 둔다. */
+private val TOP_BAR_SIDE_WIDTH = 64.dp
+
+private val TOP_BAR_ICON_SIZE = 24.dp
 
 private val CTA_HEIGHT = 52.dp
 private val CTA_SPINNER_SIZE = 18.dp

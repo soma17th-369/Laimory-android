@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -13,12 +12,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
-import com.soma369.laimory.core.ui.theme.Spacing
 
 /**
  * 몇 장 중 몇 번째인지.
  *
- * 점 하나하나는 읽어 줄 것이 없어 전체를 한 덩어리로 묶고 문장으로 대신 읽힌다 — 점 다섯 개를
+ * 장마다 칸 하나를 주고 **지나온 칸까지 채운다** — 점 하나만 굵어지는 표시는 남은 길이를 말해
+ * 주지 못한다. 주어진 폭을 칸들이 똑같이 나눠 가지므로 장 수가 늘어도 배치가 그대로다.
+ *
+ * 칸 하나하나는 읽어 줄 것이 없어 전체를 한 덩어리로 묶고 문장으로 대신 읽힌다 — 칸 일곱 개를
  * 따로 읽으면 화면 위치만 늘어놓는 소음이 된다.
  */
 @Composable
@@ -34,20 +35,19 @@ internal fun OnboardingProgress(
             modifier.clearAndSetSemantics {
                 contentDescription = "${pageCount}단계 중 ${currentIndex + 1}단계"
             },
-        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+        horizontalArrangement = Arrangement.spacedBy(SEGMENT_GAP),
     ) {
         repeat(pageCount) { index ->
-            val isActive = index == currentIndex
             Box(
                 modifier =
                     Modifier
-                        .height(DOT_SIZE)
-                        .width(if (isActive) ACTIVE_DOT_WIDTH else DOT_SIZE)
-                        .background(if (isActive) activeColor else inactiveColor, CircleShape),
+                        .weight(1f)
+                        .height(SEGMENT_HEIGHT)
+                        .background(if (index <= currentIndex) activeColor else inactiveColor, CircleShape),
             )
         }
     }
 }
 
-private val DOT_SIZE = 8.dp
-private val ACTIVE_DOT_WIDTH = 24.dp
+private val SEGMENT_HEIGHT = 6.dp
+private val SEGMENT_GAP = 4.dp
