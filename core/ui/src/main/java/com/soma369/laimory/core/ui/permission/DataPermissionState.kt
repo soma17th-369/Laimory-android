@@ -189,14 +189,23 @@ fun rememberDataPermissionState(): DataPermissionState {
 
     // 어느 소스를 요청했는지 알아야 결과를 그 소스에 귀속시킬 수 있다.
     var pending by remember { mutableStateOf<DataPermission?>(null) }
+
+    /**
+     * 막힘을 판정할 권한.
+     *
+     * 요청에 곁가지를 함께 싣는 자리가 있다 — 위치 첫 요청은 이동수단 인식을 같이 묻는다. 결과
+     * 전체를 보면 **곁가지가 허용된 것만으로** "하나는 허용됐으니 막힌 게 아니다" 가 되어, 정작
+     * 그 단계를 막고 있는 권한의 영구 거부를 놓친다. 그 단계를 막는 권한만 본다.
+     */
+    var judged by remember { mutableStateOf(emptyArray<String>()) }
     var blocked by remember { mutableStateOf(emptySet<DataPermission>()) }
 
     // 결과 맵을 직접 읽지 않고 다시 조회한다. 일부 허용처럼 결과와 실제 상태가 갈리는
     // 경우가 있어, 판정 경로를 하나로 두는 편이 어긋날 여지가 없다.
-    val settle: (Map<String, Boolean>) -> Unit = { result ->
+    val settle: (Map<String, Boolean>) -> Unit = { _ ->
         val requested = pending
+        val keys = judged
         if (requested != null) {
-            val keys = result.keys.toTypedArray()
             // 요청 **직후** 의 rationale=false 는 "물어봤는데 다이얼로그가 안 떴다" 는 뜻이다.
             blocked =
                 if (keys.isNotEmpty() && context.isPermanentlyDenied(keys)) {
@@ -206,6 +215,7 @@ fun rememberDataPermissionState(): DataPermissionState {
                 }
         }
         pending = null
+        judged = emptyArray()
         refreshKey++
     }
     val runtimeLauncher =
@@ -284,11 +294,13 @@ fun rememberDataPermissionState(): DataPermissionState {
             when (permission) {
                 DataPermission.PHOTO -> {
                     pending = permission
+                    judged = PhotoPermission.required()
                     runtimeLauncher.launch(PhotoPermission.required())
                 }
 
                 DataPermission.CALENDAR -> {
                     pending = permission
+                    judged = CalendarPermission.required()
                     runtimeLauncher.launch(CalendarPermission.required())
                 }
                 DataPermission.LOCATION ->
@@ -300,6 +312,8 @@ fun rememberDataPermissionState(): DataPermissionState {
                         // 안내를 한 번 보여 주고, 다음 단계는 버튼으로 들어간다.
                         LocationPermissionStep.FOREGROUND -> {
                             pending = permission
+                            // 이동수단 인식은 곁가지다. 그것이 허용돼도 전경 위치가 막힌 것은 막힌 것이다.
+                            judged = LocationPermission.foreground()
                             runtimeLauncher.launch(LocationPermission.foregroundAndActivity())
                         }
                         // `항상 허용`. Android 11+ 는 다이얼로그 대신 이 앱의 위치 권한 화면을 곧장 열고,
@@ -308,11 +322,13 @@ fun rememberDataPermissionState(): DataPermissionState {
                         // 어디에도 기록하지 못해, 막힌 뒤에도 앱 정보 화면으로 길을 바꾸지 못한다.
                         LocationPermissionStep.BACKGROUND -> {
                             pending = permission
+                            judged = arrayOf(LocationPermission.background())
                             runtimeLauncher.launch(arrayOf(LocationPermission.background()))
                         }
 
                         LocationPermissionStep.ACTIVITY -> {
                             pending = permission
+                            judged = arrayOf(Manifest.permission.ACTIVITY_RECOGNITION)
                             runtimeLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
                         }
                         LocationPermissionStep.GRANTED -> Unit
@@ -325,6 +341,7 @@ fun rememberDataPermissionState(): DataPermissionState {
                         // 다른 요청처럼 pending 을 남긴다 — 남기지 않으면 결과 콜백이 막힘을 어느
                         // 소스에도 기록하지 못해, 두 번 거부한 뒤에도 설정으로 길을 바꾸지 못한다.
                         pending = permission
+                        judged = required
                         runtimeLauncher.launch(required)
                     }
                 }

@@ -32,6 +32,18 @@ object LocationPermission {
         }.toTypedArray()
 
     /**
+     * 위치 장을 **막고 있는** 권한.
+     *
+     * 요청에는 이동수단 인식을 함께 싣지만([foregroundAndActivity]), 막혔는지 판정할 때는 이 둘만
+     * 본다 — 곁가지가 허용되면 "하나는 허용됐다" 가 되어 위치의 영구 거부가 가려진다.
+     */
+    fun foreground(): Array<String> =
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+
+    /**
      * 위치 장의 첫 요청(전경 위치 + 이동수단 인식). 전경을 받으면 [background] 를 이어 요청한다.
      *
      * 알림은 싣지 않는다 — 알림은 자기 장에서 받는다. [required] 는 수집 실험실의 `추적 켜기` 한 번에

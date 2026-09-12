@@ -16,6 +16,18 @@ import org.junit.Test
  */
 class PermissionMatrixTest {
     @Test
+    fun `막힘 판정은 전경 위치 두 권한만 본다`() {
+        // 요청에는 이동수단 인식을 함께 싣는다. 그것이 허용되면 위치의 영구 거부가 가려진다.
+        val judged = LocationPermission.foreground().toList()
+
+        assertEquals(
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            judged,
+        )
+        assertFalse(judged.contains(Manifest.permission.ACTIVITY_RECOGNITION))
+    }
+
+    @Test
     fun `사진 권한은 Android 14 이상에서 일부 허용 권한을 함께 요청한다`() {
         assertEquals(
             listOf(
