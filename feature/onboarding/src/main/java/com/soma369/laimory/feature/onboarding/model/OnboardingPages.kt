@@ -79,7 +79,7 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             title = "준비됐어요",
             description = "연결한 만큼 타임라인이 풍성해져요. 나머지는 설정에서 언제든 켤 수 있어요.",
             showsConsents = true,
-            primaryCta = "Laimory 시작하기",
+            primaryCta = "라이모리 시작하기",
         ),
     )
 
