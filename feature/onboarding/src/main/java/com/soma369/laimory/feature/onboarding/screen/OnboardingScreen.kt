@@ -34,6 +34,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
+import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
@@ -198,10 +199,28 @@ private fun OnboardingScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding),
     ) {
+        // 진행 표시·뒤로·`나중에` 를 한 줄에 둔다. 어디까지 왔는지와 빠져나갈 길이 같은 자리에
+        // 있어야 장마다 눈이 아래위로 옮겨 다니지 않는다.
+        LaimoryTopAppBar(
+            title = { OnboardingProgress(currentIndex = pagerState.currentPage, pageCount = state.pages.size) },
+            // 첫 장에는 뒤로 갈 곳이 없다. 앱 루트라 빠져나가면 빈 화면이 남는다.
+            onBackClick = if (pagerState.currentPage > 0) onBack else null,
+            actions = {
+                if (showsSkip) {
+                    TextButton(onClick = onSkipClick, enabled = !state.isCompleting) {
+                        Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
+        )
+
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
+                // 쓸어서 넘기지 못하게 한다. 권한 장은 버튼을 누르면 시스템 창이 이어지는 흐름이라,
+                // 옆으로 넘겨 버리면 무엇을 허용했는지 모르는 채 지나간다. 이동은 버튼으로만 한다.
+                userScrollEnabled = false,
             ) { page ->
                 state.pages.getOrNull(page)?.let { spec ->
                     OnboardingPageContent(
@@ -232,21 +251,6 @@ private fun OnboardingScreen(
                     )
                 }
             }
-
-            // `나중에` 는 본문 위에 떠 있다. 자리를 차지하게 두면 라벨 줄이 그만큼 내려가고,
-            // 건너뛸 것이 있는 장에만 보이므로 자리를 차지하면 넘길 때마다 본문이 위아래로 튄다.
-            if (showsSkip) {
-                TextButton(
-                    onClick = onSkipClick,
-                    enabled = !state.isCompleting,
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = SKIP_TOP_PADDING, end = Spacing.extraSmall),
-                ) {
-                    Text(text = "나중에", style = MaterialTheme.typography.bodyMedium)
-                }
-            }
         }
 
         Column(
@@ -254,9 +258,7 @@ private fun OnboardingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.large),
         ) {
-            OnboardingProgress(currentIndex = pagerState.currentPage, pageCount = state.pages.size)
-
-            // `나중에` 가 위로 올라가면서 이 자리는 완료 실패 문구만 쓴다. 높이를 비워 두지 않는다 —
+            // `나중에` 와 진행 표시가 상단 바로 올라가면서 이 자리는 완료 실패 문구만 쓴다. 높이를 비워 두지 않는다 —
             // 모든 장이 같은 높이라 넘길 때 튀지 않고, 실패 문구는 마지막 장에서만 잠깐 끼어든다.
             if (state.hasCompletionFailed) {
                 Text(
@@ -311,14 +313,6 @@ private fun ctaLabel(
         page?.permission != null -> "다음"
         else -> page?.primaryCta.orEmpty()
     }
-
-/**
- * 본문 위에 띄우는 `나중에` 의 윗 여백.
- *
- * 본문의 라벨 줄(위에서 48dp, 높이 28dp)과 나란히 보이도록 버튼의 48dp 터치 영역 가운데를
- * 그 줄 가운데에 맞춘다.
- */
-private val SKIP_TOP_PADDING = 38.dp
 
 private val CTA_HEIGHT = 52.dp
 private val CTA_SPINNER_SIZE = 18.dp

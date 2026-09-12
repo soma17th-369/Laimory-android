@@ -153,8 +153,11 @@ private fun NicknameGreeting(nickname: String?) {
  *
  * 세로 가운데 정렬 대신 고정 여백을 쓴다 — 스크롤 가능한 열에서는 높이가 무한이라 weight 로
  * 가운데를 잡을 수 없고, 장마다 글이 길이가 달라 가운데 정렬이면 제목이 위아래로 흔들린다.
+ *
+ * 상단 바(52dp)가 생기면서 시안의 48dp 를 그대로 두면 라벨이 100dp 아래에서 시작한다. 상단 바가
+ * 그 여백의 몫을 이미 하고 있으므로 본문은 한 칸만 띄운다.
  */
-private val CONTENT_TOP_PADDING = 48.dp
+private val CONTENT_TOP_PADDING = 16.dp
 
 /** 라벨 줄 높이. 인사말(20/28)이 들어가도 잘리지 않는 값이다. */
 private val LABEL_SLOT_HEIGHT = 28.dp
