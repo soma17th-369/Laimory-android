@@ -16,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -207,6 +208,67 @@ class DefaultTermsAgreementCoordinatorTest {
             assertEquals(2, repository.fetchCount)
         }
 
+    @Test
+    fun `로그아웃을 본 뒤 로그인하면 이용약관 동의를 대신 기록한다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 로그인 버튼이 동의 시점이다. 기록을 남길 자리가 없어 다음 화면이 같은 동의를 한 번 더
+            // 묻던 것을 없앤다.
+            val repository = FakeTermsRepository(documents = listOf(termsOfService))
+            val accounts = MutableStateFlow<SignedInAccount?>(null)
+            val coordinator = coordinator(repository, accounts)
+            runCurrent()
+
+            accounts.value = google
+            runCurrent()
+
+            assertEquals(TermsGateState.Satisfied, coordinator.loginGate.value)
+        }
+
+    @Test
+    fun `앱을 켰더니 이미 로그인돼 있으면 대신 기록하지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 이 사용자는 로그인 버튼을 누른 적이 없다. 동의 시점이 없으므로 약관 화면이 받아야 한다.
+            val repository = FakeTermsRepository(documents = listOf(termsOfService))
+            val accounts = MutableStateFlow<SignedInAccount?>(google)
+            val coordinator = coordinator(repository, accounts)
+            runCurrent()
+
+            assertTrue(coordinator.loginGate.value is TermsGateState.Required)
+        }
+
+    @Test
+    fun `대신 기록에 실패하면 약관 화면이 받도록 미동의로 남긴다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val repository = FakeTermsRepository(documents = listOf(termsOfService))
+            repository.agreeFailure = IllegalStateException("network")
+            val accounts = MutableStateFlow<SignedInAccount?>(null)
+            val coordinator = coordinator(repository, accounts)
+            runCurrent()
+
+            accounts.value = google
+            runCurrent()
+
+            assertTrue(coordinator.loginGate.value is TermsGateState.Required)
+        }
+
+    @Test
+    fun `대신 기록하는 동안 약관 화면이 잠깐 뜨지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            // 판정을 먼저 발행하고 기록하면, 약관 화면이 떴다가 사라지는 깜빡임이 된다.
+            val repository = FakeTermsRepository(documents = listOf(termsOfService))
+            val accounts = MutableStateFlow<SignedInAccount?>(null)
+            val coordinator = coordinator(repository, accounts)
+            val seen = mutableListOf<TermsGateState>()
+            backgroundScope.launch { coordinator.loginGate.collect { seen += it } }
+            runCurrent()
+
+            accounts.value = google
+            runCurrent()
+
+            assertTrue(seen.none { it is TermsGateState.Required })
+            assertEquals(TermsGateState.Satisfied, coordinator.loginGate.value)
+        }
+
     private fun TestScope.coordinator(
         repository: TermsRepository,
         accounts: MutableStateFlow<SignedInAccount?>,
@@ -237,6 +299,7 @@ class DefaultTermsAgreementCoordinatorTest {
         var failure: Throwable? = null,
     ) : TermsRepository {
         var fetchCount = 0
+        var agreeFailure: Throwable? = null
 
         /** 조회를 붙잡아 두고 그동안 들어온 신호가 조회를 새로 띄우는지 본다. */
         private var held: CompletableDeferred<Unit>? = null
@@ -258,6 +321,7 @@ class DefaultTermsAgreementCoordinatorTest {
         }
 
         override suspend fun agree(documents: List<TermDocument>) {
+            agreeFailure?.let { throw it }
             recorded += documents.map { TermAgreement(it, LocalDateTime.of(2026, 8, 30, 0, 0)) }
         }
 

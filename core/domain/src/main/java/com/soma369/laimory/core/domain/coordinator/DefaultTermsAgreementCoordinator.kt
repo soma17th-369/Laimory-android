@@ -49,12 +49,28 @@ class DefaultTermsAgreementCoordinator
          */
         private var sessionEpoch = 0L
 
+        /**
+         * 이 프로세스에서 로그아웃 상태를 본 적이 있는지.
+         *
+         * 뒤이어 계정이 들어오면 그것은 사용자가 **방금 누른 로그인**이다. 앱을 켰더니 이미
+         * 로그인돼 있던 경우(첫 방출이 계정)와 갈라야, 동의를 누른 적 없는 사용자에게 동의를
+         * 대신 기록하지 않는다.
+         */
+        private var sawSignedOut = false
+
         override val loginGate: StateFlow<TermsGateState> = mutableLoginGate.asStateFlow()
 
         init {
             applicationScope.launch {
                 observeSignedInAccountUseCase().collect { account ->
-                    if (account == null) clearSession() else evaluateLoginGate(force = false)
+                    if (account == null) {
+                        sawSignedOut = true
+                        clearSession()
+                        return@collect
+                    }
+                    val justSignedIn = sawSignedOut
+                    sawSignedOut = false
+                    evaluateLoginGate(force = false, agreesOnSignIn = justSignedIn)
                 }
             }
             applicationScope.launch {
@@ -105,9 +121,16 @@ class DefaultTermsAgreementCoordinator
          * 묻다가 네트워크가 잠깐 끊긴 경우까지 오류 화면으로 보내면, 잘 쓰던 사용자를 통신 사정
          * 하나로 앱 밖으로 밀어내는 셈이 된다. 아직 아무것도 모르는 첫 판정만 실패를 드러낸다.
          */
-        private suspend fun evaluateLoginGate(force: Boolean) {
+        private suspend fun evaluateLoginGate(
+            force: Boolean,
+            agreesOnSignIn: Boolean = false,
+        ) {
             val epoch = mutex.withLock { sessionEpoch }
             val result = loadSnapshot(force)
+            // 방금 로그인한 사용자는 판정을 **발행하기 전에** 대신 기록한다. 먼저 발행하면 약관
+            // 화면이 떴다가 기록이 끝나는 순간 사라져, 무엇이 지나갔는지 알 수 없는 깜빡임이 된다.
+            // 기록이 되는 동안 루트는 판정 전(로딩)에 머문다.
+            if (agreesOnSignIn && agreeLoginTerms(result.getOrNull())) return
             mutex.withLock {
                 if (sessionEpoch != epoch) return
                 if (result.isFailure) {
@@ -118,6 +141,26 @@ class DefaultTermsAgreementCoordinator
                 }
                 publishLoginGate(result.getOrNull())
             }
+        }
+
+        /**
+         * 방금 로그인한 사용자의 이용약관 동의를 대신 기록한다. 기록해서 판정까지 세웠으면 `true`.
+         *
+         * 로그인 버튼이 동의 시점이다 — 그 화면이 `로그인 시 ... 동의하는 것으로 간주합니다` 라고
+         * 말하고 원문 링크를 함께 둔다. 기록을 남길 자리가 없어서 다음 화면이 같은 동의를 한 번 더
+         * 묻던 것을 없앤다.
+         *
+         * **개정은 대신 기록하지 않는다.** 개정본은 사용자가 열람하지 않은 문서이고, 그때는 로그인
+         * 버튼을 누를 일도 없다 — 이 함수는 로그아웃을 본 뒤 계정이 들어온 경우에만 불린다.
+         *
+         * 기록에 실패하면 판정이 `Required` 로 남아 **약관 화면이 대신 받는다.** 화면을 없애는 것이
+         * 아니라 건너뛰는 것이다.
+         */
+        private suspend fun agreeLoginTerms(loaded: TermsSnapshot?): Boolean {
+            val requirement = loaded?.requirementOf(TermStage.LOGIN) ?: return false
+            if (requirement.isSatisfied) return false
+            // 성공하면 markAgreed 가 스냅샷과 판정을 함께 갱신한다 — 여기서 다시 발행하지 않는다.
+            return agree(requirement.pending).isSuccess
         }
 
         /** [mutex] 안에서만 부른다. */
