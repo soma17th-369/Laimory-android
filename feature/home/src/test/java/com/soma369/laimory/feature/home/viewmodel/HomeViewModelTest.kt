@@ -19,6 +19,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.ResolvedAddress
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.terms.TermDocument
@@ -37,6 +38,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -58,6 +60,7 @@ import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
@@ -73,10 +76,12 @@ import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
+import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -120,6 +125,7 @@ class HomeViewModelTest {
     private val draftRepository = FakeDraftRepository()
     private val termsCoordinator = FakeHomeTermsCoordinator()
     private val addressResolver = FakeHomeAddressResolver()
+    private val retentionDays = 30
 
     @Test
     fun `빈 범위에서는 동의 화면으로 이동하지 않는다`() =
@@ -213,18 +219,20 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `저장된 날짜만 피커에서 고를 수 없게 모은다`() =
+    fun `월별 기록을 초안과 저장 날짜로 나눠 모은다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 초안 날짜는 서버가 이어 붙이기로 받아 주므로 막지 않는다. 저장된 날짜만 409 다.
+            // 달력 도트 색이 둘로 갈린다. 상태를 모르는 기록은 어느 쪽에도 넣지 않는다.
             val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
             val saved = month.atDay(3)
             val draft = month.atDay(4)
+            val unknown = month.atDay(5)
             recordRepository.monthlyRecords =
                 mapOf(
                     month to
                         listOf(
                             MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null),
                             MonthlyDailyRecord(draft, DailyRecordStatus.DRAFT, null),
+                            MonthlyDailyRecord(unknown, null, null),
                         ),
                 )
             val viewModel = createViewModel()
@@ -234,6 +242,7 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(setOf(saved), viewModel.state.value.savedRecordDates)
+            assertEquals(setOf(draft), viewModel.state.value.draftRecordDates)
         }
 
     @Test
@@ -323,23 +332,35 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `저장된 날짜는 확정해도 기록 날짜로 반영되지 않는다`() =
+    fun `저장된 날짜도 고를 수 있고 CTA 가 확인하기가 된다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 조회가 끝나기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면 표시와
-            // 별개로 경계에서 막지 않으면 서버 409 를 받는 날짜로 진행한다.
-            val month = YearMonth.from(LocalDate.now(ZoneId.systemDefault()))
-            val saved = month.atDay(3)
+            // 저장된 날을 막으면 그 날의 기록을 홈에서 열 길이 없다. 고르면 저장된 기록을 연다.
+            val saved = LocalDate.now(ZoneId.systemDefault()).minusDays(1)
             recordRepository.monthlyRecords =
-                mapOf(month to listOf(MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null)))
+                mapOf(YearMonth.from(saved) to listOf(MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null)))
             val viewModel = createViewModel()
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.SelectDate(saved))
             runCurrent()
 
-            assertEquals(LocalDate.now(ZoneId.systemDefault()), viewModel.state.value.selectedDate)
+            assertEquals(saved, viewModel.state.value.selectedDate)
+            assertEquals(HomeRecordState.SAVED, viewModel.state.value.selectedRecord)
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+        }
+
+    @Test
+    fun `보존 기간 밖 날짜는 확정해도 기록 날짜로 반영되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 수집 데이터가 이미 지워진 날이다. 피커가 막지만 경계에서 한 번 더 막는다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(retentionDays.toLong())))
+            runCurrent()
+
+            assertEquals(today, viewModel.state.value.selectedDate)
         }
 
     @Test
@@ -553,6 +574,82 @@ class HomeViewModelTest {
 
             assertEquals(0, draftTaskCoordinator.discardCount)
             assertEquals(listOf<Page>(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `추적 작업이 없어도 내용 있는 초안이 있으면 확인하기로 그 날짜를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 앱을 다시 켜면 코디네이터의 완료 표시가 없다. 서버 기록만으로 되찾아야 한다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(today) to listOf(MonthlyDailyRecord(today, DailyRecordStatus.DRAFT, null)))
+            recordRepository.dailyRecordByDate = mapOf(today to pastTimeline(dailyRecordId = 1L, date = today))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ViewDraft)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+            assertEquals(listOf<Page>(TimelinePage(recordDate = today)), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `이벤트가 없는 초안은 만들기로 남는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버는 생성 요청을 받으면 AI 로 보내기 전에 기록부터 만들고, 실패해도 지우지 않는다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(today) to listOf(MonthlyDailyRecord(today, DailyRecordStatus.DRAFT, null)))
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today, events = emptyList()))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+
+            assertEquals(HomeRecordState.EMPTY_DRAFT, viewModel.state.value.selectedRecord)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.timelineButtonStatus)
+        }
+
+    @Test
+    fun `생성 중인 날짜는 서버에 초안이 있어도 제작중이고 단건 조회를 하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(today) to listOf(MonthlyDailyRecord(today, DailyRecordStatus.DRAFT, null)))
+            draftTaskCoordinator.emitProcessing(today)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.timelineButtonStatus)
+            assertEquals(0, recordRepository.dailyRecordCallCount)
+        }
+
+    @Test
+    fun `작업 정보를 잃어도 내용 있는 초안이 있으면 확인하기다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 하루 넘게 꺼져 있다 켜면 끝난 작업이 서버에서 만료돼 추적은 실패로 끝난다. 기록은 멀쩡하다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(today) to listOf(MonthlyDailyRecord(today, DailyRecordStatus.DRAFT, null)))
+            recordRepository.dailyRecordByDate = mapOf(today to pastTimeline(dailyRecordId = 1L, date = today))
+            draftTaskCoordinator.emitUnavailable(today)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
         }
 
     @Test
@@ -839,7 +936,8 @@ class HomeViewModelTest {
             runCurrent()
             val before = autoCollectionCoordinator.refreshCount
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(LocalDate.of(2026, 8, 10)))
+            // 고정 날짜를 쓰면 시간이 지나 보존 기간 밖으로 밀려나 선택 자체가 막힌다.
+            viewModel.sendIntent(HomeUiIntent.SelectDate(LocalDate.now(ZoneId.systemDefault()).minusDays(2)))
             runCurrent()
 
             assertTrue(autoCollectionCoordinator.refreshCount > before)
@@ -932,6 +1030,11 @@ class HomeViewModelTest {
                     repository = recordRepository,
                     messageHelper = NoOpMessageHelper,
                 ),
+            getDailyRecordUseCase =
+                GetDailyRecordUseCase(
+                    repository = recordRepository,
+                    messageHelper = NoOpMessageHelper,
+                ),
             getPhotosInWindowUseCase = GetPhotosInWindowUseCase(photoSource),
             prepareSelectedPhotosUseCase = PrepareSelectedPhotosUseCase(photoSource),
             draftConsentSessionStore = sessionStore,
@@ -947,6 +1050,7 @@ class HomeViewModelTest {
             messageHelper = dialogHelper,
             termsCoordinator = termsCoordinator,
             resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
+            retentionConfig = SourceItemRetentionConfig(retentionDays),
             collectionLabAccessGate = { isCollectionLabAccessible },
         )
 
@@ -1473,7 +1577,13 @@ class HomeViewModelTest {
             return dailyRecordsGate?.await() ?: dailyRecords
         }
 
-        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("사용하지 않음")
+        var dailyRecordByDate: Map<LocalDate, DailyTimeline> = emptyMap()
+        var dailyRecordCallCount = 0
+
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline {
+            dailyRecordCallCount++
+            return dailyRecordByDate[recordDate] ?: error("준비하지 않은 날짜: $recordDate")
+        }
 
         override suspend fun createEvent(command: CreateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
@@ -1582,6 +1692,14 @@ class HomeViewModelTest {
             mutableState.value =
                 DraftTaskTrackingState.Processing(
                     ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                )
+        }
+
+        fun emitUnavailable(recordDate: LocalDate) {
+            mutableState.value =
+                DraftTaskTrackingState.Unavailable(
+                    ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                    DraftTaskUnavailableReason.TASK,
                 )
         }
 

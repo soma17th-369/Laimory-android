@@ -88,6 +88,7 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.isDateLocked
+import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
@@ -124,6 +125,9 @@ fun HomeRoute(
         )
         // 약관 화면에 다녀와 동의하고 돌아오는 경로가 있어 복귀마다 다시 판정한다.
         viewModel.sendIntent(HomeUiIntent.RefreshLocationConsent)
+        // 다른 화면에서 초안을 저장하거나 지우고 돌아올 수 있고, 앱을 다시 켜면 완료 표시가 없다.
+        // 서버 기록을 다시 봐야 CTA 가 `타임라인 확인하기` 를 되찾는다.
+        viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeContent(
@@ -383,14 +387,14 @@ private fun HomeScreen(
         }
 
         HomeTimelineButton(
-            status = state.draftStatus,
+            status = state.timelineButtonStatus,
             selectedDate = state.selectedDate,
             today = LocalDate.now(),
             // 제출을 기다리는 동안에는 다시 눌러도 아무 일이 없어야 한다.
             enabled = !state.isSubmitting,
             onClick = {
                 onIntent(
-                    when (state.draftStatus) {
+                    when (state.timelineButtonStatus) {
                         DraftCreationStatus.SUCCESS -> HomeUiIntent.ViewDraft
                         // 생성 중에는 같은 작업의 로딩 화면으로 다시 들어간다.
                         DraftCreationStatus.PROCESSING,

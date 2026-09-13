@@ -62,12 +62,20 @@ sealed interface HomeUiIntent : UiIntent {
     /**
      * 날짜 피커가 보여 주는 달의 기록 상태를 받아 온다.
      *
-     * 피커를 열 때와 달을 넘길 때마다 그 달을 요청한다 — 어느 날짜가 이미 저장됐는지 알아야
-     * 고를 수 없게 만들 수 있다. 월별 경량 조회라 달마다 불러도 부담이 적다.
+     * 피커를 열 때와 달을 넘길 때마다 그 달을 요청한다 — 초안·저장 도트를 찍으려면 그 달에 무엇이
+     * 있는지 알아야 한다. 월별 경량 조회라 달마다 불러도 부담이 적다.
      */
     data class LoadMonthlyRecords(
         val month: YearMonth,
     ) : HomeUiIntent
+
+    /**
+     * 고른 날짜의 서버 기록을 다시 본다. 화면 진입·복귀마다 보낸다.
+     *
+     * 다른 화면에서 초안을 저장하거나 지우고 돌아올 수 있고, 앱을 다시 켜면 완료 표시가 없어 이것만이
+     * `타임라인 확인하기` 를 되찾는다.
+     */
+    data object RefreshRecordState : HomeUiIntent
 
     data class SelectDate(
         val date: LocalDate,
