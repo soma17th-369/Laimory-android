@@ -14,8 +14,11 @@ import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
+import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -29,6 +32,7 @@ import com.soma369.laimory.core.domain.navigation.PastRecordsPage
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
@@ -48,6 +52,7 @@ import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomePhotoItem
+import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeSourcePermissions
 import com.soma369.laimory.feature.home.state.HomeTimeField
@@ -59,8 +64,10 @@ import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.confirmDialogBody
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.isSelectableRecordDate
 import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
+import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -80,6 +87,7 @@ class HomeViewModel
         private val prepareTimelineDraftSelectionUseCase: PrepareTimelineDraftSelectionUseCase,
         private val getDailyRecordsUseCase: GetDailyRecordsUseCase,
         private val getMonthlyDailyRecordsUseCase: GetMonthlyDailyRecordsUseCase,
+        private val getDailyRecordUseCase: GetDailyRecordUseCase,
         private val getPhotosInWindowUseCase: GetPhotosInWindowUseCase,
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftConsentSessionStore: DraftConsentSessionStore,
@@ -95,11 +103,13 @@ class HomeViewModel
         private val messageHelper: MessageHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
+        retentionConfig: SourceItemRetentionConfig,
         collectionLabAccessGate: CollectionLabAccessGate,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
             HomeUiState(
                 selectedDate = LocalDate.now(ZoneId.systemDefault()),
                 isCollectionLabAccessible = collectionLabAccessGate.isCollectionLabAccessible(),
+                retentionDays = retentionConfig.retentionDays,
             ),
         ) {
         private val zone: ZoneId = ZoneId.systemDefault()
@@ -120,6 +130,9 @@ class HomeViewModel
         private var hasUserSelectedDate = false
         private var consentPreparationJob: Job? = null
         private var locationConsentJob: Job? = null
+
+        /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
+        private var recordStateJob: Job? = null
 
         init {
             observeSummary()
@@ -201,6 +214,7 @@ class HomeViewModel
                 HomeUiIntent.ShowDatePicker -> showDatePicker()
                 HomeUiIntent.DismissDatePicker -> updateState { copy(isDatePickerVisible = false) }
                 is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
+                HomeUiIntent.RefreshRecordState -> refreshSelectedRecord()
                 is HomeUiIntent.SelectDate -> selectDate(intent.date)
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
                 is HomeUiIntent.ExpandTimeField ->
@@ -243,6 +257,8 @@ class HomeViewModel
             safeLaunch {
                 draftTaskCoordinator.state.collect { trackingState ->
                     val previousWindow = state.value.recordDateWindow(zone)
+                    val previousDate = state.value.selectedDate
+                    val wasInProgress = state.value.draftStatus.isDateLocked
                     updateState {
                         if (hasUserSelectedDate) {
                             withDraftTrackingForSelectedDate(trackingState)
@@ -252,6 +268,16 @@ class HomeViewModel
                     }
                     if (state.value.recordDateWindow(zone) != previousWindow) {
                         onRecordWindowChanged()
+                    }
+                    // 작업 날짜로 맞춰졌으면 이전 날짜의 판정을 버린다.
+                    val isDateAligned = state.value.selectedDate != previousDate
+                    if (isDateAligned) updateState { copy(selectedRecord = cachedRecordState(selectedDate)) }
+                    // 생성 중에는 단건 조회를 건너뛰므로 추적이 끝나면(완료·실패·만료) 다시 봐야 한다. 앱을 다시 켜면
+                    // 복원한 작업이 생성 중으로 시작했다가 서버에서 이미 만료돼 `Unavailable` 로 끝나는데, 그때도
+                    // 서버에는 내용 있는 초안이 남아 있다.
+                    val hasLeftProgress = wasInProgress && !state.value.draftStatus.isDateLocked
+                    if (isDateAligned || hasLeftProgress || trackingState is DraftTaskTrackingState.Success) {
+                        refreshSelectedRecord()
                     }
                 }
             }
@@ -410,7 +436,7 @@ class HomeViewModel
          * 날짜 피커를 연다.
          *
          * 받아 둔 달을 비워 다시 조회하게 한다 — 이 화면에서 초안을 만들어 저장하고 돌아오면
-         * 그 날짜가 저장됨으로 바뀌는데, 한 번 받은 값을 계속 쓰면 고를 수 있는 날로 남는다.
+         * 그 날짜가 저장됨으로 바뀌는데, 한 번 받은 값을 계속 쓰면 초안 도트로 남는다.
          * 표시하던 날짜는 지우지 않는다(다시 받는 사이 비었다 차면 격자가 깜빡인다).
          */
         private fun showDatePicker() {
@@ -421,28 +447,98 @@ class HomeViewModel
         /**
          * 피커가 보여 주는 달의 기록 상태를 받는다.
          *
-         * 실패는 조용히 넘긴다 — 못 받으면 그 달은 고를 수 있는 채로 남고, 서버가 409 로 막는
-         * 최후 방어선이 그대로 있다. 여기서 오류를 띄우면 날짜를 고르려던 흐름만 끊긴다.
+         * 실패는 조용히 넘긴다 — 못 받으면 그 달은 도트 없이 남는다. 여기서 오류를 띄우면 날짜를
+         * 고르려던 흐름만 끊긴다.
          */
         private fun loadMonthlyRecords(month: YearMonth) {
+            // 실행 전에 표시한다. 같은 달 요청이 연달아 오면 앞의 조회가 시작되기 전이라도 한 번만 부른다.
             if (!loadedRecordMonths.add(month)) return
-            safeLaunch(onError = { loadedRecordMonths.remove(month) }) {
-                getMonthlyDailyRecordsUseCase(month)
-                    .onSuccess { records ->
-                        val saved =
-                            records
-                                .filter { it.status == DailyRecordStatus.SAVED }
-                                .map(MonthlyDailyRecord::recordDate)
-                        updateState {
-                            // 그 달의 이전 결과를 걷어내고 다시 채운다 — 기록이 지워졌을 수도 있다.
-                            copy(
-                                savedRecordDates =
-                                    savedRecordDates.filterNotTo(mutableSetOf()) { YearMonth.from(it) == month } + saved,
-                            )
-                        }
-                    }.onFailure { loadedRecordMonths.remove(month) }
+            safeLaunch(onError = { loadedRecordMonths.remove(month) }) { fetchMonthlyRecords(month) }
+        }
+
+        /**
+         * 한 달의 기록을 받아 초안·저장 날짜로 나눠 담는다.
+         *
+         * 그 달의 이전 결과를 걷어내고 다시 채운다 — 다른 화면에서 저장하거나 지웠을 수 있다. 상태를
+         * 모르는 기록(필드 누락·미지 literal)은 어느 쪽에도 넣지 않는다 — 모르는 값을 초안으로 읽으면
+         * 열어 볼 것이 없는 날을 열게 한다.
+         */
+        private suspend fun fetchMonthlyRecords(month: YearMonth) {
+            loadedRecordMonths.add(month)
+            val records =
+                try {
+                    getMonthlyDailyRecordsUseCase(month).getOrThrow()
+                } catch (error: Throwable) {
+                    // 못 받은 달을 받은 것으로 남기면 피커가 그 달을 다시 부르지 않는다.
+                    loadedRecordMonths.remove(month)
+                    throw error
+                }
+            val saved = records.datesWith(DailyRecordStatus.SAVED)
+            val drafts = records.datesWith(DailyRecordStatus.DRAFT)
+            updateState {
+                copy(
+                    savedRecordDates = savedRecordDates.filterNotTo(mutableSetOf()) { YearMonth.from(it) == month } + saved,
+                    draftRecordDates = draftRecordDates.filterNotTo(mutableSetOf()) { YearMonth.from(it) == month } + drafts,
+                )
             }
         }
+
+        private fun List<MonthlyDailyRecord>.datesWith(status: DailyRecordStatus): Set<LocalDate> =
+            filter { it.status == status }.mapTo(mutableSetOf(), MonthlyDailyRecord::recordDate)
+
+        /**
+         * 고른 날짜의 서버 기록을 다시 판정한다. CTA `타임라인 확인하기` 의 근거다.
+         *
+         * 판정은 **고른 날짜의 단건 조회 하나**로 한다. 응답에 저장 상태와 이벤트가 함께 오므로 월별 조회를
+         * 기다리지 않는다 — 기다리면 왕복이 둘이라 버튼이 한 박자 늦게 바뀐다. 이벤트까지 보는 이유는
+         * 서버가 생성 요청을 받으면 AI 로 보내기 전에 기록부터 만들고, 실패한 작업이 남긴 빈 기록도 지우지
+         * 않기 때문이다. 월별 조회는 달력 도트를 위해 따로 새로 받는다.
+         *
+         * 판정이 끝나기 전에 날짜가 바뀌면 결과를 버린다. 실패하면 받아 둔 판정을 그대로 둔다.
+         */
+        private fun refreshSelectedRecord() {
+            val date = state.value.selectedDate
+            safeLaunch(onError = {}) { fetchMonthlyRecords(YearMonth.from(date)) }
+            recordStateJob?.cancel()
+            // 생성 중인 날짜는 CTA 가 제작중으로 먼저 잡는다. 아직 이벤트가 없을 기록을 묻지 않는다.
+            if (state.value.draftStatus.isDateLocked) return
+            recordStateJob = safeLaunch(onError = {}) { applySelectedRecord(date, recordStateOf(date)) }
+        }
+
+        private suspend fun recordStateOf(date: LocalDate): HomeRecordState =
+            when (val outcome = getDailyRecordUseCase(date).getOrThrow()) {
+                is DailyRecordReadOutcome.Record -> outcome.value.toHomeRecordState()
+                DailyRecordReadOutcome.Unavailable -> HomeRecordState.NONE
+            }
+
+        /** 상태를 모르는 기록은 저장으로 확인되지 않았으므로 초안으로 본다([DailyTimeline] 계약). */
+        private fun DailyTimeline.toHomeRecordState(): HomeRecordState =
+            when {
+                status == DailyRecordStatus.SAVED -> HomeRecordState.SAVED
+                events.isEmpty() -> HomeRecordState.EMPTY_DRAFT
+                else -> HomeRecordState.DRAFT
+            }
+
+        private fun applySelectedRecord(
+            date: LocalDate,
+            record: HomeRecordState,
+        ) {
+            updateState { if (selectedDate == date) copy(selectedRecord = record) else this }
+        }
+
+        /**
+         * 받아 둔 달로 곧바로 판정한다. 날짜를 옮기는 순간에 쓰고, 단건 조회가 뒤이어 바로잡는다.
+         *
+         * 초안은 이벤트를 확인하기 전에도 **먼저 연다.** 확인까지 기다리면 달력에서 초안 날짜를 골랐는데
+         * `만들기` 가 한 박자 머물다 바뀐다(실기기 확인). 빈 초안은 생성이 실패해 남은 것이라 드물고,
+         * 그때만 `확인하기` 가 잠깐 보였다가 `만들기` 로 돌아간다.
+         */
+        private fun HomeUiState.cachedRecordState(date: LocalDate): HomeRecordState =
+            when (date) {
+                in savedRecordDates -> HomeRecordState.SAVED
+                in draftRecordDates -> HomeRecordState.DRAFT
+                else -> HomeRecordState.NONE
+            }
 
         /**
          * 카드 건수를 다시 센다.
@@ -481,9 +577,9 @@ class HomeViewModel
 
         private fun selectDate(date: LocalDate) {
             if (state.value.isDateLocked) return
-            // 피커가 회색으로 만들기 전에 고른 날짜가 뒤늦게 저장됨으로 판정될 수 있다. 화면
-            // 표시와 별개로 경계에서 한 번 더 막는다 — 서버가 409 로 거절할 날짜다.
-            if (date in state.value.savedRecordDates) return
+            // 피커가 막는 날짜를 경계에서 한 번 더 막는다 — 보존 기간 밖은 기기의 재료가 이미 지워졌다.
+            // 저장된 날짜는 막지 않는다. 고르면 CTA 가 `타임라인 확인하기` 로 그 기록을 연다.
+            if (!isSelectableRecordDate(date, LocalDate.now(zone), state.value.retentionDays)) return
             hasUserSelectedDate = true
             // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
             startAutoCollectionAhead()
@@ -498,12 +594,14 @@ class HomeViewModel
                         draftStatus = DraftCreationStatus.IDLE,
                         draftRetryMode = null,
                         draftMessage = null,
+                        selectedRecord = cachedRecordState(date),
                     )
                 next
                     .withSourceSummary(sourceItems, photoCandidates)
                     .withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value)
             }
             onRecordWindowChanged()
+            refreshSelectedRecord()
         }
 
         private fun showTimeSheet(field: HomeTimeField) {
@@ -887,13 +985,17 @@ class HomeViewModel
                 draftTaskCoordinator.discard()
             }
 
-        private fun viewDraft() =
-            safeLaunch {
-                if (state.value.draftStatus != DraftCreationStatus.SUCCESS) return@safeLaunch
-                val trackingState =
-                    draftTaskCoordinator.state.value as? DraftTaskTrackingState.Success ?: return@safeLaunch
-                navigationHelper.navigateTo(TimelinePage(trackingState.task.recordDate))
-            }
+        /**
+         * 고른 날짜의 타임라인을 연다.
+         *
+         * 추적 중인 작업의 완료에 기대지 않는다 — 앱을 다시 켜면 완료 표시가 없고, 서버 기록만으로도
+         * `타임라인 확인하기` 가 뜬다. 완료 표시가 있을 때도 고른 날짜가 곧 작업 날짜다(홈이 맞춘다).
+         */
+        private fun viewDraft() {
+            val current = state.value
+            if (current.timelineButtonStatus != DraftCreationStatus.SUCCESS) return
+            navigationHelper.navigateTo(TimelinePage(current.selectedDate))
+        }
 
         /**
          * 원천 카드에서 상세로 들어간다.

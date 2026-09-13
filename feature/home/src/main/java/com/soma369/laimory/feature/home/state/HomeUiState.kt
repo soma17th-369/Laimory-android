@@ -64,16 +64,29 @@ data class HomeUiState(
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
     /**
-     * 이미 저장이 끝난 기록의 날짜. 날짜 피커에서 고를 수 없게 하는 데 쓴다.
+     * 저장이 끝난 기록의 날짜. 달력에 `primary` 도트를 찍는다.
      *
-     * 서버가 그 날짜의 초안 생성을 409 `-1003` 으로 거절하므로, 고르게 두면 사진까지 다 고른 뒤
-     * 마지막에야 막힌다. **초안(DRAFT) 날짜는 여기 없다** — 서버가 이어 붙이기로 받아 주므로
-     * 다시 만들 수 있는 날이다.
-     *
-     * 피커가 보여 주는 달만 담긴다. 아직 받지 못한 달은 비어 있고, 그때는 서버 거절이 최후
-     * 방어선으로 남는다.
+     * 받아 온 달만 담긴다 — 피커가 보여 주는 달과 고른 날짜의 달. 아직 받지 못한 달은 비어 있다.
      */
     val savedRecordDates: Set<LocalDate> = emptySet(),
+    /**
+     * 아직 저장하기를 누르지 않은 초안의 날짜. 달력에 `secondary` 도트를 찍는다.
+     *
+     * 생성 중이거나 실패해 이벤트가 없는 DRAFT 도 들어온다 — 서버가 AI 로 보내기 전에 기록부터 만든다.
+     * CTA 판정은 [selectedRecord] 가 그것까지 가려서 한다. 받는 범위는 [savedRecordDates] 와 같다.
+     */
+    val draftRecordDates: Set<LocalDate> = emptySet(),
+    /**
+     * 고른 날짜의 서버 기록. 앱을 다시 켜도 CTA 가 이것으로 `타임라인 확인하기` 를 되찾는다.
+     *
+     * 코디네이터의 완료 표시는 완료를 소비하면서 영속을 지우므로 프로세스를 넘기지 못한다.
+     */
+    val selectedRecord: HomeRecordState = HomeRecordState.NONE,
+    /**
+     * 수집 보존 일수. 초안을 만들 날짜는 오늘을 포함해 이만큼만 고른다 — 그보다 앞선 날은 기기의
+     * 재료가 이미 지워져 만들어도 빈 초안이 된다. null 이면 제한하지 않는다(미리보기·상태 시험).
+     */
+    val retentionDays: Int? = null,
 ) : UiState {
     /**
      * 지금 설정으로 만들어지는 기록 창. 정책을 벗어나면 null 이라 초안 생성이 막힌다.
@@ -167,9 +180,42 @@ internal val DraftCreationStatus.isInputLocked: Boolean
 internal val HomeUiState.isDateLocked: Boolean
     get() = isSubmitting || draftStatus.isDateLocked
 
-/** 날짜·시각·사진·원천 상세를 모두 잠그는 구간. */
+/** 날짜·시각·사진·원천 상세를 모두 잠그는 구간. 열어 볼 기록이 있는 날은 만들 것이 없어 함께 잠근다. */
 internal val HomeUiState.isInputLocked: Boolean
-    get() = isSubmitting || draftStatus.isInputLocked
+    get() = isSubmitting || timelineButtonStatus.isInputLocked
+
+/**
+ * 홈 CTA 가 보여 줄 변형. 버튼 모양은 시안대로 셋이고, 여기서 바뀌는 것은 고르는 근거뿐이다.
+ *
+ * 1. 고른 날짜의 작업이 생성 중이면 제작중 — 지금 도는 작업이 지난 조회보다 앞선다.
+ * 2. 서버에 열어 볼 기록(저장 완료·내용 있는 초안)이 있거나 방금 완료를 받았으면 확인하기.
+ * 3. 그 외는 만들기다. 추적 실패도 여기 오고, 실패는 스낵바가 알린다.
+ *
+ * **로컬 실패가 서버 기록을 가리지 않는다.** 하루 넘게 꺼져 있다 켜면 끝난 작업이 서버에서 만료돼
+ * 추적은 실패로 끝나지만, 기록은 멀쩡히 있다.
+ */
+internal val HomeUiState.timelineButtonStatus: DraftCreationStatus
+    get() =
+        when {
+            draftStatus.isDateLocked -> draftStatus
+            draftStatus == DraftCreationStatus.SUCCESS || selectedRecord.isViewable -> DraftCreationStatus.SUCCESS
+            else -> draftStatus
+        }
+
+/**
+ * 초안을 만들 날짜로 고를 수 있는지. 미래와 수집 보존 기간 밖은 고를 수 없다.
+ *
+ * 경계는 수집 정리 정책과 같은 캘린더 날짜 단위다 — 보존 30일이면 오늘과 직전 29일이다.
+ */
+internal fun isSelectableRecordDate(
+    date: LocalDate,
+    today: LocalDate,
+    retentionDays: Int?,
+): Boolean {
+    if (date.isAfter(today)) return false
+    if (retentionDays == null) return true
+    return !date.isBefore(today.minusDays(retentionDays - 1L))
+}
 
 /**
  * 기록 창 안에 모인 것을 홈 카드가 그릴 값으로 옮긴다.
