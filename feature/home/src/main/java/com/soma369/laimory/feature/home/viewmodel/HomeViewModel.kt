@@ -18,6 +18,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfi
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
+import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -481,43 +482,34 @@ class HomeViewModel
         /**
          * 고른 날짜의 서버 기록을 다시 판정한다. CTA `타임라인 확인하기` 의 근거다.
          *
-         * 그 달을 늘 새로 받는다 — 화면 복귀·완료처럼 서버 상태가 바뀌었을 때 부르므로 받아 둔 값을 믿지
-         * 않는다. 초안이면 이벤트가 있는지 단건 조회로 가린다. 서버는 생성 요청을 받으면 AI 로 보내기
-         * 전에 기록부터 만들고, 실패한 작업이 남긴 빈 기록도 지우지 않는다. 단건 조회는 고른 날짜 하나에만 한다.
+         * 판정은 **고른 날짜의 단건 조회 하나**로 한다. 응답에 저장 상태와 이벤트가 함께 오므로 월별 조회를
+         * 기다리지 않는다 — 기다리면 왕복이 둘이라 버튼이 한 박자 늦게 바뀐다. 이벤트까지 보는 이유는
+         * 서버가 생성 요청을 받으면 AI 로 보내기 전에 기록부터 만들고, 실패한 작업이 남긴 빈 기록도 지우지
+         * 않기 때문이다. 월별 조회는 달력 도트를 위해 따로 새로 받는다.
          *
-         * 판정이 끝나기 전에 날짜가 바뀌면 결과를 버린다. 실패는 조용히 `만들기` 로 둔다 — 서버가 초안
-         * 생성 요청에서 저장된 날짜는 막고 초안은 재사용하므로, 잘못 눌러도 기록이 깨지지 않는다.
+         * 판정이 끝나기 전에 날짜가 바뀌면 결과를 버린다. 실패하면 받아 둔 판정을 그대로 둔다.
          */
         private fun refreshSelectedRecord() {
             val date = state.value.selectedDate
+            safeLaunch(onError = {}) { fetchMonthlyRecords(YearMonth.from(date)) }
             recordStateJob?.cancel()
-            recordStateJob =
-                safeLaunch(
-                    onError = { error ->
-                        if (error !is CancellationException) applySelectedRecord(date, HomeRecordState.NONE)
-                    },
-                ) {
-                    fetchMonthlyRecords(YearMonth.from(date))
-                    val current = state.value
-                    val record =
-                        when {
-                            date in current.savedRecordDates -> HomeRecordState.SAVED
-                            date !in current.draftRecordDates -> HomeRecordState.NONE
-                            // 생성 중인 날짜는 CTA 가 제작중으로 먼저 잡는다. 아직 이벤트가 없을 기록을 묻지 않는다.
-                            current.draftStatus.isDateLocked -> HomeRecordState.EMPTY_DRAFT
-                            else -> draftRecordState(date)
-                        }
-                    applySelectedRecord(date, record)
-                }
+            // 생성 중인 날짜는 CTA 가 제작중으로 먼저 잡는다. 아직 이벤트가 없을 기록을 묻지 않는다.
+            if (state.value.draftStatus.isDateLocked) return
+            recordStateJob = safeLaunch(onError = {}) { applySelectedRecord(date, recordStateOf(date)) }
         }
 
-        /** 초안에 열어 볼 이벤트가 있는지 단건 조회로 가린다. */
-        private suspend fun draftRecordState(date: LocalDate): HomeRecordState =
+        private suspend fun recordStateOf(date: LocalDate): HomeRecordState =
             when (val outcome = getDailyRecordUseCase(date).getOrThrow()) {
-                is DailyRecordReadOutcome.Record ->
-                    if (outcome.value.events.isEmpty()) HomeRecordState.EMPTY_DRAFT else HomeRecordState.DRAFT
-                // 월별 조회와 단건 조회 사이에 지워졌다.
+                is DailyRecordReadOutcome.Record -> outcome.value.toHomeRecordState()
                 DailyRecordReadOutcome.Unavailable -> HomeRecordState.NONE
+            }
+
+        /** 상태를 모르는 기록은 저장으로 확인되지 않았으므로 초안으로 본다([DailyTimeline] 계약). */
+        private fun DailyTimeline.toHomeRecordState(): HomeRecordState =
+            when {
+                status == DailyRecordStatus.SAVED -> HomeRecordState.SAVED
+                events.isEmpty() -> HomeRecordState.EMPTY_DRAFT
+                else -> HomeRecordState.DRAFT
             }
 
         private fun applySelectedRecord(
@@ -528,15 +520,16 @@ class HomeViewModel
         }
 
         /**
-         * 받아 둔 달로 바로 알 수 있는 만큼만 판정한다. 날짜를 옮긴 직전 한순간에 쓴다.
+         * 받아 둔 달로 곧바로 판정한다. 날짜를 옮기는 순간에 쓰고, 단건 조회가 뒤이어 바로잡는다.
          *
-         * 초안은 이벤트를 확인하기 전까지 열지 않는다 — 빈 기록으로 보내는 쪽이 한순간 `만들기` 가
-         * 보이는 쪽보다 나쁘다.
+         * 초안은 이벤트를 확인하기 전에도 **먼저 연다.** 확인까지 기다리면 달력에서 초안 날짜를 골랐는데
+         * `만들기` 가 한 박자 머물다 바뀐다(실기기 확인). 빈 초안은 생성이 실패해 남은 것이라 드물고,
+         * 그때만 `확인하기` 가 잠깐 보였다가 `만들기` 로 돌아간다.
          */
         private fun HomeUiState.cachedRecordState(date: LocalDate): HomeRecordState =
             when (date) {
                 in savedRecordDates -> HomeRecordState.SAVED
-                in draftRecordDates -> HomeRecordState.EMPTY_DRAFT
+                in draftRecordDates -> HomeRecordState.DRAFT
                 else -> HomeRecordState.NONE
             }
 

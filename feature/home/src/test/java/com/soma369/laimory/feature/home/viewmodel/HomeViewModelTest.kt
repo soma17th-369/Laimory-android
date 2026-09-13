@@ -338,6 +338,8 @@ class HomeViewModelTest {
             val saved = LocalDate.now(ZoneId.systemDefault()).minusDays(1)
             recordRepository.monthlyRecords =
                 mapOf(YearMonth.from(saved) to listOf(MonthlyDailyRecord(saved, DailyRecordStatus.SAVED, null)))
+            recordRepository.dailyRecordByDate =
+                mapOf(saved to pastTimeline(dailyRecordId = 1L, date = saved).copy(status = DailyRecordStatus.SAVED))
             val viewModel = createViewModel()
             runCurrent()
 
@@ -650,6 +652,49 @@ class HomeViewModelTest {
 
             assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
             assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+        }
+
+    @Test
+    fun `달력의 초안 날짜를 고르면 단건 조회를 기다리지 않고 바로 확인하기가 된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 조회를 기다리면 `만들기` 가 한 박자 머물다 바뀐다. 달력이 받아 둔 기록으로 먼저 바꾼다.
+            val draft = LocalDate.now(ZoneId.systemDefault()).minusDays(1)
+            val month = YearMonth.from(draft)
+            recordRepository.monthlyRecords =
+                mapOf(month to listOf(MonthlyDailyRecord(draft, DailyRecordStatus.DRAFT, null)))
+            recordRepository.dailyRecordByDate =
+                mapOf(draft to pastTimeline(dailyRecordId = 1L, date = draft, events = emptyList()))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.LoadMonthlyRecords(month))
+            runCurrent()
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.dailyRecordGate = gate
+
+            viewModel.sendIntent(HomeUiIntent.SelectDate(draft))
+            runCurrent()
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+
+            // 단건 조회가 빈 초안이라고 알려 주면 만들기로 되돌린다.
+            gate.complete(Unit)
+            runCurrent()
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.timelineButtonStatus)
+        }
+
+    @Test
+    fun `월별 조회를 기다리지 않고 단건 조회 하나로 판정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 앱을 다시 켠 직후엔 받아 둔 달이 없다. 왕복이 하나여야 버튼이 늦지 않다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+
+            assertEquals(HomeRecordState.SAVED, viewModel.state.value.selectedRecord)
         }
 
     @Test
@@ -1580,8 +1625,12 @@ class HomeViewModelTest {
         var dailyRecordByDate: Map<LocalDate, DailyTimeline> = emptyMap()
         var dailyRecordCallCount = 0
 
+        /** 값을 넣으면 그때까지 단건 조회가 응답하지 않는다. 조회를 기다리는 구간을 재현한다. */
+        var dailyRecordGate: CompletableDeferred<Unit>? = null
+
         override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline {
             dailyRecordCallCount++
+            dailyRecordGate?.await()
             return dailyRecordByDate[recordDate] ?: error("준비하지 않은 날짜: $recordDate")
         }
 
