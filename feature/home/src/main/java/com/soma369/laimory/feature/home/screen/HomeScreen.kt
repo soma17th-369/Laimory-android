@@ -214,6 +214,8 @@ private fun HomeContent(
         HomeDatePickerDialog(
             initialDate = state.selectedDate,
             savedDates = state.savedRecordDates,
+            draftDates = state.draftRecordDates,
+            retentionDays = state.retentionDays,
             onSelect = { onIntent(HomeUiIntent.SelectDate(it)) },
             onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },
