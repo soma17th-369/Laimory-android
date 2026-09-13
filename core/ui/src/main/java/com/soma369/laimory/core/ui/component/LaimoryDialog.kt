@@ -236,8 +236,8 @@ private fun LaimoryConsentDialogCheckedDarkPreview() {
     }
 }
 
-/** 세로 공간이 짧고 글꼴이 큰 조건. 본문이 스크롤되고 체크박스·두 버튼에 도달할 수 있어야 한다. */
-@Preview(name = "Dialog / Consent / Short + Large font", showBackground = true, widthDp = 360, heightDp = 320, fontScale = 1.5f)
+/** 세로 공간이 가장 짧은 조건. 본문이 스크롤되고 체크박스·두 버튼에 도달할 수 있어야 한다. */
+@Preview(name = "Dialog / Consent / Short", showBackground = true, widthDp = 360, heightDp = 320)
 @Composable
 private fun LaimoryConsentDialogCompactPreview() {
     LaimoryTheme {

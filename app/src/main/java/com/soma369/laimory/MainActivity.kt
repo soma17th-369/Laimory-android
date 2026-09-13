@@ -1,6 +1,8 @@
 package com.soma369.laimory
 
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -103,6 +105,25 @@ class MainActivity : ComponentActivity() {
      * 고정한 테마를 따르지 못한다.
      */
     private val themeMode = MutableStateFlow<AppThemeMode?>(null)
+
+    /**
+     * 글자 크기를 기기 글꼴 설정에서 떼어낸다 — 배율을 고정해 어느 기기에서나 같은 크기로 그린다.
+     * 화면 값은 전부 dp 라 글자만 커지거나 작아지면 시안과 다르게 보이고 줄이 잘린다.
+     *
+     * 고정값이 1.0 이 아니라 0.8 인 이유: 화면들을 확정해 온 개발 기기의 글꼴 설정이 0.8 이라,
+     * 지금까지 눈으로 맞춰 온 글자:여백 비율이 시안 수치의 0.8 배다. [LaimoryTypography] 값은
+     * 시안과 1:1 로 두고 여기서 한 번만 줄인다 — 크기를 다시 논의하면 이 숫자만 바꾼다.
+     *
+     * 테마에서 `LocalDensity` 를 덮지 않는 이유: 다이얼로그·바텀시트·팝업은 자기 창의 density 를
+     * 새로 만들어서 거기서 샌다. 액티비티 설정을 덮으면 이 컨텍스트로 뜨는 창까지 함께 걸린다.
+     *
+     * 빈 `Configuration` 은 `fontScale` 만 덮는 델타다. 현재 설정을 통째로 복사하면 `uiMode` 까지
+     * 얼어붙어, 액티비티가 직접 받는 다크 전환(`configChanges="uiMode"`)이 깨진다.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        applyOverrideConfiguration(Configuration().apply { fontScale = 0.8f })
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()

@@ -150,7 +150,7 @@ private fun LoginScreen(
                     .fillMaxSize()
                     // 작은 화면이나 글자 확대에서 브랜드·버튼·약관이 잘리지 않도록 세로로 흘려 보낸다.
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = Spacing.extraLarge3)
+                    .padding(horizontal = Spacing.large)
                     .padding(top = BrandTopPadding, bottom = ContentBottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2),
@@ -228,7 +228,8 @@ private fun LoginActions(
     onProviderClick: (SocialLoginProvider) -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        // 시안은 화면 좌우 16 안에서 버튼 묶음만 16 을 더 들인다 — 버튼은 32, 약관 안내는 16.
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
         verticalArrangement = Arrangement.spacedBy(Spacing.medium),
     ) {
         SocialLoginButton(
@@ -347,7 +348,7 @@ private fun LegalNotice(
                 appendTermLink("개인정보 처리방침", links.privacyPolicy, linkStyle, onOpenTerm)
                 append("에\n동의하고 만 14세 이상임을 확인하는 것으로 간주합니다.")
             },
-        style = MaterialTheme.typography.bodySmall.copy(fontSize = LegalFontSize, lineHeight = LegalLineHeight),
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = SUBTLE_TEXT_ALPHA),
         textAlign = TextAlign.Center,
     )
@@ -368,8 +369,6 @@ private val SocialButtonBorderWidth = 1.5.dp
 private val ErrorSlotMinHeight = 41.dp
 
 private val TaglineFontSize = 14.sp
-private val LegalFontSize = 12.sp
-private val LegalLineHeight = 18.sp
 
 /** Figma 의 보조 문구 투명도(60%). */
 private const val SUBTLE_TEXT_ALPHA = 0.6f
@@ -424,21 +423,6 @@ private fun LoginCompactPreview() {
     LaimoryTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             LoginScreen(PaddingValues(), LoginUiState(), {}, {})
-        }
-    }
-}
-
-@Preview(name = "Login 큰 글자", showBackground = true, widthDp = 360, heightDp = 800, fontScale = 1.5f)
-@Composable
-private fun LoginLargeFontPreview() {
-    LaimoryTheme {
-        Surface(color = MaterialTheme.colorScheme.background) {
-            LoginScreen(
-                innerPadding = PaddingValues(),
-                state = LoginUiState(errorMessage = "소셜 로그인을 완료하지 못했습니다. 다시 시도해 주세요."),
-                onProviderClick = {},
-                onOpenTerm = {},
-            )
         }
     }
 }

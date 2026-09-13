@@ -185,6 +185,8 @@ Foundation(Figma)의 타입 기준은 **Pretendard**이다. 매핑 스펙은 이
 | labelMedium | 12 / 16 | Medium |
 | labelSmall | 11 / 16 | Medium |
 
+위 표는 Figma 수치 그대로다. 다만 **앱은 액티비티에서 글꼴 배율을 0.8 로 고정**한다(`attachBaseContext`) — 기기 글꼴 크기 설정을 따르지 않고, 어느 기기에서나 표 값의 0.8 배로 그린다(`bodyLarge` 16 → 12.8dp). 화면들을 확정해 온 기기의 글꼴 설정이 0.8 이라 그 크기가 기준이 됐다. 그래서 **코드 값은 시안과 1:1 로 두고 배율 한 곳에서만 줄인다** — 시안과 픽셀로 대조할 때는 글자에 이 배율을 곱해서 본다. 기기 설정을 따르게 되돌릴 때는 고정값 대신 상한(`coerceAtMost`)을 건다.
+
 자간(letterSpacing)은 Figma가 **% 단위**라 Compose에서는 `.em`으로 환산한다 (`% / 100`). 예: Display `-0.5%` → `(-0.005).em`. Figma 자간 값: Display/Large -0.5%, Display/Small -0.4%, Headline/Large -0.3%, Headline/Medium -0.2%, Title/Large -0.1%, Label/Large 0.1%, Label/Medium 0.2%, Label/Small 0.3%, 나머지 0.
 
 ```kotlin
