@@ -191,7 +191,7 @@ fun LaimoryNavGraph(
 private const val COMPLETION_REVEAL_MILLIS = 800L
 
 /** 완료 스낵바의 기본 표시 시간. 접근성 설정이 권하면 호스트가 늘린다. */
-private const val COMPLETION_SNACKBAR_MILLIS = 3_000L
+private const val COMPLETION_SNACKBAR_MILLIS = 5_000L
 
 /**
  * 인증과 온보딩을 함께 보고 앱 루트를 하나로 정한다. `null` 이면 아직 정할 수 없다는 뜻이다.
