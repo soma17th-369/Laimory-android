@@ -698,6 +698,29 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `복원한 작업이 생성 중에서 만료로 끝나면 서버 기록을 다시 판정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 앱을 다시 켜면 저장된 작업이 생성 중으로 복원되고, 그동안 홈 복귀의 판정은 단건 조회를 건너뛴다.
+            // 폴링이 서버에서 이미 만료됐다고 알려 주면 그때 다시 봐야 초안을 되찾는다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(today) to listOf(MonthlyDailyRecord(today, DailyRecordStatus.DRAFT, null)))
+            recordRepository.dailyRecordByDate = mapOf(today to pastTimeline(dailyRecordId = 1L, date = today))
+            draftTaskCoordinator.emitProcessing(today)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+            assertEquals(0, recordRepository.dailyRecordCallCount)
+
+            draftTaskCoordinator.emitUnavailable(today)
+            runCurrent()
+
+            assertEquals(1, recordRepository.dailyRecordCallCount)
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+        }
+
+    @Test
     fun `SUCCESS 카드 본문에서 날짜 선택을 요청하면 이동하지 않고 모달을 연다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("first"))

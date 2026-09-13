@@ -258,6 +258,7 @@ class HomeViewModel
                 draftTaskCoordinator.state.collect { trackingState ->
                     val previousWindow = state.value.recordDateWindow(zone)
                     val previousDate = state.value.selectedDate
+                    val wasInProgress = state.value.draftStatus.isDateLocked
                     updateState {
                         if (hasUserSelectedDate) {
                             withDraftTrackingForSelectedDate(trackingState)
@@ -268,10 +269,16 @@ class HomeViewModel
                     if (state.value.recordDateWindow(zone) != previousWindow) {
                         onRecordWindowChanged()
                     }
-                    // 작업 날짜로 맞춰졌으면 이전 날짜의 판정을 버리고, 완료됐으면 서버에 기록이 생겼다.
+                    // 작업 날짜로 맞춰졌으면 이전 날짜의 판정을 버린다.
                     val isDateAligned = state.value.selectedDate != previousDate
                     if (isDateAligned) updateState { copy(selectedRecord = cachedRecordState(selectedDate)) }
-                    if (isDateAligned || trackingState is DraftTaskTrackingState.Success) refreshSelectedRecord()
+                    // 생성 중에는 단건 조회를 건너뛰므로 추적이 끝나면(완료·실패·만료) 다시 봐야 한다. 앱을 다시 켜면
+                    // 복원한 작업이 생성 중으로 시작했다가 서버에서 이미 만료돼 `Unavailable` 로 끝나는데, 그때도
+                    // 서버에는 내용 있는 초안이 남아 있다.
+                    val hasLeftProgress = wasInProgress && !state.value.draftStatus.isDateLocked
+                    if (isDateAligned || hasLeftProgress || trackingState is DraftTaskTrackingState.Success) {
+                        refreshSelectedRecord()
+                    }
                 }
             }
 
