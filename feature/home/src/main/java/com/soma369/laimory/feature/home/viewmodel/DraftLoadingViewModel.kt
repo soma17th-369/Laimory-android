@@ -17,7 +17,10 @@ import com.soma369.laimory.feature.home.loading.DraftLoadingUiIntent
 import com.soma369.laimory.feature.home.loading.DraftLoadingUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Duration
 import javax.inject.Inject
@@ -93,30 +96,40 @@ class DraftLoadingViewModel
         }
 
         /**
-         * 경과 시간에 따라 앞 세 줄을 차례로 완료로 바꾼다.
+         * 경과 시간에 따라 앞 세 줄을 차례로 완료로 바꾼다. **추적하는 작업이 바뀌면 다시 돈다.**
          *
-         * 복원 시에도 화면 표시를 위해 서버를 다시 부르지 않는다 — 작업의 `requestedAt`으로 경과를
-         * 계산하므로 재진입해도 연출이 처음부터 다시 시작하지 않는다.
+         * 이 ViewModel 은 Activity 범위라 로딩 화면을 다시 열어도 새로 만들어지지 않는다 — `NavDisplay` 에
+         * 엔트리 범위 ViewModel 을 붙이지 않았다. 연출을 `init` 에서 한 번 돌리고 작업이 끝날 때 멈추면,
+         * 다음 작업의 로딩 화면은 이전 작업의 마지막 모습에서 굳는다(직전이 성공이면 네 줄 모두 완료).
+         * 그래서 작업마다 새로 시작한다. 경과는 새 작업의 `requestedAt` 으로 세므로 처음 줄부터 진행한다.
+         *
+         * 같은 작업으로 재진입하면 이어서 간다 — 화면 표시를 위해 서버를 다시 부르지 않고, 작업의
+         * `requestedAt` 으로 경과를 계산하므로 연출이 처음부터 다시 시작하지 않는다.
          */
         private fun tickStages() {
             safeLaunch {
-                while (true) {
-                    val tracking = coordinator.state.value
-                    val task = (tracking as? DraftTaskTrackingState.WithTask)?.task
-                    val elapsed = elapsedOf(tracking, task)
-                    val isCompleted = tracking is DraftTaskTrackingState.Success
-                    updateState {
-                        copy(
-                            stageStates =
-                                DraftLoadingStage.entries.associateWith { stage ->
-                                    DraftLoadingStageMath.stateOf(stage, elapsed, isCompleted)
-                                },
-                        )
+                coordinator.state
+                    .map { (it as? DraftTaskTrackingState.WithTask)?.task?.taskId }
+                    .distinctUntilChanged()
+                    .collectLatest { taskId ->
+                        while (true) {
+                            val tracking = coordinator.state.value
+                            val task = (tracking as? DraftTaskTrackingState.WithTask)?.task
+                            val elapsed = elapsedOf(tracking, task)
+                            val isCompleted = tracking is DraftTaskTrackingState.Success
+                            updateState {
+                                copy(
+                                    stageStates =
+                                        DraftLoadingStage.entries.associateWith { stage ->
+                                            DraftLoadingStageMath.stateOf(stage, elapsed, isCompleted)
+                                        },
+                                )
+                            }
+                            // 끝난 작업이나 추적할 작업이 없으면 더 움직일 연출이 없다. 다음 작업이 오면 다시 돈다.
+                            if (taskId == null || tracking.isTerminal()) break
+                            delay(STAGE_TICK)
+                        }
                     }
-                    // 끝난 작업에는 더 움직일 연출이 없다.
-                    if (tracking.isTerminal()) return@safeLaunch
-                    delay(STAGE_TICK)
-                }
             }
         }
 

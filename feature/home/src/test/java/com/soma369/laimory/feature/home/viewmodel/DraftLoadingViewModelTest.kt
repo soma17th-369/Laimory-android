@@ -122,6 +122,27 @@ class DraftLoadingViewModelTest {
             assertEquals(RETENTION_DAYS, viewModel.state.value.retentionDays)
         }
 
+    @Test
+    fun `다음 작업이 오면 단계 연출을 처음부터 다시 한다`() =
+        loadingTest {
+            // 이 ViewModel 은 Activity 범위라 로딩 화면을 다시 열어도 새로 만들어지지 않는다. 연출이 이전
+            // 작업에서 멈추면 다음 작업의 로딩 화면이 모두 완료인 채로 뜬다.
+            coordinator.emit(DraftTaskTrackingState.Processing(task))
+            val viewModel = createViewModel()
+            runCurrent()
+            coordinator.emit(DraftTaskTrackingState.Success(task))
+            runCurrent()
+
+            val next = ActiveDraftTask(taskId = "task-2", recordDate = date, requestedAt = requestedAt)
+            coordinator.emit(DraftTaskTrackingState.Processing(next))
+            runCurrent()
+
+            val states = viewModel.state.value.stageStates
+            assertEquals(DraftLoadingStageState.IN_PROGRESS, states[DraftLoadingStage.PHOTO])
+            assertEquals(DraftLoadingStageState.PENDING, states[DraftLoadingStage.CALENDAR])
+            assertEquals(DraftLoadingStageState.PENDING, states[DraftLoadingStage.STAY])
+        }
+
     private fun createViewModel() =
         DraftLoadingViewModel(
             coordinator = coordinator,
