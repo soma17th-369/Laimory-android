@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.usecase
 
+import com.soma369.laimory.core.domain.model.collection.HealthPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationContent
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationPrivacyPolicy
@@ -22,6 +23,7 @@ import javax.inject.Singleton
  *
  * 알림은 상한을 적용하기 전에 개인정보 정책을 다시 통과시킨다 — 정제된 목록 하나를
  * 동의 화면과 서버 전송이 함께 쓰므로, 전송 직전 projection 에는 같은 정책을 두지 않는다.
+ * 서버 초안 계약이 받지 않는 건강 지표도 같은 이유로 이 자리에서 뺀다.
  */
 @Singleton
 class PrepareTimelineDraftSelectionUseCase
@@ -43,10 +45,25 @@ class PrepareTimelineDraftSelectionUseCase
             reportsMeasurement: Boolean = true,
         ): Result<DraftSourceItemSelection> =
             runCatching {
-                selectionPolicy.select(window, items.sanitizeNotifications()).getOrThrow().also { selection ->
-                    if (reportsMeasurement && selectionReporter.isEnabled) selectionReporter.reportSelection(selection.report)
-                }
+                selectionPolicy
+                    .select(window, items.withoutServerUnsupportedHealth().sanitizeNotifications())
+                    .getOrThrow()
+                    .also { selection ->
+                        if (reportsMeasurement && selectionReporter.isEnabled) selectionReporter.reportSelection(selection.report)
+                    }
             }
+
+        /**
+         * 서버 초안 계약이 받지 않는 건강 지표를 뺀다 — 지금은 수면이다.
+         *
+         * 서버 `HealthMetric` 은 걸음 수만 받아서, 수면이 한 건만 섞여도 요청 전체가 400 으로 거절된다.
+         * 수집기에서 막지 않는 건 이미 저장된 수면 행이 보존 기간 동안 남아 계속 나가기 때문이고,
+         * 전송 projection 에서 막지 않는 건 확인 다이얼로그 건수에 수면이 남아 표시와 전송이 어긋나기 때문이다.
+         *
+         * 임시 차단이다(#387). 서버가 수면을 받게 되면 걷는다.
+         */
+        private fun List<SourceItem>.withoutServerUnsupportedHealth(): List<SourceItem> =
+            filterNot { (it.payload as? HealthPayload)?.metric == HealthPayload.Metric.SLEEP }
 
         /**
          * 개인정보 정책 도입 전에 저장된 알림을 메모리에서 다시 정제한다.

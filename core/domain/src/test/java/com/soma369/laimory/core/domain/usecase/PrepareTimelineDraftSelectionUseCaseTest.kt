@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.usecase
 
+import com.soma369.laimory.core.domain.model.collection.HealthPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.NotificationPayload
 import com.soma369.laimory.core.domain.model.collection.NotificationPrivacyPolicy
@@ -244,5 +245,27 @@ class PrepareTimelineDraftSelectionUseCaseTest {
         val selection = useCase()(RecordDateWindow.ofDate(date, zone), listOf(photo)).getOrThrow()
 
         assertEquals(listOf("photo"), selection.items.map { it.rawId })
+    }
+
+    @Test
+    fun `서버가 받지 않는 수면은 선택에서 빠지고 걸음 수는 남는다`() {
+        val sleep =
+            item(
+                at(1),
+                HealthPayload(HealthPayload.Metric.SLEEP, 420.0, "minute"),
+                rawId = "sleep",
+            )
+        val steps =
+            item(
+                at(9),
+                HealthPayload(HealthPayload.Metric.STEPS, 8421.0, "count"),
+                rawId = "steps",
+            )
+
+        val selection = useCase()(RecordDateWindow.ofDate(date, zone), listOf(sleep, steps)).getOrThrow()
+
+        assertEquals(listOf("steps"), selection.items.map { it.rawId })
+        // 원본 건수에서도 빼야 확인 다이얼로그가 보여 주는 건강 건수와 전송 건수가 같다.
+        assertEquals(1, selection.report.originalCounts.getValue(ItemType.HEALTH))
     }
 }
