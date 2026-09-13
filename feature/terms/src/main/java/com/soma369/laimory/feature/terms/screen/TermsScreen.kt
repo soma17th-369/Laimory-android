@@ -271,20 +271,18 @@ private fun Actions(
             modifier = Modifier.fillMaxWidth().height(CtaHeight),
             shape = MaterialTheme.shapes.medium,
         ) {
-            if (state.isSubmitting) {
-                CircularProgressIndicator(modifier = Modifier.height(CtaSpinnerSize), strokeWidth = 2.dp)
-            } else {
-                Text(
-                    // 결과가 분명한 문구를 쓴다. `확인` 같은 말로는 무엇에 동의하는지 알 수 없다.
-                    text =
-                        when {
-                            state.hasFailed -> "다시 시도"
-                            state.isStageMode -> "동의하고 계속하기"
-                            else -> "이용약관에 동의하고 시작하기"
-                        },
-                    style = MaterialTheme.typography.titleSmall,
-                )
-            }
+            // 버튼 안에서 돌리지 않는다. 글자가 사라졌다 돌아오면 무엇을 누른 버튼인지가 가려지고,
+            // 기다리는 동안 화면이 멈춘 것처럼 보인다. 보내는 사이에는 눌리지 않는 것으로 충분하다.
+            Text(
+                // 결과가 분명한 문구를 쓴다. `확인` 같은 말로는 무엇에 동의하는지 알 수 없다.
+                text =
+                    when {
+                        state.hasFailed -> "다시 시도"
+                        state.isStageMode -> "동의하고 계속하기"
+                        else -> "이용약관에 동의하고 시작하기"
+                    },
+                style = MaterialTheme.typography.titleSmall,
+            )
         }
 
         // 건너뛸 수는 없지만 다른 계정으로 갈 길은 남긴다. 단계 동의는 앱 루트가 아니라
@@ -304,7 +302,6 @@ private val HeaderTopPadding = 48.dp
 private val BodyMinHeight = 240.dp
 private val ErrorSlotHeight = 40.dp
 private val CtaHeight = 52.dp
-private val CtaSpinnerSize = 18.dp
 
 @Preview(name = "Terms / 동의", showBackground = true, widthDp = 360, heightDp = 720)
 @Composable
