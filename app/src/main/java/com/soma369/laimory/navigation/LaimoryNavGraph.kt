@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
@@ -36,6 +35,8 @@ import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.snackbar.LaimorySnackbarHost
+import com.soma369.laimory.core.ui.component.snackbar.TimedSnackbarVisuals
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.crash.CrashKey
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
@@ -135,14 +136,19 @@ fun LaimoryNavGraph(
             }
             val result =
                 snackbarHostState.showSnackbar(
-                    message = "초안이 완성됐어요",
-                    actionLabel = "보기",
+                    // action 을 달면 Material3 기본 지속 시간이 `Indefinite` 라 누르기 전까지 남고, 그동안
+                    // 뒤이은 스낵바가 전부 막힌다. 시간을 두고, 남은 시간은 호스트가 막대로 보여 준다.
+                    TimedSnackbarVisuals(
+                        message = "초안이 완성됐어요",
+                        actionLabel = "보기",
+                        durationMillis = COMPLETION_SNACKBAR_MILLIS,
+                    ),
                 )
             // 스낵바가 떠 있는 동안 로딩 화면이 올라오면 이 블록이 취소되고 위 분기로 다시 간다.
             // 그래서 소비는 스낵바가 끝난 뒤에 한다.
             withContext(NonCancellable) {
                 if (!currentOnConsumed(completion.taskId)) return@withContext
-                // 스낵바가 닫혀도 완료 상태는 남으므로 홈의 `초안 보기`로 나중에 열 수 있다.
+                // 시간이 다 돼 닫혀도 잃는 것은 없다 — 홈 CTA `타임라인 확인하기` 가 서버 기록으로 그 날짜를 연다.
                 if (result == SnackbarResult.ActionPerformed) backStack.navigateTo(timelineRoute)
             }
         }
@@ -160,7 +166,7 @@ fun LaimoryNavGraph(
 
     CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
         Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+            snackbarHost = { LaimorySnackbarHost(snackbarHostState) },
             bottomBar = {
                 // 탭 루트에서만 노출한다. push 된 일반 화면(수집 등)에서는 숨긴다.
                 if (currentPath != null && appRouteByPath[currentPath]?.isBottomTab == true) {
@@ -183,6 +189,9 @@ fun LaimoryNavGraph(
 
 /** 완료 표시를 보여주는 시간. 넘어가기 전에 `완료`로 바뀌는 것을 알아볼 만큼만 둔다. */
 private const val COMPLETION_REVEAL_MILLIS = 800L
+
+/** 완료 스낵바의 기본 표시 시간. 접근성 설정이 권하면 호스트가 늘린다. */
+private const val COMPLETION_SNACKBAR_MILLIS = 3_000L
 
 /**
  * 인증과 온보딩을 함께 보고 앱 루트를 하나로 정한다. `null` 이면 아직 정할 수 없다는 뜻이다.
