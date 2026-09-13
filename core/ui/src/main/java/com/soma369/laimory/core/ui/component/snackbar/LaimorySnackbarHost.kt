@@ -1,8 +1,5 @@
 package com.soma369.laimory.core.ui.component.snackbar
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,7 +15,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,12 +64,9 @@ private fun TimedSnackbar(
                 visuals.actionLabel != null,
             ) ?: visuals.durationMillis
         }
-    val remaining = remember(data) { Animatable(1f) }
+    var remaining by remember(data) { mutableFloatStateOf(1f) }
     LaunchedEffect(data) {
-        remaining.animateTo(
-            targetValue = 0f,
-            animationSpec = tween(durationMillis = totalMillis.toAnimationMillis(), easing = LinearEasing),
-        )
+        countDownByFrames(totalMillis) { remaining = it }
         // 막대가 끝나는 순간이 곧 닫히는 순간이다. 타이머를 따로 두면 막대가 남았는데 닫히거나 그 반대가 된다.
         data.dismiss()
     }
@@ -95,7 +93,7 @@ private fun TimedSnackbar(
             Text(visuals.message)
         }
         LinearProgressIndicator(
-            progress = { remaining.value },
+            progress = { remaining },
             modifier =
                 Modifier
                     .align(Alignment.TopCenter)
@@ -112,7 +110,29 @@ private fun TimedSnackbar(
     }
 }
 
-private fun Long.toAnimationMillis(): Int = coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+/**
+ * 스낵바 수명을 **실제 경과 시간**으로 센다. 프레임마다 남은 비율(1 → 0)을 알리고, 시간이 다 되면 돌아온다.
+ *
+ * `Animatable`·`tween` 을 쓰지 않는다. 애니메이션 API 는 기기 애니메이션 배율(`MotionDurationScale`)을
+ * 따르므로, 접근성의 애니메이션 제거나 개발자 옵션으로 배율이 0 이면 첫 프레임에 끝나 곧바로 닫힌다 —
+ * 문구를 읽거나 action 을 누를 시간이 없다. 프레임 시각은 배율과 무관하다.
+ */
+internal suspend fun countDownByFrames(
+    totalMillis: Long,
+    onRemaining: (Float) -> Unit,
+) {
+    val startMillis = withFrameMillis { it }
+    while (true) {
+        val elapsedMillis = withFrameMillis { it } - startMillis
+        onRemaining(remainingFraction(elapsedMillis, totalMillis))
+        if (elapsedMillis >= totalMillis) return
+    }
+}
+
+private fun remainingFraction(
+    elapsedMillis: Long,
+    totalMillis: Long,
+): Float = if (totalMillis <= 0L) 0f else (1f - elapsedMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
 
 /** Material3 `Snackbar(snackbarData)` 가 두르는 바깥 여백과 같다. */
 private val SnackbarOuterPadding = 12.dp
