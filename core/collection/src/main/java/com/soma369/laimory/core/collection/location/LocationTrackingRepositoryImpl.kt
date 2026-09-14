@@ -48,7 +48,7 @@ internal class LocationTrackingRepositoryImpl
          */
         override suspend fun reconcile() {
             if (preferences.isUserDisabled()) return
-            if (!canCollect()) return
+            if (!LocationPermission.canTrack(context)) return
             start()
         }
 
@@ -85,6 +85,4 @@ internal class LocationTrackingRepositoryImpl
         }
 
         private fun serviceIntent() = Intent(context, LocationCollectionService::class.java)
-
-        private fun canCollect(): Boolean = LocationPermission.canCollect(context) && LocationPermission.hasBackground(context)
     }

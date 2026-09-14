@@ -8,6 +8,7 @@ import com.soma369.laimory.collection.AutoCollectionProcessLifecycleObserver
 import com.soma369.laimory.collection.LocationTrackingProcessLifecycleObserver
 import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetectionEntryPoint
 import com.soma369.laimory.core.util.logging.Logger
+import com.soma369.laimory.crash.BackgroundStateCrashKeyObserver
 import com.soma369.laimory.crash.CrashlyticsCrashReporter
 import com.soma369.laimory.crash.SignedInCrashKeyObserver
 import com.soma369.laimory.crash.isUnexpectedFailure
@@ -46,6 +47,9 @@ class LaimoryApp :
     lateinit var signedInCrashKeyObserver: SignedInCrashKeyObserver
 
     @Inject
+    lateinit var backgroundStateCrashKeyObserver: BackgroundStateCrashKeyObserver
+
+    @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
     override val workManagerConfiguration: Configuration
@@ -62,8 +66,10 @@ class LaimoryApp :
         ProcessLifecycleOwner.get().lifecycle.addObserver(draftTaskProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(autoCollectionProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(locationTrackingProcessLifecycleObserver)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(backgroundStateCrashKeyObserver)
         pushRegistrationSessionObserver.start()
         signedInCrashKeyObserver.start()
+        backgroundStateCrashKeyObserver.start()
         sourceItemRetentionScheduler.schedule()
         DraftCompletionNotificationChannel.create(this)
         // 수면 자동 감지 구독 복원. 사용자가 켜둔 상태였을 때만 다시 구독한다(시스템 구독이라 앱이 죽어도 유지).
