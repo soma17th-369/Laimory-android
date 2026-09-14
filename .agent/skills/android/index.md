@@ -12,4 +12,5 @@ Android 관련 프로젝트 규칙은 아래 하위 스킬에서 확인합니다
 - [아키텍처](architecture/SKILL.md)
 - [내비게이션](navigation/SKILL.md)
 - [Scaffolding](scaffolding/SKILL.md)
+- [로깅](logging/SKILL.md)
 - [Gradle 빌드 검증](gradle-build-check/SKILL.md)
