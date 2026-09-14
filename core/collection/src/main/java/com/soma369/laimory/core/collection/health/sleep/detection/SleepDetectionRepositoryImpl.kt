@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.collection.health.sleep.detection
 
 import com.soma369.laimory.core.domain.repository.SleepDetectionRepository
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
@@ -19,6 +21,7 @@ internal class SleepDetectionRepositoryImpl
         override fun observeEnabled(): Flow<Boolean> = preferences.observeEnabled()
 
         override suspend fun setEnabled(enabled: Boolean) {
+            Logger.i(LogDomain.USER_ACTION, "수면 자동 감지 ${if (enabled) "켬" else "끔"}")
             preferences.setEnabled(enabled)
             if (enabled) subscriber.start() else subscriber.stop()
         }

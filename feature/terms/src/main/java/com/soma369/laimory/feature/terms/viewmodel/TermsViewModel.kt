@@ -9,6 +9,8 @@ import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.terms.state.TermsUiIntent
 import com.soma369.laimory.feature.terms.state.TermsUiSideEffect
 import com.soma369.laimory.feature.terms.state.TermsUiState
@@ -136,6 +138,7 @@ class TermsViewModel
                 return
             }
             val document = state.value.termsOfService ?: return
+            Logger.i(LogDomain.USER_ACTION, "약관 동의 제출: ${document.termType.name}")
             updateState { copy(isSubmitting = true, errorMessage = null) }
 
             val error = coordinator.agree(listOf(document)).exceptionOrNull()
@@ -165,6 +168,7 @@ class TermsViewModel
          */
         private suspend fun agreeStageTerms() {
             val documents = state.value.stageDocuments
+            Logger.i(LogDomain.USER_ACTION, "단계 동의 제출: ${documents.joinToString { it.termType.name }}")
             updateState { copy(isSubmitting = true, errorMessage = null) }
 
             val error = coordinator.agree(documents).exceptionOrNull()

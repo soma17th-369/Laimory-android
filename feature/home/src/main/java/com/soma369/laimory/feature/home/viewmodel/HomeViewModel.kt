@@ -11,6 +11,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
+import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
@@ -44,6 +45,8 @@ import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
@@ -759,6 +762,11 @@ class HomeViewModel
             preparation: DraftConsentPreparation,
             submission: DraftSourceItemSelection,
         ) {
+            val photoCount = submission.items.count { it.itemType == ItemType.PHOTO }
+            Logger.i(
+                LogDomain.USER_ACTION,
+                "초안 생성 요청: 항목 ${submission.items.size}건(사진 ${photoCount}건), 기존 작업 폐기=${preparation.discardActiveTask}",
+            )
             if (preparation.discardActiveTask) draftTaskCoordinator.discard()
             // 여기부터 응답까지 입력을 잠근다. `draftStatus` 는 서버가 작업을 받아야 움직이므로
             // 이 구간에는 아직 IDLE 이고, 그동안 날짜를 바꾸면 요청은 이전 스냅샷으로 진행된다.

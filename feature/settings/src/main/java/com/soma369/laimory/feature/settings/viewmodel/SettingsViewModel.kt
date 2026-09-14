@@ -21,6 +21,8 @@ import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiSideEffect
 import com.soma369.laimory.feature.settings.state.SettingsUiState
@@ -191,6 +193,7 @@ class SettingsViewModel
          */
         private suspend fun withdrawAccount() {
             if (state.value.isWithdrawing) return
+            Logger.i(LogDomain.USER_ACTION, "회원 탈퇴 요청")
             updateState { copy(isWithdrawing = true) }
             try {
                 globalLoadingHelper.withLoading(WITHDRAW_LOADING_KEY) {
@@ -213,6 +216,7 @@ class SettingsViewModel
 
         private suspend fun logout() {
             if (state.value.isLoggingOut) return
+            Logger.i(LogDomain.USER_ACTION, "로그아웃 요청")
             updateState { copy(isLoggingOut = true) }
             try {
                 // 로그아웃과 인증 Root 교체 동안 앱 전체 입력을 전역 로딩으로 차단한다.

@@ -35,6 +35,7 @@ internal class LocationTrackingRepositoryImpl
          * 다시 켜 두었으면 지난 결정이 최신 값을 덮어쓴다. 값은 조작을 받은 그 자리에서 쓴다.
          */
         override suspend fun setEnabled(enabled: Boolean) {
+            Logger.i(LogDomain.USER_ACTION, "위치 수집 ${if (enabled) "켬" else "끔"}")
             preferences.setUserDisabled(!enabled)
             if (enabled) start() else stopByUser()
         }
