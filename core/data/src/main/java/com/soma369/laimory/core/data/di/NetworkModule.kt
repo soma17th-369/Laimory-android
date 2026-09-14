@@ -14,6 +14,7 @@ import com.soma369.laimory.core.data.network.api.TermsApi
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
 import com.soma369.laimory.core.data.network.api.TimelineRecordApi
 import com.soma369.laimory.core.data.network.api.UserApi
+import com.soma369.laimory.core.data.network.interceptor.ApiCallLogInterceptor
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenAuthenticator
 import com.soma369.laimory.core.data.network.interceptor.AuthTokenInterceptor
 import com.soma369.laimory.core.data.network.interceptor.MockInterceptor
@@ -73,6 +74,7 @@ object NetworkModule {
     @PublicClient
     fun providePublicOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
+            .addInterceptor(ApiCallLogInterceptor())
             .apply {
                 if (BuildConfig.DEBUG) addInterceptor(MockInterceptor())
                 httpLogging()?.let(::addInterceptor)
@@ -85,6 +87,7 @@ object NetworkModule {
     @AuthSessionClient
     fun provideAuthSessionOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
+            .addInterceptor(ApiCallLogInterceptor())
             .apply {
                 if (BuildConfig.DEBUG) addInterceptor(MockInterceptor())
             }
@@ -100,6 +103,7 @@ object NetworkModule {
         tokenAuthenticator: AuthTokenAuthenticator,
     ): OkHttpClient =
         OkHttpClient.Builder()
+            .addInterceptor(ApiCallLogInterceptor())
             .addInterceptor(tokenInterceptor)
             .addInterceptor(termsGateInterceptor)
             .apply {
@@ -124,6 +128,7 @@ object NetworkModule {
         tokenAuthenticator: AuthTokenAuthenticator,
     ): OkHttpClient =
         OkHttpClient.Builder()
+            .addInterceptor(ApiCallLogInterceptor())
             .addInterceptor(tokenInterceptor)
             .addInterceptor(termsGateInterceptor)
             .apply {
