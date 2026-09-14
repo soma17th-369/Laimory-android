@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
 import android.provider.MediaStore
+import com.soma369.laimory.core.collection.collector.PhotoExifFailureTally
 import com.soma369.laimory.core.collection.collector.PhotoExifLocationReader
 import com.soma369.laimory.core.collection.collector.PhotoMediaRow
 import com.soma369.laimory.core.collection.collector.effectiveStartMillis
@@ -154,10 +155,15 @@ internal class PhotoMediaSource
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
 
             val rows = ArrayList<PhotoMediaRow>(cursor.count)
+            val exifFailures = PhotoExifFailureTally()
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
                 val baseUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-                val location = exifLocationReader.read(baseUri)
+                val location =
+                    exifLocationReader.read(baseUri).getOrElse { e ->
+                        exifFailures.record(e)
+                        null
+                    }
                 rows.add(
                     PhotoMediaRow(
                         id = id,
@@ -170,6 +176,7 @@ internal class PhotoMediaSource
                     ),
                 )
             }
+            exifFailures.report(rows.size)
             return rows
         }
 

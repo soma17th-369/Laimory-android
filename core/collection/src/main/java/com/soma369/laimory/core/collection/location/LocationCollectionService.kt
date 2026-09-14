@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
 /**
@@ -64,6 +65,12 @@ internal class LocationCollectionService : Service() {
     private var samplingStartRequested = false
     private var destroyed = false
     private var finalizeOnDestroy = false
+
+    /**
+     * 위치 저장이 실패하고 있는지. 저장은 샘플이 들어올 때마다 일어나므로 실패를 매번 남기면 브레드크럼 창을
+     * 통째로 밀어낸다. 실패로 바뀔 때와 회복할 때만 남긴다.
+     */
+    private val persistFailing = AtomicBoolean(false)
 
     private val listener =
         object : LocationListener {
@@ -293,7 +300,13 @@ internal class LocationCollectionService : Service() {
         // UNDISPATCHED로 mutex 대기열에 호출 순서대로 진입해 이전 스냅샷이 최신 상태를 덮지 않게 한다.
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             runCatching { segmentStore.persist(snapshot, items) }
-                .onFailure { e -> Logger.w(LogDomain.COLLECTION, "위치 이벤트 저장 실패: ${e::class.simpleName}") }
+                .onSuccess {
+                    if (persistFailing.compareAndSet(true, false)) Logger.i(LogDomain.COLLECTION, "위치 이벤트 저장 회복")
+                }.onFailure { e ->
+                    if (persistFailing.compareAndSet(false, true)) {
+                        Logger.w(LogDomain.COLLECTION, "위치 이벤트 저장 실패: ${e::class.simpleName} — 회복할 때까지 다시 남기지 않는다")
+                    }
+                }
             if (cancelScopeWhenDone) {
                 segmentStore.awaitIdle()
                 scope.cancel()
