@@ -17,6 +17,8 @@ import com.soma369.laimory.core.domain.usecase.auth.CompleteSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.IssueAuthTokensUseCase
 import com.soma369.laimory.core.domain.usecase.auth.StartSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
+import com.soma369.laimory.core.util.logging.CrashReporter
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.login.state.LoginPhase
 import com.soma369.laimory.feature.login.state.LoginUiIntent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -28,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -42,6 +45,11 @@ class LoginViewModelTest {
     private val socialRepository = FakeSocialLoginRepository()
     private val authRepository = FakeAuthRepository()
     private val callbackHandler = FakeCallbackHandler()
+
+    @After
+    fun tearDown() {
+        Logger.crashReporter = null
+    }
 
     @Test
     fun `제공자 버튼은 한 번만 시도를 만들고 Custom Tab 주소를 연다`() =
@@ -109,6 +117,52 @@ class LoginViewModelTest {
         }
 
     @Test
+    fun `callback 없이 돌아와 취소하면 시작과 짝이 맞지 않았다는 WARN 을 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // App Link 가 검증되지 않으면 앱은 callback 을 받지 못한다. 예외도 없어서 이 줄이 유일한 흔적이다.
+            val authLogs = recordAuthLogs()
+            val viewModel = createViewModel()
+            viewModel.sendIntent(LoginUiIntent.ProviderClicked(SocialLoginProvider.KAKAO))
+            runCurrent()
+
+            viewModel.sendIntent(LoginUiIntent.BrowserReturnedWithoutCallback)
+            runCurrent()
+            advanceTimeBy(501)
+            runCurrent()
+
+            assertEquals(
+                listOf(
+                    "INFO/Auth: 소셜 로그인 시작: KAKAO 인증 페이지를 연다",
+                    "WARN/Auth: 소셜 로그인 콜백 없이 앱으로 돌아왔다 — 로그인을 취소한다",
+                ),
+                authLogs(),
+            )
+        }
+
+    @Test
+    fun `복귀 직후 callback 이 오면 짝이 맞아 WARN 을 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val authLogs = recordAuthLogs()
+            val viewModel = createViewModel()
+            viewModel.sendIntent(LoginUiIntent.ProviderClicked(SocialLoginProvider.KAKAO))
+            runCurrent()
+
+            viewModel.sendIntent(LoginUiIntent.BrowserReturnedWithoutCallback)
+            callbackHandler.handle(SocialLoginCallback(appCode = "code"))
+            runCurrent()
+            advanceTimeBy(501)
+            runCurrent()
+
+            assertEquals(
+                listOf(
+                    "INFO/Auth: 소셜 로그인 시작: KAKAO 인증 페이지를 연다",
+                    "INFO/Auth: 소셜 로그인 완료",
+                ),
+                authLogs(),
+            )
+        }
+
+    @Test
     fun `브라우저를 열 수 없으면 pending 시도를 폐기하고 오류를 표시한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
@@ -136,6 +190,25 @@ class LoginViewModelTest {
             assertNull(viewModel.state.value.errorMessage)
             assertNull(authRepository.appCode)
         }
+
+    /** 원격으로 나가는 인증 로그만 모은다. */
+    private fun recordAuthLogs(): () -> List<String> {
+        val messages = mutableListOf<String>()
+        Logger.crashReporter =
+            object : CrashReporter {
+                override fun log(message: String) {
+                    messages += message
+                }
+
+                override fun recordException(throwable: Throwable) = Unit
+
+                override fun setKey(
+                    key: String,
+                    value: String,
+                ) = Unit
+            }
+        return { messages.filter { it.contains("/Auth: ") } }
+    }
 
     private fun createViewModel(): LoginViewModel =
         LoginViewModel(
