@@ -23,6 +23,8 @@ import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionOutcome
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.timeline.model.initialMode
 import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
@@ -410,6 +412,7 @@ class TimelineRecordViewModel
                 return
             }
 
+            Logger.i(LogDomain.USER_ACTION, "하루 기록 작성 완료 요청")
             updateState { copy(isSavingRecord = true) }
             saveJob =
                 safeLaunch(onError = ::handleSaveFailure) {
@@ -512,6 +515,7 @@ class TimelineRecordViewModel
                 return
             }
 
+            Logger.i(LogDomain.USER_ACTION, "하루 기록 삭제 요청")
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
             deleteDailyRecordUseCase(target.recordDate)
                 .onSuccess {
@@ -608,6 +612,7 @@ class TimelineRecordViewModel
             val target = state.value.eventDeleteDialogState as? TimelineEventDeleteDialogState.Active ?: return
             if (target is TimelineEventDeleteDialogState.Deleting || eventDeleteJob?.isActive == true) return
 
+            Logger.i(LogDomain.USER_ACTION, "이벤트 삭제 요청")
             updateState {
                 copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Deleting(target.timelineEventId))
             }

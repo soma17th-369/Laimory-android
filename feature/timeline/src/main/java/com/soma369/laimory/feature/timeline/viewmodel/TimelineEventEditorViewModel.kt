@@ -22,6 +22,8 @@ import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerColumn
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorForm
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
@@ -309,6 +311,8 @@ class TimelineEventEditorViewModel
                 return
             }
 
+            val action = if (current.timelineEventId == null) "추가" else "수정"
+            Logger.i(LogDomain.USER_ACTION, "이벤트 $action 요청: 새 사진 ${current.pendingPhotos.size}장")
             updateState { copy(isSaving = true) }
             if (!uploadPendingPhotos()) {
                 updateState { copy(isSaving = false) }
@@ -435,6 +439,7 @@ class TimelineEventEditorViewModel
                     is TimelineEventPhotoDeleteDialogState.RetryableError -> dialogState.photo
                     else -> return
                 }
+            Logger.i(LogDomain.USER_ACTION, "이벤트 사진 삭제 요청")
             updateState {
                 copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Deleting(photo))
             }
@@ -531,6 +536,7 @@ class TimelineEventEditorViewModel
                 return
             }
 
+            Logger.i(LogDomain.USER_ACTION, "이벤트 삭제 요청")
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
             deleteTimelineEventUseCase(timelineEventId)
                 .onSuccess {

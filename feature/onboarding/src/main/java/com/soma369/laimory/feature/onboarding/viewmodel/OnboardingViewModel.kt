@@ -12,6 +12,8 @@ import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.onboarding.model.indexOfKeyOrFirst
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
@@ -203,6 +205,7 @@ class OnboardingViewModel
             // 목록을 불러오지 못한 채로 끝내면 동의 없이 완료된 계정이 남는다. 그 계정은 앱을
             // 쓰다가 초안 생성에서만 막히고 이유를 알 수 없다.
             if (state.value.hasConsentLoadFailed) return
+            Logger.i(LogDomain.USER_ACTION, "온보딩 완료 요청")
 
             // 누른 즉시 잠근다. 연출을 먼저 하면 그 사이 버튼이 살아 있어 두 번 눌린다.
             updateState { copy(isCompleting = true, hasCompletionFailed = false, consentErrorMessage = null) }

@@ -5,8 +5,6 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
-import com.soma369.laimory.core.util.logging.LogDomain
-import com.soma369.laimory.core.util.logging.Logger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
@@ -24,8 +22,14 @@ internal class PhotoExifLocationReader
     constructor(
         @ApplicationContext private val context: Context,
     ) {
-        /** 사진 EXIF 에서 GPS 좌표 `[lat, lng]` 를 읽는다. 없거나 실패(권한 없음/EXIF 없음/IO)하면 null. */
-        fun read(baseUri: Uri): DoubleArray? {
+        /**
+         * 사진 EXIF 에서 GPS 좌표 `[lat, lng]` 를 읽는다. 좌표가 없으면 성공한 null, 읽지 못하면(권한 없음/IO)
+         * 실패다.
+         *
+         * 여기서 로그를 남기지 않는다. 사진마다 도는 루프 안이라, 권한이 없으면 같은 줄이 사진 수만큼
+         * 찍혀 브레드크럼 창을 밀어낸다. 호출부가 [PhotoExifFailureTally] 로 모아 한 줄로 남긴다.
+         */
+        fun read(baseUri: Uri): Result<DoubleArray?> {
             val uri =
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     MediaStore.setRequireOriginal(baseUri)
@@ -36,9 +40,6 @@ internal class PhotoExifLocationReader
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     ExifInterface(stream).latLong
                 }
-            }.getOrElse { e ->
-                Logger.w(LogDomain.COLLECTION, "사진 EXIF 위치 읽기 실패: ${e::class.simpleName}")
-                null
             }
         }
     }

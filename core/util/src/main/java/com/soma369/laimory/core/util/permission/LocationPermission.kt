@@ -89,6 +89,13 @@ object LocationPermission {
         sdkInt: Int = Build.VERSION.SDK_INT,
     ): Boolean = sdkInt < Build.VERSION_CODES.Q || context.isGranted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
 
+    /**
+     * 위치 자동 수집이 배경에서 돌 수 있는지 — 전경 위치와 백그라운드 위치가 모두 허용됐는지.
+     *
+     * 수집을 켤지 정하는 쪽과 그 상태를 크래시 리포트에 적는 쪽이 같은 기준을 써야 해서 한 곳에 둔다.
+     */
+    fun canTrack(context: Context): Boolean = canCollect(context) && hasBackground(context)
+
     /** 이동수단 인식 허용 여부(Q 미만은 요청 대상이 아니므로 항상 true). */
     fun hasActivityRecognition(
         context: Context,

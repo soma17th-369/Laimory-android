@@ -101,10 +101,15 @@ internal class PhotoCollector
 
             // 전체 결과 카운트를 강제하지 않도록 cursor.count 대신 상한으로 초기 용량만 잡는다.
             val rows = ArrayList<PhotoMediaRow>(BATCH_SIZE)
+            val exifFailures = PhotoExifFailureTally()
             while (cursor.moveToNext() && rows.size < BATCH_SIZE) {
                 val id = cursor.getLong(idColumn)
                 val baseUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-                val location = exifLocationReader.read(baseUri)
+                val location =
+                    exifLocationReader.read(baseUri).getOrElse { e ->
+                        exifFailures.record(e)
+                        null
+                    }
                 rows.add(
                     PhotoMediaRow(
                         id = id,
@@ -118,6 +123,7 @@ internal class PhotoCollector
                     ),
                 )
             }
+            exifFailures.report(rows.size)
             return rows
         }
 

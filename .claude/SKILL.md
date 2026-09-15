@@ -22,5 +22,6 @@ Claude는 Agent 협업 플로우에서 기획 리뷰, 구현, 구현 리뷰 반�
 - [Android 아키텍처 지침](../.agent/skills/android/architecture/SKILL.md)
 - [Android Scaffolding 지침](../.agent/skills/android/scaffolding/SKILL.md)
 - [레이어 역할 가이드](../.agent/skills/android/scaffolding/references/layer-role-guide.md)
+- [Android 로깅 기준](../.agent/skills/android/logging/SKILL.md)
 - [Gradle 빌드 검증 지침](../.agent/skills/android/gradle-build-check/SKILL.md)
 - [GitHub 스킬 인덱스](../.agent/skills/github/index.md)

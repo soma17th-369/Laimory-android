@@ -5,6 +5,8 @@ import com.soma369.laimory.core.domain.usecase.sleep.ObserveSleepDetectionUseCas
 import com.soma369.laimory.core.domain.usecase.sleep.RecordManualSleepUseCase
 import com.soma369.laimory.core.domain.usecase.sleep.SetSleepDetectionUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.collection.screen.sleep.SleepInputMath
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiIntent
 import com.soma369.laimory.feature.collection.state.sleep.SleepInputUiSideEffect
@@ -109,6 +111,7 @@ class SleepInputViewModel
                     sendEffect(SleepInputUiSideEffect.ShowMessage("다른 앱의 수면 기록이 있어 저장할 수 없어요."))
                     return@safeLaunch
                 }
+                Logger.i(LogDomain.USER_ACTION, "수면 수동 입력 저장 요청")
                 updateState { copy(isSaving = true) }
                 val (start, end) =
                     SleepInputMath.sleepInstants(current.wakeDate, current.bedTime, current.wakeTime, zone)

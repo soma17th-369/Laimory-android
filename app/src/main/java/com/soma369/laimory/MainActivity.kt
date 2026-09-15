@@ -35,6 +35,8 @@ import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveAppThemeModeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.ObserveTermsGateUseCase
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.navigation.LaimoryNavGraph
 import com.soma369.laimory.push.DraftCompletionPushHandler
@@ -214,6 +216,7 @@ class MainActivity : ComponentActivity() {
 
     private fun consumeSocialLoginCallback(intent: Intent) {
         val callback = intent.dataString?.toSocialLoginCallbackOrNull() ?: return
+        Logger.i(LogDomain.AUTH, "소셜 로그인 콜백 수신")
         socialLoginCallbackHandler.handle(callback)
         // 구성 변경으로 Activity가 재생성돼도 같은 callback을 다시 제출하지 않는다.
         intent.data = null

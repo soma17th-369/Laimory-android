@@ -11,6 +11,8 @@ import com.soma369.laimory.core.domain.usecase.auth.CompleteSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.StartSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.util.logging.LogDomain
+import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.login.state.LoginPhase
 import com.soma369.laimory.feature.login.state.LoginUiIntent
 import com.soma369.laimory.feature.login.state.LoginUiSideEffect
@@ -84,6 +86,7 @@ class LoginViewModel
 
             startSocialLogin(provider)
                 .onSuccess { attempt ->
+                    Logger.i(LogDomain.AUTH, "소셜 로그인 시작: ${provider.name} 인증 페이지를 연다")
                     updateState { copy(phase = LoginPhase.WAITING_CALLBACK) }
                     sendEffect(LoginUiSideEffect.OpenAuthorizationUrl(attempt.authorizationUrl))
                 }.onFailure(::showFailure)
@@ -99,8 +102,10 @@ class LoginViewModel
                 .onSuccess {
                     // 목적지를 여기서 고르지 않는다. 인증 상태가 바뀌면 앱 루트 판정이 약관·온보딩까지
                     // 보고 정한다 — 이 화면이 홈을 지목하면 온보딩을 마치지 않은 계정도 홈으로 간다.
+                    Logger.i(LogDomain.AUTH, "소셜 로그인 완료")
                     updateState { copy(phase = LoginPhase.IDLE, activeProvider = null) }
                 }.onFailure { error ->
+                    Logger.w(LogDomain.AUTH, "소셜 로그인 토큰 교환 실패: ${error::class.simpleName}")
                     if (error is SocialLoginException.MissingAttempt && previousState.phase == LoginPhase.IDLE) {
                         updateState { previousState }
                     } else {
@@ -110,6 +115,7 @@ class LoginViewModel
         }
 
         private suspend fun handleAuthorizationLaunchFailure() {
+            Logger.w(LogDomain.AUTH, "소셜 로그인 인증 페이지를 열 브라우저가 없다")
             cancelDetectionJob?.cancel()
             cancelSocialLogin()
             updateState {
@@ -128,6 +134,10 @@ class LoginViewModel
                     // onNewIntent가 callback을 전달하는 짧은 구간과 Custom Tab 복귀 이벤트의 경합을 피한다.
                     delay(CALLBACK_GRACE_PERIOD_MILLIS)
                     if (state.value.phase != LoginPhase.WAITING_CALLBACK) return@launch
+                    // 시작만 있고 콜백이 오지 않았다. 사용자가 인증 페이지를 닫은 것과, App Link 가 검증되지 않아
+                    // 브라우저가 앱 대신 웹페이지를 연 것이 여기서는 구분되지 않는다. 그래서 non-fatal 로 올리지
+                    // 않고 WARN 으로만 남긴다 — 이후 리포트의 맥락이 되고, release Logcat 에서도 보인다.
+                    Logger.w(LogDomain.AUTH, "소셜 로그인 콜백 없이 앱으로 돌아왔다 — 로그인을 취소한다")
                     try {
                         cancelSocialLogin()
                         updateState { copy(phase = LoginPhase.IDLE, activeProvider = null) }

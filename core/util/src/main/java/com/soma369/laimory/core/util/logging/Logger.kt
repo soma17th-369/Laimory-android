@@ -21,6 +21,8 @@ import com.soma369.laimory.core.util.BuildConfig
  *
  * throwable 인자로 옮기는 것도 그 자체로 안전하지는 않다. 예외의 메시지는 리포트에 그대로 실리므로
  * [RedactedThrowable] 로 걷어서 내보낸다.
+ *
+ * 무엇을 어느 레벨로 남길지는 `.agent/skills/android/logging/SKILL.md` 가 기준이다.
  */
 object Logger {
     enum class Level { VERBOSE, DEBUG, INFO, WARN, ERROR }
