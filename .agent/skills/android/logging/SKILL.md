@@ -67,7 +67,7 @@ description: Logger 로 무엇을 어느 레벨로 남길지, 크래시 리포�
 
 | 자리 | 무엇을 | 레벨 |
 | --- | --- | --- |
-| `ApiCallLogInterceptor` | 모든 Retrofit 요청의 메서드·**경로 템플릿**·HTTP 코드 | 2xx `INFO`, 그 외·통신 실패 `WARN` |
+| `ApiCallLogInterceptor` | 모든 Retrofit 요청의 메서드·**경로 템플릿**·HTTP 코드 | 2xx `INFO`, 그 외·통신 실패(본문 수신 중 포함) `WARN` |
 | `safeApiCall` | 응답 봉투의 헤더 코드 실패, 응답 해석 실패 | `WARN` |
 | 인증(`LogDomain.AUTH`) | 4번의 시작·끝 짝 | `INFO` / `WARN` |
 | 사용자 행동(`LogDomain.USER_ACTION`) | 확정한 행동 한 줄 | `INFO` |

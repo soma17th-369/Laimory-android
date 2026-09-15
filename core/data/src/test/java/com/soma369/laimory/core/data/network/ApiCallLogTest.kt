@@ -2,6 +2,7 @@ package com.soma369.laimory.core.data.network
 
 import com.soma369.laimory.core.data.model.common.ApiResponse
 import com.soma369.laimory.core.data.network.interceptor.ApiCallLogInterceptor
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.util.logging.CrashReporter
 import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.test.runTest
@@ -25,6 +26,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Path
+import java.util.concurrent.TimeUnit
 
 /** API 로그가 크래시 리포트로 나갈 수 있는 문장만 남기는지 본다. */
 class ApiCallLogTest {
@@ -104,6 +106,37 @@ class ApiCallLogTest {
             val line = reporter.messages.single()
             assertTrue(line, line.startsWith("WARN/Network: GET timeline/events/{timelineEventId} → 통신 실패("))
         }
+
+    @Test
+    fun `본문을 받다 끊겨도 경로와 함께 남긴다`() =
+        runTest {
+            // 헤더까지 받았으므로 인터셉터는 이미 200 을 남겼다. 끊김은 그 뒤 Retrofit 이 본문을 읽을 때 난다.
+            server.enqueue(
+                MockResponse()
+                    .setBody("""{"header":{"code":0,"message":""},"body":{"id":1}}""")
+                    .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY),
+            )
+
+            val error = runCatching { safeApiCall { api.getEvent(1) } }.exceptionOrNull()
+
+            assertTrue(error is ApiException.NetworkException)
+            assertEquals("INFO/Network: GET timeline/events/{timelineEventId} → 200", reporter.messages.first())
+            val failure = reporter.messages.drop(1).single()
+            assertTrue(failure, failure.startsWith("WARN/Network: GET timeline/events/{timelineEventId} → 본문 수신 실패("))
+        }
+
+    @Test
+    fun `본문을 받던 중 호출자가 취소하면 남기지 않는다`() {
+        server.enqueue(MockResponse().setBody("{}").setBodyDelay(1, TimeUnit.SECONDS))
+        val call = client.newCall(Request.Builder().url(server.url("/timeline/daily-records")).build())
+        val response = call.execute()
+
+        call.cancel()
+        val read = runCatching { response.body!!.string() }
+
+        assertTrue(read.isFailure)
+        assertEquals(listOf("INFO/Network: GET (경로 미상) → 200"), reporter.messages)
+    }
 
     @Test
     fun `헤더 코드 실패는 코드만 남기고 서버 메시지는 넣지 않는다`() =

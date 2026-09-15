@@ -49,7 +49,8 @@ private suspend fun <T> executeApiCall(call: suspend () -> Response<ApiResponse<
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {
-            // 경로와 함께 인터셉터가 이미 남겼다.
+            // 경로와 함께 인터셉터가 이미 남겼다. 헤더를 받기 전의 실패는 요청 단계에서, 본문을 읽다 끊긴
+            // 실패는 인터셉터가 감싼 본문에서 남는다.
             throw ApiException.NetworkException()
         } catch (e: Exception) {
             // 역직렬화 예외에는 민감 응답 JSON이 포함될 수 있으므로 상위 레이어로 원문을 전달하지 않는다.
