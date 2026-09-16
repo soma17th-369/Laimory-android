@@ -101,17 +101,29 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
     ) {
         // 저장된 설정을 읽기 전 알림은 버린다 — 기본 키워드가 켜진 기본값으로 판정하면
         // useDefaultKeywords 를 꺼 둔 사용자의 설정을 무시하게 된다.
-        val filter = filter ?: return
+        val filter =
+            filter ?: run {
+                logSkipped(sbn, "설정 읽기 전")
+                return
+            }
         val collectedAt = Instant.now()
         // 갱신 억제를 정제·판정보다 먼저 본다. 한 번 수집된 뒤에도 계속 갱신되는 알림에 개인정보
         // 정규식과 저장을 매번 반복하지 않기 위해서다. 아직 한 번도 수집되지 않은 알림은 기록이
         // 없어 억제되지 않으므로, 수집 자체가 막힌 알림에는 이 순서가 이득을 주지 않는다.
         //
         // 클릭은 사용자가 그 알림을 직접 지목한 결과라 억제하지 않고, 에피소드 관찰에서도 뺀다.
-        if (!clicked && updateThrottle.onPosted(sbn.throttleKey, collectedAt)) return
+        if (!clicked && updateThrottle.onPosted(sbn.throttleKey, collectedAt)) {
+            // 갱신형 알림은 초 단위로 다시 올라와 DEBUG 로 찍으면 다른 줄을 덮는다.
+            Logger.v(LogDomain.COLLECTION, "알림 수집 안 함: 갱신 억제 package=${sbn.packageName}")
+            return
+        }
 
         val signals = sbn.notification.toSignals()
-        val sanitized = sanitize(sbn.notification.toContent(), signals) ?: return
+        val sanitized =
+            sanitize(sbn.notification.toContent(), signals) ?: run {
+                logSkipped(sbn, "개인정보 정책", "대화=${signals.isMessage}")
+                return
+            }
         val reason =
             filter.collectReasonFor(
                 packageName = sbn.packageName,
@@ -119,7 +131,10 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
                 text = sanitized.text,
                 clicked = clicked,
                 signals = signals,
-            ) ?: return
+            ) ?: run {
+                logSkipped(sbn, "수집 사유 없음", "비이벤트=${signals.isNonEvent} 본문읽기불가=${signals.hasUnreadableBody}")
+                return
+            }
 
         if (!clicked) updateThrottle.onCollected(sbn.throttleKey, collectedAt)
 
@@ -133,6 +148,21 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
                 Logger.w(LogDomain.COLLECTION, "알림 저장 실패: ${e.javaClass.simpleName}")
             }
         }
+    }
+
+    /**
+     * 수집하지 않은 알림이 어느 단계에서 빠졌는지 남긴다.
+     *
+     * "어떤 알림이 안 모인다"는 제보를 받아도 빠진 단계가 흔적으로 남지 않아 원인을 가를 수 없었다.
+     * 제목·본문은 적지 않고 패키지와 구조 신호만 적는다. DEBUG 라 Logcat 에만 남아 기기를 떠나지 않고,
+     * release 에서는 찍히지 않는다(debug·qa 빌드에서 `adb logcat` 으로 본다).
+     */
+    private fun logSkipped(
+        sbn: StatusBarNotification,
+        stage: String,
+        detail: String = "",
+    ) {
+        Logger.d(LogDomain.COLLECTION, "알림 수집 안 함: $stage package=${sbn.packageName} $detail".trimEnd())
     }
 
     private fun sanitize(
