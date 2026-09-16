@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -55,6 +58,7 @@ import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
+import com.soma369.laimory.core.ui.component.snackbar.LocalSnackbarAnchor
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
@@ -412,7 +416,15 @@ private fun HomeScreen(
             }
         }
 
+        // 스낵바는 바텀바 바로 위, 즉 이 버튼 자리에 뜬다. 버튼과 그 아래 여백만큼 올려 달라고 알린다.
+        val snackbarAnchor = LocalSnackbarAnchor.current
+        val density = LocalDensity.current
+        DisposableEffect(snackbarAnchor) { onDispose { snackbarAnchor.bottomInset = 0.dp } }
         HomeTimelineButton(
+            modifier =
+                Modifier.onSizeChanged { size ->
+                    snackbarAnchor.bottomInset = with(density) { size.height.toDp() } + HOME_BOTTOM_PADDING
+                },
             status = state.timelineButtonStatus,
             selectedDate = state.selectedDate,
             today = state.today,

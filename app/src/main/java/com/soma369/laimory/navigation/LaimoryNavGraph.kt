@@ -2,6 +2,7 @@ package com.soma369.laimory.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
@@ -36,6 +37,8 @@ import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.snackbar.LaimorySnackbarHost
+import com.soma369.laimory.core.ui.component.snackbar.LocalSnackbarAnchor
+import com.soma369.laimory.core.ui.component.snackbar.SnackbarAnchorState
 import com.soma369.laimory.core.ui.component.snackbar.TimedSnackbarVisuals
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.crash.CrashKey
@@ -89,6 +92,7 @@ fun LaimoryNavGraph(
     // 오인하지 않는다. 첫 구성에서는 백스택도 같은 루트로 만들어지므로 둘이 서로 맞는다.
     var appliedRootPath by rememberSaveable { mutableStateOf(rootPage.toRoute().path) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarAnchor = remember { SnackbarAnchorState() }
 
     // 바텀바 노출·선택 상태는 별도 상태 없이 backStack top 의 path 에서 파생한다.
     val currentPath = (backStack.lastOrNull() as? GenericNavKey)?.path
@@ -164,9 +168,15 @@ fun LaimoryNavGraph(
         appliedRootPath = rootPage.toRoute().path
     }
 
-    CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
+    CompositionLocalProvider(
+        LocalSnackbarHostState provides snackbarHostState,
+        LocalSnackbarAnchor provides snackbarAnchor,
+    ) {
         Scaffold(
-            snackbarHost = { LaimorySnackbarHost(snackbarHostState) },
+            // 하단에 고정 버튼이 있는 화면은 그 높이만큼 스낵바를 올린다(홈 CTA).
+            snackbarHost = {
+                LaimorySnackbarHost(snackbarHostState, modifier = Modifier.padding(bottom = snackbarAnchor.bottomInset))
+            },
             bottomBar = {
                 // 탭 루트에서만 노출한다. push 된 일반 화면(수집 등)에서는 숨긴다.
                 if (currentPath != null && appRouteByPath[currentPath]?.isBottomTab == true) {
