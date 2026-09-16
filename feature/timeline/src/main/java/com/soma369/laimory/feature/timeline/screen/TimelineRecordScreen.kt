@@ -1,6 +1,13 @@
 package com.soma369.laimory.feature.timeline.screen
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -9,10 +16,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +39,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -200,6 +211,14 @@ private fun TimelineRecordScreen(
     var photoViewerState by remember { mutableStateOf<TimelinePhotoViewerState?>(null) }
     var isRecordMenuExpanded by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    // 키보드가 보이는 동안에는 하단 버튼을 숨긴다. 좁아진 화면에서 쓰고 있는 메모를 가리지 않게 한다.
+    //
+    // 메모 편집 상태가 아니라 키보드로 판단한다 — 뒤로가기로 키보드만 내리고 입력칸 포커스가 남아도
+    // 버튼이 바로 돌아와야 한다. inset 은 키보드가 움직이는 프레임마다 바뀌므로 참·거짓이 바뀔 때만
+    // 다시 그린다.
+    val imeInsets = WindowInsets.ime
+    val density = LocalDensity.current
+    val isImeVisible by remember(imeInsets, density) { derivedStateOf { imeInsets.getBottom(density) > 0 } }
 
     Column(
         modifier =
@@ -338,27 +357,43 @@ private fun TimelineRecordScreen(
                         // 목록 위에 얹어 저장 버튼과 겹치지 않게 둔다. 편집 모드에서만 보인다 —
                         // 읽는 화면에 만들기 버튼이 떠 있으면 무엇을 읽는 화면인지 흐려진다.
                         //
-                        // 메모를 쓰는 중에도 남는다. 누르면 쓰던 메모가 갈무리되고 이벤트 추가로 넘어간다.
+                        // 키보드가 올라와 있으면 숨긴다. 우하단에 떠 있어 키보드 바로 위 메모 입력칸 끝을 가린다.
+                        // 키보드를 내리면 쓰던 메모가 갈무리되고 다시 나타난다.
                         if (state.mode.isEditing) {
-                            AddEventFab(
-                                enabled = state.isModeSwitchable,
-                                onClick = { onIntent(TimelineRecordUiIntent.AddEvent) },
+                            // Box 안이라 바깥 Column 의 ColumnScope 판이 잡힌다. 범위 없는 판을 직접 부른다.
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = !isImeVisible,
                                 modifier = Modifier.align(Alignment.BottomEnd).padding(FabMargin),
-                            )
+                                enter = fadeIn() + scaleIn(),
+                                exit = fadeOut() + scaleOut(),
+                            ) {
+                                AddEventFab(
+                                    enabled = state.isModeSwitchable,
+                                    onClick = { onIntent(TimelineRecordUiIntent.AddEvent) },
+                                )
+                            }
                         }
                     }
                     // 저장은 내용 변경이 아니라 상태 확정이라 모드와 무관하게 노출한다. SAVED 는 재호출하지 않는다.
-                    // 메모를 쓰는 중에도 누를 수 있다 — 쓰던 메모를 갈무리한 뒤 감정 시트가 열린다.
+                    //
+                    // 키보드가 올라와 있으면 숨긴다. 좁아진 화면에서 한 줄을 차지해 쓰고 있는 메모를 밀어낸다.
+                    // 키보드와 함께 접고 펴서 목록이 한 번에 튀지 않게 한다.
                     if (!content.value.isSaved) {
-                        SaveRecordButton(
-                            enabled =
-                                !state.isSavingRecord &&
-                                    state.emotionSheet == null &&
-                                    state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                                    state.eventDeleteDialogState == TimelineEventDeleteDialogState.Hidden,
-                            isLoading = state.isSavingRecord,
-                            onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
-                        )
+                        AnimatedVisibility(
+                            visible = !isImeVisible,
+                            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                        ) {
+                            SaveRecordButton(
+                                enabled =
+                                    !state.isSavingRecord &&
+                                        state.emotionSheet == null &&
+                                        state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
+                                        state.eventDeleteDialogState == TimelineEventDeleteDialogState.Hidden,
+                                isLoading = state.isSavingRecord,
+                                onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
+                            )
+                        }
                     }
                 }
         }
