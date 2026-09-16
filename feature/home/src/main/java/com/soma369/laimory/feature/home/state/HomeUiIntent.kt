@@ -10,6 +10,14 @@ sealed interface HomeUiIntent : UiIntent {
     /** 화면 진입·복귀. 아직 못 받은 닉네임을 다시 요청한다. */
     data object RefreshProfile : HomeUiIntent
 
+    /**
+     * 화면 진입·복귀와 날짜가 바뀌는 시각([HomeDefaultDate.nextChangeAfter])에 오늘을 다시 계산한다.
+     *
+     * 날짜를 고르지 않았으면 기본 날짜로 옮긴다. 다른 갱신보다 먼저 보내야 뒤따르는 재조회가 옮긴
+     * 날짜로 돈다.
+     */
+    data object RefreshToday : HomeUiIntent
+
     data object NavigateToCollection : HomeUiIntent
 
     /**

@@ -23,6 +23,12 @@ data class HomeUiState(
     /** 인사말에 쓸 닉네임. 조회 전·없음·실패를 구분하지 않는다 — 어느 쪽이든 문구가 같다. */
     val nickname: String? = null,
     val selectedDate: LocalDate = LocalDate.now(),
+    /**
+     * 달력상 오늘. CTA 부제의 `오늘`·`어제` 가 쓴다.
+     *
+     * 화면이 직접 계산하면 재구성될 때만 바뀌어, 날짜 줄은 그대로인데 부제만 먼저 넘어가는 순간이 생긴다.
+     */
+    val today: LocalDate = LocalDate.now(),
     val startTime: LocalTime = LocalTime.MIDNIGHT,
     val endDay: DraftEndDay = DraftEndDay.NEXT_DAY,
     val endTime: LocalTime = LocalTime.MIDNIGHT,
