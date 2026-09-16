@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 /**
  * Navigation 3 라우트 테이블 기반 앱 내비게이션의 진입 Composable.
@@ -69,6 +70,7 @@ fun LaimoryNavGraph(
     termsGateStates: Flow<TermsGateState> = flowOf(TermsGateState.Satisfied),
     pendingDraftCompletions: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null),
     onDraftCompletionConsumed: suspend (String) -> Boolean = { false },
+    homeRecordDate: () -> LocalDate? = { null },
     onAuthRootReplaced: () -> Unit = {},
 ) {
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
@@ -117,12 +119,14 @@ fun LaimoryNavGraph(
     // 화면을 실제로 옮기는 순간에만 하므로, 그 전까지는 완료가 살아 있어 다시 판단할 수 있다.
     // 메서드 참조는 리컴포지션마다 새 객체라 키로 쓰면 수집이 계속 재시작한다. 최신 람다만 따라간다.
     val currentOnConsumed by rememberUpdatedState(onDraftCompletionConsumed)
+    val currentHomeRecordDate by rememberUpdatedState(homeRecordDate)
     LaunchedEffect(pendingDraftCompletions) {
         combine(
             pendingDraftCompletions,
             snapshotFlow { backStack.isShowingDraftLoading() },
-            ::Pair,
-        ).collectLatest { (completion, isShowingLoading) ->
+            snapshotFlow { backStack.isShowingHome() },
+            ::Triple,
+        ).collectLatest { (completion, isShowingLoading, isShowingHome) ->
             if (completion == null) return@collectLatest
             val timelineRoute = TimelinePage(completion.recordDate).toRoute()
             // 결과를 확인했으므로 백그라운드에서 온 알림은 더 알릴 것이 없다.
@@ -136,6 +140,11 @@ fun LaimoryNavGraph(
                     // 다 만든 화면으로 되돌아갈 이유가 없어 최상단을 갈아 끼운다.
                     if (currentOnConsumed(completion.taskId)) backStack.replaceTopWith(timelineRoute)
                 }
+                return@collectLatest
+            }
+            // 소비만 한다 — 같은 프로세스에서는 추적 상태가 성공으로 남아 홈 CTA 의 `타임라인 확인하기` 가 유지된다.
+            if (shouldSkipCompletionSnackbar(isShowingHome, currentHomeRecordDate(), completion.recordDate)) {
+                withContext(NonCancellable) { currentOnConsumed(completion.taskId) }
                 return@collectLatest
             }
             val result =

@@ -30,6 +30,24 @@ class DraftCompletionNavigationTest {
     }
 
     @Test
+    fun `홈이 완성된 날짜를 보고 있으면 스낵바 없이 소비한다`() {
+        val backStack = NavBackStack<NavKey>(GenericNavKey(HomePage.PATH))
+
+        assertTrue(backStack.isShowingHome())
+        assertTrue(shouldSkipCompletionSnackbar(backStack.isShowingHome(), recordDate, recordDate))
+    }
+
+    @Test
+    fun `홈이 다른 날짜를 보거나 다른 화면이면 스낵바를 띄운다`() {
+        val onOtherScreen = NavBackStack<NavKey>(GenericNavKey(HomePage.PATH), GenericNavKey("/collection"))
+
+        assertFalse(shouldSkipCompletionSnackbar(isShowingHome = true, recordDate.minusDays(1), recordDate))
+        assertFalse(shouldSkipCompletionSnackbar(isShowingHome = true, homeRecordDate = null, recordDate))
+        assertFalse(onOtherScreen.isShowingHome())
+        assertFalse(shouldSkipCompletionSnackbar(onOtherScreen.isShowingHome(), recordDate, recordDate))
+    }
+
+    @Test
     fun `완료하면 로딩 화면을 빼고 타임라인을 올린다`() {
         val backStack = NavBackStack<NavKey>(GenericNavKey(HomePage.PATH), GenericNavKey(DraftLoadingPage.PATH))
 
