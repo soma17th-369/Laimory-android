@@ -114,6 +114,9 @@ class DraftConsentViewModel
             // 토글하므로 한쪽이 가지면 다른 쪽이 못 본다.
             safeLaunch { sessionStore.excludedRawIds.collect { excluded -> updateState { copy(excludedRawIds = excluded) } } }
             safeLaunch {
+                sessionStore.isSelectionReadOnly.collect { readOnly -> updateState { copy(isSelectionReadOnly = readOnly) } }
+            }
+            safeLaunch {
                 sessionStore.isLocationSendEnabled.collect { enabled ->
                     updateState { copy(isLocationSendEnabled = enabled) }
                 }
@@ -131,7 +134,7 @@ class DraftConsentViewModel
         }
 
         private fun toggleItemInclusion(intent: DraftConsentUiIntent.ToggleItemInclusion) {
-            if (state.value.isSubmitting) return
+            if (state.value.isSubmitting || state.value.isSelectionReadOnly) return
             val snapshot = activeSnapshot ?: return
             val item = snapshot.selection.items.firstOrNull { it.rawId == intent.itemKey } ?: return
             // 사진은 홈 사진 시트 선택이 정본이므로 여기서 제외할 수 없다.
@@ -147,7 +150,7 @@ class DraftConsentViewModel
          * 제출 직전에 그때의 스냅샷으로 판단한다.
          */
         private fun toggleLocationInclusion() {
-            if (state.value.isSubmitting) return
+            if (state.value.isSubmitting || state.value.isSelectionReadOnly) return
             sessionStore.setLocationSendEnabled(!state.value.isLocationSendEnabled)
         }
 

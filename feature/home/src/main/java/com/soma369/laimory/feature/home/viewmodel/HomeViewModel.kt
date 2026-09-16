@@ -69,6 +69,7 @@ import com.soma369.laimory.feature.home.state.confirmDialogBody
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
+import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
@@ -76,7 +77,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -152,7 +155,17 @@ class HomeViewModel
             observeUserProfile()
             observeAccountSession()
             observeSubmissionExclusions()
+            observeSelectionLock()
         }
+
+        /** 전송 선택을 바꿀 수 없는 구간을 상세에 알린다. 상세는 이 값으로 토글을 막는다. */
+        private fun observeSelectionLock() =
+            safeLaunch {
+                state
+                    .map { it.isInputLocked }
+                    .distinctUntilChanged()
+                    .collect(draftConsentSessionStore::setSelectionReadOnly)
+            }
 
         /**
          * 상세에서 뺀 항목·위치 스위치가 바뀌면 홈 건수를 다시 센다.
@@ -316,7 +329,8 @@ class HomeViewModel
          * 사진을 고르는 동안 수집이 돌아, 확인 화면에서 기다리는 시간이 짧아진다.
          */
         private fun startPhotoSelection() {
-            if (state.value.isInputLocked) return
+            // 완성된 날도 연다. 시트가 읽기 전용으로 그려지고 선택 변경은 아래 토글들이 막는다.
+            if (state.value.isSourceViewLocked) return
             startAutoCollectionAhead()
             sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
@@ -369,6 +383,7 @@ class HomeViewModel
 
         private fun togglePhoto(mediaStoreId: Long) {
             val current = state.value
+            if (current.isInputLocked) return
             if (current.availablePhotos.none { it.mediaStoreId == mediaStoreId }) return
             if (mediaStoreId !in current.pendingPhotoIds && current.pendingPhotoIds.size >= MAX_PHOTO_SELECTION) {
                 showPhotoLimitMessage()
@@ -388,6 +403,7 @@ class HomeViewModel
 
         private fun toggleAllPhotos() {
             val current = state.value
+            if (current.isInputLocked) return
             val selectableIds =
                 current.availablePhotos
                     .take(MAX_PHOTO_SELECTION)
@@ -403,6 +419,7 @@ class HomeViewModel
 
         private fun togglePhotoDate(date: LocalDate) {
             val current = state.value
+            if (current.isInputLocked) return
             val datePhotoIds =
                 current.availablePhotos
                     .filter { it.capturedAt.atZone(zone).toLocalDate() == date }
@@ -1064,9 +1081,11 @@ class HomeViewModel
          *
          * 사진만 시트로 간다 — 고른 사진이 정본이라 목록에서 빼는 것이 아니라 다시 고르는 일이다.
          * 나머지는 유형 상세로 가고, 상세는 홈이 상시로 유지하는 스냅샷을 읽는다.
+         *
+         * 완성된 날도 연다. 그날 무엇이 모였는지는 볼 수 있어야 한다 — 상세와 시트가 읽기 전용으로 뜬다.
          */
         private fun openSourceDetail(kind: HomeSourceKind) {
-            if (state.value.isInputLocked) return
+            if (state.value.isSourceViewLocked) return
             if (kind == HomeSourceKind.PHOTO) {
                 startPhotoSelection()
                 return

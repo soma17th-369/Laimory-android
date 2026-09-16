@@ -186,9 +186,23 @@ internal val DraftCreationStatus.isInputLocked: Boolean
 internal val HomeUiState.isDateLocked: Boolean
     get() = isSubmitting || draftStatus.isDateLocked
 
-/** 날짜·시각·사진·원천 상세를 모두 잠그는 구간. 열어 볼 기록이 있는 날은 만들 것이 없어 함께 잠근다. */
+/**
+ * 시각·사진 선택·전송 선택을 바꿀 수 없는 구간. 열어 볼 기록이 있는 날은 만들 것이 없어 함께 잠근다.
+ *
+ * **보는 것은 여기서 정하지 않는다.** 원천 카드로 모인 것을 열어 보는 일은 [isSourceViewLocked] 가 정한다 —
+ * 완성된 날에도 그날 무엇이 모였는지는 볼 수 있어야 한다.
+ */
 internal val HomeUiState.isInputLocked: Boolean
     get() = isSubmitting || timelineButtonStatus.isInputLocked
+
+/**
+ * 원천 카드로 모인 것을 열어 보는 것까지 막는 구간. 제출·생성 중뿐이다.
+ *
+ * 그동안에는 확정한 스냅샷으로 요청이 진행되므로 상세가 바뀐 수집을 보여 주면 보낸 것과 어긋난다.
+ * 완성된 날은 막지 않고, 대신 상세·사진 시트를 읽기 전용으로 연다([isInputLocked]).
+ */
+internal val HomeUiState.isSourceViewLocked: Boolean
+    get() = isDateLocked
 
 /**
  * 홈 CTA 가 보여 줄 변형. 버튼 모양은 시안대로 셋이고, 여기서 바뀌는 것은 고르는 근거뿐이다.

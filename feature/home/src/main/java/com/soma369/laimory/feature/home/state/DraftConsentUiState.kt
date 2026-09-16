@@ -23,6 +23,8 @@ data class DraftConsentUiState(
      */
     val isLocationSendEnabled: Boolean = true,
     val isSubmitting: Boolean = false,
+    /** 홈이 전송 선택을 잠갔다(완성된 날). 보여 주기만 하고 토글은 막는다. */
+    val isSelectionReadOnly: Boolean = false,
     val submitError: String? = null,
     /**
      * 위치 지도를 그려도 되는지. false 면 `GoogleMap` 을 composition 에 넣지 않는다 —

@@ -50,6 +50,15 @@ class HomeTimelineButtonStatusTest {
     }
 
     @Test
+    fun `완성된 날도 모인 것을 보는 것은 막지 않고 제출·생성 중에만 막는다`() {
+        assertFalse(HomeUiState(selectedRecord = HomeRecordState.SAVED).isSourceViewLocked)
+        assertFalse(HomeUiState(draftStatus = DraftCreationStatus.SUCCESS).isSourceViewLocked)
+        assertTrue(HomeUiState(draftStatus = DraftCreationStatus.PROCESSING).isSourceViewLocked)
+        assertTrue(HomeUiState(draftStatus = DraftCreationStatus.LONG_RUNNING).isSourceViewLocked)
+        assertTrue(HomeUiState(isSubmitting = true).isSourceViewLocked)
+    }
+
+    @Test
     fun `보존 기간은 오늘을 포함해 센다`() {
         val today = LocalDate.of(2026, 9, 13)
 

@@ -8,7 +8,7 @@ import com.soma369.laimory.feature.home.state.HomeSourceTapTarget
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.homeSourceTapTarget
-import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.showsPermissionAction
 
 /** 카드가 그 원천의 상태를 어디서 읽는지. */
@@ -63,7 +63,7 @@ internal fun HomeUiState.cardClick(
     onIntent: (HomeUiIntent) -> Unit,
     onRequestPermission: (DataPermission) -> Unit,
 ): (() -> Unit)? {
-    if (isInputLocked) return null
+    if (isSourceViewLocked) return null
     return when (homeSourceTapTarget(countOf(kind).candidate, statusOf(kind))) {
         HomeSourceTapTarget.DETAIL -> ({ onIntent(HomeUiIntent.OpenSourceDetail(kind)) })
         HomeSourceTapTarget.PERMISSION -> ({ onRequestPermission(kind.permission()) })
@@ -76,7 +76,7 @@ internal fun HomeUiState.permissionAction(
     kind: HomeSourceKind,
     onRequestPermission: (DataPermission) -> Unit,
 ): (() -> Unit)? {
-    if (isInputLocked) return null
+    if (isSourceViewLocked) return null
     if (!showsPermissionAction(countOf(kind).candidate, statusOf(kind))) return null
     return { onRequestPermission(kind.permission()) }
 }

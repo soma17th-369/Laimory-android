@@ -1532,6 +1532,80 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `완성된 날도 원천 상세를 열고 상세는 읽기 전용으로 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+
+            viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.CALENDAR))
+            runCurrent()
+
+            assertEquals(listOf<Page>(DraftConsentDetailPage("CALENDAR")), navigationHelper.destinations)
+            assertTrue(sessionStore.isSelectionReadOnly.value)
+        }
+
+    @Test
+    fun `만들 수 있는 날은 상세가 선택을 바꿀 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            createViewModel()
+            runCurrent()
+
+            assertFalse(sessionStore.isSelectionReadOnly.value)
+        }
+
+    @Test
+    fun `생성 중에는 원천 상세를 열지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 확정한 스냅샷으로 요청이 진행되는 동안 바뀐 수집을 보여 주면 보낸 것과 어긋난다.
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(LocalDate.now(ZoneId.systemDefault()))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.CALENDAR))
+            runCurrent()
+
+            assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
+    @Test
+    fun `완성된 날 사진 시트는 열리지만 선택을 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
+            viewModel.sendIntent(HomeUiIntent.TogglePhotoDate(today))
+            runCurrent()
+            assertEquals(emptySet<Long>(), viewModel.state.value.pendingPhotoIds)
+
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            assertEquals(emptySet<Long>(), viewModel.state.value.selectedPhotoIds)
+        }
+
+    @Test
     fun `홈이 스냅샷을 상시로 유지해 CTA 전에도 상세가 볼 것이 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 종전에는 CTA 를 눌러야 스냅샷이 생겨 카드에서 상세를 열 수 없었다.
