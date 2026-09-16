@@ -19,7 +19,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,15 +32,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.R
+import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoViewerDialog
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeUiIntent
@@ -68,6 +75,9 @@ internal fun PhotoSelectionSheet(
                 .groupBy { it.capturedAt.atZone(zone).toLocalDate() }
                 .toSortedMap()
         }
+    // 크게 보는 사진의 순번. 격자에 보이는 순서(날짜별) 그대로 넘긴다.
+    val orderedPhotos = remember(photosByDate) { photosByDate.values.flatten() }
+    var viewerIndex by remember { mutableStateOf<Int?>(null) }
     val isAllSelected =
         state.availablePhotos.isNotEmpty() &&
             state.pendingPhotoIds.size == minOf(state.availablePhotos.size, MAX_PHOTO_SELECTION)
@@ -168,7 +178,8 @@ internal fun PhotoSelectionSheet(
                             SelectablePhoto(
                                 photo = photo,
                                 selected = photo.mediaStoreId in state.pendingPhotoIds,
-                                onClick = if (isReadOnly) null else ({ onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) }),
+                                onToggle = if (isReadOnly) null else ({ onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) }),
+                                onOpen = { viewerIndex = orderedPhotos.indexOf(photo).coerceAtLeast(0) },
                             )
                         }
                     }
@@ -207,6 +218,35 @@ internal fun PhotoSelectionSheet(
             }
             Spacer(modifier = Modifier.height(Spacing.large))
         }
+    }
+
+    viewerIndex?.let { initialIndex ->
+        LaimoryPhotoViewerDialog(
+            photoCount = orderedPhotos.size,
+            initialIndex = initialIndex,
+            onDismiss = { viewerIndex = null },
+            photo = { index ->
+                AsyncImage(
+                    model = orderedPhotos[index].uri,
+                    contentDescription = "사진 ${index + 1}",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+            bottomBar = { index ->
+                // 크게 보는 이유가 고를지 판단하려는 것이라, 닫고 칸을 다시 찾아 체크하게 두지 않는다.
+                if (isReadOnly) return@LaimoryPhotoViewerDialog
+                val photo = orderedPhotos.getOrNull(index) ?: return@LaimoryPhotoViewerDialog
+                val isSelected = photo.mediaStoreId in state.pendingPhotoIds
+                Button(
+                    onClick = { onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                ) {
+                    Text(if (isSelected) "선택 해제" else "선택하기")
+                }
+            },
+        )
     }
 }
 
@@ -332,18 +372,27 @@ private fun EmptyPhotoSelection() {
     }
 }
 
+/**
+ * 사진 시트의 칸 하나. **누르는 자리로 동작을 나눈다.**
+ *
+ * 우측 상단 체크 영역은 선택·해제이고, 그 밖은 크게 보기다. 작은 칸에서 사진 전체가 선택 버튼이면 무엇을
+ * 고르는지 확인할 길이 없다. 체크 영역은 배지보다 넓게 잡는다 — 배지만 누르게 하면 잘 안 눌린다.
+ *
+ * [onToggle] 이 null 이면(완성된 날) 체크 영역을 두지 않고 크게 보기만 된다.
+ */
 @Composable
 private fun SelectablePhoto(
     photo: HomePhotoItem,
     selected: Boolean,
-    onClick: (() -> Unit)?,
+    onToggle: (() -> Unit)?,
+    onOpen: () -> Unit,
 ) {
     Box(
         modifier =
             Modifier
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(enabled = onClick != null, onClick = { onClick?.invoke() }),
+                .clickable(onClickLabel = "사진 크게 보기", onClick = onOpen),
     ) {
         AsyncImage(
             model = photo.uri,
@@ -358,24 +407,33 @@ private fun SelectablePhoto(
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
             )
+        }
+        if (onToggle != null) {
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
-                        .padding(Spacing.extraSmall)
-                        .size(22.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
-                contentAlignment = Alignment.Center,
+                        .size(CHECK_TOUCH_SIZE)
+                        .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onToggle() })
+                        .semantics { contentDescription = "사진 선택" },
+                contentAlignment = Alignment.TopEnd,
             ) {
-                Text(
-                    text = "✓",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                )
+                PhotoCheckBadge(selected = selected, modifier = Modifier.padding(Spacing.extraSmall))
             }
+        } else if (selected) {
+            PhotoCheckBadge(
+                selected = true,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(Spacing.extraSmall),
+            )
         }
     }
 }
+
+/** 체크 영역의 터치 크기. 배지(22)보다 넓게 잡아 작은 칸에서도 잘 눌리게 한다. */
+private val CHECK_TOUCH_SIZE = 44.dp
 
 private fun photoDateLabel(
     date: LocalDate,
