@@ -30,8 +30,9 @@ import javax.inject.Inject
  * - 제거([onNotificationRemoved]) reason=click: 클릭 수집이 켜져 있으면 키워드·앱 설정과 무관하게 수집.
  *
  * 제목·본문은 이벤트당 한 번만 추출해 개인정보 정책·수집 판정·저장이 같은 값을 쓴다.
- * 개인정보 정책([NotificationPrivacyPolicy])이 수집 판정보다 먼저 실행되므로 클릭·앱 allowlist·키워드로
- * 우회할 수 없다. 구조 신호는 한 번만 변환해 개인정보 정책과 수집 판정이 함께 쓴다.
+ * 개인정보 정책([NotificationPrivacyPolicy])이 수집 판정보다 먼저 실행되므로 앱 allowlist·키워드로
+ * 우회할 수 없다. 누른 대화 알림만 대화 제외를 건너뛰고, 나머지 규칙은 클릭이어도 그대로다.
+ * 구조 신호는 한 번만 변환해 개인정보 정책과 수집 판정이 함께 쓴다.
  *
  * 동일 알림이 게시 이벤트에서 먼저 저장된 뒤 클릭 이벤트로 다시 들어오면 동일한 sourceKey 를 사용한다.
  * 저장소의 insert-or-ignore 정책에 따라 최초 수집 사유(KEYWORD/APP)가 유지된다(first-write-wins).
@@ -120,7 +121,7 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
 
         val signals = sbn.notification.toSignals()
         val sanitized =
-            sanitize(sbn.notification.toContent(), signals) ?: run {
+            sanitize(sbn.notification.toContent(), signals, clicked) ?: run {
                 logSkipped(sbn, "개인정보 정책", "대화=${signals.isMessage}")
                 return
             }
@@ -168,8 +169,9 @@ internal class LaimoryNotificationListenerService : NotificationListenerService(
     private fun sanitize(
         content: NotificationContent,
         signals: NotificationSignals,
+        clicked: Boolean,
     ): NotificationContent? =
-        runCatching { privacyPolicy.sanitize(content, signals) }
+        runCatching { privacyPolicy.sanitize(content, signals, clicked) }
             .onFailure { e ->
                 Logger.w(LogDomain.COLLECTION, "알림 개인정보 정책 실패: ${e.javaClass.simpleName}")
             }.getOrNull()

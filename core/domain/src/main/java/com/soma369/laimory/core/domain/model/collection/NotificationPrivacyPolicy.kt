@@ -3,11 +3,15 @@ package com.soma369.laimory.core.domain.model.collection
 /**
  * 알림 원문에서 보호 대상 정보를 걸러내는 순수 정책.
  *
- * 수집 판정([NotificationFilter])보다 먼저 실행되며 클릭·앱 allowlist·키워드로 우회할 수 없다.
+ * 수집 판정([NotificationFilter])보다 먼저 실행되며 앱 allowlist·키워드로 우회할 수 없다.
  * 판정 순서는 `전체 제외(마스킹 전 원문 기준) → 부분 마스킹 → 빈 콘텐츠 제외`다.
  *
- * 대화 알림은 원칙적으로 전체 제외지만 기업 발송 문자는 예외로 통과시킨다 — 결제 승인·택배·예약
- * 확인이 앱 푸시가 아니라 문자로 오는 비중이 크기 때문이다.
+ * 대화 알림은 원칙적으로 전체 제외지만 두 경우는 통과시킨다.
+ * - 사용자가 **누른** 대화 알림 — 그 대화를 직접 지목한 결과다. 채팅 알림을 누르는 것은 대화방을 여는
+ *   흔한 동작이라 대화 상대의 메시지 미리보기가 들어오지만, 전송 전에 항목별로 확인하고 뺄 수 있다.
+ * - 기업 발송 문자 — 결제 승인·택배·예약 확인이 앱 푸시가 아니라 문자로 오는 비중이 크다.
+ *
+ * 둘 다 대화 제외 하나만 푼다. 인증번호·고유식별정보 전체 제외와 마스킹은 그대로 적용한다.
  *
  * 규칙은 형식과 문맥어로만 판정한다. 사람 이름·질병명처럼 사전이나 NER 없이는 정확히
  * 가릴 수 없는 값은 대상에 넣지 않는다 — 넓은 규칙은 날짜·금액·주문번호처럼 생활 기록에
@@ -21,17 +25,19 @@ class NotificationPrivacyPolicy {
      *
      * @param signals 리스너 경계에서 얻은 구조 신호. 로컬 저장분 재적용처럼 복원할 수 없는
      *   경계에서는 [NotificationSignals.UNAVAILABLE]을 넘긴다.
+     * @param clicked 사용자가 알림창에서 눌러 들어온 알림인지. 누른 대화 알림은 대화 제외를 건너뛴다.
      * @return 저장·전송해도 되는 정제 결과. 전체 제외 대상이거나 정제 후 제목·본문이 모두
      *   비면 null 이며, 호출부는 저장하지 않는다.
      */
     fun sanitize(
         content: NotificationContent,
         signals: NotificationSignals,
+        clicked: Boolean = false,
     ): NotificationContent? {
         // 문맥어와 값이 제목·본문에 나뉘어 있을 수 있어 판정은 합친 텍스트로 한다.
         val joined = content.joined()
         if (joined.isBlank()) return null
-        if (signals.isMessage && !isBusinessMessage(joined)) return null
+        if (signals.isMessage && !clicked && !isBusinessMessage(joined)) return null
         if (isFullyExcluded(joined)) return null
 
         return NotificationContent(
