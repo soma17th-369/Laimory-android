@@ -233,19 +233,31 @@ internal fun PhotoSelectionSheet(
                     modifier = Modifier.fillMaxSize(),
                 )
             },
-            bottomBar = { index ->
-                // 크게 보는 이유가 고를지 판단하려는 것이라, 닫고 칸을 다시 찾아 체크하게 두지 않는다.
-                if (isReadOnly) return@LaimoryPhotoViewerDialog
-                val photo = orderedPhotos.getOrNull(index) ?: return@LaimoryPhotoViewerDialog
-                val isSelected = photo.mediaStoreId in state.pendingPhotoIds
-                Button(
-                    onClick = { onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.large,
-                ) {
-                    Text(if (isSelected) "선택 해제" else "선택하기")
-                }
-            },
+            // 크게 보는 이유가 고를지 판단하려는 것이라, 닫고 칸을 다시 찾아 체크하게 두지 않는다. 격자와 같은
+            // 파란 원 체크를 같은 우측 상단에 둔다 — 버튼 문구를 따로 두면 격자와 조작이 달라 어색하다.
+            topEndAction =
+                if (isReadOnly) {
+                    null
+                } else {
+                    { index ->
+                        orderedPhotos.getOrNull(index)?.let { photo ->
+                            val isSelected = photo.mediaStoreId in state.pendingPhotoIds
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .size(VIEWER_CHECK_TOUCH_SIZE)
+                                        .toggleable(
+                                            value = isSelected,
+                                            role = Role.Checkbox,
+                                            onValueChange = { onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) },
+                                        ).semantics { contentDescription = "사진 선택" },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                PhotoCheckBadge(selected = isSelected, size = VIEWER_BADGE_SIZE)
+                            }
+                        }
+                    }
+                },
         )
     }
 }
@@ -434,6 +446,10 @@ private fun SelectablePhoto(
 
 /** 체크 영역의 터치 크기. 배지(22)보다 넓게 잡아 작은 칸에서도 잘 눌리게 한다. */
 private val CHECK_TOUCH_SIZE = 44.dp
+
+/** 크게 보기의 체크. 화면이 큰 만큼 배지도 키운다. */
+private val VIEWER_BADGE_SIZE = 28.dp
+private val VIEWER_CHECK_TOUCH_SIZE = 48.dp
 
 private fun photoDateLabel(
     date: LocalDate,
