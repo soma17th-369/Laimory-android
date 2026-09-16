@@ -66,11 +66,11 @@ enum class DataSourceUiModel(
         permission = DataPermission.NOTIFICATION_LISTENER,
         label = "알림",
         iconRes = CoreUiR.drawable.ico_setting_datasource_notification,
-        purpose = "결제·배송·예약처럼 생활 이벤트가 담긴 알림만 골라 후보로 씁니다. 대화 알림은 읽지 않아요.",
+        purpose = "결제·배송·예약처럼 생활 이벤트가 담긴 알림만 골라 후보로 씁니다. 대화 알림은 눌러서 연 것만 모아요.",
         details =
             listOf(
                 "결제·배송·예약처럼 생활 이벤트를 알리는 알림만 골라요.",
-                "개인 대화와 광고 알림은 읽지 않아요.",
+                "누르지 않은 대화 알림과 광고 알림은 읽지 않아요.",
                 "켠 뒤에 오는 알림부터 읽어요. 지난 알림은 가져오지 않아요.",
             ),
     ),

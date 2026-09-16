@@ -318,7 +318,7 @@ private fun DefaultKeywordToggle(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "문자는 [Web발신] 표기가 붙은 기업 발송만 수집하며, 개인 대화는 수집하지 않습니다.",
+            text = "대화 알림은 누른 것과 [Web발신] 표기가 붙은 기업 문자만 수집합니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
