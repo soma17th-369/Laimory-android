@@ -57,6 +57,22 @@ internal fun HomeUiState.cardBody(kind: HomeSourceKind): String {
     }
 }
 
+/**
+ * 사진 카드 격자 위에 띄울 빈 문구.
+ *
+ * 전체 허용이고 불러오기가 끝났는데 후보가 0장일 때만이다. 권한이 없거나 일부만 허용이면 본문이 이미
+ * `탭하여 허용` 을 말하고, 그때 "갤러리에 없다" 고 하면 틀린 말이 된다.
+ */
+internal fun HomeUiState.photoEmptyMessage(): String? =
+    PHOTO_EMPTY_MESSAGE.takeIf {
+        permissions.photo == DataSourceStatus.GRANTED &&
+            hasLoadedPhotoCandidates &&
+            !isPhotoLoading &&
+            availablePhotos.isEmpty()
+    }
+
+private const val PHOTO_EMPTY_MESSAGE = "갤러리에 이 기간 사진이 없어요"
+
 /** 카드 본체 탭. 갈 곳이 없으면 null 이라 눌리지 않는다. */
 internal fun HomeUiState.cardClick(
     kind: HomeSourceKind,

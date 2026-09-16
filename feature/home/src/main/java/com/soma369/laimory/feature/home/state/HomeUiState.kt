@@ -48,6 +48,12 @@ data class HomeUiState(
     val selectedPhotoIds: Set<Long> = emptySet(),
     val pendingPhotoIds: Set<Long> = emptySet(),
     val isPhotoLoading: Boolean = false,
+    /**
+     * 지금 기록 창의 사진 후보를 한 번이라도 불러왔는지.
+     *
+     * 불러오기 전에는 후보가 비어 있어도 "사진이 없다" 고 말하면 안 된다 — 앱을 켜자마자 잠깐 틀린 문구가 뜬다.
+     */
+    val hasLoadedPhotoCandidates: Boolean = false,
     val isPhotoAccessLimited: Boolean = false,
     /**
      * 사진 접근을 거부당한 채로 시트를 연 상태.

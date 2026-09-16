@@ -493,6 +493,30 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `사진 후보를 불러온 뒤에만 불러옴으로 표시하고 기록 창이 바뀌면 다시 내린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            assertFalse(viewModel.state.value.hasLoadedPhotoCandidates)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.hasLoadedPhotoCandidates)
+
+            val gate = CompletableDeferred<List<PhotoCandidate>>()
+            photoSource.candidateGates.add(gate)
+            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(1)))
+            runCurrent()
+            // 새 창의 후보를 받기 전이다.
+            assertFalse(viewModel.state.value.hasLoadedPhotoCandidates)
+
+            gate.complete(emptyList())
+            runCurrent()
+            assertTrue(viewModel.state.value.hasLoadedPhotoCandidates)
+        }
+
+    @Test
     fun `사진 없이 닫으면 선택만 비우고 생성으로 넘어가지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("calendar"))

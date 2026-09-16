@@ -991,7 +991,7 @@ class HomeViewModel
                 requestedPhotoWindow = null
                 updateState {
                     withSourceSummary(sourceItems, photoCandidates)
-                        .copy(isPhotoLoading = false)
+                        .copy(isPhotoLoading = false, hasLoadedPhotoCandidates = true)
                 }
                 return
             }
@@ -1020,14 +1020,15 @@ class HomeViewModel
                         }
                     updateState {
                         withSourceSummary(sourceItems, candidates)
-                            .copy(isPhotoLoading = false)
+                            .copy(isPhotoLoading = false, hasLoadedPhotoCandidates = true)
                     }
                 }
         }
 
         private fun onRecordWindowChanged() {
             preparedPhotoCache = null
-            updateState { withSourceSummary(sourceItems, photoCandidates) }
+            // 새 창의 후보를 받기 전이다. 받아 둔 게 없다고 "사진이 없다" 고 말하지 않게 한다.
+            updateState { withSourceSummary(sourceItems, photoCandidates).copy(hasLoadedPhotoCandidates = false) }
             loadPhotoCandidates(force = false)
         }
 
@@ -1041,6 +1042,7 @@ class HomeViewModel
             updateState {
                 copy(
                     isPhotoLoading = false,
+                    hasLoadedPhotoCandidates = false,
                     isPhotoSheetVisible = false,
                     isPhotoAccessLimited = false,
                 ).withSourceSummary(sourceItems, emptyList())
