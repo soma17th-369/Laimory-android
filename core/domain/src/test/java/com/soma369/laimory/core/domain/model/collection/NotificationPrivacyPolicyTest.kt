@@ -28,6 +28,24 @@ class NotificationPrivacyPolicyTest {
     }
 
     @Test
+    fun `OTP 문맥은 단어로 쓰였을 때만 인증번호로 본다`() {
+        assertNull(sanitize(text = "OTP 482913 을 입력하세요"))
+        assertNull(sanitize(text = "[OTP]482913"))
+        assertNull(sanitize(text = "OTP번호 4829"))
+        assertNull(sanitize(text = "otp: 482913"))
+    }
+
+    @Test
+    fun `가맹점명에 OTP 글자가 섞인 결제 승인은 유지한다`() {
+        // 부분 일치로 보던 때는 카드 끝자리·금액 숫자와 함께 통째로 버려졌다.
+        val hotpot = sanitize(title = "KB국민카드", text = "승인 1234 12,000원 HOTPOT 강남점")
+        val footprint = sanitize(title = "현대카드", text = "FOOTPRINT 성수 승인 5,500원 카드 9876")
+
+        assertEquals("승인 1234 12,000원 HOTPOT 강남점", hotpot?.text)
+        assertEquals("FOOTPRINT 성수 승인 5,500원 카드 9876", footprint?.text)
+    }
+
+    @Test
     fun `코드가 없는 인증 완료 알림은 생활 이벤트로 유지한다`() {
         val result = sanitize(title = "본인인증 완료", text = "본인인증이 완료되었습니다")
 

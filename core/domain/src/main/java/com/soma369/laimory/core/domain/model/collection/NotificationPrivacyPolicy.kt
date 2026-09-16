@@ -189,8 +189,18 @@ private const val CARD_TOKEN = "[카드번호]"
 private const val ACCOUNT_TOKEN = "[계좌번호]"
 private const val ADDRESS_TOKEN = "[상세주소]"
 
+/**
+ * 인증 코드 문맥어.
+ *
+ * `OTP` 는 앞뒤가 영문자가 아닐 때만 본다. 부분 일치로 두면 `HOTPOT`·`FOOTPRINT` 같은 가맹점명에
+ * 걸려, 금액·카드 끝자리 숫자와 함께 온 결제 승인 알림이 통째로 버려진다. `\b` 는 한글을 단어 문자로 봐
+ * `OTP번호` 에서 경계가 생기지 않으므로 lookaround 로 영문자만 막는다.
+ */
 private val AUTH_CODE_CONTEXT =
-    Regex("""인증\s*번호|인증\s*코드|보안\s*코드|OTP|verification\s+code""", RegexOption.IGNORE_CASE)
+    Regex(
+        """인증\s*번호|인증\s*코드|보안\s*코드|(?<![A-Za-z])OTP(?![A-Za-z])|verification\s+code""",
+        RegexOption.IGNORE_CASE,
+    )
 private val AUTH_CODE_VALUE = Regex("""(?<!\d)\d{4,8}(?!\d)""")
 private val ACCOUNT_SECRET =
     Regex(
