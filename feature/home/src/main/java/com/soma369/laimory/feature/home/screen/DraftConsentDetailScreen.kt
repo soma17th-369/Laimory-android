@@ -113,7 +113,8 @@ private fun DraftConsentDetailContent(
         locationMarkers = state.content?.locationMarkers.orEmpty(),
         isMapRenderAllowed = state.isMapRenderAllowed,
         isLocationIncluded = state.isLocationIncluded,
-        isLocationToggleEnabled = !state.isSubmitting,
+        isLocationToggleEnabled = !state.isSubmitting && !state.isSelectionReadOnly,
+        isReadOnly = state.isSelectionReadOnly,
         onToggleItem = { itemKey -> onIntent(DraftConsentUiIntent.ToggleItemInclusion(itemKey)) },
         onToggleLocation = { onIntent(DraftConsentUiIntent.ToggleLocationInclusion) },
         onBack = { onIntent(DraftConsentUiIntent.CloseTypeDetail) },
@@ -131,6 +132,7 @@ private fun DraftConsentDetailScreen(
     isMapRenderAllowed: Boolean = false,
     isLocationIncluded: Boolean = true,
     isLocationToggleEnabled: Boolean = true,
+    isReadOnly: Boolean = false,
     onToggleItem: (String) -> Unit = {},
     onToggleLocation: () -> Unit = {},
 ) {
@@ -149,6 +151,9 @@ private fun DraftConsentDetailScreen(
             DetailUnavailableContent(onBack = onBack)
             return
         }
+
+        // 완성된 날은 보기만 한다. 카드에 토글을 두지 않아야 체크박스로 낭독되지 않는다.
+        val itemToggle: ((String) -> Unit)? = onToggleItem.takeUnless { isReadOnly }
 
         // rawId 하나가 마커 여러 개(이동의 시작·도착)를 가질 수 있어 목록으로 모은다.
         val markerOrders =
@@ -172,7 +177,7 @@ private fun DraftConsentDetailScreen(
                     markers = locationMarkers,
                     excludedRawIds = excludedRawIds,
                     renderAllowed = isMapRenderAllowed,
-                    onToggleMarker = onToggleItem,
+                    onToggleMarker = { rawId -> itemToggle?.invoke(rawId) },
                 )
                 LocationTransferSwitchRow(
                     included = isLocationIncluded,
@@ -199,11 +204,14 @@ private fun DraftConsentDetailScreen(
                 val label = summary.countLabel(includedCount = summary.sentCount - excludedCount)
                 Text(
                     text =
-                        when (summary.group) {
-                            DraftConsentTypeGroup.PHOTO ->
+                        when {
+                            summary.group == DraftConsentTypeGroup.PHOTO ->
                                 "$label · 아래 사진이 그대로 서버로 전송돼요. 사진은 홈 사진 선택에서 변경할 수 있어요."
 
-                            DraftConsentTypeGroup.LOCATION ->
+                            isReadOnly ->
+                                "$label · 이미 만든 기록이라 전송 선택은 바꿀 수 없어요. 흐리게 표시된 항목은 전송에서 뺀 항목이에요."
+
+                            summary.group == DraftConsentTypeGroup.LOCATION ->
                                 "$label · 지도 핀을 누르면 장소와 포함 여부가 보이고, 말풍선을 한 번 더 누르면 바뀌어요. 핀 번호는 아래 목록과 같아요."
 
                             else ->
@@ -220,7 +228,7 @@ private fun DraftConsentDetailScreen(
                     section = section,
                     excludedRawIds = excludedRawIds,
                     markerOrders = markerOrders,
-                    onToggleItem = onToggleItem,
+                    onToggleItem = itemToggle,
                 )
             }
         }
@@ -308,7 +316,7 @@ private fun LazyListScope.sectionItems(
     section: DraftConsentDetailSection,
     excludedRawIds: Set<String>,
     markerOrders: Map<String, List<Int>>,
-    onToggleItem: (String) -> Unit,
+    onToggleItem: ((String) -> Unit)?,
 ) {
     section.title?.let { sectionTitle ->
         // 알림은 표시명이 같은 서로 다른 앱이 있을 수 있어 패키지명을 key 로 쓴다.
@@ -337,7 +345,7 @@ private fun LazyListScope.sectionItems(
                 CalendarItemCard(
                     item = item,
                     included = item.key !in excludedRawIds,
-                    onToggle = { onToggleItem(item.key) },
+                    onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
                 )
             }
 
@@ -348,7 +356,7 @@ private fun LazyListScope.sectionItems(
                     included = item.key !in excludedRawIds,
                     // 지도 핀과 대조할 수 있게 같은 번호를 붙인다. 이동은 시작·도착 두 핀이라 범위로 적는다.
                     orders = markerOrders[item.key].orEmpty(),
-                    onToggle = { onToggleItem(item.key) },
+                    onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
                 )
             }
 
@@ -357,7 +365,7 @@ private fun LazyListScope.sectionItems(
                 HealthItemCard(
                     item = item,
                     included = item.key !in excludedRawIds,
-                    onToggle = { onToggleItem(item.key) },
+                    onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
                 )
             }
 
@@ -366,7 +374,7 @@ private fun LazyListScope.sectionItems(
                 NotificationItemCard(
                     item = item,
                     included = item.key !in excludedRawIds,
-                    onToggle = { onToggleItem(item.key) },
+                    onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
                 )
             }
     }
@@ -520,7 +528,7 @@ private fun PhotoGridRow(row: List<DraftConsentDetailItem>) {
 private fun CalendarItemCard(
     item: DraftConsentDetailItem,
     included: Boolean,
-    onToggle: () -> Unit,
+    onToggle: (() -> Unit)?,
 ) {
     DetailCard(included = included, onToggle = onToggle) {
         Box(
@@ -561,7 +569,7 @@ private fun LocationItemCard(
     item: DraftConsentDetailItem,
     included: Boolean,
     orders: List<Int>,
-    onToggle: () -> Unit,
+    onToggle: (() -> Unit)?,
 ) {
     DetailCard(included = included, onToggle = onToggle) {
         MarkerOrderBadge(orders = orders, included = included)
@@ -609,7 +617,7 @@ private fun LocationItemCard(
 private fun HealthItemCard(
     item: DraftConsentDetailItem,
     included: Boolean,
-    onToggle: () -> Unit,
+    onToggle: (() -> Unit)?,
 ) {
     DetailCard(included = included, onToggle = onToggle) {
         Box(
@@ -655,7 +663,7 @@ private fun HealthItemCard(
 private fun NotificationItemCard(
     item: DraftConsentDetailItem,
     included: Boolean,
-    onToggle: () -> Unit,
+    onToggle: (() -> Unit)?,
 ) {
     DetailCard(included = included, onToggle = onToggle) {
         Column(

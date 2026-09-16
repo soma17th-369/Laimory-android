@@ -46,6 +46,7 @@ import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
+import com.soma369.laimory.feature.home.state.isInputLocked
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -57,6 +58,8 @@ internal fun PhotoSelectionSheet(
     onOpenAppSettings: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // 완성된 날은 모인 사진을 보여 주기만 한다. 고르는 조작을 감춰, 눌리는데 아무 일도 없는 버튼을 남기지 않는다.
+    val isReadOnly = state.isInputLocked
     val zone = remember { ZoneId.systemDefault() }
     val today = rememberToday(zone)
     val photosByDate =
@@ -90,6 +93,8 @@ internal fun PhotoSelectionSheet(
                     text =
                         if (state.isPhotoAccessDenied) {
                             "사진 접근을 허용하지 않아 사진을 불러올 수 없어요."
+                        } else if (isReadOnly) {
+                            "${state.timeRangeLabel()} 사이에 모은 사진이에요. 이미 만든 기록이라 선택은 바꿀 수 없어요."
                         } else {
                             "${state.timeRangeLabel()} 사이에 모은 사진만 표시해요."
                         },
@@ -129,8 +134,10 @@ internal fun PhotoSelectionSheet(
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
-                    TextButton(onClick = { onIntent(HomeUiIntent.ToggleAllPhotos) }) {
-                        Text(if (isAllSelected) "전체 해제" else "전체 선택")
+                    if (!isReadOnly) {
+                        TextButton(onClick = { onIntent(HomeUiIntent.ToggleAllPhotos) }) {
+                            Text(if (isAllSelected) "전체 해제" else "전체 선택")
+                        }
                     }
                 }
 
@@ -154,14 +161,14 @@ internal fun PhotoSelectionSheet(
                                 today = today,
                                 selectedCount = photos.count { it.mediaStoreId in state.pendingPhotoIds },
                                 photoCount = photos.size,
-                                onToggleAll = { onIntent(HomeUiIntent.TogglePhotoDate(date)) },
+                                onToggleAll = if (isReadOnly) null else ({ onIntent(HomeUiIntent.TogglePhotoDate(date)) }),
                             )
                         }
                         items(photos, key = HomePhotoItem::mediaStoreId) { photo ->
                             SelectablePhoto(
                                 photo = photo,
                                 selected = photo.mediaStoreId in state.pendingPhotoIds,
-                                onClick = { onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) },
+                                onClick = if (isReadOnly) null else ({ onIntent(HomeUiIntent.TogglePhoto(photo.mediaStoreId)) }),
                             )
                         }
                     }
@@ -177,7 +184,12 @@ internal fun PhotoSelectionSheet(
             Button(
                 onClick = {
                     onIntent(
-                        if (hasSelection) HomeUiIntent.ConfirmPhotoSelection else HomeUiIntent.ContinueWithoutPhotos,
+                        when {
+                            // 읽기 전용에서 확정하면 ViewModel 이 막아 시트가 닫히지 않는다. 닫기만 한다.
+                            isReadOnly -> HomeUiIntent.DismissPhotoSheet
+                            hasSelection -> HomeUiIntent.ConfirmPhotoSelection
+                            else -> HomeUiIntent.ContinueWithoutPhotos
+                        },
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -186,7 +198,11 @@ internal fun PhotoSelectionSheet(
                 shape = MaterialTheme.shapes.large,
             ) {
                 Text(
-                    if (hasSelection) "${state.pendingPhotoIds.size}장 선택 완료" else "사진 없이 닫기",
+                    when {
+                        isReadOnly -> "닫기"
+                        hasSelection -> "${state.pendingPhotoIds.size}장 선택 완료"
+                        else -> "사진 없이 닫기"
+                    },
                 )
             }
             Spacer(modifier = Modifier.height(Spacing.large))
@@ -214,7 +230,7 @@ private fun PhotoDateHeader(
     today: LocalDate,
     selectedCount: Int,
     photoCount: Int,
-    onToggleAll: () -> Unit,
+    onToggleAll: (() -> Unit)?,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -233,8 +249,10 @@ private fun PhotoDateHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = onToggleAll) {
-            Text(if (selectedCount == photoCount) "이 날짜 해제" else "이 날짜 전체 선택")
+        if (onToggleAll != null) {
+            TextButton(onClick = onToggleAll) {
+                Text(if (selectedCount == photoCount) "이 날짜 해제" else "이 날짜 전체 선택")
+            }
         }
     }
 }
@@ -318,14 +336,14 @@ private fun EmptyPhotoSelection() {
 private fun SelectablePhoto(
     photo: HomePhotoItem,
     selected: Boolean,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
 ) {
     Box(
         modifier =
             Modifier
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onClick),
+                .clickable(enabled = onClick != null, onClick = { onClick?.invoke() }),
     ) {
         AsyncImage(
             model = photo.uri,

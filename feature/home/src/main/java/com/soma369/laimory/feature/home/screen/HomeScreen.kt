@@ -91,6 +91,7 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.isDateLocked
+import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
@@ -347,7 +348,10 @@ private fun HomeScreen(
                 HomeDateRow(
                     selectedDate = state.selectedDate,
                     windowText = state.timeRangeLabel(),
-                    enabled = !state.isDateLocked,
+                    isDateEnabled = !state.isDateLocked,
+                    // 시각은 만들 것이 있는 날만 바꾼다. 날짜 줄과 같은 조건을 쓰면 완성된 날에 눌리는 것처럼
+                    // 보이는데 ViewModel 이 조용히 무시한다.
+                    isRangeEnabled = !state.isInputLocked,
                     onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
                     onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
                 )
@@ -516,7 +520,8 @@ private fun HomeHeaderRow(
 private fun HomeDateRow(
     selectedDate: LocalDate,
     windowText: String,
-    enabled: Boolean,
+    isDateEnabled: Boolean,
+    isRangeEnabled: Boolean,
     onDateClick: () -> Unit,
     onRangeClick: () -> Unit,
 ) {
@@ -530,7 +535,7 @@ private fun HomeDateRow(
             modifier =
                 Modifier
                     .clip(RoundedCornerShape(Spacing.small))
-                    .clickable(enabled = enabled, onClick = onDateClick)
+                    .clickable(enabled = isDateEnabled, onClick = onDateClick)
                     .padding(vertical = Spacing.extraSmall),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface,
@@ -540,7 +545,7 @@ private fun HomeDateRow(
             modifier =
                 Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = enabled, onClick = onRangeClick)
+                    .clickable(enabled = isRangeEnabled, onClick = onRangeClick)
                     .padding(horizontal = Spacing.extraSmall, vertical = 2.dp),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
