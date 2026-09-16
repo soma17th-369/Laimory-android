@@ -100,6 +100,28 @@ class LaimoryTimePickerMathTest {
     }
 
     @Test
+    fun `이동량을 칸마다 나눠 반영해도 한 번에 반영한 것과 같다`() {
+        // 롤러는 가운데 칸이 바뀔 때마다 한 칸씩 알린다. 자정·시 올림이 걸려도 결과가 달라지면 안 된다.
+        val start = value(hour = 22, minute = 50)
+        for (delta in -30..30) {
+            val stepwiseMinute =
+                (1..kotlin.math.abs(delta)).fold(start) { acc, _ ->
+                    LaimoryTimePickerMath.scrollMinute(acc, Integer.signum(delta), TimePickerMinuteStep.FIVE, sameAndNextDay)
+                }
+            assertEquals(
+                LaimoryTimePickerMath.scrollMinute(start, delta, TimePickerMinuteStep.FIVE, sameAndNextDay),
+                stepwiseMinute,
+            )
+
+            val stepwiseHour =
+                (1..kotlin.math.abs(delta)).fold(start) { acc, _ ->
+                    LaimoryTimePickerMath.scrollHour(acc, Integer.signum(delta), singleDay)
+                }
+            assertEquals(LaimoryTimePickerMath.scrollHour(start, delta, singleDay), stepwiseHour)
+        }
+    }
+
+    @Test
     fun `날짜 열이 없으면 시는 순환하되 날짜는 그대로다`() {
         val forward = LaimoryTimePickerMath.scrollHour(value(hour = 23, minute = 30), delta = 1, dates = singleDay)
         val backward = LaimoryTimePickerMath.scrollHour(value(hour = 0, minute = 30), delta = -1, dates = singleDay)
