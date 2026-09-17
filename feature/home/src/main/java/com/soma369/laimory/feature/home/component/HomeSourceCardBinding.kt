@@ -58,16 +58,19 @@ internal fun HomeUiState.cardBody(kind: HomeSourceKind): String {
 }
 
 /**
- * 사진 카드 격자 위에 띄울 빈 문구.
+ * 사진 카드 격자 자리에 띄울 빈 문구.
  *
- * 전체 허용이고 불러오기가 끝났는데 후보가 0장일 때만이다. 권한이 없거나 일부만 허용이면 본문이 이미
- * `탭하여 허용` 을 말하고, 그때 "갤러리에 없다" 고 하면 틀린 말이 된다.
+ * 전체 허용이고 지금 기록 창의 후보를 불러왔는데 0장일 때만이다. 권한이 없거나 일부만 허용이면 본문이
+ * 이미 `탭하여 허용` 을 말하고, 그때 "갤러리에 없다" 고 하면 틀린 말이 된다.
+ *
+ * **다시 불러오는 중에는 알던 결과를 유지한다.** 카드를 눌러 시트를 열거나 화면에 돌아오면 같은 창을 다시
+ * 불러오는데, 그동안 문구를 거두면 빈 회색 칸이 잠깐 드러난다. 창이 바뀌면 불러옴 표시가 내려가므로
+ * 다른 기간의 결과가 남지는 않는다.
  */
 internal fun HomeUiState.photoEmptyMessage(): String? =
     PHOTO_EMPTY_MESSAGE.takeIf {
         permissions.photo == DataSourceStatus.GRANTED &&
             hasLoadedPhotoCandidates &&
-            !isPhotoLoading &&
             availablePhotos.isEmpty()
     }
 

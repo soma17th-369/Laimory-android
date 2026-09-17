@@ -22,10 +22,16 @@ class HomePhotoEmptyMessageTest {
     }
 
     @Test
-    fun `불러오기 전이나 불러오는 중에는 적지 않는다`() {
+    fun `지금 기록 창의 후보를 불러오기 전에는 적지 않는다`() {
         // 앱을 켜자마자 후보가 아직 비어 있을 뿐인데 사진이 없다고 말하면 틀린 문구가 잠깐 뜬다.
         assertNull(loadedEmpty.copy(hasLoadedPhotoCandidates = false).photoEmptyMessage())
-        assertNull(loadedEmpty.copy(isPhotoLoading = true).photoEmptyMessage())
+        assertNull(loadedEmpty.copy(hasLoadedPhotoCandidates = false, isPhotoLoading = true).photoEmptyMessage())
+    }
+
+    @Test
+    fun `같은 창을 다시 불러오는 중에는 알던 빈 결과를 유지한다`() {
+        // 카드를 눌러 시트를 열면 다시 불러오는데, 그때 문구를 거두면 빈 회색 칸이 드러났다.
+        assertEquals("갤러리에 이 기간 사진이 없어요", loadedEmpty.copy(isPhotoLoading = true).photoEmptyMessage())
     }
 
     @Test
