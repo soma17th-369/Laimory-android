@@ -52,10 +52,11 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
-import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.isInputLocked
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,7 +69,6 @@ internal fun PhotoSelectionSheet(
     // 완성된 날은 모인 사진을 보여 주기만 한다. 고르는 조작을 감춰, 눌리는데 아무 일도 없는 버튼을 남기지 않는다.
     val isReadOnly = state.isInputLocked
     val zone = remember { ZoneId.systemDefault() }
-    val today = rememberToday(zone)
     val photosByDate =
         remember(state.availablePhotos, zone) {
             state.availablePhotos
@@ -78,9 +78,6 @@ internal fun PhotoSelectionSheet(
     // 크게 보는 사진의 순번. 격자에 보이는 순서(날짜별) 그대로 넘긴다.
     val orderedPhotos = remember(photosByDate) { photosByDate.values.flatten() }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
-    val isAllSelected =
-        state.availablePhotos.isNotEmpty() &&
-            state.pendingPhotoIds.size == minOf(state.availablePhotos.size, MAX_PHOTO_SELECTION)
     ModalBottomSheet(
         onDismissRequest = { onIntent(HomeUiIntent.DismissPhotoSheet) },
         sheetState = sheetState,
@@ -135,23 +132,8 @@ internal fun PhotoSelectionSheet(
             } else if (state.availablePhotos.isEmpty()) {
                 EmptyPhotoSelection()
             } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "${state.pendingPhotoIds.size}/${MAX_PHOTO_SELECTION}장 선택",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                    if (!isReadOnly) {
-                        TextButton(onClick = { onIntent(HomeUiIntent.ToggleAllPhotos) }) {
-                            Text(if (isAllSelected) "전체 해제" else "전체 선택")
-                        }
-                    }
-                }
-
+                // 전체 선택·장수 줄은 두지 않는다. 고르는 단위는 날짜 섹션의 `모두 선택` 이고, 고른 장수는 아래 버튼이
+                // 말한다. 상한(20장)을 넘기려 하면 그때 안내한다.
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 88.dp),
                     modifier =
@@ -168,10 +150,7 @@ internal fun PhotoSelectionSheet(
                         ) {
                             PhotoDateHeader(
                                 date = date,
-                                selectedDate = state.selectedDate,
-                                today = today,
-                                selectedCount = photos.count { it.mediaStoreId in state.pendingPhotoIds },
-                                photoCount = photos.size,
+                                isAllSelected = photos.all { it.mediaStoreId in state.pendingPhotoIds },
                                 onToggleAll = if (isReadOnly) null else ({ onIntent(HomeUiIntent.TogglePhotoDate(date)) }),
                             )
                         }
@@ -279,32 +258,23 @@ private fun PhotoSelectionLoading() {
 @Composable
 private fun PhotoDateHeader(
     date: LocalDate,
-    selectedDate: LocalDate,
-    today: LocalDate,
-    selectedCount: Int,
-    photoCount: Int,
+    isAllSelected: Boolean,
     onToggleAll: (() -> Unit)?,
 ) {
+    // 날짜만 적는다. `기준일`·`익일` 같은 관계 표시는 기록 범위를 알아야 읽히는 말이라 뺀다.
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = photoDateLabel(date, selectedDate, today),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "$selectedCount/${photoCount}장 선택",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            text = PHOTO_DATE_FORMAT.format(date),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
         if (onToggleAll != null) {
             TextButton(onClick = onToggleAll) {
-                Text(if (selectedCount == photoCount) "이 날짜 해제" else "이 날짜 전체 선택")
+                Text(if (isAllSelected) "모두 해제" else "모두 선택")
             }
         }
     }
@@ -445,17 +415,4 @@ private fun SelectablePhoto(
 private val VIEWER_BADGE_SIZE = 28.dp
 private val VIEWER_CHECK_TOUCH_SIZE = 48.dp
 
-private fun photoDateLabel(
-    date: LocalDate,
-    selectedDate: LocalDate,
-    today: LocalDate,
-): String {
-    val relation =
-        when (date) {
-            selectedDate -> if (date == today) "오늘" else "기준일"
-            selectedDate.plusDays(1) -> "익일"
-            else -> null
-        }
-    val dateLabel = "${date.monthValue}월 ${date.dayOfMonth}일"
-    return relation?.let { "$dateLabel · $it" } ?: dateLabel
-}
+private val PHOTO_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM월 dd일", Locale.KOREAN)

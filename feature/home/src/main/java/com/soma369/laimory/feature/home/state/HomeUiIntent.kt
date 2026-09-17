@@ -50,8 +50,6 @@ sealed interface HomeUiIntent : UiIntent {
         val date: LocalDate,
     ) : HomeUiIntent
 
-    data object ToggleAllPhotos : HomeUiIntent
-
     /** 고른 사진으로 확정하고 데이터 확인 화면으로 넘어간다. */
     data object ConfirmPhotoSelection : HomeUiIntent
 

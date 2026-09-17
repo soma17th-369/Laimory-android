@@ -234,7 +234,6 @@ class HomeViewModel
                     }
                 is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
                 is HomeUiIntent.TogglePhotoDate -> togglePhotoDate(intent.date)
-                HomeUiIntent.ToggleAllPhotos -> toggleAllPhotos()
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
                 HomeUiIntent.ShowDatePicker -> showDatePicker()
@@ -399,22 +398,6 @@ class HomeViewModel
                         },
                 )
             }
-        }
-
-        private fun toggleAllPhotos() {
-            val current = state.value
-            if (current.isInputLocked) return
-            val selectableIds =
-                current.availablePhotos
-                    .take(MAX_PHOTO_SELECTION)
-                    .mapTo(linkedSetOf(), HomePhotoItem::mediaStoreId)
-            val shouldClear =
-                current.pendingPhotoIds.size == selectableIds.size &&
-                    current.pendingPhotoIds.containsAll(selectableIds)
-            updateState {
-                copy(pendingPhotoIds = if (shouldClear) emptySet() else selectableIds)
-            }
-            if (!shouldClear && current.availablePhotos.size > MAX_PHOTO_SELECTION) showPhotoLimitMessage()
         }
 
         private fun togglePhotoDate(date: LocalDate) {

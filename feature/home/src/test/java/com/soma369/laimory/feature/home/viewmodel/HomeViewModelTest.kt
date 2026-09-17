@@ -281,7 +281,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `전체 사진 선택은 최대 20장까지만 반영한다`() =
+    fun `날짜 모두 선택은 최대 20장까지만 반영한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             photoSource.candidates = (1L..21L).map(::todayPhotoCandidate)
             val viewModel = createViewModel()
@@ -289,7 +289,7 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
+            viewModel.sendIntent(HomeUiIntent.TogglePhotoDate(LocalDate.now(ZoneId.systemDefault())))
             runCurrent()
 
             val state = viewModel.state.value
@@ -679,7 +679,7 @@ class HomeViewModelTest {
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
+            viewModel.sendIntent(HomeUiIntent.TogglePhotoDate(LocalDate.now(ZoneId.systemDefault())))
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
@@ -1618,7 +1618,6 @@ class HomeViewModelTest {
             assertTrue(viewModel.state.value.isPhotoSheetVisible)
 
             viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
-            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
             viewModel.sendIntent(HomeUiIntent.TogglePhotoDate(today))
             runCurrent()
             assertEquals(emptySet<Long>(), viewModel.state.value.pendingPhotoIds)
