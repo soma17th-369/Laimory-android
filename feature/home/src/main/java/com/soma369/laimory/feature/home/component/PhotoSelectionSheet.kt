@@ -2,7 +2,7 @@ package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,9 +104,10 @@ internal fun PhotoSelectionSheet(
                         if (state.isPhotoAccessDenied) {
                             "사진 접근을 허용하지 않아 사진을 불러올 수 없어요."
                         } else if (isReadOnly) {
-                            "${state.timeRangeLabel()} 사이에 모은 사진이에요. 이미 만든 기록이라 선택은 바꿀 수 없어요."
+                            "${state.timeRangeLabel()} 사이에 모은 사진이에요. 이미 만든 기록이라 선택은 바꿀 수 없고, 누르면 크게 볼 수 있어요."
                         } else {
-                            "${state.timeRangeLabel()} 사이에 모은 사진만 표시해요."
+                            // 꾹 누르기는 보이지 않는 조작이라 여기서 한 번 알린다.
+                            "${state.timeRangeLabel()} 사이에 모은 사진만 표시해요. 길게 누르면 크게 볼 수 있어요."
                         },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -385,12 +386,13 @@ private fun EmptyPhotoSelection() {
 }
 
 /**
- * 사진 시트의 칸 하나. **누르는 자리로 동작을 나눈다.**
+ * 사진 시트의 칸 하나. **누르면 선택, 길게 누르면 크게 보기다.**
  *
- * 우측 상단 체크 영역은 선택·해제이고, 그 밖은 크게 보기다. 작은 칸에서 사진 전체가 선택 버튼이면 무엇을
- * 고르는지 확인할 길이 없다. 체크 영역은 배지보다 넓게 잡는다 — 배지만 누르게 하면 잘 안 눌린다.
+ * 시트에서 가장 자주 하는 일은 여러 장을 고르는 것이라 칸 어디를 눌러도 고르게 한다. 크게 보기는
+ * 가끔 하는 일이라 길게 누르기에 둔다 — 안드로이드 기본 사진 선택기와 같은 조작이다. 우측 상단 원은
+ * 선택 상태를 보여 주기만 한다.
  *
- * [onToggle] 이 null 이면(완성된 날) 체크 영역을 두지 않고 크게 보기만 된다.
+ * [onToggle] 이 null 이면(완성된 날) 고를 수 없으므로 누르기와 길게 누르기 모두 크게 보기다.
  */
 @Composable
 private fun SelectablePhoto(
@@ -404,7 +406,13 @@ private fun SelectablePhoto(
             Modifier
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClickLabel = "사진 크게 보기", onClick = onOpen),
+                .combinedClickable(
+                    onClickLabel = if (onToggle != null) "사진 선택" else "사진 크게 보기",
+                    role = if (onToggle != null) Role.Checkbox else null,
+                    onLongClickLabel = "사진 크게 보기",
+                    onLongClick = onOpen,
+                    onClick = onToggle ?: onOpen,
+                ),
     ) {
         AsyncImage(
             model = photo.uri,
@@ -420,21 +428,10 @@ private fun SelectablePhoto(
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
             )
         }
-        if (onToggle != null) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .size(CHECK_TOUCH_SIZE)
-                        .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onToggle() })
-                        .semantics { contentDescription = "사진 선택" },
-                contentAlignment = Alignment.TopEnd,
-            ) {
-                PhotoCheckBadge(selected = selected, modifier = Modifier.padding(Spacing.extraSmall))
-            }
-        } else if (selected) {
+        // 고를 수 있으면 빈 원까지 보여 고르는 칸임을 알린다. 완성된 날은 고른 것만 표시한다.
+        if (onToggle != null || selected) {
             PhotoCheckBadge(
-                selected = true,
+                selected = selected,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
@@ -443,9 +440,6 @@ private fun SelectablePhoto(
         }
     }
 }
-
-/** 체크 영역의 터치 크기. 배지(22)보다 넓게 잡아 작은 칸에서도 잘 눌리게 한다. */
-private val CHECK_TOUCH_SIZE = 44.dp
 
 /** 크게 보기의 체크. 화면이 큰 만큼 배지도 키운다. */
 private val VIEWER_BADGE_SIZE = 28.dp
