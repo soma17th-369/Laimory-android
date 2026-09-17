@@ -98,6 +98,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -126,6 +127,9 @@ class HomeViewModelTest {
     private val termsCoordinator = FakeHomeTermsCoordinator()
     private val addressResolver = FakeHomeAddressResolver()
     private val retentionDays = 30
+
+    /** 기본은 오늘 정오다. 06:00 기본 날짜 규칙이 기존 테스트의 '오늘'을 흔들지 않게 한다. */
+    private val clock = MutableClock(LocalDate.now(ZoneId.systemDefault()).atTime(12, 0))
 
     @Test
     fun `빈 범위에서는 동의 화면으로 이동하지 않는다`() =
@@ -277,7 +281,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `전체 사진 선택은 최대 20장까지만 반영한다`() =
+    fun `20장을 고르면 21번째는 고르지 않고 하나를 해제하면 다시 고를 수 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             photoSource.candidates = (1L..21L).map(::todayPhotoCandidate)
             val viewModel = createViewModel()
@@ -285,14 +289,21 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
+            (1L..21L).forEach { viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = it)) }
             runCurrent()
 
-            val state = viewModel.state.value
-            assertTrue(state.isPhotoSheetVisible)
-            assertEquals(21, state.availablePhotos.size)
-            assertEquals(20, state.pendingPhotoIds.size)
+            val full = viewModel.state.value
+            assertTrue(full.isPhotoSheetVisible)
+            assertEquals(21, full.availablePhotos.size)
+            assertEquals((1L..20L).toSet(), full.pendingPhotoIds)
             assertNull(sessionStore.preparation.value)
+
+            // 한꺼번에 비우는 버튼이 없으므로 한 장 해제로 자리가 나야 한다.
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 21L))
+            runCurrent()
+
+            assertEquals((2L..21L).toSet(), viewModel.state.value.pendingPhotoIds)
         }
 
     @Test
@@ -363,6 +374,153 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(today, viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `06시 전에 처음 열면 어제를 기본 날짜로 두고 오늘은 달력 날짜로 둔다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            clock.set(today.atTime(5, 59))
+
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(today.minusDays(1), viewModel.state.value.selectedDate)
+            assertEquals(today, viewModel.state.value.today)
+        }
+
+    @Test
+    fun `06시가 지나면 날짜를 고르지 않은 홈은 오늘로 옮기고 카드도 오늘 창으로 센다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            sourceRepository.items.value = listOf(todayItem("first"))
+            clock.set(today.atTime(5, 59))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals(0, viewModel.state.value.summary.calendar.candidate)
+
+            clock.set(today.atTime(6, 0))
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+
+            assertEquals(today, viewModel.state.value.selectedDate)
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+        }
+
+    @Test
+    fun `자정을 넘기면 오늘만 바뀌고 기본 날짜는 06시까지 그대로다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            clock.set(today.atTime(23, 59))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            clock.set(today.plusDays(1).atStartOfDay())
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+
+            // 어제 23:59 에 보던 날짜는 00:00 에도 기본 날짜(어제)와 같아 옮길 것이 없다.
+            assertEquals(today, viewModel.state.value.selectedDate)
+            assertEquals(today.plusDays(1), viewModel.state.value.today)
+        }
+
+    @Test
+    fun `피커로 고른 날짜는 06시가 지나도 옮기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            clock.set(today.atTime(5, 59))
+            val viewModel = createViewModel()
+            runCurrent()
+            // 기본 날짜와 같은 날을 다시 골라도 사용자가 지정한 범위다.
+            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(1)))
+            runCurrent()
+
+            clock.set(today.atTime(6, 0))
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+
+            assertEquals(today.minusDays(1), viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `생성 중이면 06시가 지나도 날짜를 옮기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            clock.set(today.atTime(5, 59))
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(today.minusDays(1))
+            runCurrent()
+
+            clock.set(today.atTime(6, 0))
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+
+            assertEquals(today.minusDays(1), viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `진행 중인 작업 날짜에 맞춘 홈은 기본 날짜가 바뀌어도 옮기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val taskDate = today.minusDays(2)
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitSuccess(taskDate)
+            runCurrent()
+            assertEquals(taskDate, viewModel.state.value.selectedDate)
+
+            clock.set(today.plusDays(1).atTime(6, 0))
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+
+            assertEquals(taskDate, viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `날짜 피커가 열려 있으면 06시가 지나도 옮기지 않고 닫은 뒤 복귀에서 옮긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            clock.set(today.atTime(5, 59))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+
+            clock.set(today.atTime(6, 0))
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+            assertEquals(today.minusDays(1), viewModel.state.value.selectedDate)
+            assertTrue(viewModel.state.value.isDatePickerVisible)
+
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+            assertEquals(today, viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `사진 후보를 불러온 뒤에만 불러옴으로 표시하고 기록 창이 바뀌면 다시 내린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            assertFalse(viewModel.state.value.hasLoadedPhotoCandidates)
+
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.hasLoadedPhotoCandidates)
+
+            val gate = CompletableDeferred<List<PhotoCandidate>>()
+            photoSource.candidateGates.add(gate)
+            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(1)))
+            runCurrent()
+            // 새 창의 후보를 받기 전이다.
+            assertFalse(viewModel.state.value.hasLoadedPhotoCandidates)
+
+            gate.complete(emptyList())
+            runCurrent()
+            assertTrue(viewModel.state.value.hasLoadedPhotoCandidates)
         }
 
     @Test
@@ -528,7 +686,8 @@ class HomeViewModelTest {
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.ToggleAllPhotos)
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 2L))
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
@@ -1118,6 +1277,7 @@ class HomeViewModelTest {
             messageHelper = dialogHelper,
             termsCoordinator = termsCoordinator,
             resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
+            clock = clock,
             retentionConfig = SourceItemRetentionConfig(retentionDays),
             collectionLabAccessGate = { isCollectionLabAccessible },
         )
@@ -1401,6 +1561,78 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(listOf<Page>(DraftConsentDetailPage("CALENDAR")), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `완성된 날도 원천 상세를 열고 상세는 읽기 전용으로 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+
+            viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.CALENDAR))
+            runCurrent()
+
+            assertEquals(listOf<Page>(DraftConsentDetailPage("CALENDAR")), navigationHelper.destinations)
+            assertTrue(sessionStore.isSelectionReadOnly.value)
+        }
+
+    @Test
+    fun `만들 수 있는 날은 상세가 선택을 바꿀 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            createViewModel()
+            runCurrent()
+
+            assertFalse(sessionStore.isSelectionReadOnly.value)
+        }
+
+    @Test
+    fun `생성 중에는 원천 상세를 열지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 확정한 스냅샷으로 요청이 진행되는 동안 바뀐 수집을 보여 주면 보낸 것과 어긋난다.
+            sourceRepository.items.value = listOf(todayItem("cal-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(LocalDate.now(ZoneId.systemDefault()))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.CALENDAR))
+            runCurrent()
+
+            assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
+    @Test
+    fun `완성된 날 사진 시트는 열리지만 선택을 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            runCurrent()
+            assertEquals(emptySet<Long>(), viewModel.state.value.pendingPhotoIds)
+
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            assertEquals(emptySet<Long>(), viewModel.state.value.selectedPhotoIds)
         }
 
     @Test
@@ -1781,6 +2013,30 @@ class HomeViewModelTest {
                     ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
                 )
         }
+    }
+
+    /** 날짜 경계를 재현하기 위한 조작 가능한 시계. 주입되는 실제 Clock 처럼 UTC 기준이다. */
+    private class MutableClock(
+        now: LocalDateTime,
+    ) : Clock() {
+        private var current: Instant = now.atZone(ZoneId.systemDefault()).toInstant()
+
+        fun set(now: LocalDateTime) {
+            current = now.atZone(ZoneId.systemDefault()).toInstant()
+        }
+
+        override fun getZone(): ZoneId = ZoneId.of("UTC")
+
+        override fun withZone(zone: ZoneId): Clock =
+            object : Clock() {
+                override fun getZone(): ZoneId = zone
+
+                override fun withZone(other: ZoneId): Clock = this@MutableClock.withZone(other)
+
+                override fun instant(): Instant = this@MutableClock.instant()
+            }
+
+        override fun instant(): Instant = current
     }
 
     private class RecordingNavigationHelper : NavigationHelper {

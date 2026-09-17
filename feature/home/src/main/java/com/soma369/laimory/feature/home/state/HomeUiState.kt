@@ -23,6 +23,12 @@ data class HomeUiState(
     /** 인사말에 쓸 닉네임. 조회 전·없음·실패를 구분하지 않는다 — 어느 쪽이든 문구가 같다. */
     val nickname: String? = null,
     val selectedDate: LocalDate = LocalDate.now(),
+    /**
+     * 달력상 오늘. CTA 부제의 `오늘`·`어제` 가 쓴다.
+     *
+     * 화면이 직접 계산하면 재구성될 때만 바뀌어, 날짜 줄은 그대로인데 부제만 먼저 넘어가는 순간이 생긴다.
+     */
+    val today: LocalDate = LocalDate.now(),
     val startTime: LocalTime = LocalTime.MIDNIGHT,
     val endDay: DraftEndDay = DraftEndDay.NEXT_DAY,
     val endTime: LocalTime = LocalTime.MIDNIGHT,
@@ -42,6 +48,12 @@ data class HomeUiState(
     val selectedPhotoIds: Set<Long> = emptySet(),
     val pendingPhotoIds: Set<Long> = emptySet(),
     val isPhotoLoading: Boolean = false,
+    /**
+     * 지금 기록 창의 사진 후보를 한 번이라도 불러왔는지.
+     *
+     * 불러오기 전에는 후보가 비어 있어도 "사진이 없다" 고 말하면 안 된다 — 앱을 켜자마자 잠깐 틀린 문구가 뜬다.
+     */
+    val hasLoadedPhotoCandidates: Boolean = false,
     val isPhotoAccessLimited: Boolean = false,
     /**
      * 사진 접근을 거부당한 채로 시트를 연 상태.
@@ -180,9 +192,23 @@ internal val DraftCreationStatus.isInputLocked: Boolean
 internal val HomeUiState.isDateLocked: Boolean
     get() = isSubmitting || draftStatus.isDateLocked
 
-/** 날짜·시각·사진·원천 상세를 모두 잠그는 구간. 열어 볼 기록이 있는 날은 만들 것이 없어 함께 잠근다. */
+/**
+ * 시각·사진 선택·전송 선택을 바꿀 수 없는 구간. 열어 볼 기록이 있는 날은 만들 것이 없어 함께 잠근다.
+ *
+ * **보는 것은 여기서 정하지 않는다.** 원천 카드로 모인 것을 열어 보는 일은 [isSourceViewLocked] 가 정한다 —
+ * 완성된 날에도 그날 무엇이 모였는지는 볼 수 있어야 한다.
+ */
 internal val HomeUiState.isInputLocked: Boolean
     get() = isSubmitting || timelineButtonStatus.isInputLocked
+
+/**
+ * 원천 카드로 모인 것을 열어 보는 것까지 막는 구간. 제출·생성 중뿐이다.
+ *
+ * 그동안에는 확정한 스냅샷으로 요청이 진행되므로 상세가 바뀐 수집을 보여 주면 보낸 것과 어긋난다.
+ * 완성된 날은 막지 않고, 대신 상세·사진 시트를 읽기 전용으로 연다([isInputLocked]).
+ */
+internal val HomeUiState.isSourceViewLocked: Boolean
+    get() = isDateLocked
 
 /**
  * 홈 CTA 가 보여 줄 변형. 버튼 모양은 시안대로 셋이고, 여기서 바뀌는 것은 고르는 근거뿐이다.
@@ -380,6 +406,10 @@ internal fun HomeUiState.nonPhotoSourceItems(
 }
 
 internal const val MAX_PHOTO_SELECTION = DraftSourceItemLimits.DEFAULT_PHOTO
+
+/** 사진을 더 고를 수 없다. 고른 것을 해제하는 것만 된다. */
+internal val HomeUiState.isPhotoSelectionFull: Boolean
+    get() = pendingPhotoIds.size >= MAX_PHOTO_SELECTION
 
 /**
  * 격자에 담을 칸. **고른 사진이 앞이고, 각 묶음 안에서는 후보 순서(최신순)를 지킨다.**

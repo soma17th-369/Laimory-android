@@ -56,6 +56,16 @@ class DraftConsentSessionStore
          */
         val isLocationSendEnabled: StateFlow<Boolean> = mutableLocationSendEnabled.asStateFlow()
 
+        private val mutableSelectionReadOnly = MutableStateFlow(false)
+
+        /**
+         * 전송 선택을 바꿀 수 없는 상태. 홈이 정한다.
+         *
+         * 완성된 날도 모인 것을 **보는 것**은 막지 않는다. 다만 만들 것이 없는 날이라 선택을 바꿔도
+         * 쓰일 곳이 없어, 상세는 읽기 전용으로 연다. 판단은 홈 한 곳에 두고 상세는 따르기만 한다.
+         */
+        val isSelectionReadOnly: StateFlow<Boolean> = mutableSelectionReadOnly.asStateFlow()
+
         private var nextAttemptId = 1L
         private var nextRevision = 1L
 
@@ -118,6 +128,10 @@ class DraftConsentSessionStore
         fun excludedRawIdsFor(selection: DraftSourceItemSelection): Set<String> =
             excludedRawIds.value +
                 if (isLocationSendEnabled.value) emptySet() else selection.locationRawIds()
+
+        fun setSelectionReadOnly(readOnly: Boolean) {
+            mutableSelectionReadOnly.value = readOnly
+        }
 
         /** 상세에서 항목 하나를 넣고 뺀다. */
         fun toggleExcluded(rawId: String) {
@@ -185,6 +199,7 @@ class DraftConsentSessionStore
             mutableSelection.value = null
             mutableExcludedRawIds.value = emptySet()
             mutableLocationSendEnabled.value = true
+            mutableSelectionReadOnly.value = false
             mutableAccountSession.value += 1
         }
     }

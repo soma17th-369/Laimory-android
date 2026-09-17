@@ -234,6 +234,21 @@ class PrepareTimelineDraftSelectionUseCaseTest {
     }
 
     @Test
+    fun `눌러서 모은 대화 알림은 조회 경계의 재정제에서 버려지지 않는다`() {
+        // 저장분에는 구조 신호가 없어 텍스트 규칙만 다시 적용된다. 대화 제외가 다시 걸리면 안 된다.
+        val chat =
+            item(
+                at(9),
+                NotificationPayload("카카오톡", "com.kakao.talk", "민우", "내일 7시에 보자", NotificationPayload.CollectReason.CLICK),
+                rawId = "chat",
+            )
+
+        val selection = useCase()(RecordDateWindow.ofDate(date, zone), listOf(chat)).getOrThrow()
+
+        assertEquals(listOf("chat"), selection.items.map { it.rawId })
+    }
+
+    @Test
     fun `알림이 아닌 타입은 개인정보 재적용의 영향을 받지 않는다`() {
         val photo =
             item(

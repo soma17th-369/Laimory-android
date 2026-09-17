@@ -9,21 +9,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.feature.home.state.HOME_PHOTO_GRID_CELLS
 import com.soma369.laimory.feature.home.state.HomePhotoCell
-import com.soma369.laimory.core.ui.R as UiR
 
 /**
  * 사진 카드의 3×2 격자(Figma 2529:13315).
@@ -38,18 +36,34 @@ import com.soma369.laimory.core.ui.R as UiR
 internal fun HomePhotoGrid(
     cells: List<HomePhotoCell>,
     modifier: Modifier = Modifier,
+    emptyMessage: String? = null,
 ) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(CELL_GAP),
-    ) {
-        cells.take(HOME_PHOTO_GRID_CELLS).padToCells().chunked(COLUMNS).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(CELL_GAP),
-            ) {
-                row.forEach { cell -> PhotoCell(cell = cell, modifier = Modifier.weight(1f)) }
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(CELL_GAP),
+        ) {
+            cells.take(HOME_PHOTO_GRID_CELLS).padToCells().chunked(COLUMNS).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(CELL_GAP),
+                ) {
+                    row.forEach { cell ->
+                        PhotoCell(cell = cell, showsPlaceholder = emptyMessage == null, modifier = Modifier.weight(1f))
+                    }
+                }
             }
+        }
+        // 빈 칸만 여섯 개면 사진이 없는 건지 아직 못 불러온 건지 알 수 없다. 사진이 없으면 자리표시자 칸을
+        // 그리지 않고 같은 크기의 빈 자리 가운데에 적는다 — 카드 높이는 사진이 있을 때와 같다.
+        emptyMessage?.let { message ->
+            Text(
+                text = message,
+                modifier = Modifier.padding(horizontal = CELL_GAP),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -57,9 +71,15 @@ internal fun HomePhotoGrid(
 @Composable
 private fun PhotoCell(
     cell: HomePhotoCell?,
+    showsPlaceholder: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(4.dp)
+    if (cell == null && !showsPlaceholder) {
+        // 자리만 차지한다. 칸을 그리면 빈 문구 뒤에 회색 격자가 비쳐 보인다.
+        Box(modifier = modifier.aspectRatio(1f))
+        return
+    }
     val base =
         modifier
             .aspectRatio(1f)
@@ -79,22 +99,21 @@ private fun PhotoCell(
             modifier = Modifier.matchParentSize(),
         )
         if (!cell.isSelected) return@Box
-        // 고른 것은 테두리와 체크로 함께 표시한다 — 테두리만 두면 작은 칸에서 잘 읽히지 않는다.
+        // 고른 것은 테두리와 파란 원 체크 배지로 함께 표시한다 — 테두리만 두면 파래지기만 해서 무엇을
+        // 뜻하는지 읽히지 않는다. 사진 시트와 같은 배지다.
         Box(
             modifier =
                 Modifier
                     .matchParentSize()
                     .border(2.dp, MaterialTheme.colorScheme.primary, shape),
         )
-        Icon(
-            painter = painterResource(UiR.drawable.ico_default_check_filled),
-            contentDescription = null,
+        PhotoCheckBadge(
+            selected = true,
+            size = GRID_BADGE_SIZE,
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
-                    .padding(2.dp)
-                    .size(14.dp),
-            tint = MaterialTheme.colorScheme.primary,
+                    .padding(GRID_BADGE_MARGIN),
         )
     }
 }
@@ -104,3 +123,5 @@ private fun List<HomePhotoCell>.padToCells(): List<HomePhotoCell?> = this + List
 
 private const val COLUMNS = 3
 private val CELL_GAP = 4.dp
+private val GRID_BADGE_SIZE = 18.dp
+private val GRID_BADGE_MARGIN = 4.dp

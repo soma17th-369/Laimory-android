@@ -19,7 +19,7 @@ internal val ALL_DEFAULT_KEYWORDS: Set<String> =
  * 문자에는 도메인이 섞여 오므로 기본 키워드 전체를 건다. 도메인별로 나눌 근거가 없다.
  *
  * 대화 알림을 통과시키는 판정은 여기가 아니라 [NotificationPrivacyPolicy] 가 한다 —
- * 기업 발송 표기가 없는 문자는 이 scope 에 닿기 전에 걸러진다.
+ * 기업 발송 표기가 없는 문자는 누르지 않는 한 이 scope 에 닿기 전에 걸러진다.
  */
 val MESSAGING_SCOPE: KeywordScope =
     KeywordScope(

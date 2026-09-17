@@ -12,10 +12,12 @@ class NotificationPrivacyPolicyTest {
         title: String? = null,
         text: String? = null,
         isMessage: Boolean = false,
+        clicked: Boolean = false,
     ): NotificationContent? =
         policy.sanitize(
             content = NotificationContent(title = title, text = text),
             signals = NotificationSignals(isMessage = isMessage),
+            clicked = clicked,
         )
 
     // --- 전체 제외: 인증·계정 비밀 ---
@@ -25,6 +27,24 @@ class NotificationPrivacyPolicyTest {
         assertNull(sanitize(title = "인증번호 안내", text = "[123456] 인증번호를 입력해주세요"))
         assertNull(sanitize(text = "인증 번호 8842 입니다"))
         assertNull(sanitize(text = "Your verification code is 483920"))
+    }
+
+    @Test
+    fun `OTP 문맥은 단어로 쓰였을 때만 인증번호로 본다`() {
+        assertNull(sanitize(text = "OTP 482913 을 입력하세요"))
+        assertNull(sanitize(text = "[OTP]482913"))
+        assertNull(sanitize(text = "OTP번호 4829"))
+        assertNull(sanitize(text = "otp: 482913"))
+    }
+
+    @Test
+    fun `가맹점명에 OTP 글자가 섞인 결제 승인은 유지한다`() {
+        // 부분 일치로 보던 때는 카드 끝자리·금액 숫자와 함께 통째로 버려졌다.
+        val hotpot = sanitize(title = "KB국민카드", text = "승인 1234 12,000원 HOTPOT 강남점")
+        val footprint = sanitize(title = "현대카드", text = "FOOTPRINT 성수 승인 5,500원 카드 9876")
+
+        assertEquals("승인 1234 12,000원 HOTPOT 강남점", hotpot?.text)
+        assertEquals("FOOTPRINT 성수 승인 5,500원 카드 9876", footprint?.text)
     }
 
     @Test
@@ -88,6 +108,30 @@ class NotificationPrivacyPolicyTest {
     @Test
     fun `대화 알림은 본문과 무관하게 저장하지 않는다`() {
         assertNull(sanitize(title = "민우", text = "내일 7시에 보자", isMessage = true))
+    }
+
+    @Test
+    fun `누른 대화 알림은 저장한다`() {
+        // 사용자가 그 대화를 직접 지목했다. 카카오톡 채팅·알림톡도 누르면 모은다.
+        val chat = sanitize(title = "민우", text = "내일 7시에 보자", isMessage = true, clicked = true)
+        val alimtalk = sanitize(title = "현대카드", text = "승인 12,000원 스타벅스", isMessage = true, clicked = true)
+
+        assertEquals("내일 7시에 보자", chat?.text)
+        assertEquals("승인 12,000원 스타벅스", alimtalk?.text)
+    }
+
+    @Test
+    fun `누른 대화 알림도 인증번호는 버리고 전화번호는 가린다`() {
+        assertNull(sanitize(title = "민우", text = "인증번호 482913 알려줘", isMessage = true, clicked = true))
+
+        val masked = sanitize(title = "민우", text = "이 번호로 연락줘 010-1234-5678", isMessage = true, clicked = true)
+
+        assertEquals("이 번호로 연락줘 [전화번호]", masked?.text)
+    }
+
+    @Test
+    fun `누르지 않은 대화 알림은 계속 저장하지 않는다`() {
+        assertNull(sanitize(title = "민우", text = "내일 7시에 보자", isMessage = true, clicked = false))
     }
 
     @Test

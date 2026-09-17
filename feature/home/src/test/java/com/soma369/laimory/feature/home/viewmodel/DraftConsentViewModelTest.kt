@@ -163,6 +163,24 @@ class DraftConsentViewModelTest {
             assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
         }
 
+    @Test
+    fun `홈이 선택을 잠그면 항목과 위치 전송을 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 완성된 날은 상세를 보여 주기만 한다.
+            prepare(listOf(stayItem("stay-1"), calendarItem("cal-1")))
+            sessionStore.setSelectionReadOnly(true)
+            val viewModel = createViewModel()
+            runCurrent()
+            assertTrue(viewModel.state.value.isSelectionReadOnly)
+
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleItemInclusion("cal-1"))
+            viewModel.sendIntent(DraftConsentUiIntent.ToggleLocationInclusion)
+            runCurrent()
+
+            assertTrue(viewModel.state.value.excludedRawIds.isEmpty())
+            assertTrue(viewModel.state.value.isLocationIncluded)
+        }
+
     // --- 위치정보 전송 Switch ---
 
     @Test

@@ -1,6 +1,10 @@
 package com.soma369.laimory.core.ui.component.timepicker
 
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.rememberSplineBasedDecay
+import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
+import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -18,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -42,7 +46,6 @@ import com.soma369.laimory.core.ui.theme.tabularFigures
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.map
 import java.time.LocalDateTime
 
 /**
@@ -185,7 +188,7 @@ private fun SelectionBands() {
 }
 
 /**
- * 한 열의 롤러. 드래그·fling 후 한 항목에 snap 하고, 멈춘 위치의 이동량을 [onDelta]로 알린다.
+ * 한 열의 롤러. 드래그·fling 후 한 항목에 snap 하고, 가운데 칸이 바뀔 때마다 이동량을 [onDelta]로 알린다.
  *
  * [isCyclic]이면 목록을 크게 반복해 끝없이 돌 수 있게 하고, 아니면 목록 경계에서 멈춘다.
  * 값 변경은 이동량(delta)으로만 전달해 자정 carry 판정을 순수 모델이 담당하게 한다.
@@ -206,7 +209,7 @@ private fun SpinnerColumn(
     val baseIndex = if (isCyclic) options.size * (cycles / 2) else 0
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = baseIndex + selectedIndex)
     // 목록 구성이 바뀌면 이동량 기준점도 다시 잡는다.
-    var lastIndex by remember(options.size) { mutableIntStateOf(baseIndex + selectedIndex) }
+    val tracker = remember(options.size) { RollerDeltaTracker(baseIndex + selectedIndex) }
 
     // 가운데 칸에 놓인 항목. 강조와 값 모두 이 값을 쓴다.
     //
@@ -228,48 +231,60 @@ private fun SpinnerColumn(
     // 스크롤이 아닌 경로(다른 열의 자정 carry 등)로 값이 바뀌면 롤러도 따라 이동한다.
     LaunchedEffect(selectedIndex, options.size) {
         if (listState.isScrollInProgress) return@LaunchedEffect
-        val target = LaimoryTimePickerMath.nearestIndexOf(selectedIndex, lastIndex, options.size, itemCount)
-        if (centerIndexState.value != target) {
-            // 기준점을 먼저 옮겨 이 이동이 다시 onDelta로 되먹임되지 않게 한다.
-            lastIndex = target
-            listState.animateScrollToItem(target)
-        }
+        val target = LaimoryTimePickerMath.nearestIndexOf(selectedIndex, tracker.lastIndex, options.size, itemCount)
+        if (centerIndexState.value != target) listState.alignTo(target, tracker)
     }
 
-    // 스크롤이 멈춘 뒤에만 이동량을 알려 중간 프레임마다 값이 튀지 않게 한다.
-    //
-    // 이 코루틴은 목록이 바뀌지 않는 한 다시 시작하지 않으므로, 콜백을 직접 붙잡으면 처음 컴포지션의
+    // 이 코루틴들은 목록이 바뀌지 않는 한 다시 시작하지 않으므로, 콜백을 직접 붙잡으면 처음 컴포지션의
     // 람다를 계속 쓰게 된다. 그 람다는 처음 값을 캡처하고 있어 이동량이 매번 처음 값에 더해진다.
     val currentOnDelta by rememberUpdatedState(onDelta)
     val currentSelectedIndex by rememberUpdatedState(selectedIndex)
+
+    // 가운데 칸이 바뀌는 즉시 값에 알린다. 강조가 넘어간 순간 요약 줄도 같이 넘어가야, 스크롤이 멈추기
+    // 전에 확인을 눌러도 보이는 값이 확정된다.
     LaunchedEffect(listState, options.size) {
-        snapshotFlow { listState.isScrollInProgress to centerIndexState.value }
-            .filter { (scrolling, _) -> !scrolling }
-            .map { (_, index) -> index }
+        snapshotFlow { centerIndexState.value }
             .distinctUntilChanged()
             .collect { index ->
-                val delta = index - lastIndex
-                lastIndex = index
+                val delta = tracker.onCenterChanged(index)
                 if (delta != 0) currentOnDelta(delta)
+            }
+    }
 
-                // 화면이 이동을 받아들이지 않고 같은 값으로 되돌리면(허용 범위 밖일 때) 상태가 그대로라
-                // 아래 재배치 이펙트가 다시 돌지 않는다. 그러면 롤러만 움직인 채로 값과 어긋난다.
-                // 값이 반영될 틈을 준 뒤, 값이 가리키는 자리로 직접 맞춘다.
+    // 스크롤이 멈추면 롤러를 값이 가리키는 자리로 맞춘다.
+    //
+    // 화면이 이동을 받아들이지 않고 같은 값으로 되돌리면(허용 범위 밖일 때) 상태가 그대로라 위 재배치
+    // 이펙트가 다시 돌지 않는다. 그러면 롤러만 움직인 채로 값과 어긋난다. 스크롤 중에 맞추면 손가락과
+    // 다투므로, 멈춘 뒤 값이 반영될 틈을 주고 맞춘다.
+    LaunchedEffect(listState, options.size) {
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .filter { scrolling -> !scrolling }
+            .collect {
                 delay(VALUE_ECHO_GRACE_MILLIS)
                 if (listState.isScrollInProgress) return@collect
                 val settled =
                     LaimoryTimePickerMath.nearestIndexOf(
                         currentSelectedIndex,
-                        lastIndex,
+                        tracker.lastIndex,
                         options.size,
                         itemCount,
                     )
-                if (centerIndexState.value != settled) {
-                    lastIndex = settled
-                    listState.animateScrollToItem(settled)
-                }
+                if (centerIndexState.value != settled) listState.alignTo(settled, tracker)
             }
     }
+
+    // 기본 snap 은 멈추기까지 오래 걸려(StiffnessMediumLow) 손을 뗀 뒤에도 한참 굴러가는 것처럼 보인다.
+    val snapLayoutInfoProvider = remember(listState) { SnapLayoutInfoProvider(listState) }
+    val decay = rememberSplineBasedDecay<Float>()
+    val flingBehavior =
+        remember(snapLayoutInfoProvider, decay) {
+            snapFlingBehavior(
+                snapLayoutInfoProvider = snapLayoutInfoProvider,
+                decayAnimationSpec = decay,
+                snapAnimationSpec = spring(stiffness = SNAP_STIFFNESS),
+            )
+        }
 
     LazyColumn(
         modifier =
@@ -279,7 +294,7 @@ private fun SpinnerColumn(
                     contentDescription = "$columnLabel 선택. 현재 ${options[centerIndex % options.size]}"
                 },
         state = listState,
-        flingBehavior = rememberSnapFlingBehavior(listState),
+        flingBehavior = flingBehavior,
         contentPadding = PaddingValues(vertical = RollerRowHeight),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -303,6 +318,19 @@ private fun SpinnerColumn(
     }
 }
 
+/** 값이 가리키는 [target] 으로 롤러를 옮긴다. 옮기는 동안의 가운데 변화는 값으로 되먹임하지 않는다. */
+private suspend fun LazyListState.alignTo(
+    target: Int,
+    tracker: RollerDeltaTracker,
+) {
+    tracker.beginAlign(target)
+    try {
+        animateScrollToItem(target)
+    } finally {
+        tracker.endAlign()
+    }
+}
+
 /** 롤러 밖으로 새어 나가는 세로 스크롤·fling을 삼켜 바깥 스크롤 영역이 함께 움직이지 않게 한다. */
 private class RollerScrollBoundary : NestedScrollConnection {
     override fun onPostScroll(
@@ -317,7 +345,10 @@ private class RollerScrollBoundary : NestedScrollConnection {
     ): Velocity = Velocity(x = 0f, y = available.y)
 }
 
-/** 이동량을 알린 뒤 화면의 값이 되돌아오길 기다리는 시간. 지나면 값 쪽으로 자리를 맞춘다. */
+/** 멈춘 롤러를 제자리에 붙이는 spring 의 강도. 기본(StiffnessMediumLow)보다 빨리 멈춘다. */
+private const val SNAP_STIFFNESS = Spring.StiffnessMedium
+
+/** 스크롤이 멈춘 뒤 화면의 값이 되돌아오길 기다리는 시간. 지나면 값 쪽으로 자리를 맞춘다. */
 private const val VALUE_ECHO_GRACE_MILLIS = 250L
 
 /** 롤러에 보이는 행 수(위·가운데·아래). */

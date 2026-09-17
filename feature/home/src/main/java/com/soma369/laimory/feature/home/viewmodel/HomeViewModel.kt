@@ -54,6 +54,7 @@ import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
+import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
@@ -63,11 +64,12 @@ import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
-import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.confirmDialogBody
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
+import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
@@ -75,8 +77,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.ZoneId
@@ -106,16 +112,22 @@ class HomeViewModel
         private val messageHelper: MessageHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
+        /** UTC 기준이다. 현지 날짜는 [zone] 으로 옮겨서 얻는다. */
+        private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
         collectionLabAccessGate: CollectionLabAccessGate,
     ) : BaseMviViewModel<HomeUiState, HomeUiIntent, HomeUiSideEffect>(
-            HomeUiState(
-                selectedDate = LocalDate.now(ZoneId.systemDefault()),
-                isCollectionLabAccessible = collectionLabAccessGate.isCollectionLabAccessible(),
-                retentionDays = retentionConfig.retentionDays,
-            ),
+            LocalDateTime.now(clock.withZone(ZoneId.systemDefault())).let { now ->
+                HomeUiState(
+                    selectedDate = HomeDefaultDate.of(now),
+                    today = now.toLocalDate(),
+                    isCollectionLabAccessible = collectionLabAccessGate.isCollectionLabAccessible(),
+                    retentionDays = retentionConfig.retentionDays,
+                )
+            },
         ) {
-        private val zone: ZoneId = ZoneId.systemDefault()
+        /** 기록 창을 자를 시간대. 기기 시간대가 바뀔 수 있어 [HomeUiIntent.RefreshToday] 마다 다시 읽는다. */
+        private var zone: ZoneId = ZoneId.systemDefault()
         private var sourceItems: List<SourceItem> = emptyList()
 
         /** 날짜 피커가 이미 받아 온 달. 같은 달을 두 번 부르지 않는다. */
@@ -130,7 +142,7 @@ class HomeViewModel
         private var lastLoadedPhotoWindow: RecordDateWindow? = null
         private var requestedPhotoWindow: RecordDateWindow? = null
         private var preparedPhotoCache: PreparedPhotoCache? = null
-        private var hasUserSelectedDate = false
+        private var dateSource = DateSource.DEFAULT
         private var consentPreparationJob: Job? = null
         private var locationConsentJob: Job? = null
 
@@ -143,7 +155,17 @@ class HomeViewModel
             observeUserProfile()
             observeAccountSession()
             observeSubmissionExclusions()
+            observeSelectionLock()
         }
+
+        /** 전송 선택을 바꿀 수 없는 구간을 상세에 알린다. 상세는 이 값으로 토글을 막는다. */
+        private fun observeSelectionLock() =
+            safeLaunch {
+                state
+                    .map { it.isInputLocked }
+                    .distinctUntilChanged()
+                    .collect(draftConsentSessionStore::setSelectionReadOnly)
+            }
 
         /**
          * 상세에서 뺀 항목·위치 스위치가 바뀌면 홈 건수를 다시 센다.
@@ -197,6 +219,7 @@ class HomeViewModel
                 // 첫 조회가 실패한 세션 내내 닉네임이 fallback 으로 남는다. 성공한 뒤의 중복 요청은
                 // coordinator 의 세션 캐시·single-flight 가 막는다.
                 HomeUiIntent.RefreshProfile -> refreshUserProfileUseCase()
+                HomeUiIntent.RefreshToday -> refreshToday()
                 // 버튼만 숨기지 않고 호출 경계에서도 막는다 — release 에는 라우트 자체가 없다.
                 HomeUiIntent.NavigateToCollection ->
                     if (state.value.isCollectionLabAccessible) navigationHelper.navigateTo(CollectionPage) else Unit
@@ -210,8 +233,6 @@ class HomeViewModel
                         copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet())
                     }
                 is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
-                is HomeUiIntent.TogglePhotoDate -> togglePhotoDate(intent.date)
-                HomeUiIntent.ToggleAllPhotos -> toggleAllPhotos()
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
                 HomeUiIntent.ShowDatePicker -> showDatePicker()
@@ -263,7 +284,7 @@ class HomeViewModel
                     val previousDate = state.value.selectedDate
                     val wasInProgress = state.value.draftStatus.isDateLocked
                     updateState {
-                        if (hasUserSelectedDate) {
+                        if (dateSource == DateSource.USER) {
                             withDraftTrackingForSelectedDate(trackingState)
                         } else {
                             withDraftTracking(trackingState)
@@ -274,7 +295,11 @@ class HomeViewModel
                     }
                     // 작업 날짜로 맞춰졌으면 이전 날짜의 판정을 버린다.
                     val isDateAligned = state.value.selectedDate != previousDate
-                    if (isDateAligned) updateState { copy(selectedRecord = cachedRecordState(selectedDate)) }
+                    if (isDateAligned) {
+                        // 결과를 기다리는 날이라 기본 날짜가 바뀌어도 옮기지 않는다.
+                        dateSource = DateSource.TASK
+                        updateState { copy(selectedRecord = cachedRecordState(selectedDate)) }
+                    }
                     // 생성 중에는 단건 조회를 건너뛰므로 추적이 끝나면(완료·실패·만료) 다시 봐야 한다. 앱을 다시 켜면
                     // 복원한 작업이 생성 중으로 시작했다가 서버에서 이미 만료돼 `Unavailable` 로 끝나는데, 그때도
                     // 서버에는 내용 있는 초안이 남아 있다.
@@ -302,7 +327,8 @@ class HomeViewModel
          * 사진을 고르는 동안 수집이 돌아, 확인 화면에서 기다리는 시간이 짧아진다.
          */
         private fun startPhotoSelection() {
-            if (state.value.isInputLocked) return
+            // 완성된 날도 연다. 시트가 읽기 전용으로 그려지고 선택 변경은 아래 토글들이 막는다.
+            if (state.value.isSourceViewLocked) return
             startAutoCollectionAhead()
             sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
@@ -355,11 +381,11 @@ class HomeViewModel
 
         private fun togglePhoto(mediaStoreId: Long) {
             val current = state.value
+            if (current.isInputLocked) return
             if (current.availablePhotos.none { it.mediaStoreId == mediaStoreId }) return
-            if (mediaStoreId !in current.pendingPhotoIds && current.pendingPhotoIds.size >= MAX_PHOTO_SELECTION) {
-                showPhotoLimitMessage()
-                return
-            }
+            // 상한 안내는 시트·크게 보기가 선택 상태로 직접 그린다. 스낵바는 두 창 뒤 홈에 떠 보이지 않고, 시트를
+            // 닫은 뒤에야 드러나 엉뚱한 때 읽힌다.
+            if (mediaStoreId !in current.pendingPhotoIds && current.isPhotoSelectionFull) return
             updateState {
                 copy(
                     pendingPhotoIds =
@@ -370,40 +396,6 @@ class HomeViewModel
                         },
                 )
             }
-        }
-
-        private fun toggleAllPhotos() {
-            val current = state.value
-            val selectableIds =
-                current.availablePhotos
-                    .take(MAX_PHOTO_SELECTION)
-                    .mapTo(linkedSetOf(), HomePhotoItem::mediaStoreId)
-            val shouldClear =
-                current.pendingPhotoIds.size == selectableIds.size &&
-                    current.pendingPhotoIds.containsAll(selectableIds)
-            updateState {
-                copy(pendingPhotoIds = if (shouldClear) emptySet() else selectableIds)
-            }
-            if (!shouldClear && current.availablePhotos.size > MAX_PHOTO_SELECTION) showPhotoLimitMessage()
-        }
-
-        private fun togglePhotoDate(date: LocalDate) {
-            val current = state.value
-            val datePhotoIds =
-                current.availablePhotos
-                    .filter { it.capturedAt.atZone(zone).toLocalDate() == date }
-                    .map(HomePhotoItem::mediaStoreId)
-            if (datePhotoIds.isEmpty()) return
-            val isDateSelected = current.pendingPhotoIds.containsAll(datePhotoIds)
-            if (isDateSelected) {
-                updateState { copy(pendingPhotoIds = pendingPhotoIds - datePhotoIds.toSet()) }
-                return
-            }
-
-            val availableSlots = MAX_PHOTO_SELECTION - current.pendingPhotoIds.size
-            val idsToAdd = datePhotoIds.filterNot(current.pendingPhotoIds::contains).take(availableSlots)
-            updateState { copy(pendingPhotoIds = pendingPhotoIds + idsToAdd) }
-            if (idsToAdd.size < datePhotoIds.count { it !in current.pendingPhotoIds }) showPhotoLimitMessage()
         }
 
         /** 고른 사진을 홈에 돌려주고 닫는다. */
@@ -582,18 +574,24 @@ class HomeViewModel
             if (state.value.isDateLocked) return
             // 피커가 막는 날짜를 경계에서 한 번 더 막는다 — 보존 기간 밖은 기기의 재료가 이미 지워졌다.
             // 저장된 날짜는 막지 않는다. 고르면 CTA 가 `타임라인 확인하기` 로 그 기록을 연다.
-            if (!isSelectableRecordDate(date, LocalDate.now(zone), state.value.retentionDays)) return
-            hasUserSelectedDate = true
+            if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
+            // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
+            // 지금 날짜를 그대로 다시 골라도 마찬가지다.
+            dateSource = DateSource.USER
             // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
             startAutoCollectionAhead()
+            updateState { copy(isDatePickerVisible = false) }
+            moveToDate(date)
+        }
+
+        private fun moveToDate(date: LocalDate) {
             updateState {
-                if (date == selectedDate) return@updateState copy(isDatePickerVisible = false)
+                if (date == selectedDate) return@updateState this
                 // 시간 범위는 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
                 // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
                 val next =
                     copy(
                         selectedDate = date,
-                        isDatePickerVisible = false,
                         draftStatus = DraftCreationStatus.IDLE,
                         draftRetryMode = null,
                         draftMessage = null,
@@ -605,6 +603,40 @@ class HomeViewModel
             }
             onRecordWindowChanged()
             refreshSelectedRecord()
+        }
+
+        /**
+         * 달력상 오늘과 기본 날짜를 다시 계산한다.
+         *
+         * 이 ViewModel 은 Activity 범위라 생성 때 정한 날짜가 앱이 살아 있는 내내 남는다. 그러면 다음 날
+         * 돌아와도 어제 창으로 카드를 세고, 모르는 채 어제 초안을 만든다. 그래서 복귀와 날짜가 바뀌는
+         * 시각마다 부르고, 날짜를 고르지 않은 사람만 기본 날짜로 옮긴다.
+         *
+         * 옮기지 않는 경우:
+         * - 피커로 고른 날짜, 진행 중인 작업에 맞춘 날짜 — 사용자가 지정했거나 결과를 기다리는 날이다.
+         * - 제출·생성 중 — 확정한 스냅샷의 날짜와 화면이 어긋난다.
+         * - 날짜에 묶인 시트(사진·시간·날짜 피커)가 열려 있을 때 — 고르는 도중에 재료가 바뀐다. 다음 복귀에서 옮긴다.
+         */
+        private fun refreshToday() {
+            val currentZone = ZoneId.systemDefault()
+            val isZoneChanged = currentZone != zone
+            zone = currentZone
+            val now = LocalDateTime.now(clock.withZone(zone))
+            updateState { if (today == now.toLocalDate()) this else copy(today = now.toLocalDate()) }
+
+            val current = state.value
+            val defaultDate = HomeDefaultDate.of(now)
+            val canMove =
+                dateSource == DateSource.DEFAULT &&
+                    !current.isDateLocked &&
+                    !current.isPhotoSheetVisible &&
+                    current.timeSheet == null &&
+                    !current.isDatePickerVisible
+            when {
+                canMove && current.selectedDate != defaultDate -> moveToDate(defaultDate)
+                // 같은 날짜라도 시간대가 바뀌면 기록 창의 시각이 달라진다.
+                isZoneChanged -> onRecordWindowChanged()
+            }
         }
 
         private fun showTimeSheet(field: HomeTimeField) {
@@ -920,7 +952,7 @@ class HomeViewModel
                 requestedPhotoWindow = null
                 updateState {
                     withSourceSummary(sourceItems, photoCandidates)
-                        .copy(isPhotoLoading = false)
+                        .copy(isPhotoLoading = false, hasLoadedPhotoCandidates = true)
                 }
                 return
             }
@@ -949,14 +981,15 @@ class HomeViewModel
                         }
                     updateState {
                         withSourceSummary(sourceItems, candidates)
-                            .copy(isPhotoLoading = false)
+                            .copy(isPhotoLoading = false, hasLoadedPhotoCandidates = true)
                     }
                 }
         }
 
         private fun onRecordWindowChanged() {
             preparedPhotoCache = null
-            updateState { withSourceSummary(sourceItems, photoCandidates) }
+            // 새 창의 후보를 받기 전이다. 받아 둔 게 없다고 "사진이 없다" 고 말하지 않게 한다.
+            updateState { withSourceSummary(sourceItems, photoCandidates).copy(hasLoadedPhotoCandidates = false) }
             loadPhotoCandidates(force = false)
         }
 
@@ -970,14 +1003,11 @@ class HomeViewModel
             updateState {
                 copy(
                     isPhotoLoading = false,
+                    hasLoadedPhotoCandidates = false,
                     isPhotoSheetVisible = false,
                     isPhotoAccessLimited = false,
                 ).withSourceSummary(sourceItems, emptyList())
             }
-        }
-
-        private fun showPhotoLimitMessage() {
-            sendEffect(HomeUiSideEffect.ShowSnackbar("사진은 최대 ${MAX_PHOTO_SELECTION}장까지 선택할 수 있어요."))
         }
 
         private fun retryDraft() {
@@ -1010,9 +1040,11 @@ class HomeViewModel
          *
          * 사진만 시트로 간다 — 고른 사진이 정본이라 목록에서 빼는 것이 아니라 다시 고르는 일이다.
          * 나머지는 유형 상세로 가고, 상세는 홈이 상시로 유지하는 스냅샷을 읽는다.
+         *
+         * 완성된 날도 연다. 그날 무엇이 모였는지는 볼 수 있어야 한다 — 상세와 시트가 읽기 전용으로 뜬다.
          */
         private fun openSourceDetail(kind: HomeSourceKind) {
-            if (state.value.isInputLocked) return
+            if (state.value.isSourceViewLocked) return
             if (kind == HomeSourceKind.PHOTO) {
                 startPhotoSelection()
                 return
@@ -1186,6 +1218,18 @@ class HomeViewModel
             val ids: Set<Long>,
             val items: List<SourceItem>,
         )
+
+        /** 지금 고른 날짜가 어디서 왔는지. 기본 날짜만 [refreshToday] 가 옮긴다. */
+        private enum class DateSource {
+            /** 아무도 고르지 않아 [HomeDefaultDate] 를 따른다. */
+            DEFAULT,
+
+            /** 사용자가 피커로 골랐다. */
+            USER,
+
+            /** 진행 중인 초안 작업의 날짜에 맞췄다. */
+            TASK,
+        }
 
         private companion object {
             /** 서버가 단계 동의를 요구할 때 주는 코드. */

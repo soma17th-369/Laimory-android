@@ -20,6 +20,7 @@ import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import java.time.LocalDate
 
 /**
  * 단일 [GenericNavKey] 디스패처. 실제 화면 결정은 [appRouteByPath]가 담당한다.
@@ -131,6 +132,21 @@ internal val BOUNDARY_ROOT_PATHS = setOf(LoginPage.PATH, TermsPage.PATH, Onboard
 
 /** 최상단이 초안 생성 로딩 화면인지. 완료 시 자동 이동과 스낵바를 가르는 기준이다. */
 internal fun NavBackStack<NavKey>.isShowingDraftLoading(): Boolean = (lastOrNull() as? GenericNavKey)?.path == DraftLoadingPage.PATH
+
+/** 최상단이 홈인지. 홈이 완성된 날짜를 이미 보고 있으면 완료 스낵바를 띄우지 않는다. */
+internal fun NavBackStack<NavKey>.isShowingHome(): Boolean = (lastOrNull() as? GenericNavKey)?.path == HomePage.PATH
+
+/**
+ * 완료 스낵바를 띄우지 않고 완료만 소비할지.
+ *
+ * 홈이 완성된 날짜를 보고 있으면 CTA 가 `타임라인 확인하기` 로 바뀌어 스낵바의 `보기` 와 같은 일을 한다.
+ * 스낵바를 한 번 더 띄우면 그 CTA 를 가린다. 다른 날짜·다른 화면이면 완성을 알 길이 스낵바뿐이다.
+ */
+internal fun shouldSkipCompletionSnackbar(
+    isShowingHome: Boolean,
+    homeRecordDate: LocalDate?,
+    completedRecordDate: LocalDate,
+): Boolean = isShowingHome && homeRecordDate == completedRecordDate
 
 /**
  * 최상단 화면을 [route]로 갈아 끼운다.

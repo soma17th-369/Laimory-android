@@ -316,6 +316,36 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
+    fun `시각만 바꿔 저장하면 PATCH 에 바꾼 시작과 종료가 실린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.OpenTimeSheet(TimelineEventTimeField.START))
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.START,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 9, 15),
+                    column = TimePickerColumn.MINUTE,
+                ),
+            )
+            viewModel.sendIntent(
+                TimelineEventEditorUiIntent.ChangeTime(
+                    field = TimelineEventTimeField.END,
+                    dateTime = LocalDateTime.of(2026, 5, 8, 10, 45),
+                    column = TimePickerColumn.MINUTE,
+                ),
+            )
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            val command = recordRepository.commands.single()
+            assertEquals(EVENT_ID, command.timelineEventId)
+            assertEquals(LocalDateTime.of(2026, 5, 8, 9, 15), command.startAt)
+            assertEquals(LocalDateTime.of(2026, 5, 8, 10, 45), command.endAt)
+        }
+
+    @Test
     fun `당일 익일 기준은 시작 시각이 아니라 기록 날짜로 고정된다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 기록 날짜는 05-08, 이벤트는 자정을 넘겨 05-09 새벽에 시작한다.

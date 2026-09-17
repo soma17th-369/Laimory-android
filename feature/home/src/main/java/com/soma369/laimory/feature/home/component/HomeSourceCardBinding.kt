@@ -8,7 +8,7 @@ import com.soma369.laimory.feature.home.state.HomeSourceTapTarget
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.homeSourceTapTarget
-import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.showsPermissionAction
 
 /** 카드가 그 원천의 상태를 어디서 읽는지. */
@@ -57,13 +57,32 @@ internal fun HomeUiState.cardBody(kind: HomeSourceKind): String {
     }
 }
 
+/**
+ * 사진 카드 격자 자리에 띄울 빈 문구.
+ *
+ * 전체 허용이고 지금 기록 창의 후보를 불러왔는데 0장일 때만이다. 권한이 없거나 일부만 허용이면 본문이
+ * 이미 `탭하여 허용` 을 말하고, 그때 "갤러리에 없다" 고 하면 틀린 말이 된다.
+ *
+ * **다시 불러오는 중에는 알던 결과를 유지한다.** 카드를 눌러 시트를 열거나 화면에 돌아오면 같은 창을 다시
+ * 불러오는데, 그동안 문구를 거두면 빈 회색 칸이 잠깐 드러난다. 창이 바뀌면 불러옴 표시가 내려가므로
+ * 다른 기간의 결과가 남지는 않는다.
+ */
+internal fun HomeUiState.photoEmptyMessage(): String? =
+    PHOTO_EMPTY_MESSAGE.takeIf {
+        permissions.photo == DataSourceStatus.GRANTED &&
+            hasLoadedPhotoCandidates &&
+            availablePhotos.isEmpty()
+    }
+
+private const val PHOTO_EMPTY_MESSAGE = "갤러리에 이 기간 사진이 없어요"
+
 /** 카드 본체 탭. 갈 곳이 없으면 null 이라 눌리지 않는다. */
 internal fun HomeUiState.cardClick(
     kind: HomeSourceKind,
     onIntent: (HomeUiIntent) -> Unit,
     onRequestPermission: (DataPermission) -> Unit,
 ): (() -> Unit)? {
-    if (isInputLocked) return null
+    if (isSourceViewLocked) return null
     return when (homeSourceTapTarget(countOf(kind).candidate, statusOf(kind))) {
         HomeSourceTapTarget.DETAIL -> ({ onIntent(HomeUiIntent.OpenSourceDetail(kind)) })
         HomeSourceTapTarget.PERMISSION -> ({ onRequestPermission(kind.permission()) })
@@ -76,7 +95,7 @@ internal fun HomeUiState.permissionAction(
     kind: HomeSourceKind,
     onRequestPermission: (DataPermission) -> Unit,
 ): (() -> Unit)? {
-    if (isInputLocked) return null
+    if (isSourceViewLocked) return null
     if (!showsPermissionAction(countOf(kind).candidate, statusOf(kind))) return null
     return { onRequestPermission(kind.permission()) }
 }

@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -48,11 +51,14 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
+import com.soma369.laimory.core.ui.component.snackbar.LocalSnackbarAnchor
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
@@ -76,10 +82,12 @@ import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
 import com.soma369.laimory.feature.home.component.cardBody
 import com.soma369.laimory.feature.home.component.cardClick
 import com.soma369.laimory.feature.home.component.permissionAction
+import com.soma369.laimory.feature.home.component.photoEmptyMessage
 import com.soma369.laimory.feature.home.component.timeRangeLabel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeCalendarItem
+import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomeNotificationApp
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
@@ -88,11 +96,15 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.isDateLocked
+import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import com.soma369.laimory.core.ui.R as UiR
@@ -116,6 +128,8 @@ fun HomeRoute(
         )
     LaunchedEffect(sourcePermissions) { viewModel.sendIntent(sourcePermissions) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        // 다른 갱신보다 먼저 보낸다. 날짜가 바뀌었으면 뒤따르는 조회가 바뀐 날짜로 돌아야 한다.
+        viewModel.sendIntent(HomeUiIntent.RefreshToday)
         viewModel.sendIntent(HomeUiIntent.RefreshProfile)
         viewModel.sendIntent(
             HomeUiIntent.RefreshPhotos(
@@ -128,6 +142,18 @@ fun HomeRoute(
         // 다른 화면에서 초안을 저장하거나 지우고 돌아올 수 있고, 앱을 다시 켜면 완료 표시가 없다.
         // 서버 기록을 다시 봐야 CTA 가 `타임라인 확인하기` 를 되찾는다.
         viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+    }
+    // 화면을 켜 둔 채 자정·06:00 을 넘기면 복귀가 없어 날짜가 그대로 남는다. 그 시각에 깨운다.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                val now = ZonedDateTime.now()
+                val next = HomeDefaultDate.nextChangeAfter(now.toLocalDateTime()).atZone(now.zone)
+                delay(Duration.between(now, next).toMillis().coerceAtLeast(1L))
+                viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            }
+        }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeContent(
@@ -327,7 +353,10 @@ private fun HomeScreen(
                 HomeDateRow(
                     selectedDate = state.selectedDate,
                     windowText = state.timeRangeLabel(),
-                    enabled = !state.isDateLocked,
+                    isDateEnabled = !state.isDateLocked,
+                    // 시각은 만들 것이 있는 날만 바꾼다. 날짜 줄과 같은 조건을 쓰면 완성된 날에 눌리는 것처럼
+                    // 보이는데 ViewModel 이 조용히 무시한다.
+                    isRangeEnabled = !state.isInputLocked,
                     onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
                     onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
                 )
@@ -340,7 +369,7 @@ private fun HomeScreen(
                 onClick = state.cardClick(HomeSourceKind.PHOTO, onIntent, onRequestPermission),
                 permissionAction = state.permissionAction(HomeSourceKind.PHOTO, onRequestPermission),
             ) {
-                HomePhotoGrid(cells = state.summary.photoCells)
+                HomePhotoGrid(cells = state.summary.photoCells, emptyMessage = state.photoEmptyMessage())
             }
 
             HomeSourceCard(
@@ -388,10 +417,18 @@ private fun HomeScreen(
             }
         }
 
+        // 스낵바는 바텀바 바로 위, 즉 이 버튼 자리에 뜬다. 버튼과 그 아래 여백만큼 올려 달라고 알린다.
+        val snackbarAnchor = LocalSnackbarAnchor.current
+        val density = LocalDensity.current
+        DisposableEffect(snackbarAnchor) { onDispose { snackbarAnchor.bottomInset = 0.dp } }
         HomeTimelineButton(
+            modifier =
+                Modifier.onSizeChanged { size ->
+                    snackbarAnchor.bottomInset = with(density) { size.height.toDp() } + HOME_BOTTOM_PADDING
+                },
             status = state.timelineButtonStatus,
             selectedDate = state.selectedDate,
-            today = LocalDate.now(),
+            today = state.today,
             // 제출을 기다리는 동안에는 다시 눌러도 아무 일이 없어야 한다.
             enabled = !state.isSubmitting,
             onClick = {
@@ -496,7 +533,8 @@ private fun HomeHeaderRow(
 private fun HomeDateRow(
     selectedDate: LocalDate,
     windowText: String,
-    enabled: Boolean,
+    isDateEnabled: Boolean,
+    isRangeEnabled: Boolean,
     onDateClick: () -> Unit,
     onRangeClick: () -> Unit,
 ) {
@@ -510,7 +548,7 @@ private fun HomeDateRow(
             modifier =
                 Modifier
                     .clip(RoundedCornerShape(Spacing.small))
-                    .clickable(enabled = enabled, onClick = onDateClick)
+                    .clickable(enabled = isDateEnabled, onClick = onDateClick)
                     .padding(vertical = Spacing.extraSmall),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurface,
@@ -520,7 +558,7 @@ private fun HomeDateRow(
             modifier =
                 Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = enabled, onClick = onRangeClick)
+                    .clickable(enabled = isRangeEnabled, onClick = onRangeClick)
                     .padding(horizontal = Spacing.extraSmall, vertical = 2.dp),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onPrimaryContainer,

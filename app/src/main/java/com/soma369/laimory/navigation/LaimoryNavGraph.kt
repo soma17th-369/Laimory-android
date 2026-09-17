@@ -2,6 +2,7 @@ package com.soma369.laimory.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
@@ -36,6 +37,8 @@ import com.soma369.laimory.core.domain.navigation.TermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.snackbar.LaimorySnackbarHost
+import com.soma369.laimory.core.ui.component.snackbar.LocalSnackbarAnchor
+import com.soma369.laimory.core.ui.component.snackbar.SnackbarAnchorState
 import com.soma369.laimory.core.ui.component.snackbar.TimedSnackbarVisuals
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.crash.CrashKey
@@ -50,6 +53,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 /**
  * Navigation 3 라우트 테이블 기반 앱 내비게이션의 진입 Composable.
@@ -66,6 +70,7 @@ fun LaimoryNavGraph(
     termsGateStates: Flow<TermsGateState> = flowOf(TermsGateState.Satisfied),
     pendingDraftCompletions: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null),
     onDraftCompletionConsumed: suspend (String) -> Boolean = { false },
+    homeRecordDate: () -> LocalDate? = { null },
     onAuthRootReplaced: () -> Unit = {},
 ) {
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
@@ -89,6 +94,7 @@ fun LaimoryNavGraph(
     // 오인하지 않는다. 첫 구성에서는 백스택도 같은 루트로 만들어지므로 둘이 서로 맞는다.
     var appliedRootPath by rememberSaveable { mutableStateOf(rootPage.toRoute().path) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarAnchor = remember { SnackbarAnchorState() }
 
     // 바텀바 노출·선택 상태는 별도 상태 없이 backStack top 의 path 에서 파생한다.
     val currentPath = (backStack.lastOrNull() as? GenericNavKey)?.path
@@ -113,12 +119,14 @@ fun LaimoryNavGraph(
     // 화면을 실제로 옮기는 순간에만 하므로, 그 전까지는 완료가 살아 있어 다시 판단할 수 있다.
     // 메서드 참조는 리컴포지션마다 새 객체라 키로 쓰면 수집이 계속 재시작한다. 최신 람다만 따라간다.
     val currentOnConsumed by rememberUpdatedState(onDraftCompletionConsumed)
+    val currentHomeRecordDate by rememberUpdatedState(homeRecordDate)
     LaunchedEffect(pendingDraftCompletions) {
         combine(
             pendingDraftCompletions,
             snapshotFlow { backStack.isShowingDraftLoading() },
-            ::Pair,
-        ).collectLatest { (completion, isShowingLoading) ->
+            snapshotFlow { backStack.isShowingHome() },
+            ::Triple,
+        ).collectLatest { (completion, isShowingLoading, isShowingHome) ->
             if (completion == null) return@collectLatest
             val timelineRoute = TimelinePage(completion.recordDate).toRoute()
             // 결과를 확인했으므로 백그라운드에서 온 알림은 더 알릴 것이 없다.
@@ -132,6 +140,11 @@ fun LaimoryNavGraph(
                     // 다 만든 화면으로 되돌아갈 이유가 없어 최상단을 갈아 끼운다.
                     if (currentOnConsumed(completion.taskId)) backStack.replaceTopWith(timelineRoute)
                 }
+                return@collectLatest
+            }
+            // 소비만 한다 — 같은 프로세스에서는 추적 상태가 성공으로 남아 홈 CTA 의 `타임라인 확인하기` 가 유지된다.
+            if (shouldSkipCompletionSnackbar(isShowingHome, currentHomeRecordDate(), completion.recordDate)) {
+                withContext(NonCancellable) { currentOnConsumed(completion.taskId) }
                 return@collectLatest
             }
             val result =
@@ -164,9 +177,15 @@ fun LaimoryNavGraph(
         appliedRootPath = rootPage.toRoute().path
     }
 
-    CompositionLocalProvider(LocalSnackbarHostState provides snackbarHostState) {
+    CompositionLocalProvider(
+        LocalSnackbarHostState provides snackbarHostState,
+        LocalSnackbarAnchor provides snackbarAnchor,
+    ) {
         Scaffold(
-            snackbarHost = { LaimorySnackbarHost(snackbarHostState) },
+            // 하단에 고정 버튼이 있는 화면은 그 높이만큼 스낵바를 올린다(홈 CTA).
+            snackbarHost = {
+                LaimorySnackbarHost(snackbarHostState, modifier = Modifier.padding(bottom = snackbarAnchor.bottomInset))
+            },
             bottomBar = {
                 // 탭 루트에서만 노출한다. push 된 일반 화면(수집 등)에서는 숨긴다.
                 if (currentPath != null && appRouteByPath[currentPath]?.isBottomTab == true) {
