@@ -48,11 +48,14 @@ internal fun HomePhotoGrid(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(CELL_GAP),
                 ) {
-                    row.forEach { cell -> PhotoCell(cell = cell, modifier = Modifier.weight(1f)) }
+                    row.forEach { cell ->
+                        PhotoCell(cell = cell, showsPlaceholder = emptyMessage == null, modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
-        // 빈 칸만 여섯 개면 사진이 없는 건지 아직 못 불러온 건지 알 수 없다. 칸 크기는 그대로 두고 위에 적는다.
+        // 빈 칸만 여섯 개면 사진이 없는 건지 아직 못 불러온 건지 알 수 없다. 사진이 없으면 자리표시자 칸을
+        // 그리지 않고 같은 크기의 빈 자리 가운데에 적는다 — 카드 높이는 사진이 있을 때와 같다.
         emptyMessage?.let { message ->
             Text(
                 text = message,
@@ -68,9 +71,15 @@ internal fun HomePhotoGrid(
 @Composable
 private fun PhotoCell(
     cell: HomePhotoCell?,
+    showsPlaceholder: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(4.dp)
+    if (cell == null && !showsPlaceholder) {
+        // 자리만 차지한다. 칸을 그리면 빈 문구 뒤에 회색 격자가 비쳐 보인다.
+        Box(modifier = modifier.aspectRatio(1f))
+        return
+    }
     val base =
         modifier
             .aspectRatio(1f)
