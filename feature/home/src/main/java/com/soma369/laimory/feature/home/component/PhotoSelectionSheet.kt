@@ -69,12 +69,7 @@ internal fun PhotoSelectionSheet(
     // 완성된 날은 모인 사진을 보여 주기만 한다. 고르는 조작을 감춰, 눌리는데 아무 일도 없는 버튼을 남기지 않는다.
     val isReadOnly = state.isInputLocked
     val zone = remember { ZoneId.systemDefault() }
-    val photosByDate =
-        remember(state.availablePhotos, zone) {
-            state.availablePhotos
-                .groupBy { it.capturedAt.atZone(zone).toLocalDate() }
-                .toSortedMap()
-        }
+    val photosByDate = remember(state.availablePhotos, zone) { state.availablePhotos.groupByDateNewestFirst(zone) }
     // 크게 보는 사진의 순번. 격자에 보이는 순서(날짜별) 그대로 넘긴다.
     val orderedPhotos = remember(photosByDate) { photosByDate.values.flatten() }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
@@ -410,6 +405,16 @@ private fun SelectablePhoto(
         }
     }
 }
+
+/**
+ * 사진을 촬영 날짜별로 묶는다. **날짜도, 날짜 안의 사진도 최신순이다.**
+ *
+ * 기록 범위가 익일까지 걸치면 날짜가 둘이 되는데, 오름차순으로 두면 방금 찍은 사진이 아래로 밀린다.
+ * 사진 목록은 최신순을 지킨다 — 격자·크게 보기 순서가 모두 이것을 따른다.
+ */
+internal fun List<HomePhotoItem>.groupByDateNewestFirst(zone: ZoneId): Map<LocalDate, List<HomePhotoItem>> =
+    sortedByDescending(HomePhotoItem::capturedAt)
+        .groupBy { it.capturedAt.atZone(zone).toLocalDate() }
 
 /** 크게 보기의 체크. 화면이 큰 만큼 배지도 키운다. */
 private val VIEWER_BADGE_SIZE = 28.dp
