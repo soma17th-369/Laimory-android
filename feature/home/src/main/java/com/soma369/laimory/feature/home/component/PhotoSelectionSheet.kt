@@ -6,7 +6,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +43,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.R
@@ -52,7 +52,9 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -127,8 +129,9 @@ internal fun PhotoSelectionSheet(
             } else if (state.availablePhotos.isEmpty()) {
                 EmptyPhotoSelection()
             } else {
-                // 전체 선택·장수 줄은 두지 않는다. 고르는 단위는 날짜 섹션의 `모두 선택` 이고, 고른 장수는 아래 버튼이
-                // 말한다. 상한(20장)을 넘기려 하면 그때 안내한다.
+                // 한꺼번에 고르거나 비우는 버튼은 두지 않는다. 20장 상한이 있어 `모두 선택` 이 모두를 고르지 못하고,
+                // 이 시트는 타임라인에 실을 몇 장을 고르는 곳이라 한 장씩 고르는 것으로 충분하다. 고른 장수와 상한은
+                // 아래 버튼이 말한다.
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 88.dp),
                     modifier =
@@ -143,11 +146,7 @@ internal fun PhotoSelectionSheet(
                             key = "date-$date",
                             span = { GridItemSpan(maxLineSpan) },
                         ) {
-                            PhotoDateHeader(
-                                date = date,
-                                isAllSelected = photos.all { it.mediaStoreId in state.pendingPhotoIds },
-                                onToggleAll = if (isReadOnly) null else ({ onIntent(HomeUiIntent.TogglePhotoDate(date)) }),
-                            )
+                            PhotoDateHeader(date = date)
                         }
                         items(photos, key = HomePhotoItem::mediaStoreId) { photo ->
                             SelectablePhoto(
@@ -167,6 +166,15 @@ internal fun PhotoSelectionSheet(
             // `만들기` 라 하지 않는다 — 이 시트는 고른 결과를 홈에 돌려주고 닫힐 뿐이고,
             // 만들기는 사용자가 홈 CTA 를 눌러 시작한다.
             val hasSelection = state.pendingPhotoIds.isNotEmpty()
+            state.photoLimitNotice()?.let { notice ->
+                Text(
+                    text = notice,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+            }
             Button(
                 onClick = {
                     onIntent(
@@ -186,7 +194,7 @@ internal fun PhotoSelectionSheet(
                 Text(
                     when {
                         isReadOnly -> "닫기"
-                        hasSelection -> "${state.pendingPhotoIds.size}장 선택 완료"
+                        hasSelection -> "선택 완료 (${state.pendingPhotoIds.size}/$MAX_PHOTO_SELECTION)"
                         else -> "사진 없이 닫기"
                     },
                 )
@@ -233,6 +241,8 @@ internal fun PhotoSelectionSheet(
                         }
                     }
                 },
+            // 크게 보기는 시트 위의 또 다른 창이라 시트의 안내가 가려진다. 체크가 먹지 않는 사진에서 이유를 적는다.
+            notice = { index -> orderedPhotos.getOrNull(index)?.let { state.photoLimitNoticeFor(it.mediaStoreId) } },
         )
     }
 }
@@ -251,28 +261,14 @@ private fun PhotoSelectionLoading() {
 }
 
 @Composable
-private fun PhotoDateHeader(
-    date: LocalDate,
-    isAllSelected: Boolean,
-    onToggleAll: (() -> Unit)?,
-) {
+private fun PhotoDateHeader(date: LocalDate) {
     // 날짜만 적는다. `기준일`·`익일` 같은 관계 표시는 기록 범위를 알아야 읽히는 말이라 뺀다.
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = PHOTO_DATE_FORMAT.format(date),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        if (onToggleAll != null) {
-            TextButton(onClick = onToggleAll) {
-                Text(if (isAllSelected) "모두 해제" else "모두 선택")
-            }
-        }
-    }
+    Text(
+        text = PHOTO_DATE_FORMAT.format(date),
+        modifier = Modifier.padding(top = Spacing.small, bottom = Spacing.extraSmall),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
 }
 
 /**
@@ -415,6 +411,19 @@ private fun SelectablePhoto(
 internal fun List<HomePhotoItem>.groupByDateNewestFirst(zone: ZoneId): Map<LocalDate, List<HomePhotoItem>> =
     sortedByDescending(HomePhotoItem::capturedAt)
         .groupBy { it.capturedAt.atZone(zone).toLocalDate() }
+
+/**
+ * 더 고를 수 없을 때 시트 버튼 위에 적는 안내. **상한에 닿아 있는 동안 계속 둔다.**
+ *
+ * 누른 순간에만 잠깐 띄우면 스낵바처럼 놓치기 쉽고, 칸을 눌렀는데 체크가 안 되는 이유가 그 자리에 없다.
+ * 고를 수 없는 날(읽기 전용)에는 두지 않는다.
+ */
+internal fun HomeUiState.photoLimitNotice(): String? = PHOTO_LIMIT_NOTICE.takeIf { !isInputLocked && isPhotoSelectionFull }
+
+/** 크게 보기에서 지금 사진에 붙이는 상한 안내. 이미 고른 사진은 해제가 되므로 적지 않는다. */
+internal fun HomeUiState.photoLimitNoticeFor(mediaStoreId: Long): String? = photoLimitNotice()?.takeIf { mediaStoreId !in pendingPhotoIds }
+
+private val PHOTO_LIMIT_NOTICE = "최대 ${MAX_PHOTO_SELECTION}장까지 고를 수 있어요. 다른 사진을 고르려면 먼저 하나를 해제해 주세요."
 
 /** 크게 보기의 체크. 화면이 큰 만큼 배지도 키운다. */
 private val VIEWER_BADGE_SIZE = 28.dp

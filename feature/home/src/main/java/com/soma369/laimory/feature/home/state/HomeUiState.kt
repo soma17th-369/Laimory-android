@@ -407,6 +407,10 @@ internal fun HomeUiState.nonPhotoSourceItems(
 
 internal const val MAX_PHOTO_SELECTION = DraftSourceItemLimits.DEFAULT_PHOTO
 
+/** 사진을 더 고를 수 없다. 고른 것을 해제하는 것만 된다. */
+internal val HomeUiState.isPhotoSelectionFull: Boolean
+    get() = pendingPhotoIds.size >= MAX_PHOTO_SELECTION
+
 /**
  * 격자에 담을 칸. **고른 사진이 앞이고, 각 묶음 안에서는 후보 순서(최신순)를 지킨다.**
  *

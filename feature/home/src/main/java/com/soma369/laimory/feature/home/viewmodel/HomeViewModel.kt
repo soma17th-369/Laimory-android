@@ -64,10 +64,10 @@ import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
-import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.confirmDialogBody
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
+import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
 import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
@@ -233,7 +233,6 @@ class HomeViewModel
                         copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet())
                     }
                 is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
-                is HomeUiIntent.TogglePhotoDate -> togglePhotoDate(intent.date)
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
                 HomeUiIntent.ShowDatePicker -> showDatePicker()
@@ -384,10 +383,9 @@ class HomeViewModel
             val current = state.value
             if (current.isInputLocked) return
             if (current.availablePhotos.none { it.mediaStoreId == mediaStoreId }) return
-            if (mediaStoreId !in current.pendingPhotoIds && current.pendingPhotoIds.size >= MAX_PHOTO_SELECTION) {
-                showPhotoLimitMessage()
-                return
-            }
+            // 상한 안내는 시트·크게 보기가 선택 상태로 직접 그린다. 스낵바는 두 창 뒤 홈에 떠 보이지 않고, 시트를
+            // 닫은 뒤에야 드러나 엉뚱한 때 읽힌다.
+            if (mediaStoreId !in current.pendingPhotoIds && current.isPhotoSelectionFull) return
             updateState {
                 copy(
                     pendingPhotoIds =
@@ -398,26 +396,6 @@ class HomeViewModel
                         },
                 )
             }
-        }
-
-        private fun togglePhotoDate(date: LocalDate) {
-            val current = state.value
-            if (current.isInputLocked) return
-            val datePhotoIds =
-                current.availablePhotos
-                    .filter { it.capturedAt.atZone(zone).toLocalDate() == date }
-                    .map(HomePhotoItem::mediaStoreId)
-            if (datePhotoIds.isEmpty()) return
-            val isDateSelected = current.pendingPhotoIds.containsAll(datePhotoIds)
-            if (isDateSelected) {
-                updateState { copy(pendingPhotoIds = pendingPhotoIds - datePhotoIds.toSet()) }
-                return
-            }
-
-            val availableSlots = MAX_PHOTO_SELECTION - current.pendingPhotoIds.size
-            val idsToAdd = datePhotoIds.filterNot(current.pendingPhotoIds::contains).take(availableSlots)
-            updateState { copy(pendingPhotoIds = pendingPhotoIds + idsToAdd) }
-            if (idsToAdd.size < datePhotoIds.count { it !in current.pendingPhotoIds }) showPhotoLimitMessage()
         }
 
         /** 고른 사진을 홈에 돌려주고 닫는다. */
@@ -1030,10 +1008,6 @@ class HomeViewModel
                     isPhotoAccessLimited = false,
                 ).withSourceSummary(sourceItems, emptyList())
             }
-        }
-
-        private fun showPhotoLimitMessage() {
-            sendEffect(HomeUiSideEffect.ShowSnackbar("사진은 최대 ${MAX_PHOTO_SELECTION}장까지 선택할 수 있어요."))
         }
 
         private fun retryDraft() {

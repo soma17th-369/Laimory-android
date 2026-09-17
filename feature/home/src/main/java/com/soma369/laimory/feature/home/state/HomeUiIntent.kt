@@ -46,10 +46,6 @@ sealed interface HomeUiIntent : UiIntent {
         val mediaStoreId: Long,
     ) : HomeUiIntent
 
-    data class TogglePhotoDate(
-        val date: LocalDate,
-    ) : HomeUiIntent
-
     /** 고른 사진으로 확정하고 데이터 확인 화면으로 넘어간다. */
     data object ConfirmPhotoSelection : HomeUiIntent
 

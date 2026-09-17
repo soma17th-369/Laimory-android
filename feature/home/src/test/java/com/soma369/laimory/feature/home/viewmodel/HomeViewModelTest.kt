@@ -281,7 +281,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `날짜 모두 선택은 최대 20장까지만 반영한다`() =
+    fun `20장을 고르면 21번째는 고르지 않고 하나를 해제하면 다시 고를 수 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             photoSource.candidates = (1L..21L).map(::todayPhotoCandidate)
             val viewModel = createViewModel()
@@ -289,14 +289,21 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.TogglePhotoDate(LocalDate.now(ZoneId.systemDefault())))
+            (1L..21L).forEach { viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = it)) }
             runCurrent()
 
-            val state = viewModel.state.value
-            assertTrue(state.isPhotoSheetVisible)
-            assertEquals(21, state.availablePhotos.size)
-            assertEquals(20, state.pendingPhotoIds.size)
+            val full = viewModel.state.value
+            assertTrue(full.isPhotoSheetVisible)
+            assertEquals(21, full.availablePhotos.size)
+            assertEquals((1L..20L).toSet(), full.pendingPhotoIds)
             assertNull(sessionStore.preparation.value)
+
+            // 한꺼번에 비우는 버튼이 없으므로 한 장 해제로 자리가 나야 한다.
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 21L))
+            runCurrent()
+
+            assertEquals((2L..21L).toSet(), viewModel.state.value.pendingPhotoIds)
         }
 
     @Test
@@ -679,7 +686,8 @@ class HomeViewModelTest {
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.TogglePhotoDate(LocalDate.now(ZoneId.systemDefault())))
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 2L))
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
@@ -1618,7 +1626,6 @@ class HomeViewModelTest {
             assertTrue(viewModel.state.value.isPhotoSheetVisible)
 
             viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
-            viewModel.sendIntent(HomeUiIntent.TogglePhotoDate(today))
             runCurrent()
             assertEquals(emptySet<Long>(), viewModel.state.value.pendingPhotoIds)
 

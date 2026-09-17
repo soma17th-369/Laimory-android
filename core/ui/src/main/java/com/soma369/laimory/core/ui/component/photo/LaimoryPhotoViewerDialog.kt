@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -32,6 +33,9 @@ import com.soma369.laimory.core.ui.theme.Spacing
  *
  * 닫기는 좌측 상단, 지금 보는 사진에 대한 동작([topEndAction], 예: 선택 체크)은 우측 상단이다. 격자에서
  * 체크가 칸의 우측 상단에 있으므로 크게 볼 때도 같은 자리에 두면 따로 배울 것이 없다.
+ *
+ * [notice] 는 지금 보는 사진에 붙는 안내(예: 선택 상한)로, 번호 위에 적는다. 이 화면은 별도 창이라 부르는
+ * 쪽 스낵바가 가려지므로 안내는 여기서 그려야 보인다.
  */
 @Composable
 fun LaimoryPhotoViewerDialog(
@@ -40,6 +44,7 @@ fun LaimoryPhotoViewerDialog(
     onDismiss: () -> Unit,
     photo: @Composable (index: Int) -> Unit,
     topEndAction: (@Composable (currentIndex: Int) -> Unit)? = null,
+    notice: (currentIndex: Int) -> String? = { null },
 ) {
     if (photoCount <= 0) return
 
@@ -53,6 +58,7 @@ fun LaimoryPhotoViewerDialog(
             onDismiss = onDismiss,
             photo = photo,
             topEndAction = topEndAction,
+            notice = notice,
         )
     }
 }
@@ -64,6 +70,7 @@ private fun LaimoryPhotoViewer(
     onDismiss: () -> Unit,
     photo: @Composable (index: Int) -> Unit,
     topEndAction: (@Composable (currentIndex: Int) -> Unit)?,
+    notice: (currentIndex: Int) -> String?,
 ) {
     val pagerState =
         rememberPagerState(
@@ -123,6 +130,19 @@ private fun LaimoryPhotoViewer(
             }
         }
 
+        notice(pagerState.currentPage)?.let { message ->
+            Text(
+                text = message,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.extraLarge)
+                        .padding(bottom = Spacing.medium),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+            )
+        }
         Text(
             text = "${pagerState.currentPage + 1} / $photoCount",
             modifier =
@@ -156,6 +176,7 @@ private fun LaimoryPhotoViewerPreview() {
                 )
             },
             topEndAction = null,
+            notice = { "최대 20장까지 고를 수 있어요." },
         )
     }
 }
