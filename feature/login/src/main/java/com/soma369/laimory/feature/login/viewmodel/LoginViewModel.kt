@@ -131,7 +131,7 @@ class LoginViewModel
             cancelDetectionJob?.cancel()
             cancelDetectionJob =
                 viewModelScope.launch {
-                    // onNewIntent가 callback을 전달하는 짧은 구간과 Custom Tab 복귀 이벤트의 경합을 피한다.
+                    // callback 전달(Auth Tab 결과·onNewIntent)과 인증 탭 복귀 이벤트의 짧은 경합을 피한다.
                     delay(CALLBACK_GRACE_PERIOD_MILLIS)
                     if (state.value.phase != LoginPhase.WAITING_CALLBACK) return@launch
                     // 시작만 있고 콜백이 오지 않았다. 사용자가 인증 페이지를 닫은 것과, App Link 가 검증되지 않아

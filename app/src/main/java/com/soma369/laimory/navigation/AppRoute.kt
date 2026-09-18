@@ -1,13 +1,10 @@
 package com.soma369.laimory.navigation
 
-import android.content.ActivityNotFoundException
 import androidx.annotation.DrawableRes
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.net.toUri
 import com.soma369.laimory.BuildConfig
+import com.soma369.laimory.LocalAuthorizationLauncher
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.navigation.CalendarPage
 import com.soma369.laimory.core.domain.navigation.CollectionPage
@@ -235,20 +232,9 @@ val appRouteByPath: Map<String, AppRoute> =
 
 @Composable
 private fun LoginAppRoute(innerPadding: PaddingValues) {
-    val context = LocalContext.current
+    val authorizationLauncher = LocalAuthorizationLauncher.current
     LoginRoute(
         innerPadding = innerPadding,
-        onOpenAuthorizationUrl = { url ->
-            try {
-                CustomTabsIntent.Builder()
-                    .setShowTitle(true)
-                    .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
-                    .build()
-                    .launchUrl(context, url.toUri())
-                true
-            } catch (_: ActivityNotFoundException) {
-                false
-            }
-        },
+        onOpenAuthorizationUrl = authorizationLauncher::launch,
     )
 }
