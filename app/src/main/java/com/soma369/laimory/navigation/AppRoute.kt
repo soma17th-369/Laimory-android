@@ -236,5 +236,6 @@ private fun LoginAppRoute(innerPadding: PaddingValues) {
     LoginRoute(
         innerPadding = innerPadding,
         onOpenAuthorizationUrl = authorizationLauncher::launch,
+        consumeAuthorizationReopen = authorizationLauncher::consumeReopen,
     )
 }

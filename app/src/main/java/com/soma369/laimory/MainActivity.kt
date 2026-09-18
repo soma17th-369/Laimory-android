@@ -8,6 +8,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.browser.auth.AuthTabIntent
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -121,7 +122,18 @@ class MainActivity : ComponentActivity() {
     private val authTabLauncher =
         AuthTabIntent.registerActivityResultLauncher(this) { result -> onAuthTabResult(result) }
 
-    private val authorizationLauncher = AuthorizationLauncher(::launchAuthorization)
+    /** Auth Tab 으로 연 인증 주소. 소유 확인에 실패하면 이 주소를 일반 Custom Tab 으로 다시 연다. */
+    private var authTabAuthorizationUrl: String? = null
+
+    /** 인증 페이지를 다시 열었는지. 로그인 화면이 복귀를 판정할 때 한 번 읽고 지운다. */
+    private var authorizationReopened = false
+
+    private val authorizationLauncher =
+        object : AuthorizationLauncher {
+            override fun launch(url: String): Boolean = launchAuthorization(url)
+
+            override fun consumeReopen(): Boolean = authorizationReopened.also { authorizationReopened = false }
+        }
 
     /**
      * 글자 크기를 기기 글꼴 설정에서 떼어낸다 — 배율을 고정해 어느 기기에서나 같은 크기로 그린다.
@@ -244,29 +256,49 @@ class MainActivity : ComponentActivity() {
      * Auth Tab 을 모르는 브라우저(Chrome 137 미만, 다른 브라우저)는 일반 Custom Tab 으로 연다. 그때는
      * 지금처럼 App Link 로 [consumeSocialLoginCallback] 이 받으므로 매니페스트의 App Link 는 그대로 둔다.
      */
-    private fun launchAuthorization(url: String): Boolean =
-        try {
+    private fun launchAuthorization(url: String): Boolean {
+        authorizationReopened = false
+        return try {
             AuthTabIntent
                 .Builder()
                 .build()
                 .launch(authTabLauncher, url.toUri(), BuildConfig.AUTH_CALLBACK_HOST, AUTH_CALLBACK_PATH)
+            authTabAuthorizationUrl = url
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        }
+    }
+
+    /** Auth Tab 이 막혔을 때 이 변경 전과 같은 방식으로 연다. 결과는 App Link 로 돌아온다. */
+    private fun openInCustomTab(url: String): Boolean =
+        try {
+            CustomTabsIntent
+                .Builder()
+                .setShowTitle(true)
+                .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+                .build()
+                .launchUrl(this, url.toUri())
             true
         } catch (_: ActivityNotFoundException) {
             false
         }
 
     private fun onAuthTabResult(result: AuthTabIntent.AuthResult) {
-        when (result.resultCode) {
-            AuthTabIntent.RESULT_OK -> {
-                val uri = result.resultUri?.toString()
-                if (uri == null || !deliverSocialLoginCallback(uri, via = "Auth Tab")) {
+        val authorizationUrl = authTabAuthorizationUrl
+        authTabAuthorizationUrl = null
+        when (val outcome = authTabOutcome(result.resultCode, result.resultUri?.toString(), authorizationUrl)) {
+            is AuthTabOutcome.Deliver ->
+                if (!deliverSocialLoginCallback(outcome.callbackUri, via = "Auth Tab")) {
                     Logger.w(LogDomain.AUTH, "Auth Tab 이 로그인 콜백이 아닌 주소로 끝났다")
                 }
+            is AuthTabOutcome.Reopen -> {
+                Logger.w(LogDomain.AUTH, "Auth Tab ${outcome.reason} — 일반 Custom Tab 으로 다시 연다")
+                // 못 열었으면 표시하지 않는다. 로그인 화면이 복귀로 보고 취소해야 다시 시도할 수 있다.
+                authorizationReopened = openInCustomTab(outcome.authorizationUrl)
             }
-            // 사용자가 닫았거나, Auth Tab 을 모르는 브라우저로 열려 App Link 가 탭을 정리한 경우다.
-            // 앞은 로그인 화면이 복귀를 보고 취소를 판정하고, 뒤는 onNewIntent 가 콜백을 받는다.
-            AuthTabIntent.RESULT_CANCELED -> Unit
-            else -> Logger.w(LogDomain.AUTH, "Auth Tab 이 콜백 없이 끝났다: ${authTabFailureReason(result.resultCode)}")
+            AuthTabOutcome.Closed -> Unit
+            is AuthTabOutcome.Failed -> Logger.w(LogDomain.AUTH, "Auth Tab 이 콜백 없이 끝났다: ${outcome.reason}")
         }
     }
 
@@ -293,14 +325,6 @@ class MainActivity : ComponentActivity() {
         socialLoginCallbackHandler.handle(callback)
         return true
     }
-
-    private fun authTabFailureReason(resultCode: Int): String =
-        when (resultCode) {
-            // 서버 assetlinks.json 에 이 앱의 서명 지문이 없다. 이 상태면 App Link 로도 돌아오지 못한다.
-            AuthTabIntent.RESULT_VERIFICATION_FAILED -> "콜백 주소 소유 검증 실패"
-            AuthTabIntent.RESULT_VERIFICATION_TIMED_OUT -> "콜백 주소 소유 검증 시간 초과"
-            else -> "알 수 없는 결과 $resultCode"
-        }
 
     private fun consumeDraftCompletionNotification(intent: Intent) {
         val taskId = intent.getStringExtra(DraftCompletionSignalParser.TASK_ID_KEY)
