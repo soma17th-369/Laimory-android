@@ -4,9 +4,12 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import com.soma369.laimory.analytics.DataCollectionReadyReporter
+import com.soma369.laimory.analytics.DraftTaskResultReporter
 import com.soma369.laimory.collection.AutoCollectionProcessLifecycleObserver
 import com.soma369.laimory.collection.LocationTrackingProcessLifecycleObserver
 import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetectionEntryPoint
+import com.soma369.laimory.core.data.analytics.AnalyticsConsentApplier
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.crash.BackgroundStateCrashKeyObserver
 import com.soma369.laimory.crash.CrashlyticsCrashReporter
@@ -28,6 +31,15 @@ import javax.inject.Inject
 class LaimoryApp :
     Application(),
     Configuration.Provider {
+    @Inject
+    lateinit var analyticsConsentApplier: AnalyticsConsentApplier
+
+    @Inject
+    lateinit var draftTaskResultReporter: DraftTaskResultReporter
+
+    @Inject
+    lateinit var dataCollectionReadyReporter: DataCollectionReadyReporter
+
     @Inject
     lateinit var draftTaskProcessLifecycleObserver: DraftTaskProcessLifecycleObserver
 
@@ -63,6 +75,11 @@ class LaimoryApp :
         super.onCreate()
         installCrashReporter()
         applyLogLevel()
+        // 저장된 수집 동의를 가장 먼저 버킷에 적용한다. 아래 관찰자들이 시작되며 내는 이벤트가 동의
+        // 여부를 따라야 한다.
+        analyticsConsentApplier.start()
+        draftTaskResultReporter.start()
+        dataCollectionReadyReporter.start()
         ProcessLifecycleOwner.get().lifecycle.addObserver(draftTaskProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(autoCollectionProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(locationTrackingProcessLifecycleObserver)
