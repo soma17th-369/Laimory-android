@@ -47,8 +47,8 @@
             android:value="timeline_draft_completion" />
 
         <!--
-            제품 분석(GA4, #410). 수집 자체는 기본으로 끈다 — 동의를 받아야 하는지 정해지기 전에는
-            운영에서 아무것도 모으지 않는다(디버그 소스셋이 확인용으로만 켠다).
+            제품 분석(GA4). 수집은 따로 동의를 받지 않고 켠다 — 처리방침에 수집 항목·목적을 고지하는
+            것으로 갈음한다. qa 는 개발자 테스트 이벤트가 운영 지표에 섞이지 않게 자기 소스셋에서 끈다.
 
             광고 식별자와 광고 개인화는 끈다. 우리는 광고를 하지 않고, 켜 두면 수집 범위가 제품
             지표 밖으로 넓어져 처리방침·데이터 보안 선언까지 달라진다.
@@ -58,7 +58,7 @@
         -->
         <meta-data
             android:name="firebase_analytics_collection_enabled"
-            android:value="false" />
+            android:value="true" />
         <meta-data
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />

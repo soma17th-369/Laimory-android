@@ -42,16 +42,16 @@ internal object AnalyticsModule {
      * 매니페스트가 정한 수집 시작 상태를 읽는다.
      *
      * 같은 값을 코드에 또 적으면 빌드 타입별 설정과 조용히 어긋난다. SDK 도 이 값을 읽어 시작하므로
-     * 출처를 하나로 둔다. 읽지 못하면 켜짐으로 보지 않는다 — 모르는 상태에서 수집을 켜는 쪽으로
-     * 기울면 동의 없이 모으게 된다.
+     * 출처를 하나로 둔다. 값이 없으면 SDK 기본값(켬)을 따른다 — SDK 는 수집하는데 우리만 꺼짐으로
+     * 보면 한 번만 보내는 이벤트가 영영 나가지 않는다.
      */
     private fun Context.manifestAnalyticsCollectionEnabled(): Boolean =
         runCatching {
             packageManager
                 .getApplicationInfo(packageName, PackageManager.GET_META_DATA)
                 .metaData
-                ?.getBoolean(COLLECTION_ENABLED_META_DATA, false) == true
-        }.getOrDefault(false)
+                ?.getBoolean(COLLECTION_ENABLED_META_DATA, true) ?: true
+        }.getOrDefault(true)
 
     private const val COLLECTION_ENABLED_META_DATA = "firebase_analytics_collection_enabled"
 }

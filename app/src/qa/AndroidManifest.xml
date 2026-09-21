@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!--
+            qa 는 제품 분석을 보내지 않는다. 개발자만 까는 빌드라 이벤트가 전부 테스트 조작이고,
+            release 와 같은 GA4 속성에 쌓여 운영 전환율을 흐린다. 이벤트 확인은 debug 의 DebugView 로
+            한다. 런타임 분기가 아니라 매니페스트로 끊는 이유는 SDK 가 프로세스 시작 시점에 이 값을
+            읽기 때문이다.
+        -->
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false"
+            tools:replace="android:value" />
+    </application>
+
+</manifest>
