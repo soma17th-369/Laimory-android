@@ -22,6 +22,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,10 +62,16 @@ import com.soma369.laimory.feature.login.viewmodel.LoginViewModel
 import kotlinx.coroutines.flow.Flow
 import com.soma369.laimory.core.ui.R as CoreUiR
 
+/**
+ * @param onOpenAuthorizationUrl 인증 페이지를 연다. 열 브라우저가 없으면 false.
+ * @param consumeAuthorizationReopen 인증 페이지를 열어 둔 사이 앱이 그 페이지를 다시 열었으면 true 를
+ *   돌려주고 표시를 지운다. 다시 열면서 앱이 잠깐 앞으로 나온 것은 복귀가 아니다.
+ */
 @Composable
 fun LoginRoute(
     innerPadding: PaddingValues,
     onOpenAuthorizationUrl: (String) -> Boolean,
+    consumeAuthorizationReopen: () -> Boolean,
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -75,6 +82,7 @@ fun LoginRoute(
         onIntent = viewModel::sendIntent,
         sideEffectFlow = viewModel.sideEffect,
         onOpenAuthorizationUrl = onOpenAuthorizationUrl,
+        consumeAuthorizationReopen = consumeAuthorizationReopen,
     )
 }
 
@@ -85,9 +93,11 @@ private fun LoginContent(
     onIntent: (LoginUiIntent) -> Unit,
     sideEffectFlow: Flow<LoginUiSideEffect>,
     onOpenAuthorizationUrl: (String) -> Boolean,
+    consumeAuthorizationReopen: () -> Boolean,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var browserWasOpened by rememberSaveable { mutableStateOf(false) }
+    val currentConsumeAuthorizationReopen by rememberUpdatedState(consumeAuthorizationReopen)
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         onIntent(LoginUiIntent.RefreshTermLinks)
@@ -113,6 +123,8 @@ private fun LoginContent(
         val observer =
             LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME && browserWasOpened) {
+                    // 인증 페이지를 다시 열며 잠깐 앞으로 나왔다. 다시 연 페이지에서 돌아올 때 판정한다.
+                    if (currentConsumeAuthorizationReopen()) return@LifecycleEventObserver
                     browserWasOpened = false
                     onIntent(LoginUiIntent.BrowserReturnedWithoutCallback)
                 }

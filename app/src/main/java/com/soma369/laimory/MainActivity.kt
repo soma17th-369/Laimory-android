@@ -1,20 +1,25 @@
 package com.soma369.laimory
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.browser.auth.AuthTabIntent
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -109,6 +114,34 @@ class MainActivity : ComponentActivity() {
     private val themeMode = MutableStateFlow<AppThemeMode?>(null)
 
     /**
+     * 로그인 인증 페이지(Auth Tab)의 결과를 받는다.
+     *
+     * 결과 등록은 STARTED 전에 끝나야 하고, 재생성·프로세스 종료 뒤에도 같은 순서로 다시 등록돼야
+     * 밀린 결과를 받는다 — 그래서 화면이 아니라 여기서 생성 시점에 등록한다.
+     */
+    private val authTabLauncher =
+        AuthTabIntent.registerActivityResultLauncher(this) { result -> onAuthTabResult(result) }
+
+    /**
+     * Auth Tab 으로 연 인증 주소. 소유 확인에 실패하면 이 주소를 일반 Custom Tab 으로 다시 연다.
+     *
+     * 인증 탭이 떠 있는 동안 회전이나 프로세스 종료로 Activity 가 재생성되면 이 값이 사라지는데,
+     * 그러면 밀려 있던 소유 확인 실패 결과가 다시 열 주소를 찾지 못해 폴백이 통째로 빠진다.
+     * 그래서 인스턴스 상태로 보관하고 결과가 전달되기 전에 되살린다([onCreate] 첫 줄).
+     */
+    private var authTabAuthorizationUrl: String? = null
+
+    /** 인증 페이지를 다시 열었는지. 로그인 화면이 복귀를 판정할 때 한 번 읽고 지운다. */
+    private var authorizationReopened = false
+
+    private val authorizationLauncher =
+        object : AuthorizationLauncher {
+            override fun launch(url: String): Boolean = launchAuthorization(url)
+
+            override fun consumeReopen(): Boolean = authorizationReopened.also { authorizationReopened = false }
+        }
+
+    /**
      * 글자 크기를 기기 글꼴 설정에서 떼어낸다 — 배율을 고정해 어느 기기에서나 같은 크기로 그린다.
      * 화면 값은 전부 dp 라 글자만 커지거나 작아지면 시안과 다르게 보이고 줄이 잘린다.
      *
@@ -128,6 +161,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // super.onCreate 가 밀려 있던 Activity 결과를 풀어 줄 수 있으므로 그 전에 되살린다.
+        authTabAuthorizationUrl = savedInstanceState?.getString(STATE_AUTH_TAB_AUTHORIZATION_URL)
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition { themeMode.value == null }
         super.onCreate(savedInstanceState)
@@ -171,22 +206,24 @@ class MainActivity : ComponentActivity() {
                             state = gateState,
                             onUpdateClick = { StoreLink.open(context) },
                         ) {
-                            LaimoryNavGraph(
-                                messages = messageHelper.messages,
-                                onboardingCompletions = observeOnboardingCompletion(),
-                                termsGateStates = observeTermsGate(),
-                                navigationFlow = navigationHelper.navigationFlow,
-                                authSessionStates = authSessionStates,
-                                pendingDraftCompletions = draftTaskCoordinator.pendingCompletion,
-                                onDraftCompletionConsumed = draftTaskCoordinator::consumeCompletion,
-                                // 홈이 상시로 유지하는 선택 스냅샷의 날짜가 곧 홈이 보고 있는 날짜다.
-                                homeRecordDate = { draftConsentSessionStore.selection.value?.recordDate },
-                                onAuthRootReplaced = {
-                                    // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
-                                    messageHelper.clearDialogs()
-                                    draftConsentSessionStore.clearAll()
-                                },
-                            )
+                            CompositionLocalProvider(LocalAuthorizationLauncher provides authorizationLauncher) {
+                                LaimoryNavGraph(
+                                    messages = messageHelper.messages,
+                                    onboardingCompletions = observeOnboardingCompletion(),
+                                    termsGateStates = observeTermsGate(),
+                                    navigationFlow = navigationHelper.navigationFlow,
+                                    authSessionStates = authSessionStates,
+                                    pendingDraftCompletions = draftTaskCoordinator.pendingCompletion,
+                                    onDraftCompletionConsumed = draftTaskCoordinator::consumeCompletion,
+                                    // 홈이 상시로 유지하는 선택 스냅샷의 날짜가 곧 홈이 보고 있는 날짜다.
+                                    homeRecordDate = { draftConsentSessionStore.selection.value?.recordDate },
+                                    onAuthRootReplaced = {
+                                        // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
+                                        messageHelper.clearDialogs()
+                                        draftConsentSessionStore.clearAll()
+                                    },
+                                )
+                            }
                         }
                         GlobalUiHost(
                             messageHelper = messageHelper,
@@ -209,6 +246,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        authTabAuthorizationUrl?.let { outState.putString(STATE_AUTH_TAB_AUTHORIZATION_URL, it) }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -216,13 +258,85 @@ class MainActivity : ComponentActivity() {
         consumeDraftCompletionNotification(intent)
     }
 
+    /**
+     * 인증 페이지를 Auth Tab 으로 연다.
+     *
+     * Auth Tab 은 서버의 콜백 주소를 브라우저가 가로채 **이 Activity 로 직접** 돌려준다. App Link 로 받으면
+     * 같은 주소를 선언한 다른 앱이 콜백을 가져갈 수 있다 — qa 는 운영과 콜백 주소가 같아, 한 기기에 둘 다
+     * 깔려 있고 둘 다 검증돼 있으면 시스템이 어느 쪽을 고를지 보장이 없다. 그러면 로그인을 시작하지 않은
+     * 앱이 콜백을 받아 교환에 실패하고, 시작한 앱은 콜백 없이 복귀해 취소된다.
+     *
+     * Auth Tab 을 모르는 브라우저(Chrome 137 미만, 다른 브라우저)는 일반 Custom Tab 으로 연다. 그때는
+     * 지금처럼 App Link 로 [consumeSocialLoginCallback] 이 받으므로 매니페스트의 App Link 는 그대로 둔다.
+     */
+    private fun launchAuthorization(url: String): Boolean {
+        authorizationReopened = false
+        return try {
+            AuthTabIntent
+                .Builder()
+                .build()
+                .launch(authTabLauncher, url.toUri(), BuildConfig.AUTH_CALLBACK_HOST, AUTH_CALLBACK_PATH)
+            authTabAuthorizationUrl = url
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        }
+    }
+
+    /** Auth Tab 이 막혔을 때 이 변경 전과 같은 방식으로 연다. 결과는 App Link 로 돌아온다. */
+    private fun openInCustomTab(url: String): Boolean =
+        try {
+            CustomTabsIntent
+                .Builder()
+                .setShowTitle(true)
+                .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+                .build()
+                .launchUrl(this, url.toUri())
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        }
+
+    private fun onAuthTabResult(result: AuthTabIntent.AuthResult) {
+        val authorizationUrl = authTabAuthorizationUrl
+        authTabAuthorizationUrl = null
+        when (val outcome = authTabOutcome(result.resultCode, result.resultUri?.toString(), authorizationUrl)) {
+            is AuthTabOutcome.Deliver ->
+                if (!deliverSocialLoginCallback(outcome.callbackUri, via = "Auth Tab")) {
+                    Logger.w(LogDomain.AUTH, "Auth Tab 이 로그인 콜백이 아닌 주소로 끝났다")
+                }
+            is AuthTabOutcome.Reopen -> {
+                Logger.w(LogDomain.AUTH, "Auth Tab ${outcome.reason} — 일반 Custom Tab 으로 다시 연다")
+                // 못 열었으면 표시하지 않는다. 로그인 화면이 복귀로 보고 취소해야 다시 시도할 수 있다.
+                authorizationReopened = openInCustomTab(outcome.authorizationUrl)
+            }
+            AuthTabOutcome.Closed -> Unit
+            is AuthTabOutcome.Failed -> Logger.w(LogDomain.AUTH, "Auth Tab 이 콜백 없이 끝났다: ${outcome.reason}")
+        }
+    }
+
     private fun consumeSocialLoginCallback(intent: Intent) {
-        val callback = intent.dataString?.toSocialLoginCallbackOrNull() ?: return
-        Logger.i(LogDomain.AUTH, "소셜 로그인 콜백 수신")
-        socialLoginCallbackHandler.handle(callback)
+        val uri = intent.dataString ?: return
+        if (!deliverSocialLoginCallback(uri, via = "App Link")) return
         // 구성 변경으로 Activity가 재생성돼도 같은 callback을 다시 제출하지 않는다.
         intent.data = null
         setIntent(intent)
+    }
+
+    /**
+     * 콜백 주소를 로그인 화면에 넘긴다. 우리 콜백 주소가 아니면 false.
+     *
+     * [via] 는 어느 경로로 받았는지 남긴다 — App Link 로 받았다면 브라우저가 Auth Tab 을 몰라 일반
+     * Custom Tab 으로 열린 것이고, 그 기기에서는 qa·운영 콜백 충돌이 그대로 남아 있다.
+     */
+    private fun deliverSocialLoginCallback(
+        uri: String,
+        via: String,
+    ): Boolean {
+        val callback = uri.toSocialLoginCallbackOrNull() ?: return false
+        Logger.i(LogDomain.AUTH, "소셜 로그인 콜백 수신($via)")
+        socialLoginCallbackHandler.handle(callback)
+        return true
     }
 
     private fun consumeDraftCompletionNotification(intent: Intent) {
@@ -266,6 +380,9 @@ class MainActivity : ComponentActivity() {
     private companion object {
         /** 알림을 눌러 앱이 처음 뜰 때 활성 작업 복원을 기다리는 한도. */
         const val ACTIVE_TASK_RESTORE_TIMEOUT_MILLIS = 3_000L
+
+        /** 재생성 뒤에도 폴백으로 다시 열 수 있게 보관하는 인증 주소 키. */
+        const val STATE_AUTH_TAB_AUTHORIZATION_URL = "auth_tab_authorization_url"
     }
 }
 
