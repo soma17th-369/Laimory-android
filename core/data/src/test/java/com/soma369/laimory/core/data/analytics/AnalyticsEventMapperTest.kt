@@ -212,6 +212,7 @@ class AnalyticsEventMapperTest {
                 AnalyticsFailureCode.TIMEOUT to "timeout",
                 AnalyticsFailureCode.AUTH to "auth",
                 AnalyticsFailureCode.INSUFFICIENT_EVENT to "insufficient_event",
+                AnalyticsFailureCode.INVALID_INPUT to "invalid_input",
                 AnalyticsFailureCode.SERVER to "server",
                 AnalyticsFailureCode.RESULT_UNAVAILABLE to "result_unavailable",
                 AnalyticsFailureCode.UNKNOWN to "unknown",

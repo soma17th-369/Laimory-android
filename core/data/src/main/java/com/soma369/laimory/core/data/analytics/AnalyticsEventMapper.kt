@@ -237,6 +237,7 @@ private val AnalyticsFailureCode.paramValue: String
             AnalyticsFailureCode.TIMEOUT -> "timeout"
             AnalyticsFailureCode.AUTH -> "auth"
             AnalyticsFailureCode.INSUFFICIENT_EVENT -> "insufficient_event"
+            AnalyticsFailureCode.INVALID_INPUT -> "invalid_input"
             AnalyticsFailureCode.SERVER -> "server"
             AnalyticsFailureCode.RESULT_UNAVAILABLE -> "result_unavailable"
             AnalyticsFailureCode.UNKNOWN -> "unknown"
