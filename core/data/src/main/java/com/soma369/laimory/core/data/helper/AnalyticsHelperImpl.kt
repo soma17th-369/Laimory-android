@@ -33,6 +33,9 @@ internal class AnalyticsHelperImpl
             key: AnalyticsDedupeKey,
             event: AnalyticsEvent,
         ) {
+            // 꺼져 있으면 판정 키를 건드리지 않는다. 소비해 버리면 나중에 수집을 켜도 이 설치에서는
+            // 영영 나가지 않는다 — 한 번만 보내는 이벤트라 "보낸 적 없음" 상태를 지켜야 한다.
+            if (buckets.none { bucket -> bucket.isEnabled }) return
             val first =
                 try {
                     dedupeStore.markIfFirst(key.value)
