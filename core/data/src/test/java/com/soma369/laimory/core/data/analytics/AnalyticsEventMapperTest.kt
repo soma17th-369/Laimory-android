@@ -5,14 +5,18 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.collection.ItemType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -59,10 +63,13 @@ class AnalyticsEventMapperTest {
                     setOf("initial_event_item_count"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineEventReviewCompleted(today, 5, 4, 1),
+                    reviewCompleted(),
                     "timeline_event_review_completed",
                     setOf("record_day_relation"),
-                    setOf("initial_event_item_count", "final_event_item_count", "net_removed_item_count"),
+                    setOf("initial_event_item_count", "final_event_item_count", "net_removed_item_count") +
+                        listOf("photo", "calendar", "location", "health", "notification").flatMap { group ->
+                            listOf("initial_${group}_item_count", "final_${group}_item_count")
+                        },
                 ),
                 Expectation(
                     AnalyticsEvent.TimelineCreateRequested(today, itemCount = 4),
@@ -116,12 +123,36 @@ class AnalyticsEventMapperTest {
     }
 
     @Test
-    fun `검토 완료의 수치를 그대로 싣는다`() {
-        val payload = AnalyticsEvent.TimelineEventReviewCompleted(today, 7, 5, 2).toPayload()
+    fun `만들기 확정에 합계·뺀 수·묶음별 건수를 싣는다`() {
+        val payload = reviewCompleted().toPayload()
 
         assertEquals(7L, payload.counts["initial_event_item_count"])
         assertEquals(5L, payload.counts["final_event_item_count"])
         assertEquals(2L, payload.counts["net_removed_item_count"])
+        // 머문 곳과 이동은 위치 하나로 센다.
+        assertEquals(3L, payload.counts["initial_location_item_count"])
+        assertEquals(2L, payload.counts["final_calendar_item_count"])
+        // 없는 묶음도 0 으로 싣는다.
+        assertEquals(0L, payload.counts["initial_health_item_count"])
+    }
+
+    @Test
+    fun `묶음 전송값을 고정한다`() {
+        val expected =
+            mapOf(
+                AnalyticsSourceGroup.PHOTO to "photo",
+                AnalyticsSourceGroup.CALENDAR to "calendar",
+                AnalyticsSourceGroup.LOCATION to "location",
+                AnalyticsSourceGroup.HEALTH to "health",
+                AnalyticsSourceGroup.NOTIFICATION to "notification",
+            )
+
+        assertEquals(AnalyticsSourceGroup.entries.toSet(), expected.keys)
+        val counts = reviewCompleted().toPayload().counts
+        expected.values.forEach { wireValue ->
+            assertTrue(counts.containsKey("initial_${wireValue}_item_count"))
+            assertTrue(counts.containsKey("final_${wireValue}_item_count"))
+        }
     }
 
     @Test
@@ -265,6 +296,20 @@ class AnalyticsEventMapperTest {
             assertEquals(wireValue, eventOf(value).toPayload().strings[param])
         }
     }
+
+    /** 최초 7(사진 1 · 일정 3 · 위치 3) → 최종 5(사진 1 · 일정 2 · 위치 2). */
+    private fun reviewCompleted() =
+        AnalyticsEvent.TimelineEventReviewCompleted(
+            recordDayRelation = today,
+            initialCounts =
+                AnalyticsItemCounts.of(
+                    listOf(ItemType.PHOTO) + List(3) { ItemType.CALENDAR } + listOf(ItemType.STAY, ItemType.STAY, ItemType.MOVEMENT),
+                ),
+            finalCounts =
+                AnalyticsItemCounts.of(
+                    listOf(ItemType.PHOTO) + List(2) { ItemType.CALENDAR } + listOf(ItemType.STAY, ItemType.MOVEMENT),
+                ),
+        )
 
     private fun permissionResult(
         permission: AnalyticsPermissionType = AnalyticsPermissionType.PHOTO,

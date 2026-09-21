@@ -19,6 +19,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
@@ -206,10 +207,13 @@ class HomeViewModelTest {
                 events.map { it::class.simpleName },
             )
             val completed = events.filterIsInstance<AnalyticsEvent.TimelineEventReviewCompleted>().single()
-            assertEquals(2, completed.initialItemCount)
-            assertEquals(2, completed.finalItemCount)
+            assertEquals(2, completed.initialCounts.total)
+            assertEquals(2, completed.finalCounts.total)
             assertEquals(0, completed.netRemovedItemCount)
-            assertEquals(2, events.filterIsInstance<AnalyticsEvent.TimelineCreateRequested>().single().itemCount)
+            assertEquals(2, completed.finalCounts.countOf(AnalyticsSourceGroup.CALENDAR))
+            assertEquals(0, completed.finalCounts.countOf(AnalyticsSourceGroup.PHOTO))
+            // 요청 건수는 보낸 목록 그대로라 확정 때의 최종 건수와 같다.
+            assertEquals(completed.finalCounts.total, events.filterIsInstance<AnalyticsEvent.TimelineCreateRequested>().single().itemCount)
         }
 
     @Test

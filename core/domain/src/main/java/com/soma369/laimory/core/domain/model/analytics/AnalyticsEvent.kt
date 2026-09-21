@@ -49,13 +49,21 @@ sealed interface AnalyticsEvent {
         val initialItemCount: Int,
     ) : AnalyticsEvent
 
-    /** 확인 창에서 만들기를 골랐다. 최초 준비분에서 사용자가 뺀 만큼이 [netRemovedItemCount] 다. */
+    /**
+     * 확인 창에서 만들기를 골랐다.
+     *
+     * [initialCounts] 는 앱이 보내려고 모은 후보, [finalCounts] 는 사용자가 미리 빼 둔 항목을 걸러 실제로 보낸
+     * 목록이다. 사진도 센다 — 사진은 이 단계에서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의 제외율은
+     * 사진 묶음을 빼고 계산하면 된다.
+     */
     data class TimelineEventReviewCompleted(
         val recordDayRelation: AnalyticsRecordDayRelation,
-        val initialItemCount: Int,
-        val finalItemCount: Int,
-        val netRemovedItemCount: Int,
-    ) : AnalyticsEvent
+        val initialCounts: AnalyticsItemCounts,
+        val finalCounts: AnalyticsItemCounts,
+    ) : AnalyticsEvent {
+        /** 최종 상태로만 센다 — 뺐다가 다시 넣은 항목은 0 이다. */
+        val netRemovedItemCount: Int get() = initialCounts.total - finalCounts.total
+    }
 
     /** 서버가 생성 요청을 접수해 작업을 돌려줬다. */
     data class TimelineCreateRequested(

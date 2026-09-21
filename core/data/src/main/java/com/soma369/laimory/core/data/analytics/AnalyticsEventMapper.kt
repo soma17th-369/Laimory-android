@@ -5,11 +5,13 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 
 /** 모든 이벤트에 붙는 스키마 판. 속성 의미가 바뀌면 올려 옛 데이터와 섞이지 않게 한다. */
@@ -90,10 +92,10 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                 strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
                 counts =
                     mapOf(
-                        PARAM_INITIAL_ITEM_COUNT to initialItemCount.toLong(),
-                        PARAM_FINAL_ITEM_COUNT to finalItemCount.toLong(),
+                        PARAM_INITIAL_ITEM_COUNT to initialCounts.total.toLong(),
+                        PARAM_FINAL_ITEM_COUNT to finalCounts.total.toLong(),
                         PARAM_NET_REMOVED_ITEM_COUNT to netRemovedItemCount.toLong(),
-                    ),
+                    ) + initialCounts.byGroupParams(STAGE_INITIAL) + finalCounts.byGroupParams(STAGE_FINAL),
             )
         is AnalyticsEvent.TimelineCreateRequested ->
             payload(
@@ -151,6 +153,18 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                         PARAM_FAILURE_CODE to failureCode.paramValue,
                     ),
             )
+    }
+
+private const val STAGE_INITIAL = "initial"
+private const val STAGE_FINAL = "final"
+
+/**
+ * 묶음별 건수. 합계 이름(`initial_event_item_count`)의 `event` 자리에 묶음을 넣는다 — `initial_calendar_item_count`.
+ * 모든 묶음을 빠짐없이 싣는다(없으면 0).
+ */
+private fun AnalyticsItemCounts.byGroupParams(stage: String): Map<String, Long> =
+    AnalyticsSourceGroup.entries.associate { group ->
+        "${stage}_${group.paramValue}_item_count" to countOf(group).toLong()
     }
 
 private fun payload(
@@ -255,6 +269,16 @@ private val AnalyticsTimelineState.paramValue: String
         when (this) {
             AnalyticsTimelineState.DRAFT -> "draft"
             AnalyticsTimelineState.SAVED -> "saved"
+        }
+
+private val AnalyticsSourceGroup.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsSourceGroup.PHOTO -> "photo"
+            AnalyticsSourceGroup.CALENDAR -> "calendar"
+            AnalyticsSourceGroup.LOCATION -> "location"
+            AnalyticsSourceGroup.HEALTH -> "health"
+            AnalyticsSourceGroup.NOTIFICATION -> "notification"
         }
 
 private val AnalyticsCompletionOutcome.paramValue: String

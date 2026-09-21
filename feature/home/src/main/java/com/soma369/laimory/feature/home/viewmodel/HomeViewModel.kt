@@ -14,6 +14,7 @@ import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
@@ -788,10 +789,10 @@ class HomeViewModel
                 sendEffect(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요."))
                 return
             }
-            // 사진은 앞 단계(사진 시트)에서 이미 골라 여기서 빼는 대상이 아니다. 검토에서 무엇을 뺐는지만
-            // 보려면 사진을 빼고 센다 — 섞으면 사진이 많은 날의 제외율이 묽어진다.
-            val initialCount = preparation.selection.reviewableItemCount()
-            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, initialCount))
+            // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
+            // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
+            val initialCounts = preparation.selection.analyticsCounts()
+            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, initialCounts.total))
             val result =
                 messageHelper.showTwoButtonDialog(
                     DialogRequest.TwoButton(
@@ -808,13 +809,11 @@ class HomeViewModel
                 draftConsentSessionStore.clearPreparation()
                 return
             }
-            val finalCount = submission.reviewableItemCount()
             analyticsHelper.log(
                 AnalyticsEvent.TimelineEventReviewCompleted(
                     recordDayRelation = dayRelation,
-                    initialItemCount = initialCount,
-                    finalItemCount = finalCount,
-                    netRemovedItemCount = initialCount - finalCount,
+                    initialCounts = initialCounts,
+                    finalCounts = submission.analyticsCounts(),
                 ),
             )
             submitDraft(preparation, submission)
@@ -871,7 +870,7 @@ class HomeViewModel
             }
         }
 
-        private fun DraftSourceItemSelection.reviewableItemCount(): Int = items.count { it.itemType != ItemType.PHOTO }
+        private fun DraftSourceItemSelection.analyticsCounts(): AnalyticsItemCounts = AnalyticsItemCounts.of(items.map { it.itemType })
 
         /**
          * 확인 화면이 받던 제출 실패를 홈이 받는다.
