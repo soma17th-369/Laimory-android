@@ -122,7 +122,13 @@ class MainActivity : ComponentActivity() {
     private val authTabLauncher =
         AuthTabIntent.registerActivityResultLauncher(this) { result -> onAuthTabResult(result) }
 
-    /** Auth Tab 으로 연 인증 주소. 소유 확인에 실패하면 이 주소를 일반 Custom Tab 으로 다시 연다. */
+    /**
+     * Auth Tab 으로 연 인증 주소. 소유 확인에 실패하면 이 주소를 일반 Custom Tab 으로 다시 연다.
+     *
+     * 인증 탭이 떠 있는 동안 회전이나 프로세스 종료로 Activity 가 재생성되면 이 값이 사라지는데,
+     * 그러면 밀려 있던 소유 확인 실패 결과가 다시 열 주소를 찾지 못해 폴백이 통째로 빠진다.
+     * 그래서 인스턴스 상태로 보관하고 결과가 전달되기 전에 되살린다([onCreate] 첫 줄).
+     */
     private var authTabAuthorizationUrl: String? = null
 
     /** 인증 페이지를 다시 열었는지. 로그인 화면이 복귀를 판정할 때 한 번 읽고 지운다. */
@@ -155,6 +161,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // super.onCreate 가 밀려 있던 Activity 결과를 풀어 줄 수 있으므로 그 전에 되살린다.
+        authTabAuthorizationUrl = savedInstanceState?.getString(STATE_AUTH_TAB_AUTHORIZATION_URL)
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition { themeMode.value == null }
         super.onCreate(savedInstanceState)
@@ -236,6 +244,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        authTabAuthorizationUrl?.let { outState.putString(STATE_AUTH_TAB_AUTHORIZATION_URL, it) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -367,6 +380,9 @@ class MainActivity : ComponentActivity() {
     private companion object {
         /** 알림을 눌러 앱이 처음 뜰 때 활성 작업 복원을 기다리는 한도. */
         const val ACTIVE_TASK_RESTORE_TIMEOUT_MILLIS = 3_000L
+
+        /** 재생성 뒤에도 폴백으로 다시 열 수 있게 보관하는 인증 주소 키. */
+        const val STATE_AUTH_TAB_AUTHORIZATION_URL = "auth_tab_authorization_url"
     }
 }
 
