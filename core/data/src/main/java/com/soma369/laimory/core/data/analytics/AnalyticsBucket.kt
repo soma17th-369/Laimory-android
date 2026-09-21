@@ -11,6 +11,14 @@ package com.soma369.laimory.core.data.analytics
  * 여러 버킷을 동시에 둘 수 있다. 옮길 때 두 곳으로 함께 보내 결과를 비교한 뒤 옛 버킷을 뺀다.
  */
 interface AnalyticsBucket {
+    /**
+     * 지금 수집이 켜져 있는지.
+     *
+     * "한 번만 보내는" 이벤트가 꺼진 동안 판정 키만 소비하고 사라지지 않게 하려면, 보내기 전에
+     * 물어볼 곳이 있어야 한다.
+     */
+    val isEnabled: Boolean
+
     /** 한 건을 보낸다. 실패는 예외로 알린다 — 삼키는 일은 호출부가 맡는다. */
     suspend fun send(payload: AnalyticsPayload)
 
