@@ -191,6 +191,7 @@ dependencies {
     implementation(libs.firebase.installations)
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.analytics)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
