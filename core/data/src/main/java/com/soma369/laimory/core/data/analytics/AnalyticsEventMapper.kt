@@ -54,11 +54,43 @@ private fun payload(
     )
 
 /**
- * enum 이름을 그대로 쓰지 않고 소문자 snake_case 로 옮긴다.
+ * 전송 값을 상수마다 적어 둔다.
  *
- * 상수 이름은 코드 사정으로 바뀔 수 있는데, 전송 값은 대시보드 정의와 묶여 있어 조용히 바뀌면
- * 지난 데이터와 끊긴다. 옮기는 규칙을 한 곳에 두어 새 값도 같은 모양이 되게 한다.
+ * 이름을 규칙으로 변환(`name.lowercase()`)하면 상수 이름과 전송 값이 묶인다. 상수 이름은 코드 사정으로
+ * 바뀔 수 있는데, 전송 값은 대시보드 정의와 묶여 있어 함께 바뀌면 컴파일은 통과한 채 지난 데이터와
+ * 끊긴다. 여기 적힌 문자열이 계약이고, 상수 이름은 그것과 무관하게 바꿀 수 있다.
+ *
+ * `when` 에 `else` 를 두지 않아 값을 추가하면 여기서 컴파일이 깨진다. 전체 값은
+ * `AnalyticsEventMapperTest` 가 고정한다.
  */
-private val AnalyticsPermissionType.paramValue: String get() = name.lowercase()
-private val AnalyticsPermissionState.paramValue: String get() = name.lowercase()
-private val AnalyticsPromptContext.paramValue: String get() = name.lowercase()
+private val AnalyticsPermissionType.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsPermissionType.PHOTO -> "photo"
+            AnalyticsPermissionType.CALENDAR -> "calendar"
+            AnalyticsPermissionType.LOCATION_FOREGROUND -> "location_foreground"
+            AnalyticsPermissionType.LOCATION_BACKGROUND -> "location_background"
+            AnalyticsPermissionType.HEALTH_CONNECT -> "health_connect"
+            AnalyticsPermissionType.PUSH_NOTIFICATION -> "push_notification"
+            AnalyticsPermissionType.NOTIFICATION_LISTENER -> "notification_listener"
+            AnalyticsPermissionType.ACTIVITY_RECOGNITION -> "activity_recognition"
+        }
+
+private val AnalyticsPermissionState.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsPermissionState.GRANTED -> "granted"
+            AnalyticsPermissionState.PARTIAL -> "partial"
+            AnalyticsPermissionState.DENIED -> "denied"
+            AnalyticsPermissionState.SETTINGS_REQUIRED -> "settings_required"
+            AnalyticsPermissionState.UNAVAILABLE -> "unavailable"
+        }
+
+private val AnalyticsPromptContext.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsPromptContext.APP_START -> "app_start"
+            AnalyticsPromptContext.HOME -> "home"
+            AnalyticsPromptContext.COLLECTION_LAB -> "collection_lab"
+            AnalyticsPromptContext.SETTINGS -> "settings"
+        }
