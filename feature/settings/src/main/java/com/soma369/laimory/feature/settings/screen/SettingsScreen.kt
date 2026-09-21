@@ -104,7 +104,8 @@ private fun SettingsContent(
 
     // 권한 상태는 저장하지 않고 화면이 뜰 때마다 Android 에 묻는다. 시스템 설정에 다녀오면
     // ON_RESUME 재조회가 목록 문구를 바로 따라오게 한다.
-    val permissionState = rememberDataPermissionState()
+    val permissionState =
+        rememberDataPermissionState(onAnalyticsEvent = { event -> onIntent(SettingsUiIntent.PermissionEvent(event)) })
     val termContentLauncher = rememberTermContentLauncher()
     var sheetSource by remember { mutableStateOf<DataSourceUiModel?>(null) }
 

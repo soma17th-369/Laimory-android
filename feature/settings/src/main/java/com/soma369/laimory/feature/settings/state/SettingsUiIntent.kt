@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.settings.state
 
 import com.soma369.laimory.core.ui.base.UiIntent
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 
 sealed interface SettingsUiIntent : UiIntent {
     /** 화면 진입·복귀. 아직 못 받은 닉네임을 다시 요청한다. */
@@ -42,4 +43,9 @@ sealed interface SettingsUiIntent : UiIntent {
 
     /** 확인 체크박스를 켠 뒤 삭제를 눌렀다. Dialog 가 체크 전 확인을 막으므로 동의는 이미 받았다. */
     data object AccountDeleteConfirmed : SettingsUiIntent
+
+    /** 이 화면에서 연 권한 요청과 그 결과. 분석에 기록한다. */
+    data class PermissionEvent(
+        val event: DataPermissionEvent,
+    ) : SettingsUiIntent
 }

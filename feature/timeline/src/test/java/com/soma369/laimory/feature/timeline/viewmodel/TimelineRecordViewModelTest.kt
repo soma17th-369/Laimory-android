@@ -2,9 +2,17 @@ package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
@@ -1693,8 +1701,59 @@ class TimelineRecordViewModelTest {
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
             messageHelper = messageHelper,
+            analyticsHelper = analyticsHelper,
             clock = clock,
         )
+
+    private val analyticsHelper = RecordingAnalyticsHelper()
+
+    @Test
+    fun `초안을 열면 초안 상태로 열람을 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            createLoadedViewModel()
+
+            assertEquals(
+                listOf(AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, AnalyticsRecordDayRelation.of(RECORD_DATE, clock))),
+                analyticsHelper.logged,
+            )
+        }
+
+    @Test
+    fun `완료 절차를 시작하고 확정되면 그 날짜로 한 번만 완료를 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+            val relation = AnalyticsRecordDayRelation.of(RECORD_DATE, clock)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertTrue(AnalyticsEvent.TimelineCompletionStarted(relation) in analyticsHelper.logged)
+            assertEquals(
+                listOf(
+                    AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE) to
+                        AnalyticsEvent.TimelineCompleted(relation, AnalyticsCompletionOutcome.TRANSITIONED),
+                ),
+                analyticsHelper.loggedOnce,
+            )
+        }
+
+    @Test
+    fun `완료 저장이 실패하면 실패 코드와 함께 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.saveFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            val failed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCompletionFailed>().single()
+            assertEquals(AnalyticsFailureCode.NETWORK, failed.failureCode)
+            assertTrue(analyticsHelper.loggedOnce.isEmpty())
+        }
 
     @Test
     fun `저장된 기록의 편집 모드에서 감정을 바꾼다`() =
@@ -2042,5 +2101,21 @@ class TimelineRecordViewModelTest {
         const val DAILY_RECORD_ID = 31L
         val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
         val OTHER_RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 9)
+    }
+
+    private class RecordingAnalyticsHelper : AnalyticsHelper {
+        val logged = mutableListOf<AnalyticsEvent>()
+        val loggedOnce = mutableListOf<Pair<AnalyticsDedupeKey, AnalyticsEvent>>()
+
+        override suspend fun log(event: AnalyticsEvent) {
+            logged += event
+        }
+
+        override suspend fun logOnce(
+            key: AnalyticsDedupeKey,
+            event: AnalyticsEvent,
+        ) {
+            loggedOnce += key to event
+        }
     }
 }

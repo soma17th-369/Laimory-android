@@ -2,12 +2,17 @@ package com.soma369.laimory.feature.settings.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
@@ -26,6 +31,7 @@ import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.UserRepository
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
@@ -34,6 +40,7 @@ import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RequestAccountWithdrawalUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,6 +71,7 @@ class SettingsViewModelTest {
     private val userProfileCoordinator = FakeUserProfileCoordinator()
     private val userRepository = FakeUserRepository()
     private val locationTrackingRepository = FakeLocationTrackingRepository()
+    private val analyticsHelper = RecordingAnalyticsHelper()
 
     @Test
     fun `약관 주소를 못 받으면 화면이 뜰 때마다 다시 묻는다`() =
@@ -452,7 +460,23 @@ class SettingsViewModelTest {
             getPublicTermLinks = GetPublicTermLinksUseCase(EmptyTermsRepository),
             observeLocationTracking = ObserveLocationTrackingUseCase(locationTrackingRepository),
             setLocationTracking = SetLocationTrackingUseCase(locationTrackingRepository),
+            logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
         )
+
+    @Test
+    fun `설정에서 연 권한 요청을 설정 자리로 기록한다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.PermissionEvent(DataPermissionEvent.Requested(AnalyticsPermissionType.CALENDAR)))
+            runCurrent()
+
+            assertEquals(
+                listOf(AnalyticsEvent.PermissionRequestStarted(AnalyticsPermissionType.CALENDAR, AnalyticsPromptContext.SETTINGS)),
+                analyticsHelper.logged,
+            )
+        }
 
     @Test
     fun `위치 수집을 끄면 사용자의 의사로 저장하고 화면도 꺼진 것으로 보인다`() =
@@ -628,5 +652,20 @@ class SettingsViewModelTest {
         override suspend fun unregister(firebaseInstallationId: String) = Unit
 
         override suspend fun register(firebaseInstallationId: String) = Unit
+    }
+
+    private class RecordingAnalyticsHelper : AnalyticsHelper {
+        val logged = mutableListOf<AnalyticsEvent>()
+
+        override suspend fun log(event: AnalyticsEvent) {
+            logged += event
+        }
+
+        override suspend fun logOnce(
+            key: AnalyticsDedupeKey,
+            event: AnalyticsEvent,
+        ) {
+            logged += event
+        }
     }
 }

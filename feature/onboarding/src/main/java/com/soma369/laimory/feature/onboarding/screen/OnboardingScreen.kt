@@ -85,7 +85,8 @@ private fun OnboardingContent(
     state: OnboardingUiState,
     onIntent: (OnboardingUiIntent) -> Unit,
 ) {
-    val permissionState = rememberDataPermissionState()
+    val permissionState =
+        rememberDataPermissionState(onAnalyticsEvent = { event -> onIntent(OnboardingUiIntent.PermissionEvent(event)) })
     // 복원 인덱스가 정해진 뒤에 Pager 를 만든다. 먼저 만들고 나중에 스크롤시키면 첫 장이 한 번
     // 보였다 튀고, 컴포지션이 다시 만들어질 때마다 그 튐이 되풀이된다.
     val initialPage = state.initialPageIndex ?: return

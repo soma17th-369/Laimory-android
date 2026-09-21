@@ -5,11 +5,17 @@ import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
@@ -42,9 +48,11 @@ import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
@@ -112,6 +120,8 @@ class HomeViewModel
         private val messageHelper: MessageHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
+        private val analyticsHelper: AnalyticsHelper,
+        private val logPermissionEvent: LogPermissionEventUseCase,
         /** UTC 기준이다. 현지 날짜는 [zone] 으로 옮겨서 얻는다. */
         private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
@@ -247,6 +257,7 @@ class HomeViewModel
                 HomeUiIntent.ConfirmTimeSheet -> confirmTimeSheet()
                 HomeUiIntent.DismissTimePicker -> updateState { copy(timeSheet = null) }
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
+                is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
@@ -718,15 +729,18 @@ class HomeViewModel
             // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤로 미룬다. 여기서 끊으면 아직 한 번도
             // 수집하지 않은 사용자가 수집 기회를 갖기 전에 생성이 막힌다.
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
+            val dayRelation = AnalyticsRecordDayRelation.of(current.selectedDate, clock)
             consentPreparationJob =
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
+                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation))
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
                     if (collected.isEmpty() && selectedPhotoItems.isEmpty()) {
+                        analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, dayRelation))
                         sendEffect(HomeUiSideEffect.ShowSnackbar("선택한 범위에 모인 데이터가 없어요."))
                         return@safeLaunch
                     }
@@ -767,11 +781,17 @@ class HomeViewModel
                         preparation.selection.locationRawIds()
                     }
             val submission = preparation.selection.excluding(excluded)
+            val dayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock)
             if (submission.items.isEmpty()) {
+                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation))
                 draftConsentSessionStore.clearPreparation()
                 sendEffect(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요."))
                 return
             }
+            // 사진은 앞 단계(사진 시트)에서 이미 골라 여기서 빼는 대상이 아니다. 검토에서 무엇을 뺐는지만
+            // 보려면 사진을 빼고 센다 — 섞으면 사진이 많은 날의 제외율이 묽어진다.
+            val initialCount = preparation.selection.reviewableItemCount()
+            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, initialCount))
             val result =
                 messageHelper.showTwoButtonDialog(
                     DialogRequest.TwoButton(
@@ -784,9 +804,19 @@ class HomeViewModel
             // 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은
             // 남긴다 — 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
             if (result != DialogResult.Primary) {
+                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.CANCELLED, dayRelation))
                 draftConsentSessionStore.clearPreparation()
                 return
             }
+            val finalCount = submission.reviewableItemCount()
+            analyticsHelper.log(
+                AnalyticsEvent.TimelineEventReviewCompleted(
+                    recordDayRelation = dayRelation,
+                    initialItemCount = initialCount,
+                    finalItemCount = finalCount,
+                    netRemovedItemCount = initialCount - finalCount,
+                ),
+            )
             submitDraft(preparation, submission)
         }
 
@@ -809,14 +839,39 @@ class HomeViewModel
                 preparation.window,
                 submission,
             ).onSuccess { handle ->
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineCreateRequested(
+                        recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        itemCount = submission.items.size,
+                    ),
+                )
                 draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
                 // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
                 loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
                 draftConsentSessionStore.clearAfterSubmission()
                 updateState { copy(isSubmitting = false) }
                 navigationHelper.navigateTo(DraftLoadingPage)
-            }.onFailure(::handleDraftSubmitFailure)
+            }.onFailure { error ->
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineCreateRequestFailed(
+                        recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        failureCode = AnalyticsFailureCode.from(error),
+                    ),
+                )
+                handleDraftSubmitFailure(error)
+            }
         }
+
+        /** 홈 카드에서 연 권한 요청. 온보딩·설정과 같은 규칙으로 기록한다. */
+        private suspend fun logPermission(event: DataPermissionEvent) {
+            when (event) {
+                is DataPermissionEvent.Requested -> logPermissionEvent.requested(event.permission, AnalyticsPromptContext.HOME)
+                is DataPermissionEvent.Settled ->
+                    logPermissionEvent.settled(event.permission, event.state, AnalyticsPromptContext.HOME)
+            }
+        }
+
+        private fun DraftSourceItemSelection.reviewableItemCount(): Int = items.count { it.itemType != ItemType.PHOTO }
 
         /**
          * 확인 화면이 받던 제출 실패를 홈이 받는다.
