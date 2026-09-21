@@ -22,4 +22,7 @@ object LogDomain {
 
     /** 사용자가 확정한, 서버나 기기 상태를 바꾸는 행동. 화면 이동은 넣지 않는다. */
     const val USER_ACTION = "UserAction"
+
+    /** 제품 분석(GA4) 전송. 실패해도 앱 동작에 영향이 없어 경고까지만 남는다. */
+    const val ANALYTICS = "Analytics"
 }
