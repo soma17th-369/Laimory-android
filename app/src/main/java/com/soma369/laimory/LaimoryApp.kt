@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import com.soma369.laimory.analytics.AnalyticsUserIdReporter
 import com.soma369.laimory.analytics.DataCollectionReadyReporter
 import com.soma369.laimory.analytics.DraftTaskResultReporter
 import com.soma369.laimory.collection.AutoCollectionProcessLifecycleObserver
@@ -30,6 +31,9 @@ import javax.inject.Inject
 class LaimoryApp :
     Application(),
     Configuration.Provider {
+    @Inject
+    lateinit var analyticsUserIdReporter: AnalyticsUserIdReporter
+
     @Inject
     lateinit var draftTaskResultReporter: DraftTaskResultReporter
 
@@ -71,6 +75,7 @@ class LaimoryApp :
         super.onCreate()
         installCrashReporter()
         applyLogLevel()
+        analyticsUserIdReporter.start()
         draftTaskResultReporter.start()
         dataCollectionReadyReporter.start()
         ProcessLifecycleOwner.get().lifecycle.addObserver(draftTaskProcessLifecycleObserver)
