@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
@@ -26,6 +27,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.repository.AnalyticsTimelineEditLogRepository
@@ -41,6 +43,7 @@ import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
@@ -1709,11 +1712,13 @@ class TimelineRecordViewModelTest {
             analyticsHelper = analyticsHelper,
             recordTimelineEditUseCase = RecordTimelineEditUseCase(editLogRepository),
             takeTimelineEditLogUseCase = TakeTimelineEditLogUseCase(editLogRepository),
+            observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
             clock = clock,
         )
 
     private val analyticsHelper = RecordingAnalyticsHelper()
     private val editLogRepository = InMemoryEditLogRepository()
+    private val userProfileCoordinator = FakeUserProfileCoordinator()
 
     @Test
     fun `초안을 열면 초안 상태로 열람을 기록한다`() =
@@ -1740,7 +1745,7 @@ class TimelineRecordViewModelTest {
             assertTrue(AnalyticsEvent.TimelineCompletionStarted(relation) in analyticsHelper.logged)
             assertEquals(
                 listOf(
-                    AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE) to
+                    AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE, userId = null) to
                         AnalyticsEvent.TimelineCompleted(
                             recordDayRelation = relation,
                             completionOutcome = AnalyticsCompletionOutcome.TRANSITIONED,
@@ -1806,6 +1811,21 @@ class TimelineRecordViewModelTest {
             advanceUntilIdle()
 
             assertEquals(AnalyticsTimelineEditLog.EMPTY, editLogRepository.take(RECORD_DATE))
+        }
+
+    @Test
+    fun `회원 식별자를 알면 완료 판정을 회원 단위로 가른다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 설치 단위로 두면 한 기기에서 계정을 바꿨을 때 두 번째 계정의 같은 날짜 완료가 막힌다.
+            userProfileCoordinator.profile.value = UserProfile.of("김소마", userId = 42L)
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE, userId = 42L), analyticsHelper.loggedOnce.single().first)
         }
 
     @Test
@@ -2188,6 +2208,12 @@ class TimelineRecordViewModelTest {
         manualEventCount = manualEventCount,
         manualMemoEventCount = manualMemoEventCount,
     )
+
+    private class FakeUserProfileCoordinator : UserProfileCoordinator {
+        override val profile = MutableStateFlow<UserProfile?>(null)
+
+        override fun refresh() = Unit
+    }
 
     private class InMemoryEditLogRepository : AnalyticsTimelineEditLogRepository {
         private val edited = mutableMapOf<LocalDate, MutableSet<Long>>()

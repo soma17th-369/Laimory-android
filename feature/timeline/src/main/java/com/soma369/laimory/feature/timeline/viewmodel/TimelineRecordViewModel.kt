@@ -33,6 +33,7 @@ import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
@@ -54,6 +55,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
@@ -77,6 +79,7 @@ class TimelineRecordViewModel
         private val analyticsHelper: AnalyticsHelper,
         private val recordTimelineEditUseCase: RecordTimelineEditUseCase,
         private val takeTimelineEditLogUseCase: TakeTimelineEditLogUseCase,
+        private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val clock: Clock,
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
@@ -538,7 +541,8 @@ class TimelineRecordViewModel
                     CompleteDailyRecordOutcome.RecordUnavailable -> return
                 }
             analyticsHelper.logOnce(
-                AnalyticsDedupeKeys.timelineCompleted(recordDate),
+                // 홈을 거쳐 들어오므로 대개 회원 정보는 이미 받아 있다. 없으면 설치 단위로 가른다.
+                AnalyticsDedupeKeys.timelineCompleted(recordDate, observeUserProfileUseCase().first()?.userId),
                 AnalyticsEvent.TimelineCompleted(
                     recordDayRelation = dayRelationOf(recordDate),
                     completionOutcome = completionOutcome,
