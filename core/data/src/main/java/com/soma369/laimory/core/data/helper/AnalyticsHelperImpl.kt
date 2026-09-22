@@ -51,6 +51,18 @@ internal class AnalyticsHelperImpl
             dispatch(event)
         }
 
+        override fun setUserId(userId: Long?) {
+            val value = userId?.toString()
+            buckets.forEach { bucket ->
+                try {
+                    bucket.setUserId(value)
+                } catch (error: Exception) {
+                    // 값은 남기지 않는다 — 회원 식별자가 로그로 새면 안 된다.
+                    Logger.w(LogDomain.ANALYTICS, "사용자 구분 설정 실패: cause=${error::class.simpleName}")
+                }
+            }
+        }
+
         private suspend fun dispatch(event: AnalyticsEvent) {
             val payload = event.toPayload()
             buckets.forEach { bucket ->

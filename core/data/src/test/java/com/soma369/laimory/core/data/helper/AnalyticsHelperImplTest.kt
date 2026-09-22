@@ -122,6 +122,36 @@ class AnalyticsHelperImplTest {
             assertTrue(bucket.sent.isEmpty())
         }
 
+    @Test
+    fun `회원 식별자를 모든 버킷의 사용자 구분으로 건다`() {
+        val first = RecordingBucket()
+        val second = RecordingBucket()
+
+        helper(buckets = setOf(first, second)).setUserId(42L)
+
+        assertEquals(listOf<String?>("42"), first.userIds)
+        assertEquals(listOf<String?>("42"), second.userIds)
+    }
+
+    @Test
+    fun `null 이면 사용자 구분을 푼다`() {
+        val bucket = RecordingBucket()
+
+        helper(buckets = setOf(bucket)).setUserId(null)
+
+        assertEquals(listOf<String?>(null), bucket.userIds)
+    }
+
+    @Test
+    fun `한 버킷이 사용자 구분에 실패해도 나머지는 건다`() {
+        val failing = RecordingBucket(failing = true)
+        val healthy = RecordingBucket()
+
+        helper(buckets = setOf(failing, healthy)).setUserId(42L)
+
+        assertEquals(listOf<String?>("42"), healthy.userIds)
+    }
+
     private fun helper(
         buckets: Set<AnalyticsBucket>,
         dedupeStore: AnalyticsDedupeStore = InMemoryDedupeStore(),
@@ -132,6 +162,7 @@ class AnalyticsHelperImplTest {
         override val isEnabled: Boolean = true,
     ) : AnalyticsBucket {
         val sent = mutableListOf<AnalyticsPayload>()
+        val userIds = mutableListOf<String?>()
 
         override suspend fun send(payload: AnalyticsPayload) {
             if (failing) throw IllegalStateException("bucket down")
@@ -139,6 +170,11 @@ class AnalyticsHelperImplTest {
         }
 
         override fun setEnabled(enabled: Boolean) = Unit
+
+        override fun setUserId(userId: String?) {
+            if (failing) throw IllegalStateException("bucket down")
+            userIds += userId
+        }
     }
 
     private class InMemoryDedupeStore : AnalyticsDedupeStore {

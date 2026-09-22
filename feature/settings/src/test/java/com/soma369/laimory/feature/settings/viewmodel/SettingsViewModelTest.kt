@@ -667,5 +667,7 @@ class SettingsViewModelTest {
         ) {
             logged += event
         }
+
+        override fun setUserId(userId: Long?) = Unit
     }
 }

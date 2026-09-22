@@ -31,4 +31,12 @@ interface AnalyticsHelper {
         key: AnalyticsDedupeKey,
         event: AnalyticsEvent,
     )
+
+    /**
+     * 이후 이벤트를 [userId] 회원으로 묶는다. null 이면 묶음을 푼다.
+     *
+     * 재설치·기기 변경을 한 사람으로 모으고, 한 기기에서 계정을 바꾸면 사람을 나누기 위한 자리다.
+     * 이벤트 속성에는 싣지 않는다 — 버킷의 사용자 구분 자리에만 건다.
+     */
+    fun setUserId(userId: Long?)
 }

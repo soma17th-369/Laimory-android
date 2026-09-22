@@ -2117,5 +2117,7 @@ class TimelineRecordViewModelTest {
         ) {
             loggedOnce += key to event
         }
+
+        override fun setUserId(userId: Long?) = Unit
     }
 }

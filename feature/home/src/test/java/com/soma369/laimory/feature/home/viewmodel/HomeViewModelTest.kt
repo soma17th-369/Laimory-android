@@ -1408,6 +1408,8 @@ class HomeViewModelTest {
         ) {
             logged += event
         }
+
+        override fun setUserId(userId: Long?) = Unit
     }
 
     private class FakeDraftRepository : TimelineDraftRepository {
