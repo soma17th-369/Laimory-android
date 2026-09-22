@@ -447,8 +447,11 @@ class TimelineRecordViewModel
                         abortSaveForFailedMemo()
                         return@safeLaunch
                     }
+                    // 완료 요약용 이벤트는 요청 전에 갈무리한다. 확정되면 UseCase 가 세션을 비우고, 화면이
+                    // 그 즉시 기록을 내려 결과를 받을 때는 목록이 이미 없다. 메모는 위에서 다 저장된 뒤다.
+                    val completedEvents = state.value.completionSnapshot()
                     completeDailyRecordUseCase(record.recordDate, sheet.selected)
-                        .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
+                        .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate, completedEvents) }
                         .onFailure(::handleSaveFailure)
                 }
         }
@@ -456,14 +459,8 @@ class TimelineRecordViewModel
         private suspend fun handleSaveOutcome(
             outcome: CompleteDailyRecordOutcome,
             recordDate: LocalDate,
+            completedEvents: List<AnalyticsTimelineEventSnapshot>,
         ) {
-            // 화면을 종결하기 전에 갈무리한다 — 종결하면 요약할 이벤트 목록도 함께 사라진다.
-            val completedEvents =
-                state.value
-                    .record()
-                    ?.events
-                    .orEmpty()
-                    .map { event -> AnalyticsTimelineEventSnapshot(event.timelineEventId, event.question, event.memo) }
             // 확정·소실 모두 화면 상태를 먼저 종결한다 — 중복 요청을 차단하고, 엔트리 밖 수명으로
             // 재사용될 수 있는 ViewModel에 저장 중 상태가 남지 않게 한다.
             updateState { copy(content = TimelineRecordUiContent.Unavailable, emotionSheet = null, isSavingRecord = false) }
@@ -965,6 +962,12 @@ class TimelineRecordViewModel
         }
 
         private fun TimelineRecordUiState.record() = (content as? TimelineRecordUiContent.Record)?.value
+
+        private fun TimelineRecordUiState.completionSnapshot(): List<AnalyticsTimelineEventSnapshot> =
+            record()
+                ?.events
+                .orEmpty()
+                .map { event -> AnalyticsTimelineEventSnapshot(event.timelineEventId, event.question, event.memo) }
 
         /** 저장 CTA 는 아직 저장하지 않은 기록에만 있다. SAVED 는 저장 API 를 다시 부르지 않는다. */
         private fun TimelineRecordUiState.unsavedRecord() = record()?.takeIf { !it.isSaved }

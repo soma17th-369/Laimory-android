@@ -61,6 +61,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -1777,6 +1778,12 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
             advanceUntilIdle()
             editLogRepository.markEdited(RECORD_DATE, 2L)
+            // 실기기에서는 확정되면 세션이 비고 화면이 그 즉시 기록을 내린 뒤에 결과를 받는다.
+            // 그 순서에서도 목록을 잃지 않아야 한다(결과를 받을 때 목록을 읽으면 전부 0 이 나갔다).
+            recordRepository.beforeSaveReturns = {
+                repository.clear()
+                yield()
+            }
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
             runCurrent()
@@ -2007,6 +2014,9 @@ class TimelineRecordViewModelTest {
         var deleteEventFailure: ApiException? = null
         var deleteEventGate: CompletableDeferred<Unit>? = null
         val savedRecordDates = mutableListOf<LocalDate>()
+
+        /** 저장 응답 직전에 끼워 넣을 일. 확정 즉시 세션이 비는 실제 순서를 흉내 낼 때 쓴다. */
+        var beforeSaveReturns: (suspend () -> Unit)? = null
         val savedEmotions = mutableListOf<TimelineEmotion>()
         val updatedEmotions = mutableListOf<Pair<LocalDate, TimelineEmotion>>()
         var updateEmotionFailure: Throwable? = null
@@ -2086,6 +2096,7 @@ class TimelineRecordViewModelTest {
         ) {
             savedRecordDates += recordDate
             savedEmotions += emotion
+            beforeSaveReturns?.invoke()
             saveGate?.let { gate ->
                 saveGate = null
                 gate.await()
