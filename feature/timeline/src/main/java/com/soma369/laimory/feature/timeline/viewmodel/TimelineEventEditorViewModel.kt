@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.exception.TimelineEventPhotoDeleteExcepti
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventPhotoAddition
@@ -20,6 +21,7 @@ import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerColumn
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -58,6 +60,7 @@ class TimelineEventEditorViewModel
         private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
         private val deleteTimelineEventPhotoUseCase: DeleteTimelineEventPhotoUseCase,
         private val createTimelineEventUseCase: CreateTimelineEventUseCase,
+        private val recordTimelineEditUseCase: RecordTimelineEditUseCase,
         private val navigationHelper: NavigationHelper,
         private val clock: Clock,
     ) : BaseMviViewModel<TimelineEventEditorUiState, TimelineEventEditorUiIntent, TimelineEventEditorUiSideEffect>(
@@ -325,6 +328,10 @@ class TimelineEventEditorViewModel
                     updateState { copy(isSaving = false) }
                     return
                 }
+            // 메모만 바꾼 것은 수정으로 세지 않는다 — 메모는 완료 순간의 값으로 따로 센다.
+            val editedEventId = readyState.timelineEventId?.takeIf { readyState.changesContent(readyForm) }
+            // 저장이 기록을 다시 읽으므로 작성 중인지는 보내기 전에 본다.
+            val editingRecordDate = unsavedTimeline()?.recordDate
             // 신규는 id 가 없다. 같은 화면이지만 서버 경로가 갈린다.
             val result =
                 if (readyState.timelineEventId == null) {
@@ -334,6 +341,9 @@ class TimelineEventEditorViewModel
                 }
             result
                 .onSuccess {
+                    if (editedEventId != null && editingRecordDate != null) {
+                        recordTimelineEditUseCase.edited(editingRecordDate, editedEventId)
+                    }
                     clearEditorState()
                     navigationHelper.navigateToBack()
                 }.onFailure(::handleUpdateFailure)
@@ -443,8 +453,15 @@ class TimelineEventEditorViewModel
             updateState {
                 copy(photoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Deleting(photo))
             }
+            val editingRecordDate = unsavedTimeline()?.recordDate
             deleteTimelineEventPhotoUseCase(timelineEventId, photo.timelineItemId)
-                .onSuccess(::handlePhotoDeleteSuccess)
+                .onSuccess { outcome ->
+                    // 이미 없던 사진을 목록에서 맞춘 것(Reconciled)은 사용자가 고친 것이 아니다.
+                    if (outcome == DeleteTimelineEventPhotoOutcome.Deleted && editingRecordDate != null) {
+                        recordTimelineEditUseCase.edited(editingRecordDate, timelineEventId)
+                    }
+                    handlePhotoDeleteSuccess(outcome)
+                }
                 .onFailure { handlePhotoDeleteFailure(photo, it) }
         }
 
@@ -537,9 +554,15 @@ class TimelineEventEditorViewModel
             }
 
             Logger.i(LogDomain.USER_ACTION, "이벤트 삭제 요청")
+            // 지우고 나면 세션에서 빠져 AI 가 만든 것인지 알 수 없으므로 먼저 갈무리한다.
+            val editingTimeline = unsavedTimeline()
+            val deletingQuestion = editingTimeline?.events?.firstOrNull { it.timelineEventId == timelineEventId }?.question
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
             deleteTimelineEventUseCase(timelineEventId)
                 .onSuccess {
+                    editingTimeline?.let { timeline ->
+                        recordTimelineEditUseCase.deleted(timeline.recordDate, timelineEventId, deletingQuestion)
+                    }
                     updateState { copy(deleteDialogState = TimelineDeleteDialogState.Success) }
                 }.onFailure(::handleDeleteFailure)
         }
@@ -618,6 +641,23 @@ class TimelineEventEditorViewModel
                     longitude = null,
                 )
             }
+
+        /**
+         * 작성 중인 기록. 완료 요약용 편집 흔적은 여기서만 남긴다 — 완료한 기록을 고친 것은 이미 보낸
+         * 요약에 들어갈 수 없고, 남겨 두면 비울 계기가 없다.
+         */
+        private fun unsavedTimeline() = observeTimelineRecordUseCase().value?.takeIf { it.status != DailyRecordStatus.SAVED }
+
+        /** 메모 말고 서버에 남는 내용(종류·제목·설명·시각·사진 추가)을 바꿨는지. 앞뒤 공백만 다른 것은 같다. */
+        private fun TimelineEventEditorUiState.changesContent(form: TimelineEventEditorForm): Boolean {
+            val original = originalForm ?: return false
+            return pendingPhotos.isNotEmpty() ||
+                form.eventType != original.eventType ||
+                form.title.trim() != original.title.trim() ||
+                form.subtitle.trim() != original.subtitle.trim() ||
+                form.startAt != original.startAt ||
+                form.endAt != original.endAt
+        }
 
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {
             val original = requireNotNull(originalForm)

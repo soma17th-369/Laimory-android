@@ -12,6 +12,8 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
@@ -26,6 +28,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
+import com.soma369.laimory.core.domain.repository.AnalyticsTimelineEditLogRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
@@ -36,6 +39,8 @@ import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
@@ -1702,10 +1707,13 @@ class TimelineRecordViewModelTest {
             navigationHelper = navigationHelper,
             messageHelper = messageHelper,
             analyticsHelper = analyticsHelper,
+            recordTimelineEditUseCase = RecordTimelineEditUseCase(editLogRepository),
+            takeTimelineEditLogUseCase = TakeTimelineEditLogUseCase(editLogRepository),
             clock = clock,
         )
 
     private val analyticsHelper = RecordingAnalyticsHelper()
+    private val editLogRepository = InMemoryEditLogRepository()
 
     @Test
     fun `초안을 열면 초안 상태로 열람을 기록한다`() =
@@ -1733,10 +1741,71 @@ class TimelineRecordViewModelTest {
             assertEquals(
                 listOf(
                     AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE) to
-                        AnalyticsEvent.TimelineCompleted(relation, AnalyticsCompletionOutcome.TRANSITIONED),
+                        AnalyticsEvent.TimelineCompleted(
+                            recordDayRelation = relation,
+                            completionOutcome = AnalyticsCompletionOutcome.TRANSITIONED,
+                            // 기본 이벤트는 질문이 없어 직접 추가한 것으로 센다.
+                            eventSummary = summary(manualEventCount = 1),
+                        ),
                 ),
                 analyticsHelper.loggedOnce,
             )
+        }
+
+    @Test
+    fun `완료에 AI·직접 추가 이벤트별 메모와 완료 전 수정·삭제 건수를 싣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record =
+                        timeline(
+                            events =
+                                listOf(
+                                    event(timelineEventId = 1L, question = "누구와 있었나요?", memo = "친구랑"),
+                                    event(timelineEventId = 2L, question = "무엇을 했나요?"),
+                                    event(timelineEventId = 3L, question = "어디였나요?"),
+                                    event(timelineEventId = 4L, memo = "직접 쓴 일정"),
+                                ),
+                        ),
+                )
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(timelineEventId = 3L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+            editLogRepository.markEdited(RECORD_DATE, 2L)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            val completed = analyticsHelper.loggedOnce.single().second as AnalyticsEvent.TimelineCompleted
+            assertEquals(
+                summary(
+                    aiEventCount = 2,
+                    aiMemoEventCount = 1,
+                    aiEditedEventCount = 1,
+                    aiDeletedEventCount = 1,
+                    manualEventCount = 1,
+                    manualMemoEventCount = 1,
+                ),
+                completed.eventSummary,
+            )
+            assertEquals(AnalyticsTimelineEditLog.EMPTY, editLogRepository.take(RECORD_DATE))
+        }
+
+    @Test
+    fun `직접 추가한 이벤트를 지운 것은 AI 삭제로 세지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event(timelineEventId = 1L), event(timelineEventId = 2L))),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            assertEquals(AnalyticsTimelineEditLog.EMPTY, editLogRepository.take(RECORD_DATE))
         }
 
     @Test
@@ -1861,6 +1930,7 @@ class TimelineRecordViewModelTest {
     private fun event(
         memo: String? = null,
         timelineEventId: Long = 1L,
+        question: String? = null,
     ) = TimelineEvent(
         timelineEventId = timelineEventId,
         eventType = TimelineEventType.WORK,
@@ -1869,7 +1939,7 @@ class TimelineRecordViewModelTest {
         title = "업무",
         subtitle = null,
         memo = memo,
-        question = null,
+        question = question,
         items = emptyList(),
     )
 
@@ -2101,6 +2171,47 @@ class TimelineRecordViewModelTest {
         const val DAILY_RECORD_ID = 31L
         val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
         val OTHER_RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 9)
+    }
+
+    private fun summary(
+        aiEventCount: Int = 0,
+        aiMemoEventCount: Int = 0,
+        aiEditedEventCount: Int = 0,
+        aiDeletedEventCount: Int = 0,
+        manualEventCount: Int = 0,
+        manualMemoEventCount: Int = 0,
+    ) = AnalyticsTimelineEventSummary(
+        aiEventCount = aiEventCount,
+        aiMemoEventCount = aiMemoEventCount,
+        aiEditedEventCount = aiEditedEventCount,
+        aiDeletedEventCount = aiDeletedEventCount,
+        manualEventCount = manualEventCount,
+        manualMemoEventCount = manualMemoEventCount,
+    )
+
+    private class InMemoryEditLogRepository : AnalyticsTimelineEditLogRepository {
+        private val edited = mutableMapOf<LocalDate, MutableSet<Long>>()
+        private val deletedAi = mutableMapOf<LocalDate, MutableSet<Long>>()
+
+        override suspend fun markEdited(
+            recordDate: LocalDate,
+            timelineEventId: Long,
+        ) {
+            edited.getOrPut(recordDate) { mutableSetOf() } += timelineEventId
+        }
+
+        override suspend fun markDeletedAi(
+            recordDate: LocalDate,
+            timelineEventId: Long,
+        ) {
+            deletedAi.getOrPut(recordDate) { mutableSetOf() } += timelineEventId
+        }
+
+        override suspend fun take(recordDate: LocalDate): AnalyticsTimelineEditLog =
+            AnalyticsTimelineEditLog(
+                editedEventIds = edited.remove(recordDate).orEmpty(),
+                deletedAiEventIds = deletedAi.remove(recordDate).orEmpty(),
+            )
     }
 
     private class RecordingAnalyticsHelper : AnalyticsHelper {
