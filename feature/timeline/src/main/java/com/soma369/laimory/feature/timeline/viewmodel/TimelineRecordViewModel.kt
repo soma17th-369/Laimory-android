@@ -548,11 +548,6 @@ class TimelineRecordViewModel
             )
         }
 
-        private suspend fun forgetCompletion(recordDate: LocalDate) {
-            val userId = observeUserProfileUseCase().first()?.userId
-            AnalyticsDedupeKeys.timelineCompletedAll(recordDate, userId).forEach { key -> analyticsHelper.forgetOnce(key) }
-        }
-
         private fun dayRelationOf(recordDate: LocalDate) = AnalyticsRecordDayRelation.of(recordDate, clock)
 
         private fun TimelineRecordUiModel.analyticsState() = if (isSaved) AnalyticsTimelineState.SAVED else AnalyticsTimelineState.DRAFT
@@ -602,7 +597,8 @@ class TimelineRecordViewModel
                     // 지운 기록의 편집 흔적은 쓸 데가 없다. 같은 날짜로 새로 만들면 섞인다.
                     takeTimelineEditLogUseCase(target.recordDate)
                     // 완료 판정도 지운다 — 그 날짜는 기록이 없는 날로 돌아갔으므로 다시 완료하면 새 완료다.
-                    forgetCompletion(target.recordDate)
+                    // 뿌리 키로 지워 회원 정보를 아직 못 받았어도 그 날짜 판정이 남지 않게 한다.
+                    analyticsHelper.forgetOnce(AnalyticsDedupeKeys.timelineCompletedRoot(target.recordDate))
                     val activeTask =
                         (draftTaskCoordinator.state.value as? DraftTaskTrackingState.WithTask)?.task
                     if (activeTask?.recordDate == target.recordDate) {

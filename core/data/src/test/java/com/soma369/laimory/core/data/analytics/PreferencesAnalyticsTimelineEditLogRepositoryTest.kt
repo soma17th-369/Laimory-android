@@ -58,6 +58,19 @@ class PreferencesAnalyticsTimelineEditLogRepositoryTest {
             assertEquals(setOf(2L), repository.take(otherDate).editedEventIds)
         }
 
+    @Test
+    fun `비우면 모든 날짜 흔적이 사라진다`() =
+        runTest {
+            // 로그아웃 때 비운다. 흔적은 날짜로만 묶여 있어 계정을 가리지 않는다.
+            repository.markEdited(date, 1L)
+            repository.markDeletedAi(otherDate, 3L)
+
+            repository.clear()
+
+            assertEquals(AnalyticsTimelineEditLog.EMPTY, repository.take(date))
+            assertEquals(AnalyticsTimelineEditLog.EMPTY, repository.take(otherDate))
+        }
+
     private class InMemoryPreferencesDataStore : DataStore<Preferences> {
         private val state = MutableStateFlow<Preferences>(emptyPreferences())
         private val mutex = Mutex()

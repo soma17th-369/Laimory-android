@@ -58,6 +58,12 @@ internal class PreferencesAnalyticsTimelineEditLogRepository
             return log
         }
 
+        override suspend fun clear() {
+            guarded("편집 흔적 비우기") {
+                dataStore.edit { preferences -> preferences.clear() }
+            }
+        }
+
         private suspend fun add(
             key: Preferences.Key<Set<String>>,
             timelineEventId: Long,

@@ -1824,21 +1824,14 @@ class TimelineRecordViewModelTest {
     fun `기록을 지우면 그 날짜 완료 판정을 잊어 다시 완료할 수 있게 한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 지운 날짜는 기록이 없는 날로 돌아간다. 판정만 남으면 다시 완료해도 영영 기록되지 않는다.
-            userProfileCoordinator.profile.value = UserProfile.of("김소마", userId = 42L)
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
             advanceUntilIdle()
 
-            // 식별자를 모르던 때 남은 설치 단위 키도 함께 지운다.
-            assertEquals(
-                setOf(
-                    AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE, userId = 42L),
-                    AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE, userId = null),
-                ),
-                analyticsHelper.forgotten.toSet(),
-            )
+            // 뿌리 키로 지운다 — 지우는 시점에 회원 정보를 아직 못 받았을 수 있다.
+            assertEquals(listOf(AnalyticsDedupeKeys.timelineCompletedRoot(RECORD_DATE)), analyticsHelper.forgotten)
         }
 
     @Test
@@ -2270,6 +2263,11 @@ class TimelineRecordViewModelTest {
                 editedEventIds = edited.remove(recordDate).orEmpty(),
                 deletedAiEventIds = deletedAi.remove(recordDate).orEmpty(),
             )
+
+        override suspend fun clear() {
+            edited.clear()
+            deletedAi.clear()
+        }
     }
 
     private class RecordingAnalyticsHelper : AnalyticsHelper {

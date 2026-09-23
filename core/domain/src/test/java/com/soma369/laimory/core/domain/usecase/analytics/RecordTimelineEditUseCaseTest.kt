@@ -57,5 +57,7 @@ class RecordTimelineEditUseCaseTest {
         }
 
         override suspend fun take(recordDate: LocalDate): AnalyticsTimelineEditLog = AnalyticsTimelineEditLog.EMPTY
+
+        override suspend fun clear() = Unit
     }
 }

@@ -21,4 +21,7 @@ interface AnalyticsTimelineEditLogRepository {
 
     /** 흔적을 읽고 비운다. 완료 요약은 한 번만 만들고, 기록을 지우면 흔적도 쓸 데가 없다. */
     suspend fun take(recordDate: LocalDate): AnalyticsTimelineEditLog
+
+    /** 남은 흔적을 날짜와 상관없이 모두 비운다. 로그아웃처럼 그 사람의 작성이 끝났을 때 쓴다. */
+    suspend fun clear()
 }

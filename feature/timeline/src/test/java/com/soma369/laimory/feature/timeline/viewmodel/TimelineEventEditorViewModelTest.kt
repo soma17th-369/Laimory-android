@@ -1225,6 +1225,8 @@ class TimelineEventEditorViewModelTest {
         }
 
         override suspend fun take(recordDate: LocalDate): AnalyticsTimelineEditLog = AnalyticsTimelineEditLog.EMPTY
+
+        override suspend fun clear() = Unit
     }
 
     private companion object {

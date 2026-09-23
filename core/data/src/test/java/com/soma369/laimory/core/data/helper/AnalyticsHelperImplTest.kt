@@ -137,6 +137,22 @@ class AnalyticsHelperImplTest {
         }
 
     @Test
+    fun `뿌리 키를 잊으면 회원 구분이 붙은 키도 함께 지운다`() =
+        runTest {
+            // 지우는 시점에는 회원 정보를 아직 못 받았을 수 있다. 아는 회원 것만 지우면 남은 판정이 다음 기록을 막는다.
+            val bucket = RecordingBucket()
+            val root = AnalyticsDedupeKey("timeline_completed:2026-09-18")
+            val perUser = AnalyticsDedupeKey("timeline_completed:2026-09-18:2")
+            val helper = helper(buckets = setOf(bucket), dedupeStore = InMemoryDedupeStore())
+            helper.logOnce(perUser, event)
+
+            helper.forgetOnce(root)
+            helper.logOnce(perUser, event)
+
+            assertEquals(2, bucket.sent.size)
+        }
+
+    @Test
     fun `회원 식별자를 모든 버킷의 사용자 구분으로 건다`() {
         val first = RecordingBucket()
         val second = RecordingBucket()
@@ -196,14 +212,14 @@ class AnalyticsHelperImplTest {
 
         override suspend fun markIfFirst(key: String): Boolean = marked.add(key)
 
-        override suspend fun forget(key: String) {
-            marked -= key
+        override suspend fun forgetFamily(rootKey: String) {
+            marked.removeAll { key -> key == rootKey || key.startsWith("$rootKey:") }
         }
     }
 
     private object FailingDedupeStore : AnalyticsDedupeStore {
         override suspend fun markIfFirst(key: String): Boolean = throw IllegalStateException("store down")
 
-        override suspend fun forget(key: String) = throw IllegalStateException("store down")
+        override suspend fun forgetFamily(rootKey: String) = throw IllegalStateException("store down")
     }
 }

@@ -53,7 +53,7 @@ internal class AnalyticsHelperImpl
 
         override suspend fun forgetOnce(key: AnalyticsDedupeKey) {
             try {
-                dedupeStore.forget(key.value)
+                dedupeStore.forgetFamily(key.value)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {

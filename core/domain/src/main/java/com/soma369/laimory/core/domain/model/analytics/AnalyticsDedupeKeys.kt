@@ -16,24 +16,19 @@ object AnalyticsDedupeKeys {
     fun timelineCreateResult(taskId: String): AnalyticsDedupeKey = AnalyticsDedupeKey("timeline_create_result:$taskId")
 
     /**
-     * 완료 판정을 지울 때 쓰는 키 모음.
+     * 완료 판정 키. 회원 구분은 **뒤에** 붙인다 — 지울 때는 회원을 모를 수 있어서, 날짜만으로 만든
+     * 뿌리 키 하나로 그 날짜의 모든 회원 판정을 함께 지울 수 있어야 한다([timelineCompletedRoot]).
      *
-     * 회원 단위·설치 단위 두 모양을 모두 지운다 — 식별자를 모르던 때(옛 버전·조회 실패) 남은 키가
-     * 있으면 그것 때문에 다시 막힌다.
+     * 회원 식별자를 모르면(조회 실패·식별자를 안 주는 서버) 설치 단위인 뿌리 키를 그대로 쓴다.
      */
-    fun timelineCompletedAll(
-        recordDate: LocalDate,
-        userId: Long?,
-    ): Set<AnalyticsDedupeKey> = setOf(timelineCompleted(recordDate, userId), timelineCompleted(recordDate, userId = null))
-
-    /** 회원 식별자를 모르면(조회 실패·식별자를 안 주는 서버) 설치 단위로 되돌아간다. */
     fun timelineCompleted(
         recordDate: LocalDate,
         userId: Long?,
-    ): AnalyticsDedupeKey =
-        if (userId == null) {
-            AnalyticsDedupeKey("timeline_completed:$recordDate")
-        } else {
-            AnalyticsDedupeKey("timeline_completed:$userId:$recordDate")
-        }
+    ): AnalyticsDedupeKey {
+        val root = timelineCompletedRoot(recordDate)
+        return if (userId == null) root else AnalyticsDedupeKey("${root.value}:$userId")
+    }
+
+    /** 그 날짜 완료 판정의 뿌리. 지울 때 쓴다. */
+    fun timelineCompletedRoot(recordDate: LocalDate): AnalyticsDedupeKey = AnalyticsDedupeKey("timeline_completed:$recordDate")
 }

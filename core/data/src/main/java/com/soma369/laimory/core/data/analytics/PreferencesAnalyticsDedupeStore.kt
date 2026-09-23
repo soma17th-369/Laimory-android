@@ -30,7 +30,14 @@ internal class PreferencesAnalyticsDedupeStore
             return first
         }
 
-        override suspend fun forget(key: String) {
-            dataStore.edit { preferences -> preferences.remove(booleanPreferencesKey(key)) }
+        override suspend fun forgetFamily(rootKey: String) {
+            dataStore.edit { preferences ->
+                // 뿌리에서 갈라진 키까지 함께 지운다 — 지우는 쪽이 회원을 모를 수 있다.
+                preferences
+                    .asMap()
+                    .keys
+                    .filter { key -> key.name == rootKey || key.name.startsWith("$rootKey:") }
+                    .forEach { key -> preferences.remove(booleanPreferencesKey(key.name)) }
+            }
         }
     }
