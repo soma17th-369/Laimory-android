@@ -29,4 +29,8 @@ internal class PreferencesAnalyticsDedupeStore
             }
             return first
         }
+
+        override suspend fun forget(key: String) {
+            dataStore.edit { preferences -> preferences.remove(booleanPreferencesKey(key)) }
+        }
     }

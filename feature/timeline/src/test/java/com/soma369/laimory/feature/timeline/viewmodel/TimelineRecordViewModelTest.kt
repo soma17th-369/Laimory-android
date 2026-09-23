@@ -1821,6 +1821,27 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `기록을 지우면 그 날짜 완료 판정을 잊어 다시 완료할 수 있게 한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 지운 날짜는 기록이 없는 날로 돌아간다. 판정만 남으면 다시 완료해도 영영 기록되지 않는다.
+            userProfileCoordinator.profile.value = UserProfile.of("김소마", userId = 42L)
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            // 식별자를 모르던 때 남은 설치 단위 키도 함께 지운다.
+            assertEquals(
+                setOf(
+                    AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE, userId = 42L),
+                    AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE, userId = null),
+                ),
+                analyticsHelper.forgotten.toSet(),
+            )
+        }
+
+    @Test
     fun `회원 식별자를 알면 완료 판정을 회원 단위로 가른다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 설치 단위로 두면 한 기기에서 계정을 바꿨을 때 두 번째 계정의 같은 날짜 완료가 막힌다.
@@ -2254,6 +2275,7 @@ class TimelineRecordViewModelTest {
     private class RecordingAnalyticsHelper : AnalyticsHelper {
         val logged = mutableListOf<AnalyticsEvent>()
         val loggedOnce = mutableListOf<Pair<AnalyticsDedupeKey, AnalyticsEvent>>()
+        val forgotten = mutableListOf<AnalyticsDedupeKey>()
 
         override suspend fun log(event: AnalyticsEvent) {
             logged += event
@@ -2264,6 +2286,10 @@ class TimelineRecordViewModelTest {
             event: AnalyticsEvent,
         ) {
             loggedOnce += key to event
+        }
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) {
+            forgotten += key
         }
 
         override fun setUserId(userId: Long?) = Unit

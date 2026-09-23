@@ -15,6 +15,17 @@ object AnalyticsDedupeKeys {
 
     fun timelineCreateResult(taskId: String): AnalyticsDedupeKey = AnalyticsDedupeKey("timeline_create_result:$taskId")
 
+    /**
+     * 완료 판정을 지울 때 쓰는 키 모음.
+     *
+     * 회원 단위·설치 단위 두 모양을 모두 지운다 — 식별자를 모르던 때(옛 버전·조회 실패) 남은 키가
+     * 있으면 그것 때문에 다시 막힌다.
+     */
+    fun timelineCompletedAll(
+        recordDate: LocalDate,
+        userId: Long?,
+    ): Set<AnalyticsDedupeKey> = setOf(timelineCompleted(recordDate, userId), timelineCompleted(recordDate, userId = null))
+
     /** 회원 식별자를 모르면(조회 실패·식별자를 안 주는 서버) 설치 단위로 되돌아간다. */
     fun timelineCompleted(
         recordDate: LocalDate,

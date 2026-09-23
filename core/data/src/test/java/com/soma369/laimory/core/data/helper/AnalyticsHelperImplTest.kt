@@ -123,6 +123,20 @@ class AnalyticsHelperImplTest {
         }
 
     @Test
+    fun `판정을 잊으면 같은 키가 다시 나간다`() =
+        runTest {
+            val bucket = RecordingBucket()
+            val key = AnalyticsDedupeKey("timeline_completed:2:2026-09-18")
+            val helper = helper(buckets = setOf(bucket), dedupeStore = InMemoryDedupeStore())
+            helper.logOnce(key, event)
+
+            helper.forgetOnce(key)
+            helper.logOnce(key, event)
+
+            assertEquals(2, bucket.sent.size)
+        }
+
+    @Test
     fun `회원 식별자를 모든 버킷의 사용자 구분으로 건다`() {
         val first = RecordingBucket()
         val second = RecordingBucket()
@@ -181,9 +195,15 @@ class AnalyticsHelperImplTest {
         private val marked = mutableSetOf<String>()
 
         override suspend fun markIfFirst(key: String): Boolean = marked.add(key)
+
+        override suspend fun forget(key: String) {
+            marked -= key
+        }
     }
 
     private object FailingDedupeStore : AnalyticsDedupeStore {
         override suspend fun markIfFirst(key: String): Boolean = throw IllegalStateException("store down")
+
+        override suspend fun forget(key: String) = throw IllegalStateException("store down")
     }
 }
