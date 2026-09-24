@@ -78,12 +78,16 @@ class TimelineRecordViewModel
         private var requestedRecordDate: LocalDate? = null
 
         /**
-         * 최초 진입 모드를 이미 적용한 기록 날짜.
+         * 최초 진입 모드를 이미 적용한 **기록**(`dailyRecordId`).
          *
          * 세션은 메모 저장·Event 편집마다 다시 방출되는데, 그때마다 기록 상태로 모드를 되돌리면
          * 편집 중이던 화면이 읽기 모드로 튕긴다. 기록이 바뀔 때 한 번만 적용한다.
+         *
+         * 날짜가 아니라 기록으로 본다 — 같은 날짜라도 지우고 다시 만들면 다른 기록이다. 날짜로 보면
+         * 완료한 기록을 지우고 새 초안을 만들었을 때 읽기 모드가 남아, 초안인데 질문·메모·편집이
+         * 모두 가려진다(생성 결과는 조회를 거치지 않고 세션 방출로 들어온다).
          */
-        private var modeAppliedFor: LocalDate? = null
+        private var modeAppliedFor: Long? = null
         private var loadJob: Job? = null
         private var saveJob: Job? = null
         private var eventDeleteJob: Job? = null
@@ -122,8 +126,8 @@ class TimelineRecordViewModel
                         when {
                             timeline?.recordDate == requestedDate -> {
                                 val record = timeline.toUiModel()
-                                val isFirstApply = modeAppliedFor != requestedDate
-                                modeAppliedFor = requestedDate
+                                val isFirstApply = modeAppliedFor != record.dailyRecordId
+                                modeAppliedFor = record.dailyRecordId
                                 copy(
                                     content = TimelineRecordUiContent.Record(record),
                                     mode =
@@ -229,7 +233,7 @@ class TimelineRecordViewModel
                                     // 초기 모드는 세션 방출이 아니라 조회 결과로 정한다 —
                                     // 세션에 남아 있던 이전 값이 모드를 결정하면 안 된다.
                                     val record = outcome.value.toUiModel()
-                                    modeAppliedFor = recordDate
+                                    modeAppliedFor = record.dailyRecordId
                                     updateState {
                                         copy(
                                             content = TimelineRecordUiContent.Record(record),
