@@ -4,6 +4,9 @@ import com.soma369.laimory.core.domain.coordinator.OnboardingCompletionCoordinat
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
@@ -20,6 +23,7 @@ import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
@@ -351,7 +355,10 @@ class OnboardingConsentTest {
         reconcileLocationTrackingUseCase = ReconcileLocationTrackingUseCase(FakeLocationTrackingRepository),
         termsCoordinator = coordinator,
         getDisplayTerms = GetDisplayTermsUseCase(displayTerms),
+        logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
     )
+
+    private val analyticsHelper = RecordingAnalyticsHelper()
 
     private fun document(
         type: TermType,
@@ -485,5 +492,20 @@ class OnboardingConsentTest {
         override suspend fun setEnabled(enabled: Boolean) = Unit
 
         override suspend fun reconcile() = Unit
+    }
+
+    private class RecordingAnalyticsHelper : AnalyticsHelper {
+        val logged = mutableListOf<AnalyticsEvent>()
+
+        override suspend fun log(event: AnalyticsEvent) {
+            logged += event
+        }
+
+        override suspend fun logOnce(
+            key: AnalyticsDedupeKey,
+            event: AnalyticsEvent,
+        ) {
+            logged += event
+        }
     }
 }

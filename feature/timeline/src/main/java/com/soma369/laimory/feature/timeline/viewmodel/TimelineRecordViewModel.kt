@@ -4,9 +4,16 @@ import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
@@ -25,6 +32,7 @@ import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
+import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.model.initialMode
 import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
@@ -62,6 +70,7 @@ class TimelineRecordViewModel
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
+        private val analyticsHelper: AnalyticsHelper,
         private val clock: Clock,
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
@@ -227,6 +236,12 @@ class TimelineRecordViewModel
                                             mode = record.initialMode(),
                                         )
                                     }
+                                    analyticsHelper.log(
+                                        AnalyticsEvent.TimelineOpened(
+                                            timelineState = record.analyticsState(),
+                                            recordDayRelation = dayRelationOf(record.recordDate),
+                                        ),
+                                    )
                                 }
                                 DailyRecordReadOutcome.Unavailable ->
                                     updateState { copy(content = TimelineRecordUiContent.Unavailable) }
@@ -278,6 +293,7 @@ class TimelineRecordViewModel
                         ),
                 )
             }
+            safeLaunch { analyticsHelper.log(AnalyticsEvent.TimelineCompletionStarted(dayRelationOf(record.recordDate))) }
         }
 
         /** 빈 편집기를 열어 새 이벤트를 만든다. 편집 모드에서만, 진행 중인 작업이 없을 때만 연다. */
@@ -438,6 +454,7 @@ class TimelineRecordViewModel
             // 로컬 추적 정리 실패(DataStore I/O 등)는 이미 끝난 서버 저장을 되돌리지 않으므로
             // 결과 반영을 막지 않는다. 추적이 남아도 재진입 시 SAVED 기록을 읽기 전용으로 연다.
             runCatching { discardDraftTracking(recordDate) }
+            logCompletion(outcome, recordDate)
             when (outcome) {
                 CompleteDailyRecordOutcome.Completed,
                 CompleteDailyRecordOutcome.AlreadySaved,
@@ -466,6 +483,16 @@ class TimelineRecordViewModel
         }
 
         private fun handleSaveFailure(error: Throwable) {
+            state.value.unsavedRecord()?.let { record ->
+                safeLaunch {
+                    analyticsHelper.log(
+                        AnalyticsEvent.TimelineCompletionFailed(
+                            recordDayRelation = dayRelationOf(record.recordDate),
+                            failureCode = AnalyticsFailureCode.from(error),
+                        ),
+                    )
+                }
+            }
             updateState { copy(isSavingRecord = false) }
             if (error is HandledException) return
             val message =
@@ -476,6 +503,32 @@ class TimelineRecordViewModel
                 }
             sendEffect(TimelineRecordUiSideEffect.ShowSnackbar(message))
         }
+
+        /**
+         * 완료 확정을 기록한다. 여기까지 오면 Activation 이다.
+         *
+         * 같은 날짜는 한 번만 보낸다 — 응답이 유실돼 다시 저장하면 `이미 저장됨` 으로 돌아오는데, 그것까지
+         * 새 완료로 세면 기록한 날 수가 부풀어난다. 기록이 사라진 경우는 완료가 아니다.
+         */
+        private suspend fun logCompletion(
+            outcome: CompleteDailyRecordOutcome,
+            recordDate: LocalDate,
+        ) {
+            val completionOutcome =
+                when (outcome) {
+                    CompleteDailyRecordOutcome.Completed -> AnalyticsCompletionOutcome.TRANSITIONED
+                    CompleteDailyRecordOutcome.AlreadySaved -> AnalyticsCompletionOutcome.RECOVERED
+                    CompleteDailyRecordOutcome.RecordUnavailable -> return
+                }
+            analyticsHelper.logOnce(
+                AnalyticsDedupeKeys.timelineCompleted(recordDate),
+                AnalyticsEvent.TimelineCompleted(dayRelationOf(recordDate), completionOutcome),
+            )
+        }
+
+        private fun dayRelationOf(recordDate: LocalDate) = AnalyticsRecordDayRelation.of(recordDate, clock)
+
+        private fun TimelineRecordUiModel.analyticsState() = if (isSaved) AnalyticsTimelineState.SAVED else AnalyticsTimelineState.DRAFT
 
         private suspend fun discardDraftTracking(recordDate: LocalDate) {
             val activeTask =

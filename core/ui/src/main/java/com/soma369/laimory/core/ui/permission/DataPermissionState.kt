@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -23,6 +24,8 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.util.permission.AppNotificationPermission
 import com.soma369.laimory.core.util.permission.CalendarPermission
 import com.soma369.laimory.core.util.permission.LocationPermission
@@ -59,6 +62,13 @@ class DataPermissionState(
     private val blocked: Set<DataPermission> = emptySet(),
     /** 앱이 켜고 끌 수 없는 것을 사용자가 직접 바꾸러 가는 창구. */
     private val onOpenSettings: (DataPermission) -> Unit = {},
+    /**
+     * 요청 창을 실제로 띄우기 직전. 분석이 요청 수를 셀 자리다.
+     *
+     * 이미 허용된 것을 끄거나 좁히러 설정에 가는 경우는 부르지 않는다 — 그것까지 세면 "요청받은
+     * 사용자" 분모가 부풀어 허용률이 낮게 나온다.
+     */
+    private val onRequestStarted: (DataPermission, AnalyticsPermissionType) -> Unit = { _, _ -> },
     private val onRequest: (DataPermission) -> Unit,
 ) {
     fun isGranted(permission: DataPermission?): Boolean = permission != null && permission in granted
@@ -148,7 +158,10 @@ class DataPermissionState(
                 }
         }
 
-    fun request(permission: DataPermission) = onRequest(permission)
+    fun request(permission: DataPermission) {
+        announceRequest(permission)
+        onRequest(permission)
+    }
 
     /**
      * 지금 상태에 맞는 행동을 실행한다.
@@ -159,9 +172,51 @@ class DataPermissionState(
     fun act(permission: DataPermission) {
         when (actionFor(permission)) {
             DataPermissionAction.NONE -> Unit
-            DataPermissionAction.APP_SETTINGS, DataPermissionAction.HEALTH_SETTINGS -> onOpenSettings(permission)
-            else -> onRequest(permission)
+            DataPermissionAction.APP_SETTINGS, DataPermissionAction.HEALTH_SETTINGS -> {
+                announceRequest(permission)
+                onOpenSettings(permission)
+            }
+            else -> request(permission)
         }
+    }
+
+    /**
+     * 요청을 되돌아와 다시 읽은 상태로 판정한다.
+     *
+     * 위치는 요청한 **단계**를 넘었는지로 본다 — 전경을 요청해 받으면 다음 단계(백그라운드)가 남아
+     * 전체로는 `일부` 지만, 요청한 권한 자체는 허용된 것이다.
+     */
+    internal fun analyticsResultOf(
+        permission: DataPermission,
+        requested: AnalyticsPermissionType,
+    ): AnalyticsPermissionState {
+        if (permission == DataPermission.LOCATION) {
+            val passed =
+                when (requested) {
+                    AnalyticsPermissionType.LOCATION_FOREGROUND -> locationStep != LocationPermissionStep.FOREGROUND
+                    AnalyticsPermissionType.LOCATION_BACKGROUND ->
+                        locationStep == LocationPermissionStep.ACTIVITY || locationStep == LocationPermissionStep.GRANTED
+                    else -> locationStep == LocationPermissionStep.GRANTED
+                }
+            return when {
+                passed -> AnalyticsPermissionState.GRANTED
+                permission in blocked -> AnalyticsPermissionState.SETTINGS_REQUIRED
+                else -> AnalyticsPermissionState.DENIED
+            }
+        }
+        return when (statusOf(permission)) {
+            DataSourceStatus.GRANTED -> AnalyticsPermissionState.GRANTED
+            DataSourceStatus.LIMITED -> AnalyticsPermissionState.PARTIAL
+            DataSourceStatus.UNSUPPORTED -> AnalyticsPermissionState.UNAVAILABLE
+            DataSourceStatus.DENIED ->
+                if (permission in blocked) AnalyticsPermissionState.SETTINGS_REQUIRED else AnalyticsPermissionState.DENIED
+        }
+    }
+
+    private fun announceRequest(permission: DataPermission) {
+        if (statusOf(permission) == DataSourceStatus.GRANTED) return
+        val type = permission.analyticsTypeAt(locationStep) ?: return
+        onRequestStarted(permission, type)
     }
 }
 
@@ -173,8 +228,17 @@ class DataPermissionState(
  * 놓쳐 화면이 계속 "미허용" 으로 남는다.
  */
 @Composable
-fun rememberDataPermissionState(): DataPermissionState {
+fun rememberDataPermissionState(onAnalyticsEvent: (DataPermissionEvent) -> Unit = {}): DataPermissionState {
     val context = LocalContext.current
+    val currentOnAnalyticsEvent by rememberUpdatedState(onAnalyticsEvent)
+
+    /**
+     * 결과를 기다리는 요청. 돌아와서 다시 조회할 때(refreshKey 증가) 판정한다.
+     *
+     * 콜백 결과 맵을 쓰지 않는 이유는 상태 판정과 같다 — 설정·Health Connect 는 결과를 주지 않거나
+     * 늦고, 일부 허용처럼 결과와 실제가 갈린다.
+     */
+    var awaitingResult by remember { mutableStateOf<Pair<DataPermission, AnalyticsPermissionType>?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
     var refreshKey by remember { mutableIntStateOf(0) }
 
@@ -269,6 +333,33 @@ fun rememberDataPermissionState(): DataPermissionState {
     val isPhotoLimited = remember(refreshKey, context) { PhotoPermission.isLimited(context) }
     val hasListenerSettings = remember(refreshKey, context) { NotificationListenerAccess.hasSettings(context) }
 
+    // 돌아와서 다시 조회한 뒤(콜백·설정 복귀·ON_RESUME 어느 쪽이든 refreshKey 가 오른다) 결과를 판정한다.
+    // 판정만 필요해 창구 없이 같은 값으로 상태를 만든다 — 아래에서 돌려주는 상태와 판정 근거가 같다.
+    LaunchedEffect(refreshKey) {
+        val (permission, type) = awaitingResult ?: return@LaunchedEffect
+        awaitingResult = null
+        val result =
+            if (permission == DataPermission.HEALTH) {
+                // 헬스 허용 여부는 따로 비동기로 갱신돼 이 시점엔 옛 값일 수 있다. 직접 다시 묻는다.
+                when {
+                    !isHealthAvailable -> AnalyticsPermissionState.UNAVAILABLE
+                    runCatching { HealthDataSource.isGranted(context) }.getOrDefault(false) -> AnalyticsPermissionState.GRANTED
+                    else -> AnalyticsPermissionState.DENIED
+                }
+            } else {
+                DataPermissionState(
+                    granted = granted,
+                    locationStep = locationStep,
+                    isPhotoLimited = isPhotoLimited,
+                    hasListenerSettings = hasListenerSettings,
+                    isHealthAvailable = isHealthAvailable,
+                    blocked = blocked,
+                    onRequest = {},
+                ).analyticsResultOf(permission, type)
+            }
+        currentOnAnalyticsEvent(DataPermissionEvent.Settled(type, result))
+    }
+
     return remember(granted, locationStep, isPhotoLimited, hasListenerSettings, isHealthAvailable, blocked) {
         DataPermissionState(
             granted = granted,
@@ -289,6 +380,10 @@ fun rememberDataPermissionState(): DataPermissionState {
                     }
                 runCatching { settingsLauncher.launch(intent) }
                     .onFailure { if (it !is ActivityNotFoundException) throw it }
+            },
+            onRequestStarted = { permission, type ->
+                awaitingResult = permission to type
+                currentOnAnalyticsEvent(DataPermissionEvent.Requested(type))
             },
         ) { permission ->
             when (permission) {

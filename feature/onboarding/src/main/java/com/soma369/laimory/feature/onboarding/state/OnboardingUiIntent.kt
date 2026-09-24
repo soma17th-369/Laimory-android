@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.onboarding.state
 
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.base.UiIntent
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 
 sealed interface OnboardingUiIntent : UiIntent {
     /** 사용자가 장을 넘겼다. 진행 상태를 기록한다. */
@@ -23,4 +24,9 @@ sealed interface OnboardingUiIntent : UiIntent {
 
     /** 백그라운드 위치까지 허용됐다. 자동 수집을 켠다. */
     data object ReconcileLocationTracking : OnboardingUiIntent
+
+    /** 이 화면에서 연 권한 요청과 그 결과. 분석에 기록한다. */
+    data class PermissionEvent(
+        val event: DataPermissionEvent,
+    ) : OnboardingUiIntent
 }

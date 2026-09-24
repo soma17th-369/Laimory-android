@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.onboarding.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.terms.TermType
@@ -9,9 +10,11 @@ import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.onboarding.model.indexOfKeyOrFirst
@@ -33,6 +36,7 @@ class OnboardingViewModel
         private val reconcileLocationTrackingUseCase: ReconcileLocationTrackingUseCase,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val getDisplayTerms: GetDisplayTermsUseCase,
+        private val logPermissionEvent: LogPermissionEventUseCase,
     ) : BaseMviViewModel<OnboardingUiState, OnboardingUiIntent, OnboardingUiSideEffect>(OnboardingUiState()) {
         /**
          * 실제로 서버에 보낼 문서. 화면에 보이는 목록과 다를 수 있다.
@@ -120,6 +124,7 @@ class OnboardingViewModel
 
         override suspend fun handleIntent(intent: OnboardingUiIntent) {
             when (intent) {
+                is OnboardingUiIntent.PermissionEvent -> logPermission(intent.event)
                 is OnboardingUiIntent.PageChanged -> onPageChanged(intent.pageIndex)
                 is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
                 OnboardingUiIntent.AgeConfirmationToggled -> updateState { copy(isAgeConfirmed = !isAgeConfirmed) }
@@ -249,6 +254,15 @@ class OnboardingViewModel
             updateState { copy(isCompleting = true, hasCompletionFailed = false) }
             runCatching { completeOnboardingUseCase() }
                 .onFailure { updateState { copy(isCompleting = false, hasCompletionFailed = true) } }
+        }
+
+        /** 권한 요청과 결과를 기록한다. 홈·설정과 같은 규칙이고 요청한 자리만 다르다. */
+        private suspend fun logPermission(event: DataPermissionEvent) {
+            when (event) {
+                is DataPermissionEvent.Requested -> logPermissionEvent.requested(event.permission, AnalyticsPromptContext.APP_START)
+                is DataPermissionEvent.Settled ->
+                    logPermissionEvent.settled(event.permission, event.state, AnalyticsPromptContext.APP_START)
+            }
         }
 
         private companion object {

@@ -116,7 +116,8 @@ fun HomeRoute(
 ) {
     val context = LocalContext.current
     // 판정은 설정·온보딩이 쓰는 공용 상태를 그대로 쓴다. 스스로 ON_RESUME 마다 다시 본다.
-    val permissionState = rememberDataPermissionState()
+    val permissionState =
+        rememberDataPermissionState(onAnalyticsEvent = { event -> viewModel.sendIntent(HomeUiIntent.PermissionEvent(event)) })
     // 그 "다시 봄"은 **다음 재구성**에 반영된다. 같은 ON_RESUME 안에서 읽으면 직전 재구성의
     // 값이라, 설정에서 허용하고 돌아와도 홈에는 이전 상태가 남는다. 값이 바뀔 때 싣는다.
     val sourcePermissions =

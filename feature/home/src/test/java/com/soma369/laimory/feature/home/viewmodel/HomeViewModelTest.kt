@@ -5,12 +5,21 @@ import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
@@ -69,8 +78,10 @@ import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
@@ -126,6 +137,7 @@ class HomeViewModelTest {
     private val draftRepository = FakeDraftRepository()
     private val termsCoordinator = FakeHomeTermsCoordinator()
     private val addressResolver = FakeHomeAddressResolver()
+    private val analyticsHelper = RecordingAnalyticsHelper()
     private val retentionDays = 30
 
     /** 기본은 오늘 정오다. 06:00 기본 날짜 규칙이 기존 테스트의 '오늘'을 흔들지 않게 한다. */
@@ -163,6 +175,105 @@ class HomeViewModelTest {
             assertTrue(request.body.contains("일정 1개"))
             assertEquals(listOf("first"), draftRepository.createdItems.map(SourceItem::rawId))
             assertEquals(LocalDate.now(zone), loadingSessionStore.session.value?.recordDate)
+        }
+
+    @Test
+    fun `빈 범위면 시작 뒤 데이터 없음으로 중단을 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            val events = analyticsHelper.logged
+            assertEquals(listOf("TimelineCreateStarted", "TimelineCreateStopped"), events.map { it::class.simpleName })
+            assertEquals(AnalyticsCreateStopReason.NO_DATA, (events.last() as AnalyticsEvent.TimelineCreateStopped).reason)
+        }
+
+    @Test
+    fun `만들기까지 가면 시작·검토 시작·검토 완료·요청 접수를 차례로 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("first"), todayItem("second"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            val events = analyticsHelper.logged
+            assertEquals(
+                listOf("TimelineCreateStarted", "TimelineEventReviewStarted", "TimelineEventReviewCompleted", "TimelineCreateRequested"),
+                events.map { it::class.simpleName },
+            )
+            val completed = events.filterIsInstance<AnalyticsEvent.TimelineEventReviewCompleted>().single()
+            assertEquals(2, completed.initialCounts.total)
+            assertEquals(2, completed.finalCounts.total)
+            assertEquals(0, completed.netRemovedItemCount)
+            assertEquals(2, completed.finalCounts.countOf(AnalyticsSourceGroup.CALENDAR))
+            assertEquals(0, completed.finalCounts.countOf(AnalyticsSourceGroup.PHOTO))
+            // 요청 건수는 보낸 목록 그대로라 확정 때의 최종 건수와 같다.
+            assertEquals(completed.finalCounts.total, events.filterIsInstance<AnalyticsEvent.TimelineCreateRequested>().single().itemCount)
+        }
+
+    @Test
+    fun `확인 창에서 취소하면 검토 완료 대신 취소로 중단을 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            dialogHelper.answer = DialogResult.Secondary
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            val events = analyticsHelper.logged
+            assertEquals(
+                listOf("TimelineCreateStarted", "TimelineEventReviewStarted", "TimelineCreateStopped"),
+                events.map { it::class.simpleName },
+            )
+            assertEquals(AnalyticsCreateStopReason.CANCELLED, (events.last() as AnalyticsEvent.TimelineCreateStopped).reason)
+        }
+
+    @Test
+    fun `생성 요청이 실패하면 실패 코드와 함께 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftRepository.createFailure = ApiException.NetworkException()
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            val failed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().single()
+            assertEquals(AnalyticsFailureCode.NETWORK, failed.failureCode)
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.TimelineCreateRequested })
+        }
+
+    @Test
+    fun `홈 카드의 권한 결과를 홈 자리로 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(
+                HomeUiIntent.PermissionEvent(
+                    DataPermissionEvent.Settled(AnalyticsPermissionType.CALENDAR, AnalyticsPermissionState.DENIED),
+                ),
+            )
+            runCurrent()
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.PermissionResult(
+                        AnalyticsPermissionType.CALENDAR,
+                        AnalyticsPermissionState.DENIED,
+                        AnalyticsPromptContext.HOME,
+                    ),
+                ),
+                analyticsHelper.logged,
+            )
         }
 
     @Test
@@ -1277,10 +1388,27 @@ class HomeViewModelTest {
             messageHelper = dialogHelper,
             termsCoordinator = termsCoordinator,
             resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
+            analyticsHelper = analyticsHelper,
+            logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
             clock = clock,
             retentionConfig = SourceItemRetentionConfig(retentionDays),
             collectionLabAccessGate = { isCollectionLabAccessible },
         )
+
+    private class RecordingAnalyticsHelper : AnalyticsHelper {
+        val logged = mutableListOf<AnalyticsEvent>()
+
+        override suspend fun log(event: AnalyticsEvent) {
+            logged += event
+        }
+
+        override suspend fun logOnce(
+            key: AnalyticsDedupeKey,
+            event: AnalyticsEvent,
+        ) {
+            logged += event
+        }
+    }
 
     private class FakeDraftRepository : TimelineDraftRepository {
         var createCount = 0

@@ -8,12 +8,14 @@ import com.soma369.laimory.core.domain.message.DialogActionStyle
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
@@ -21,6 +23,7 @@ import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
@@ -48,6 +51,7 @@ class SettingsViewModel
         private val getPublicTermLinks: GetPublicTermLinksUseCase,
         observeLocationTracking: ObserveLocationTrackingUseCase,
         private val setLocationTracking: SetLocationTrackingUseCase,
+        private val logPermissionEvent: LogPermissionEventUseCase,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
@@ -104,6 +108,7 @@ class SettingsViewModel
 
         override suspend fun handleIntent(intent: SettingsUiIntent) {
             when (intent) {
+                is SettingsUiIntent.PermissionEvent -> logPermission(intent.event)
                 // 화면이 뜰 때마다 부른다. ViewModel 이 Activity 수명이라 init 에서 한 번만 부르면
                 // 첫 조회가 실패한 세션 내내 제공자 문구로 남는다.
                 SettingsUiIntent.RefreshProfile -> refreshUserProfileUseCase()
@@ -229,6 +234,15 @@ class SettingsViewModel
             } catch (error: Exception) {
                 updateState { copy(isLoggingOut = false) }
                 handleFailure(error)
+            }
+        }
+
+        /** 권한 요청과 결과를 기록한다. 홈·온보딩과 같은 규칙이고 요청한 자리만 다르다. */
+        private suspend fun logPermission(event: DataPermissionEvent) {
+            when (event) {
+                is DataPermissionEvent.Requested -> logPermissionEvent.requested(event.permission, AnalyticsPromptContext.SETTINGS)
+                is DataPermissionEvent.Settled ->
+                    logPermissionEvent.settled(event.permission, event.state, AnalyticsPromptContext.SETTINGS)
             }
         }
 

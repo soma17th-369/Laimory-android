@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.state
 
 import com.soma369.laimory.core.ui.base.UiIntent
+import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import java.time.LocalDate
 import java.time.LocalTime
@@ -163,4 +164,9 @@ sealed interface HomeUiIntent : UiIntent {
      * 실리는지 확인할 자리가 필요해 수집 실험실과 같은 자리에 임시로 둔다.
      */
     data object OpenHealthDetail : HomeUiIntent
+
+    /** 홈 카드에서 연 권한 요청과 그 결과. 분석에 기록한다. */
+    data class PermissionEvent(
+        val event: DataPermissionEvent,
+    ) : HomeUiIntent
 }

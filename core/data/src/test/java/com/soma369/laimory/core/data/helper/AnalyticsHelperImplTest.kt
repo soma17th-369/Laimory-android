@@ -96,6 +96,22 @@ class AnalyticsHelperImplTest {
         }
 
     @Test
+    fun `수집이 꺼져 있으면 판정 키를 소비하지 않는다`() =
+        runTest {
+            val disabled = RecordingBucket(isEnabled = false)
+            val dedupeStore = InMemoryDedupeStore()
+            val key = AnalyticsDedupeKey("data_collection_ready:install-1")
+
+            helper(buckets = setOf(disabled), dedupeStore = dedupeStore).logOnce(key, event)
+
+            assertTrue(disabled.sent.isEmpty())
+            // 꺼진 동안 소비됐다면, 켠 뒤에도 이 설치에서는 영영 나가지 않는다.
+            val enabled = RecordingBucket()
+            helper(buckets = setOf(enabled), dedupeStore = dedupeStore).logOnce(key, event)
+            assertEquals(1, enabled.sent.size)
+        }
+
+    @Test
     fun `판정 기록을 읽지 못하면 보내지 않는다`() =
         runTest {
             val bucket = RecordingBucket()
@@ -113,6 +129,7 @@ class AnalyticsHelperImplTest {
 
     private class RecordingBucket(
         private val failing: Boolean = false,
+        override val isEnabled: Boolean = true,
     ) : AnalyticsBucket {
         val sent = mutableListOf<AnalyticsPayload>()
 
