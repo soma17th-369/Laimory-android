@@ -896,6 +896,31 @@ class TimelineEventEditorViewModelTest {
             assertEquals(listOf(EVENT_ID), sessionRepository.timeline.value?.events?.map(TimelineEvent::timelineEventId))
         }
 
+    @Test
+    fun `설명을 지우고 저장하면 빈 문자열을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버는 null 을 "그대로 두세요" 로 읽는다. null 로 보내면 설명을 영영 못 지운다.
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeSubtitle("   "))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("", recordRepository.commands.single().subtitle)
+        }
+
+    @Test
+    fun `설명을 바꾸지 않으면 있던 값을 그대로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("강남역 → 성수역", recordRepository.commands.single().subtitle)
+        }
+
     private fun TestScope.initializedViewModel(): TimelineEventEditorViewModel =
         createViewModel().also {
             it.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))

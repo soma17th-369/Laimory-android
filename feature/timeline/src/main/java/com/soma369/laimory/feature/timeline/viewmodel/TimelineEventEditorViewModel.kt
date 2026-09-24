@@ -625,7 +625,9 @@ class TimelineEventEditorViewModel
             return UpdateTimelineEventCommand(
                 timelineEventId = requireNotNull(timelineEventId),
                 title = form.title.trim(),
-                subtitle = form.subtitle.trim().ifBlank { null },
+                // 비었으면 빈 문자열을 그대로 보낸다. null 로 바꾸면 서버가 "그대로 두세요" 로 읽어
+                // 설명을 지울 수 없다(서버 계약: 빈 문자열·공백은 비움, null 은 유지).
+                subtitle = form.subtitle.trim(),
                 startAt = form.startAt,
                 endAt = form.endAt,
                 eventType = form.eventType.takeIf { it != original.eventType },
