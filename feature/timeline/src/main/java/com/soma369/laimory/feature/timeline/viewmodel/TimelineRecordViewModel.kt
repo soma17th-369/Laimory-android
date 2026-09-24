@@ -13,6 +13,8 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSnapshot
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -29,6 +31,9 @@ import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionOutcome
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
@@ -50,6 +55,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
@@ -71,6 +77,9 @@ class TimelineRecordViewModel
         private val navigationHelper: NavigationHelper,
         private val messageHelper: MessageHelper,
         private val analyticsHelper: AnalyticsHelper,
+        private val recordTimelineEditUseCase: RecordTimelineEditUseCase,
+        private val takeTimelineEditLogUseCase: TakeTimelineEditLogUseCase,
+        private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val clock: Clock,
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
@@ -438,8 +447,11 @@ class TimelineRecordViewModel
                         abortSaveForFailedMemo()
                         return@safeLaunch
                     }
+                    // 완료 요약용 이벤트는 요청 전에 갈무리한다. 확정되면 UseCase 가 세션을 비우고, 화면이
+                    // 그 즉시 기록을 내려 결과를 받을 때는 목록이 이미 없다. 메모는 위에서 다 저장된 뒤다.
+                    val completedEvents = state.value.completionSnapshot()
                     completeDailyRecordUseCase(record.recordDate, sheet.selected)
-                        .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate) }
+                        .onSuccess { outcome -> handleSaveOutcome(outcome, record.recordDate, completedEvents) }
                         .onFailure(::handleSaveFailure)
                 }
         }
@@ -447,6 +459,7 @@ class TimelineRecordViewModel
         private suspend fun handleSaveOutcome(
             outcome: CompleteDailyRecordOutcome,
             recordDate: LocalDate,
+            completedEvents: List<AnalyticsTimelineEventSnapshot>,
         ) {
             // 확정·소실 모두 화면 상태를 먼저 종결한다 — 중복 요청을 차단하고, 엔트리 밖 수명으로
             // 재사용될 수 있는 ViewModel에 저장 중 상태가 남지 않게 한다.
@@ -454,7 +467,7 @@ class TimelineRecordViewModel
             // 로컬 추적 정리 실패(DataStore I/O 등)는 이미 끝난 서버 저장을 되돌리지 않으므로
             // 결과 반영을 막지 않는다. 추적이 남아도 재진입 시 SAVED 기록을 읽기 전용으로 연다.
             runCatching { discardDraftTracking(recordDate) }
-            logCompletion(outcome, recordDate)
+            logCompletion(outcome, recordDate, completedEvents)
             when (outcome) {
                 CompleteDailyRecordOutcome.Completed,
                 CompleteDailyRecordOutcome.AlreadySaved,
@@ -509,11 +522,15 @@ class TimelineRecordViewModel
          *
          * 같은 날짜는 한 번만 보낸다 — 응답이 유실돼 다시 저장하면 `이미 저장됨` 으로 돌아오는데, 그것까지
          * 새 완료로 세면 기록한 날 수가 부풀어난다. 기록이 사라진 경우는 완료가 아니다.
+         *
+         * 편집 흔적은 결과와 상관없이 꺼내 비운다 — 확정됐든 사라졌든 그 날짜의 작성 중 흔적은 끝났다.
          */
         private suspend fun logCompletion(
             outcome: CompleteDailyRecordOutcome,
             recordDate: LocalDate,
+            completedEvents: List<AnalyticsTimelineEventSnapshot>,
         ) {
+            val editLog = takeTimelineEditLogUseCase(recordDate)
             val completionOutcome =
                 when (outcome) {
                     CompleteDailyRecordOutcome.Completed -> AnalyticsCompletionOutcome.TRANSITIONED
@@ -521,8 +538,13 @@ class TimelineRecordViewModel
                     CompleteDailyRecordOutcome.RecordUnavailable -> return
                 }
             analyticsHelper.logOnce(
-                AnalyticsDedupeKeys.timelineCompleted(recordDate),
-                AnalyticsEvent.TimelineCompleted(dayRelationOf(recordDate), completionOutcome),
+                // 홈을 거쳐 들어오므로 대개 회원 정보는 이미 받아 있다. 없으면 설치 단위로 가른다.
+                AnalyticsDedupeKeys.timelineCompleted(recordDate, observeUserProfileUseCase().first()?.userId),
+                AnalyticsEvent.TimelineCompleted(
+                    recordDayRelation = dayRelationOf(recordDate),
+                    completionOutcome = completionOutcome,
+                    eventSummary = AnalyticsTimelineEventSummary.of(completedEvents, editLog),
+                ),
             )
         }
 
@@ -572,6 +594,11 @@ class TimelineRecordViewModel
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
             deleteDailyRecordUseCase(target.recordDate)
                 .onSuccess {
+                    // 지운 기록의 편집 흔적은 쓸 데가 없다. 같은 날짜로 새로 만들면 섞인다.
+                    takeTimelineEditLogUseCase(target.recordDate)
+                    // 완료 판정도 지운다 — 그 날짜는 기록이 없는 날로 돌아갔으므로 다시 완료하면 새 완료다.
+                    // 뿌리 키로 지워 회원 정보를 아직 못 받았어도 그 날짜 판정이 남지 않게 한다.
+                    analyticsHelper.forgetOnce(AnalyticsDedupeKeys.timelineCompletedRoot(target.recordDate))
                     val activeTask =
                         (draftTaskCoordinator.state.value as? DraftTaskTrackingState.WithTask)?.task
                     if (activeTask?.recordDate == target.recordDate) {
@@ -666,6 +693,10 @@ class TimelineRecordViewModel
             if (target is TimelineEventDeleteDialogState.Deleting || eventDeleteJob?.isActive == true) return
 
             Logger.i(LogDomain.USER_ACTION, "이벤트 삭제 요청")
+            // 지우고 나면 목록에서 빠져 AI 가 만든 것인지 알 수 없다. 작성 중인 기록일 때만 흔적을 남긴다.
+            val unsavedRecord = state.value.unsavedRecord()
+            val deletingQuestion =
+                unsavedRecord?.events?.firstOrNull { it.timelineEventId == target.timelineEventId }?.question
             updateState {
                 copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Deleting(target.timelineEventId))
             }
@@ -673,6 +704,9 @@ class TimelineRecordViewModel
                 safeLaunch(onError = { error -> handleEventDeleteFailure(target.timelineEventId, error) }) {
                     deleteTimelineEventUseCase(target.timelineEventId)
                         .onSuccess {
+                            unsavedRecord?.let { record ->
+                                recordTimelineEditUseCase.deleted(record.recordDate, target.timelineEventId, deletingQuestion)
+                            }
                             // 목록 갱신은 UseCase 가 세션에서 Event 를 빼는 것으로 이미 일어난다.
                             updateState { copy(eventDeleteDialogState = TimelineEventDeleteDialogState.Hidden) }
                         }.onFailure { error -> handleEventDeleteFailure(target.timelineEventId, error) }
@@ -931,6 +965,12 @@ class TimelineRecordViewModel
         }
 
         private fun TimelineRecordUiState.record() = (content as? TimelineRecordUiContent.Record)?.value
+
+        private fun TimelineRecordUiState.completionSnapshot(): List<AnalyticsTimelineEventSnapshot> =
+            record()
+                ?.events
+                .orEmpty()
+                .map { event -> AnalyticsTimelineEventSnapshot(event.timelineEventId, event.question, event.memo) }
 
         /** 저장 CTA 는 아직 저장하지 않은 기록에만 있다. SAVED 는 저장 API 를 다시 부르지 않는다. */
         private fun TimelineRecordUiState.unsavedRecord() = record()?.takeIf { !it.isSaved }

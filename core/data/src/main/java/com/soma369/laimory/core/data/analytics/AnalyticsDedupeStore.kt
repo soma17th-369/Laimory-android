@@ -8,4 +8,7 @@ package com.soma369.laimory.core.data.analytics
 internal interface AnalyticsDedupeStore {
     /** 처음 보는 키면 기록하고 true. 이미 있으면 false. */
     suspend fun markIfFirst(key: String): Boolean
+
+    /** [rootKey] 와 거기서 갈라진 키(`<rootKey>:…`)를 함께 지운다. 다음에 같은 키가 오면 다시 "처음" 이다. */
+    suspend fun forgetFamily(rootKey: String)
 }

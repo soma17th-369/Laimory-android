@@ -3,8 +3,10 @@ package com.soma369.laimory.feature.timeline.viewmodel
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
@@ -18,6 +20,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.repository.AnalyticsTimelineEditLogRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
@@ -27,6 +30,7 @@ import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.UploadTimelineEventPhotoUseCase
+import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerColumn
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
@@ -70,6 +74,7 @@ class TimelineEventEditorViewModelTest {
     private lateinit var draftRepository: RecordingTimelineDraftRepository
     private lateinit var navigationHelper: RecordingNavigationHelper
     private val messageHelper = NoOpMessageHelper()
+    private val editLogRepository = RecordingEditLogRepository()
 
     @Before
     fun setUp() {
@@ -896,6 +901,71 @@ class TimelineEventEditorViewModelTest {
             assertEquals(listOf(EVENT_ID), sessionRepository.timeline.value?.events?.map(TimelineEvent::timelineEventId))
         }
 
+    @Test
+    fun `내용을 고쳐 저장하면 완료 요약용으로 고친 이벤트를 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.edited)
+        }
+
+    @Test
+    fun `메모만 고친 것은 수정으로 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 메모는 완료 순간의 값으로 따로 센다. 여기서도 세면 메모를 단 이벤트가 수정으로 두 번 잡힌다.
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo("친구랑 걸었다"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(1, recordRepository.commands.size)
+            assertTrue(editLogRepository.edited.isEmpty())
+        }
+
+    @Test
+    fun `완료한 기록을 고친 것은 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(status = DailyRecordStatus.SAVED))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(1, recordRepository.commands.size)
+            assertTrue(editLogRepository.edited.isEmpty())
+        }
+
+    @Test
+    fun `사진을 빼면 고친 이벤트로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.edited)
+        }
+
+    @Test
+    fun `질문이 붙은 이벤트를 지우면 AI 이벤트 삭제로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(events = listOf(event().copy(question = "누구와 걸었나요?"))))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.deletedAi)
+        }
+
     private fun TestScope.initializedViewModel(): TimelineEventEditorViewModel =
         createViewModel().also {
             it.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
@@ -934,6 +1004,7 @@ class TimelineEventEditorViewModelTest {
                     sessionRepository = sessionRepository,
                     messageHelper = messageHelper,
                 ),
+            recordTimelineEditUseCase = RecordTimelineEditUseCase(editLogRepository),
             navigationHelper = navigationHelper,
             clock = Clock.fixed(Instant.parse("2026-05-08T13:45:00Z"), ZoneOffset.UTC),
         )
@@ -1133,6 +1204,29 @@ class TimelineEventEditorViewModelTest {
 
     private class NoOpMessageHelper : MessageHelper {
         override fun send(message: UserMessage) = Unit
+    }
+
+    private class RecordingEditLogRepository : AnalyticsTimelineEditLogRepository {
+        val edited = mutableListOf<Pair<LocalDate, Long>>()
+        val deletedAi = mutableListOf<Pair<LocalDate, Long>>()
+
+        override suspend fun markEdited(
+            recordDate: LocalDate,
+            timelineEventId: Long,
+        ) {
+            edited += recordDate to timelineEventId
+        }
+
+        override suspend fun markDeletedAi(
+            recordDate: LocalDate,
+            timelineEventId: Long,
+        ) {
+            deletedAi += recordDate to timelineEventId
+        }
+
+        override suspend fun take(recordDate: LocalDate): AnalyticsTimelineEditLog = AnalyticsTimelineEditLog.EMPTY
+
+        override suspend fun clear() = Unit
     }
 
     private companion object {

@@ -32,6 +32,12 @@ private const val PARAM_FAILURE_CODE = "failure_code"
 private const val PARAM_RESULT = "result"
 private const val PARAM_TIMELINE_STATE = "timeline_state"
 private const val PARAM_COMPLETION_OUTCOME = "completion_outcome"
+private const val PARAM_AI_EVENT_COUNT = "ai_event_count"
+private const val PARAM_AI_MEMO_EVENT_COUNT = "ai_memo_event_count"
+private const val PARAM_AI_EDITED_EVENT_COUNT = "ai_edited_event_count"
+private const val PARAM_AI_DELETED_EVENT_COUNT = "ai_deleted_event_count"
+private const val PARAM_MANUAL_EVENT_COUNT = "manual_event_count"
+private const val PARAM_MANUAL_MEMO_EVENT_COUNT = "manual_memo_event_count"
 
 /**
  * 도메인 이벤트를 전송 형태로 바꾼다. **버킷 밖에서 한 번만** 한다 — 버킷을 바꿔도 이름과 속성은
@@ -142,6 +148,15 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                     mapOf(
                         PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
                         PARAM_COMPLETION_OUTCOME to completionOutcome.paramValue,
+                    ),
+                counts =
+                    mapOf(
+                        PARAM_AI_EVENT_COUNT to eventSummary.aiEventCount.toLong(),
+                        PARAM_AI_MEMO_EVENT_COUNT to eventSummary.aiMemoEventCount.toLong(),
+                        PARAM_AI_EDITED_EVENT_COUNT to eventSummary.aiEditedEventCount.toLong(),
+                        PARAM_AI_DELETED_EVENT_COUNT to eventSummary.aiDeletedEventCount.toLong(),
+                        PARAM_MANUAL_EVENT_COUNT to eventSummary.manualEventCount.toLong(),
+                        PARAM_MANUAL_MEMO_EVENT_COUNT to eventSummary.manualMemoEventCount.toLong(),
                     ),
             )
         is AnalyticsEvent.TimelineCompletionFailed ->

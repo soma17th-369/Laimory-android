@@ -122,6 +122,66 @@ class AnalyticsHelperImplTest {
             assertTrue(bucket.sent.isEmpty())
         }
 
+    @Test
+    fun `판정을 잊으면 같은 키가 다시 나간다`() =
+        runTest {
+            val bucket = RecordingBucket()
+            val key = AnalyticsDedupeKey("timeline_completed:2:2026-09-18")
+            val helper = helper(buckets = setOf(bucket), dedupeStore = InMemoryDedupeStore())
+            helper.logOnce(key, event)
+
+            helper.forgetOnce(key)
+            helper.logOnce(key, event)
+
+            assertEquals(2, bucket.sent.size)
+        }
+
+    @Test
+    fun `뿌리 키를 잊으면 회원 구분이 붙은 키도 함께 지운다`() =
+        runTest {
+            // 지우는 시점에는 회원 정보를 아직 못 받았을 수 있다. 아는 회원 것만 지우면 남은 판정이 다음 기록을 막는다.
+            val bucket = RecordingBucket()
+            val root = AnalyticsDedupeKey("timeline_completed:2026-09-18")
+            val perUser = AnalyticsDedupeKey("timeline_completed:2026-09-18:2")
+            val helper = helper(buckets = setOf(bucket), dedupeStore = InMemoryDedupeStore())
+            helper.logOnce(perUser, event)
+
+            helper.forgetOnce(root)
+            helper.logOnce(perUser, event)
+
+            assertEquals(2, bucket.sent.size)
+        }
+
+    @Test
+    fun `회원 식별자를 모든 버킷의 사용자 구분으로 건다`() {
+        val first = RecordingBucket()
+        val second = RecordingBucket()
+
+        helper(buckets = setOf(first, second)).setUserId(42L)
+
+        assertEquals(listOf<String?>("42"), first.userIds)
+        assertEquals(listOf<String?>("42"), second.userIds)
+    }
+
+    @Test
+    fun `null 이면 사용자 구분을 푼다`() {
+        val bucket = RecordingBucket()
+
+        helper(buckets = setOf(bucket)).setUserId(null)
+
+        assertEquals(listOf<String?>(null), bucket.userIds)
+    }
+
+    @Test
+    fun `한 버킷이 사용자 구분에 실패해도 나머지는 건다`() {
+        val failing = RecordingBucket(failing = true)
+        val healthy = RecordingBucket()
+
+        helper(buckets = setOf(failing, healthy)).setUserId(42L)
+
+        assertEquals(listOf<String?>("42"), healthy.userIds)
+    }
+
     private fun helper(
         buckets: Set<AnalyticsBucket>,
         dedupeStore: AnalyticsDedupeStore = InMemoryDedupeStore(),
@@ -132,6 +192,7 @@ class AnalyticsHelperImplTest {
         override val isEnabled: Boolean = true,
     ) : AnalyticsBucket {
         val sent = mutableListOf<AnalyticsPayload>()
+        val userIds = mutableListOf<String?>()
 
         override suspend fun send(payload: AnalyticsPayload) {
             if (failing) throw IllegalStateException("bucket down")
@@ -139,15 +200,26 @@ class AnalyticsHelperImplTest {
         }
 
         override fun setEnabled(enabled: Boolean) = Unit
+
+        override fun setUserId(userId: String?) {
+            if (failing) throw IllegalStateException("bucket down")
+            userIds += userId
+        }
     }
 
     private class InMemoryDedupeStore : AnalyticsDedupeStore {
         private val marked = mutableSetOf<String>()
 
         override suspend fun markIfFirst(key: String): Boolean = marked.add(key)
+
+        override suspend fun forgetFamily(rootKey: String) {
+            marked.removeAll { key -> key == rootKey || key.startsWith("$rootKey:") }
+        }
     }
 
     private object FailingDedupeStore : AnalyticsDedupeStore {
         override suspend fun markIfFirst(key: String): Boolean = throw IllegalStateException("store down")
+
+        override suspend fun forgetFamily(rootKey: String) = throw IllegalStateException("store down")
     }
 }

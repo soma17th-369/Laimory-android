@@ -94,10 +94,15 @@ sealed interface AnalyticsEvent {
         val recordDayRelation: AnalyticsRecordDayRelation,
     ) : AnalyticsEvent
 
-    /** 서버에서 `DRAFT → SAVED` 가 확정됐다. record day 당 1회 — 여기까지 오면 Activation 이다. */
+    /**
+     * 서버에서 `DRAFT → SAVED` 가 확정됐다. record day 당 1회 — 여기까지 오면 Activation 이다.
+     *
+     * 완료 순간의 이벤트 요약(메모·수정·삭제·직접 추가 건수)을 함께 싣는다.
+     */
     data class TimelineCompleted(
         val recordDayRelation: AnalyticsRecordDayRelation,
         val completionOutcome: AnalyticsCompletionOutcome,
+        val eventSummary: AnalyticsTimelineEventSummary,
     ) : AnalyticsEvent
 
     /** 완료 저장이 실패해 사용자에게 알렸다. */

@@ -51,6 +51,29 @@ internal class AnalyticsHelperImpl
             dispatch(event)
         }
 
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) {
+            try {
+                dedupeStore.forgetFamily(key.value)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // 지우지 못하면 그 사건이 한 번 덜 나갈 뿐이다. 앱 동작을 막지 않는다.
+                Logger.w(LogDomain.ANALYTICS, "중복 방지 판정 삭제 실패: ${error::class.simpleName}")
+            }
+        }
+
+        override fun setUserId(userId: Long?) {
+            val value = userId?.toString()
+            buckets.forEach { bucket ->
+                try {
+                    bucket.setUserId(value)
+                } catch (error: Exception) {
+                    // 값은 남기지 않는다 — 회원 식별자가 로그로 새면 안 된다.
+                    Logger.w(LogDomain.ANALYTICS, "사용자 구분 설정 실패: cause=${error::class.simpleName}")
+                }
+            }
+        }
+
         private suspend fun dispatch(event: AnalyticsEvent) {
             val payload = event.toPayload()
             buckets.forEach { bucket ->

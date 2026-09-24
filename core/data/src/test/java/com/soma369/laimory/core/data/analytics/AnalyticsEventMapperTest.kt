@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import org.junit.Assert.assertEquals
@@ -30,6 +31,17 @@ import org.junit.Test
  */
 class AnalyticsEventMapperTest {
     private val today = AnalyticsRecordDayRelation.TODAY
+
+    /** 칸마다 값을 달리 둬 서로 바뀌어 실려도 드러나게 한다. */
+    private val eventSummary =
+        AnalyticsTimelineEventSummary(
+            aiEventCount = 8,
+            aiMemoEventCount = 3,
+            aiEditedEventCount = 2,
+            aiDeletedEventCount = 1,
+            manualEventCount = 4,
+            manualMemoEventCount = 5,
+        )
 
     @Test
     fun `이벤트마다 이름과 속성 이름을 고정한다`() {
@@ -94,9 +106,17 @@ class AnalyticsEventMapperTest {
                 ),
                 Expectation(AnalyticsEvent.TimelineCompletionStarted(today), "timeline_completion_started", setOf("record_day_relation")),
                 Expectation(
-                    AnalyticsEvent.TimelineCompleted(today, AnalyticsCompletionOutcome.TRANSITIONED),
+                    AnalyticsEvent.TimelineCompleted(today, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary),
                     "timeline_completed",
                     setOf("record_day_relation", "completion_outcome"),
+                    setOf(
+                        "ai_event_count",
+                        "ai_memo_event_count",
+                        "ai_edited_event_count",
+                        "ai_deleted_event_count",
+                        "manual_event_count",
+                        "manual_memo_event_count",
+                    ),
                 ),
                 Expectation(
                     AnalyticsEvent.TimelineCompletionFailed(today, AnalyticsFailureCode.UNKNOWN),
@@ -134,6 +154,18 @@ class AnalyticsEventMapperTest {
         assertEquals(2L, payload.counts["final_calendar_item_count"])
         // 없는 묶음도 0 으로 싣는다.
         assertEquals(0L, payload.counts["initial_health_item_count"])
+    }
+
+    @Test
+    fun `완료에 이벤트 요약 건수를 칸마다 싣는다`() {
+        val counts = AnalyticsEvent.TimelineCompleted(today, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary).toPayload().counts
+
+        assertEquals(8L, counts["ai_event_count"])
+        assertEquals(3L, counts["ai_memo_event_count"])
+        assertEquals(2L, counts["ai_edited_event_count"])
+        assertEquals(1L, counts["ai_deleted_event_count"])
+        assertEquals(4L, counts["manual_event_count"])
+        assertEquals(5L, counts["manual_memo_event_count"])
     }
 
     @Test
@@ -283,7 +315,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsCompletionOutcome.entries,
             "completion_outcome",
-        ) { AnalyticsEvent.TimelineCompleted(today, it) }
+        ) { AnalyticsEvent.TimelineCompleted(today, it, eventSummary) }
 
     private fun <T> assertWireValues(
         expected: Map<T, String>,

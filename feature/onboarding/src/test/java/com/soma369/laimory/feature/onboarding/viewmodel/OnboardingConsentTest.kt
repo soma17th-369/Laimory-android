@@ -507,5 +507,9 @@ class OnboardingConsentTest {
         ) {
             logged += event
         }
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
+
+        override fun setUserId(userId: Long?) = Unit
     }
 }

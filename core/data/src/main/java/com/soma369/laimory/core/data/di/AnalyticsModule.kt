@@ -2,8 +2,10 @@ package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.analytics.AnalyticsDedupeStore
 import com.soma369.laimory.core.data.analytics.PreferencesAnalyticsDedupeStore
+import com.soma369.laimory.core.data.analytics.PreferencesAnalyticsTimelineEditLogRepository
 import com.soma369.laimory.core.data.helper.AnalyticsHelperImpl
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
+import com.soma369.laimory.core.domain.repository.AnalyticsTimelineEditLogRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -26,4 +28,10 @@ internal abstract class AnalyticsModule {
     @Binds
     @Singleton
     abstract fun bindAnalyticsDedupeStore(impl: PreferencesAnalyticsDedupeStore): AnalyticsDedupeStore
+
+    @Binds
+    @Singleton
+    abstract fun bindAnalyticsTimelineEditLogRepository(
+        impl: PreferencesAnalyticsTimelineEditLogRepository,
+    ): AnalyticsTimelineEditLogRepository
 }

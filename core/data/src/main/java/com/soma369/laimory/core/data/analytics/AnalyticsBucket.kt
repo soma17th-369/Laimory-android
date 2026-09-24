@@ -29,4 +29,11 @@ interface AnalyticsBucket {
      * 나중에 다시 보내려고 쌓아 두지도 않는다.
      */
     fun setEnabled(enabled: Boolean)
+
+    /**
+     * 이후 이벤트를 묶을 사용자 구분을 건다. null 이면 푼다.
+     *
+     * 대상마다 사용자 구분을 다루는 방식이 달라 문자열로만 넘긴다. 실패는 예외로 알린다.
+     */
+    fun setUserId(userId: String?)
 }
