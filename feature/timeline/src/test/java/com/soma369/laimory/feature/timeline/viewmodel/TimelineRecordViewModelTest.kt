@@ -16,6 +16,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelatio
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
@@ -2291,5 +2292,7 @@ class TimelineRecordViewModelTest {
         }
 
         override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 }

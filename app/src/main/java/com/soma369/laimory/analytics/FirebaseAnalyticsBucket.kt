@@ -33,6 +33,13 @@ internal class FirebaseAnalyticsBucket(
         firebaseAnalytics.logEvent(payload.name, parameters)
     }
 
+    override fun setUserProperty(
+        name: String,
+        value: String?,
+    ) {
+        firebaseAnalytics.setUserProperty(name, value)
+    }
+
     override fun setEnabled(enabled: Boolean) {
         this.enabled.set(enabled)
         firebaseAnalytics.setAnalyticsCollectionEnabled(enabled)

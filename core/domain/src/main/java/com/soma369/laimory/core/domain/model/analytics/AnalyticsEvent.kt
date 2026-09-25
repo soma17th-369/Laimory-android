@@ -110,4 +110,13 @@ sealed interface AnalyticsEvent {
         val recordDayRelation: AnalyticsRecordDayRelation,
         val failureCode: AnalyticsFailureCode,
     ) : AnalyticsEvent
+
+    /**
+     * 설치 유입 조회 결과가 확정됐다. 설치당 1회.
+     *
+     * 사용자 속성과 별개로 설치 시점의 원값·상태를 대조하는 기준이다. 캠페인 값은 결과가 캠페인을 실을 때만 있다.
+     */
+    data class InstallAttributionResolved(
+        val attribution: InstallAttribution,
+    ) : AnalyticsEvent
 }

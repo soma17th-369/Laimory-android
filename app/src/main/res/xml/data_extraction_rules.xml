@@ -6,6 +6,8 @@
     <cloud-backup>
         <exclude domain="file" path="datastore/auth_session.preferences_pb" />
         <exclude domain="file" path="datastore/active_timeline_draft.preferences_pb" />
+        <!-- 설치 유입 귀속. 설치에 딸린 값이라 재설치로 되살아나면 새 설치의 Referrer 를 읽지 않는다. -->
+        <exclude domain="file" path="datastore/analytics_install_attribution.preferences_pb" />
         <!--
         기기 로컬 수집 원본. 알림 본문·위치 체류 같은 개인정보를 담고 보존 기간이 지나면
         지워지는 기기 전용 데이터라 클라우드에 올리지 않는다. 백업에 들어가면 앱을 지워도
@@ -18,6 +20,8 @@
     <device-transfer>
         <exclude domain="file" path="datastore/auth_session.preferences_pb" />
         <exclude domain="file" path="datastore/active_timeline_draft.preferences_pb" />
+        <!-- 설치 유입 귀속. 설치에 딸린 값이라 재설치로 되살아나면 새 설치의 Referrer 를 읽지 않는다. -->
+        <exclude domain="file" path="datastore/analytics_install_attribution.preferences_pb" />
         <!-- 기기 이전으로도 옮기지 않는다. 하루 기록 정본은 서버에 있고 이 DB 는 그 재료다. -->
         <exclude domain="database" path="collection.db" />
         <exclude domain="database" path="collection.db-wal" />

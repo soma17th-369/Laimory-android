@@ -3,9 +3,11 @@ package com.soma369.laimory.core.data.helper
 import com.soma369.laimory.core.data.analytics.AnalyticsBucket
 import com.soma369.laimory.core.data.analytics.AnalyticsDedupeStore
 import com.soma369.laimory.core.data.analytics.toPayload
+import com.soma369.laimory.core.data.analytics.toUserProperties
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.CancellationException
@@ -70,6 +72,18 @@ internal class AnalyticsHelperImpl
                 } catch (error: Exception) {
                     // 값은 남기지 않는다 — 회원 식별자가 로그로 새면 안 된다.
                     Logger.w(LogDomain.ANALYTICS, "사용자 구분 설정 실패: cause=${error::class.simpleName}")
+                }
+            }
+        }
+
+        override fun setInstallAttribution(attribution: InstallAttribution) {
+            val properties = attribution.toUserProperties()
+            buckets.forEach { bucket ->
+                try {
+                    properties.forEach { (name, value) -> bucket.setUserProperty(name, value) }
+                } catch (error: Exception) {
+                    // 캠페인 값은 남기지 않는다. 한 버킷이 실패해도 나머지는 건다.
+                    Logger.w(LogDomain.ANALYTICS, "설치 유입 속성 설정 실패: cause=${error::class.simpleName}")
                 }
             }
         }

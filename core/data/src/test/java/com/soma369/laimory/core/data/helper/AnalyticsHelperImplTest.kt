@@ -8,6 +8,9 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
+import com.soma369.laimory.core.domain.model.analytics.InstallCampaign
+import com.soma369.laimory.core.domain.model.analytics.InstallReferrerStatus
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -182,6 +185,67 @@ class AnalyticsHelperImplTest {
         assertEquals(listOf<String?>("42"), healthy.userIds)
     }
 
+    @Test
+    fun `설치 유입을 사용자 속성으로 건다`() {
+        val bucket = RecordingBucket()
+
+        helper(buckets = setOf(bucket)).setInstallAttribution(
+            InstallAttribution(
+                status = InstallReferrerStatus.PARSED,
+                campaign = InstallCampaign(source = "meta", medium = "paid", campaign = "sleep_hook_20260924"),
+            ),
+        )
+
+        assertEquals(
+            mapOf(
+                "referrer_status" to "parsed",
+                "install_source" to "meta",
+                "install_medium" to "paid",
+                "install_campaign" to "sleep_hook_20260924",
+                "install_content" to null,
+                "install_campaign_id" to null,
+            ),
+            bucket.userProperties,
+        )
+    }
+
+    @Test
+    fun `36자를 넘는 값은 자르지 않고 걸지 않는다`() {
+        val bucket = RecordingBucket()
+        val longCampaign = "a".repeat(28) + "_20260924"
+
+        helper(buckets = setOf(bucket)).setInstallAttribution(
+            InstallAttribution(
+                status = InstallReferrerStatus.PARSED,
+                campaign = InstallCampaign(source = "meta", medium = "paid", campaign = longCampaign),
+            ),
+        )
+
+        assertEquals(37, longCampaign.length)
+        assertEquals(null, bucket.userProperties["install_campaign"])
+        assertEquals("meta", bucket.userProperties["install_source"])
+    }
+
+    @Test
+    fun `캠페인이 없는 상태면 상태만 건다`() {
+        val bucket = RecordingBucket()
+
+        helper(buckets = setOf(bucket)).setInstallAttribution(InstallAttribution(InstallReferrerStatus.NO_CAMPAIGN))
+
+        assertEquals("no_campaign", bucket.userProperties["referrer_status"])
+        assertTrue(bucket.userProperties.filterKeys { it.startsWith("install_") }.values.all { it == null })
+    }
+
+    @Test
+    fun `한 버킷이 속성 설정에 실패해도 나머지는 건다`() {
+        val failing = RecordingBucket(failing = true)
+        val healthy = RecordingBucket()
+
+        helper(buckets = setOf(failing, healthy)).setInstallAttribution(InstallAttribution(InstallReferrerStatus.INVALID))
+
+        assertEquals("invalid", healthy.userProperties["referrer_status"])
+    }
+
     private fun helper(
         buckets: Set<AnalyticsBucket>,
         dedupeStore: AnalyticsDedupeStore = InMemoryDedupeStore(),
@@ -193,6 +257,7 @@ class AnalyticsHelperImplTest {
     ) : AnalyticsBucket {
         val sent = mutableListOf<AnalyticsPayload>()
         val userIds = mutableListOf<String?>()
+        val userProperties = mutableMapOf<String, String?>()
 
         override suspend fun send(payload: AnalyticsPayload) {
             if (failing) throw IllegalStateException("bucket down")
@@ -204,6 +269,14 @@ class AnalyticsHelperImplTest {
         override fun setUserId(userId: String?) {
             if (failing) throw IllegalStateException("bucket down")
             userIds += userId
+        }
+
+        override fun setUserProperty(
+            name: String,
+            value: String?,
+        ) {
+            if (failing) throw IllegalStateException("bucket down")
+            userProperties[name] = value
         }
     }
 
