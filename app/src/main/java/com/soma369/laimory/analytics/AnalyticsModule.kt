@@ -38,6 +38,12 @@ internal object AnalyticsModule {
             initiallyEnabled = context.manifestAnalyticsCollectionEnabled(),
         )
 
+    @Provides
+    @Singleton
+    fun provideInstallReferrerSource(
+        @ApplicationContext context: Context,
+    ): InstallReferrerSource = PlayInstallReferrerSource(context)
+
     /**
      * 매니페스트가 정한 수집 시작 상태를 읽는다.
      *
