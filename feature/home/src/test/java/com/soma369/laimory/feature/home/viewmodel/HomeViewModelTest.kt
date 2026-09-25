@@ -2121,6 +2121,7 @@ class HomeViewModelTest {
             mutableState.value =
                 DraftTaskTrackingState.Success(
                     task = ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                    eventCount = 1,
                 )
         }
 

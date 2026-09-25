@@ -730,18 +730,21 @@ class HomeViewModel
             // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤로 미룬다. 여기서 끊으면 아직 한 번도
             // 수집하지 않은 사용자가 수집 기회를 갖기 전에 생성이 막힌다.
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
-            val dayRelation = AnalyticsRecordDayRelation.of(current.selectedDate, clock)
+            val recordDate = current.selectedDate
+            val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
             consentPreparationJob =
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
-                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation))
+                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
                     if (collected.isEmpty() && selectedPhotoItems.isEmpty()) {
-                        analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, dayRelation))
+                        analyticsHelper.log(
+                            AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, dayRelation, recordDate),
+                        )
                         sendEffect(HomeUiSideEffect.ShowSnackbar("선택한 범위에 모인 데이터가 없어요."))
                         return@safeLaunch
                     }
@@ -782,9 +785,10 @@ class HomeViewModel
                         preparation.selection.locationRawIds()
                     }
             val submission = preparation.selection.excluding(excluded)
-            val dayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock)
+            val recordDate = preparation.recordDate
+            val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
             if (submission.items.isEmpty()) {
-                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation))
+                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation, recordDate))
                 draftConsentSessionStore.clearPreparation()
                 sendEffect(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요."))
                 return
@@ -792,7 +796,7 @@ class HomeViewModel
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
             val initialCounts = preparation.selection.analyticsCounts()
-            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, initialCounts.total))
+            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, initialCounts.total))
             val result =
                 messageHelper.showTwoButtonDialog(
                     DialogRequest.TwoButton(
@@ -805,13 +809,14 @@ class HomeViewModel
             // 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은
             // 남긴다 — 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
             if (result != DialogResult.Primary) {
-                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.CANCELLED, dayRelation))
+                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.CANCELLED, dayRelation, recordDate))
                 draftConsentSessionStore.clearPreparation()
                 return
             }
             analyticsHelper.log(
                 AnalyticsEvent.TimelineEventReviewCompleted(
                     recordDayRelation = dayRelation,
+                    recordDate = recordDate,
                     initialCounts = initialCounts,
                     finalCounts = submission.analyticsCounts(),
                 ),
@@ -841,6 +846,7 @@ class HomeViewModel
                 analyticsHelper.log(
                     AnalyticsEvent.TimelineCreateRequested(
                         recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        recordDate = preparation.recordDate,
                         itemCount = submission.items.size,
                     ),
                 )
@@ -854,6 +860,7 @@ class HomeViewModel
                 analyticsHelper.log(
                     AnalyticsEvent.TimelineCreateRequestFailed(
                         recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        recordDate = preparation.recordDate,
                         failureCode = AnalyticsFailureCode.from(error),
                     ),
                 )

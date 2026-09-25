@@ -253,6 +253,7 @@ class TimelineRecordViewModel
                                         AnalyticsEvent.TimelineOpened(
                                             timelineState = record.analyticsState(),
                                             recordDayRelation = dayRelationOf(record.recordDate),
+                                            recordDate = record.recordDate,
                                         ),
                                     )
                                 }
@@ -306,7 +307,11 @@ class TimelineRecordViewModel
                         ),
                 )
             }
-            safeLaunch { analyticsHelper.log(AnalyticsEvent.TimelineCompletionStarted(dayRelationOf(record.recordDate))) }
+            safeLaunch {
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineCompletionStarted(dayRelationOf(record.recordDate), record.recordDate),
+                )
+            }
         }
 
         /** 빈 편집기를 열어 새 이벤트를 만든다. 편집 모드에서만, 진행 중인 작업이 없을 때만 연다. */
@@ -505,6 +510,7 @@ class TimelineRecordViewModel
                     analyticsHelper.log(
                         AnalyticsEvent.TimelineCompletionFailed(
                             recordDayRelation = dayRelationOf(record.recordDate),
+                            recordDate = record.recordDate,
                             failureCode = AnalyticsFailureCode.from(error),
                         ),
                     )
@@ -546,6 +552,7 @@ class TimelineRecordViewModel
                 AnalyticsDedupeKeys.timelineCompleted(recordDate, observeUserProfileUseCase().first()?.userId),
                 AnalyticsEvent.TimelineCompleted(
                     recordDayRelation = dayRelationOf(recordDate),
+                    recordDate = recordDate,
                     completionOutcome = completionOutcome,
                     eventSummary = AnalyticsTimelineEventSummary.of(completedEvents, editLog),
                 ),

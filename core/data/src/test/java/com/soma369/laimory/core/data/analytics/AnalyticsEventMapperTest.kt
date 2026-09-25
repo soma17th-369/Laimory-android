@@ -19,6 +19,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 /**
  * 전송 이름과 값을 고정한다.
@@ -31,6 +32,7 @@ import org.junit.Test
  */
 class AnalyticsEventMapperTest {
     private val today = AnalyticsRecordDayRelation.TODAY
+    private val date = LocalDate.parse("2026-09-21")
 
     /** 칸마다 값을 달리 둬 서로 바뀌어 실려도 드러나게 한다. */
     private val eventSummary =
@@ -49,7 +51,7 @@ class AnalyticsEventMapperTest {
             listOf(
                 Expectation(
                     AnalyticsEvent.PermissionRequestStarted(AnalyticsPermissionType.PHOTO, AnalyticsPromptContext.HOME),
-                    "permission_request_started",
+                    "permission_request_start",
                     setOf("permission_type", "prompt_context"),
                 ),
                 Expectation(
@@ -62,37 +64,44 @@ class AnalyticsEventMapperTest {
                     "data_collection_ready",
                     setOf("ready_trigger"),
                 ),
-                Expectation(AnalyticsEvent.TimelineCreateStarted(today), "timeline_create_started", setOf("record_day_relation")),
                 Expectation(
-                    AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, today),
-                    "timeline_create_stopped",
-                    setOf("reason", "record_day_relation"),
+                    AnalyticsEvent.TimelineCreateStarted(today, date),
+                    "timeline_create_started",
+                    setOf("record_day_relation"),
+                    setOf("record_date"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineEventReviewStarted(today, initialItemCount = 5),
+                    AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, today, date),
+                    "timeline_create_stopped",
+                    setOf("reason", "record_day_relation"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventReviewStarted(today, date, initialItemCount = 5),
                     "timeline_event_review_started",
                     setOf("record_day_relation"),
-                    setOf("initial_event_item_count"),
+                    setOf("initial_event_item_count", "record_date"),
                 ),
                 Expectation(
                     reviewCompleted(),
                     "timeline_event_review_completed",
                     setOf("record_day_relation"),
-                    setOf("initial_event_item_count", "final_event_item_count", "net_removed_item_count") +
+                    setOf("initial_event_item_count", "final_event_item_count", "net_removed_item_count", "record_date") +
                         listOf("photo", "calendar", "location", "health", "notification").flatMap { group ->
                             listOf("initial_${group}_item_count", "final_${group}_item_count")
                         },
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineCreateRequested(today, itemCount = 4),
+                    AnalyticsEvent.TimelineCreateRequested(today, date, itemCount = 4),
                     "timeline_create_requested",
                     setOf("record_day_relation"),
-                    setOf("event_item_count"),
+                    setOf("event_item_count", "record_date"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineCreateRequestFailed(today, AnalyticsFailureCode.NETWORK),
+                    AnalyticsEvent.TimelineCreateRequestFailed(today, date, AnalyticsFailureCode.NETWORK),
                     "timeline_create_request_failed",
                     setOf("record_day_relation", "failure_code"),
+                    setOf("record_date"),
                 ),
                 Expectation(
                     AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.FAILURE, AnalyticsFailureCode.SERVER),
@@ -100,16 +109,29 @@ class AnalyticsEventMapperTest {
                     setOf("result", "failure_code"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, today),
+                    AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.SUCCESS, recordDate = date, eventCount = 6),
+                    "timeline_create_result",
+                    setOf("result"),
+                    setOf("record_date", "event_cnt"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, today, date),
                     "timeline_opened",
                     setOf("timeline_state", "record_day_relation"),
+                    setOf("record_date"),
                 ),
-                Expectation(AnalyticsEvent.TimelineCompletionStarted(today), "timeline_completion_started", setOf("record_day_relation")),
                 Expectation(
-                    AnalyticsEvent.TimelineCompleted(today, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary),
+                    AnalyticsEvent.TimelineCompletionStarted(today, date),
+                    "timeline_completion_started",
+                    setOf("record_day_relation"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineCompleted(today, date, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary),
                     "timeline_completed",
                     setOf("record_day_relation", "completion_outcome"),
                     setOf(
+                        "record_date",
                         "ai_event_count",
                         "ai_memo_event_count",
                         "ai_edited_event_count",
@@ -119,9 +141,10 @@ class AnalyticsEventMapperTest {
                     ),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineCompletionFailed(today, AnalyticsFailureCode.UNKNOWN),
-                    "timeline_completion_failed",
+                    AnalyticsEvent.TimelineCompletionFailed(today, date, AnalyticsFailureCode.UNKNOWN),
+                    "timeline_completion_fail",
                     setOf("record_day_relation", "failure_code"),
+                    setOf("record_date"),
                 ),
             )
 
@@ -135,11 +158,21 @@ class AnalyticsEventMapperTest {
     }
 
     @Test
-    fun `성공한 생성 결과에는 실패 코드를 싣지 않는다`() {
-        val payload = AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.SUCCESS, failureCode = null).toPayload()
+    fun `성공한 생성 결과에는 실패 코드 대신 기록 날짜와 사건 수를 싣는다`() {
+        val payload =
+            AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.SUCCESS, recordDate = date, eventCount = 6).toPayload()
 
         assertEquals("success", payload.strings["result"])
         assertFalse(payload.strings.containsKey("failure_code"))
+        assertEquals(6L, payload.counts["event_cnt"])
+    }
+
+    @Test
+    fun `기록 날짜는 서울 기준 그날 00시의 UTC epoch ms 로 싣는다`() {
+        // 2026-09-21 00:00 (UTC+9) = 2026-09-20T15:00:00Z
+        val payload = AnalyticsEvent.TimelineCreateStarted(today, date).toPayload()
+
+        assertEquals(1_789_916_400_000L, payload.counts["record_date"])
     }
 
     @Test
@@ -158,7 +191,7 @@ class AnalyticsEventMapperTest {
 
     @Test
     fun `완료에 이벤트 요약 건수를 칸마다 싣는다`() {
-        val counts = AnalyticsEvent.TimelineCompleted(today, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary).toPayload().counts
+        val counts = AnalyticsEvent.TimelineCompleted(today, date, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary).toPayload().counts
 
         assertEquals(8L, counts["ai_event_count"])
         assertEquals(3L, counts["ai_memo_event_count"])
@@ -253,7 +286,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsRecordDayRelation.entries,
             "record_day_relation",
-        ) { AnalyticsEvent.TimelineCreateStarted(it) }
+        ) { AnalyticsEvent.TimelineCreateStarted(it, date) }
 
     @Test
     fun `중단 이유 전송값을 고정한다`() =
@@ -265,7 +298,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsCreateStopReason.entries,
             "reason",
-        ) { AnalyticsEvent.TimelineCreateStopped(it, today) }
+        ) { AnalyticsEvent.TimelineCreateStopped(it, today, date) }
 
     @Test
     fun `실패 코드 전송값을 고정한다`() =
@@ -282,7 +315,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsFailureCode.entries,
             "failure_code",
-        ) { AnalyticsEvent.TimelineCompletionFailed(today, it) }
+        ) { AnalyticsEvent.TimelineCompletionFailed(today, date, it) }
 
     @Test
     fun `생성 결과 전송값을 고정한다`() =
@@ -293,7 +326,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsCreateResult.entries,
             "result",
-        ) { AnalyticsEvent.TimelineCreateResult(it, failureCode = null) }
+        ) { AnalyticsEvent.TimelineCreateResult(it) }
 
     @Test
     fun `타임라인 상태 전송값을 고정한다`() =
@@ -304,7 +337,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsTimelineState.entries,
             "timeline_state",
-        ) { AnalyticsEvent.TimelineOpened(it, today) }
+        ) { AnalyticsEvent.TimelineOpened(it, today, date) }
 
     @Test
     fun `완료 방식 전송값을 고정한다`() =
@@ -315,7 +348,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsCompletionOutcome.entries,
             "completion_outcome",
-        ) { AnalyticsEvent.TimelineCompleted(today, it, eventSummary) }
+        ) { AnalyticsEvent.TimelineCompleted(today, date, it, eventSummary) }
 
     private fun <T> assertWireValues(
         expected: Map<T, String>,
@@ -333,6 +366,7 @@ class AnalyticsEventMapperTest {
     private fun reviewCompleted() =
         AnalyticsEvent.TimelineEventReviewCompleted(
             recordDayRelation = today,
+            recordDate = date,
             initialCounts =
                 AnalyticsItemCounts.of(
                     listOf(ItemType.PHOTO) + List(3) { ItemType.CALENDAR } + listOf(ItemType.STAY, ItemType.STAY, ItemType.MOVEMENT),

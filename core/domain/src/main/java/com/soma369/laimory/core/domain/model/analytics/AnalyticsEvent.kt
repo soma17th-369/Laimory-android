@@ -1,5 +1,7 @@
 package com.soma369.laimory.core.domain.model.analytics
 
+import java.time.LocalDate
+
 /**
  * 제품 분석으로 보낼 수 있는 이벤트.
  *
@@ -7,9 +9,11 @@ package com.soma369.laimory.core.domain.model.analytics
  * 오타와 원문 유출이 컴파일을 통과한다. 전송 이름·속성 이름은 도메인이 알지 않고
  * data 레이어의 매퍼가 정한다.
  *
- * **보내지 않는 것**: 기록·메모·질문·감정 원문, 사진·좌표·주소, 일정·알림·건강 원문, 실제 record date,
- * 사용자·record·Event·task 내부 ID, 예외 메시지와 스택트레이스. 숫자 속성도 이 목록을 따른다 —
- * 집계값만 싣는다. 날짜는 실제 값 대신 오늘과의 관계([AnalyticsRecordDayRelation])로만 보낸다.
+ * **보내지 않는 것**: 기록·메모·질문·감정 원문, 사진·좌표·주소, 일정·알림·건강 원문,
+ * 사용자·record·task 내부 ID, 예외 메시지와 스택트레이스. 숫자 속성도 이 목록을 따른다 — 집계값만 싣는다.
+ *
+ * 기록 날짜(`record date`)는 GA4 스펙이 싣기로 해 보낸다. 오늘과의 관계([AnalyticsRecordDayRelation])도
+ * 그대로 함께 싣는다 — 두 값의 날짜 경계는 같은 서울 기준이다.
  *
  * 기록 시점은 클릭이 아니라 **화면 표시 또는 서버 성공이 확정된 시점**이다.
  */
@@ -35,17 +39,20 @@ sealed interface AnalyticsEvent {
     /** 생성 버튼을 눌러 준비를 시작했다. 범위 오류 같은 입력 가드는 통과한 뒤다. */
     data class TimelineCreateStarted(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
     ) : AnalyticsEvent
 
     /** 준비를 시작했지만 생성 요청까지 가지 않고 멈췄다. 이유마다 고칠 곳이 다르다. */
     data class TimelineCreateStopped(
         val reason: AnalyticsCreateStopReason,
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
     ) : AnalyticsEvent
 
     /** 보낼 데이터를 마지막으로 확인하는 창을 띄웠다. */
     data class TimelineEventReviewStarted(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
         val initialItemCount: Int,
     ) : AnalyticsEvent
 
@@ -58,6 +65,7 @@ sealed interface AnalyticsEvent {
      */
     data class TimelineEventReviewCompleted(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
         val initialCounts: AnalyticsItemCounts,
         val finalCounts: AnalyticsItemCounts,
     ) : AnalyticsEvent {
@@ -68,30 +76,40 @@ sealed interface AnalyticsEvent {
     /** 서버가 생성 요청을 접수해 작업을 돌려줬다. */
     data class TimelineCreateRequested(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
         val itemCount: Int,
     ) : AnalyticsEvent
 
     /** 사진 업로드나 생성 요청 접수가 실패했다. */
     data class TimelineCreateRequestFailed(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
         val failureCode: AnalyticsFailureCode,
     ) : AnalyticsEvent
 
-    /** 접수된 생성 작업이 끝났다. 작업당 1회. 실패일 때만 [failureCode] 가 있다. */
+    /**
+     * 접수된 생성 작업이 끝났다. 작업당 1회.
+     *
+     * 성공일 때만 [recordDate] 와 [eventCount](만들어진 타임라인의 사건 수)가, 실패일 때만 [failureCode] 가 있다.
+     */
     data class TimelineCreateResult(
         val result: AnalyticsCreateResult,
-        val failureCode: AnalyticsFailureCode?,
+        val failureCode: AnalyticsFailureCode? = null,
+        val recordDate: LocalDate? = null,
+        val eventCount: Int? = null,
     ) : AnalyticsEvent
 
     /** 타임라인 조회가 성공해 화면에 보였다. */
     data class TimelineOpened(
         val timelineState: AnalyticsTimelineState,
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
     ) : AnalyticsEvent
 
     /** 기록 완료 절차(감정 선택)를 시작했다. */
     data class TimelineCompletionStarted(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
     ) : AnalyticsEvent
 
     /**
@@ -101,6 +119,7 @@ sealed interface AnalyticsEvent {
      */
     data class TimelineCompleted(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
         val completionOutcome: AnalyticsCompletionOutcome,
         val eventSummary: AnalyticsTimelineEventSummary,
     ) : AnalyticsEvent
@@ -108,6 +127,7 @@ sealed interface AnalyticsEvent {
     /** 완료 저장이 실패해 사용자에게 알렸다. */
     data class TimelineCompletionFailed(
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
         val failureCode: AnalyticsFailureCode,
     ) : AnalyticsEvent
 }

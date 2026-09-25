@@ -1741,7 +1741,13 @@ class TimelineRecordViewModelTest {
             createLoadedViewModel()
 
             assertEquals(
-                listOf(AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, AnalyticsRecordDayRelation.of(RECORD_DATE, clock))),
+                listOf(
+                    AnalyticsEvent.TimelineOpened(
+                        AnalyticsTimelineState.DRAFT,
+                        AnalyticsRecordDayRelation.of(RECORD_DATE, clock),
+                        RECORD_DATE,
+                    ),
+                ),
                 analyticsHelper.logged,
             )
         }
@@ -1757,12 +1763,13 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
             advanceUntilIdle()
 
-            assertTrue(AnalyticsEvent.TimelineCompletionStarted(relation) in analyticsHelper.logged)
+            assertTrue(AnalyticsEvent.TimelineCompletionStarted(relation, RECORD_DATE) in analyticsHelper.logged)
             assertEquals(
                 listOf(
                     AnalyticsDedupeKeys.timelineCompleted(RECORD_DATE, userId = null) to
                         AnalyticsEvent.TimelineCompleted(
                             recordDayRelation = relation,
+                            recordDate = RECORD_DATE,
                             completionOutcome = AnalyticsCompletionOutcome.TRANSITIONED,
                             // 기본 이벤트는 질문이 없어 직접 추가한 것으로 센다.
                             eventSummary = summary(manualEventCount = 1),
@@ -2203,6 +2210,7 @@ class TimelineRecordViewModelTest {
                             recordDate = recordDate,
                             requestedAt = Instant.EPOCH,
                         ),
+                    eventCount = 1,
                 )
         }
     }

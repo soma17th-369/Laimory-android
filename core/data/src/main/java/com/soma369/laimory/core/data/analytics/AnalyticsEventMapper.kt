@@ -13,6 +13,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import java.time.LocalDate
 
 /** 모든 이벤트에 붙는 스키마 판. 속성 의미가 바뀌면 올려 옛 데이터와 섞이지 않게 한다. */
 internal const val ANALYTICS_SCHEMA_VERSION = 1L
@@ -23,6 +24,8 @@ private const val PARAM_PERMISSION_STATE = "permission_state"
 private const val PARAM_PROMPT_CONTEXT = "prompt_context"
 private const val PARAM_READY_TRIGGER = "ready_trigger"
 private const val PARAM_RECORD_DAY_RELATION = "record_day_relation"
+private const val PARAM_RECORD_DATE = "record_date"
+private const val PARAM_EVENT_COUNT = "event_cnt"
 private const val PARAM_STOP_REASON = "reason"
 private const val PARAM_INITIAL_ITEM_COUNT = "initial_event_item_count"
 private const val PARAM_FINAL_ITEM_COUNT = "final_event_item_count"
@@ -50,7 +53,7 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
     when (this) {
         is AnalyticsEvent.PermissionRequestStarted ->
             payload(
-                name = "permission_request_started",
+                name = "permission_request_start",
                 strings =
                     mapOf(
                         PARAM_PERMISSION_TYPE to permission.paramValue,
@@ -75,11 +78,13 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
         is AnalyticsEvent.TimelineCreateStarted ->
             payload(
                 name = "timeline_create_started",
+                recordDate = recordDate,
                 strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
             )
         is AnalyticsEvent.TimelineCreateStopped ->
             payload(
                 name = "timeline_create_stopped",
+                recordDate = recordDate,
                 strings =
                     mapOf(
                         PARAM_STOP_REASON to reason.paramValue,
@@ -89,12 +94,14 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
         is AnalyticsEvent.TimelineEventReviewStarted ->
             payload(
                 name = "timeline_event_review_started",
+                recordDate = recordDate,
                 strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
                 counts = mapOf(PARAM_INITIAL_ITEM_COUNT to initialItemCount.toLong()),
             )
         is AnalyticsEvent.TimelineEventReviewCompleted ->
             payload(
                 name = "timeline_event_review_completed",
+                recordDate = recordDate,
                 strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
                 counts =
                     mapOf(
@@ -106,12 +113,14 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
         is AnalyticsEvent.TimelineCreateRequested ->
             payload(
                 name = "timeline_create_requested",
+                recordDate = recordDate,
                 strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
                 counts = mapOf(PARAM_ITEM_COUNT to itemCount.toLong()),
             )
         is AnalyticsEvent.TimelineCreateRequestFailed ->
             payload(
                 name = "timeline_create_request_failed",
+                recordDate = recordDate,
                 strings =
                     mapOf(
                         PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
@@ -121,15 +130,18 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
         is AnalyticsEvent.TimelineCreateResult ->
             payload(
                 name = "timeline_create_result",
+                recordDate = recordDate,
                 strings =
                     buildMap {
                         put(PARAM_RESULT, result.paramValue)
                         failureCode?.let { put(PARAM_FAILURE_CODE, it.paramValue) }
                     },
+                counts = eventCount?.let { mapOf(PARAM_EVENT_COUNT to it.toLong()) }.orEmpty(),
             )
         is AnalyticsEvent.TimelineOpened ->
             payload(
                 name = "timeline_opened",
+                recordDate = recordDate,
                 strings =
                     mapOf(
                         PARAM_TIMELINE_STATE to timelineState.paramValue,
@@ -139,11 +151,13 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
         is AnalyticsEvent.TimelineCompletionStarted ->
             payload(
                 name = "timeline_completion_started",
+                recordDate = recordDate,
                 strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
             )
         is AnalyticsEvent.TimelineCompleted ->
             payload(
                 name = "timeline_completed",
+                recordDate = recordDate,
                 strings =
                     mapOf(
                         PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
@@ -161,7 +175,8 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
             )
         is AnalyticsEvent.TimelineCompletionFailed ->
             payload(
-                name = "timeline_completion_failed",
+                name = "timeline_completion_fail",
+                recordDate = recordDate,
                 strings =
                     mapOf(
                         PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
@@ -182,16 +197,30 @@ private fun AnalyticsItemCounts.byGroupParams(stage: String): Map<String, Long> 
         "${stage}_${group.paramValue}_item_count" to countOf(group).toLong()
     }
 
+/** [recordDate] 가 있으면 `record_date` 로 싣는다 — 기록 날짜를 싣는 이벤트가 모두 같은 형식을 쓰게 한 자리에서 바꾼다. */
 private fun payload(
     name: String,
     strings: Map<String, String> = emptyMap(),
     counts: Map<String, Long> = emptyMap(),
+    recordDate: LocalDate? = null,
 ): AnalyticsPayload =
     AnalyticsPayload(
         name = name,
         strings = strings,
-        counts = counts + (PARAM_SCHEMA_VERSION to ANALYTICS_SCHEMA_VERSION),
+        counts =
+            counts +
+                (PARAM_SCHEMA_VERSION to ANALYTICS_SCHEMA_VERSION) +
+                recordDate?.let { mapOf(PARAM_RECORD_DATE to it.toAnalyticsEpochMillis()) }.orEmpty(),
     )
+
+/**
+ * 날짜를 **서울 기준 그날 00:00 의 UTC epoch ms** 로 바꾼다.
+ *
+ * 경계를 `record_day_relation` 과 같은 서울([AnalyticsRecordDayRelation.DAY_BOUNDARY_ZONE])로 둔다 — 기기 시간대를
+ * 따르면 해외에서 쓴 기록의 날짜 값이 관계 값과 하루 어긋난다.
+ */
+internal fun LocalDate.toAnalyticsEpochMillis(): Long =
+    atStartOfDay(AnalyticsRecordDayRelation.DAY_BOUNDARY_ZONE).toInstant().toEpochMilli()
 
 /*
  * 전송 값을 상수마다 적어 둔다.

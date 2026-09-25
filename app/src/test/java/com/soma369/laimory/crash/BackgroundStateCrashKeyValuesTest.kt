@@ -34,7 +34,7 @@ class BackgroundStateCrashKeyValuesTest {
                 DraftTaskTrackingState.Idle,
                 DraftTaskTrackingState.Processing(task, elapsedSeconds = 30),
                 DraftTaskTrackingState.LongRunning(task, elapsedSeconds = 900),
-                DraftTaskTrackingState.Success(task),
+                DraftTaskTrackingState.Success(task, eventCount = 1),
                 DraftTaskTrackingState.RetryableError(task),
             ).map(::draftTaskKeyValue)
 

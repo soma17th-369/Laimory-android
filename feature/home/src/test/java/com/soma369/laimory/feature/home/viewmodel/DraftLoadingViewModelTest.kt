@@ -72,7 +72,7 @@ class DraftLoadingViewModelTest {
             runCurrent()
             assertEquals(2, viewModel.state.value.photoUris.size)
 
-            coordinator.emit(DraftTaskTrackingState.Success(task))
+            coordinator.emit(DraftTaskTrackingState.Success(task, eventCount = 1))
             runCurrent()
 
             // 완료 표시를 보여주는 동안 사진이 사라지거나 `0장 완료`가 되면 안 된다.
@@ -90,7 +90,7 @@ class DraftLoadingViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            coordinator.emit(DraftTaskTrackingState.Success(task))
+            coordinator.emit(DraftTaskTrackingState.Success(task, eventCount = 1))
             runCurrent()
 
             DraftLoadingStage.entries.forEach { stage ->
@@ -130,7 +130,7 @@ class DraftLoadingViewModelTest {
             coordinator.emit(DraftTaskTrackingState.Processing(task))
             val viewModel = createViewModel()
             runCurrent()
-            coordinator.emit(DraftTaskTrackingState.Success(task))
+            coordinator.emit(DraftTaskTrackingState.Success(task, eventCount = 1))
             runCurrent()
 
             val next = ActiveDraftTask(taskId = "task-2", recordDate = date, requestedAt = requestedAt)
