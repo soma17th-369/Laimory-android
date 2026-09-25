@@ -468,7 +468,8 @@ private fun HomeHeaderRow(
     var isDebugMenuExpanded by remember { mutableStateOf(false) }
     val hasDebugMenu = onOpenCollectionLab != null || onOpenHealthDetail != null
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        // 시안의 헤더 틀은 위아래 8 을 둔다. 줄 높이는 지난 기록 아이콘(32)이 정한다.
+        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.small),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -485,7 +486,7 @@ private fun HomeHeaderRow(
                             onClick = { if (isDateEnabled) onDateClick() },
                             onLongClickLabel = if (hasDebugMenu) "개발 메뉴 열기" else null,
                             onLongClick = if (hasDebugMenu) ({ isDebugMenuExpanded = true }) else null,
-                        ).padding(vertical = Spacing.extraSmall),
+                        ),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -561,7 +562,11 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            // 시간과 제목 사이 4. 붙이면 두 줄이 한 덩어리로 읽혀 어느 쪽이 제목인지 흐려진다.
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+            ) {
                 Text(
                     text = item.timeText(),
                     style = MaterialTheme.typography.bodySmall,
@@ -597,7 +602,8 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
                 .fillMaxWidth()
                 .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
-        verticalArrangement = Arrangement.SpaceBetween,
+        // 라벨 바로 아래 값을 붙인다(시안 간격 4). 남는 높이는 아래로 흘려 두 반쪽 카드의 줄이 맞는다.
+        verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
     ) {
         Text(
             text = "앱 별 알림 건수",
@@ -610,12 +616,12 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
                 horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val icon = rememberAppIcon(packageName = app.packageName, size = 24.dp)
+                val icon = rememberAppIcon(packageName = app.packageName, size = NOTIFICATION_APP_ICON_SIZE)
                 if (icon == null) {
                     // 삭제된 앱은 아이콘을 읽을 수 없다. 자리를 비우면 글자가 흔들린다.
-                    Box(modifier = Modifier.size(24.dp))
+                    Box(modifier = Modifier.size(NOTIFICATION_APP_ICON_SIZE))
                 } else {
-                    Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(NOTIFICATION_APP_ICON_SIZE))
                 }
                 Text(
                     text = "${app.appName} ${app.count}",
@@ -658,14 +664,14 @@ private fun HomeLabeledSlot(
     label: String,
     value: String,
 ) {
-    // 라벨과 값을 위아래로 벌린다. 붙여 두면 두 줄이 한 덩어리로 읽혀 무엇이 제목인지 흐려진다.
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
-        verticalArrangement = Arrangement.SpaceBetween,
+        // 라벨 바로 아래 값을 붙인다(시안 간격 4). 남는 높이는 아래로 흘려 두 반쪽 카드의 줄이 맞는다.
+        verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
     ) {
         Text(
             text = label,
@@ -692,14 +698,17 @@ private fun HomeCalendarItem.timeText(): String =
     }
 
 /**
- * 일정 카드 내용의 **최소** 높이. 카드 126 = 패딩 12 + 분류 24 + 8 + **40** + 8 + 본문 22 + 패딩 12.
+ * 일정 카드 내용의 **최소** 높이. 시간 18 + 간격 4 + 제목 24.
  *
- * 고정값으로 두지 않는다. 시간·제목 두 줄은 큰 글꼴(1.3배)에서 45 가까이 되어, 고정하면 제목이 잘린다.
+ * 고정값으로 두지 않는다. 큰 글꼴(1.3배)에서는 두 줄이 더 커져, 고정하면 제목이 잘린다.
  */
-private val CALENDAR_SLOT_HEIGHT = 40.dp
+private val CALENDAR_SLOT_HEIGHT = 46.dp
 
 /** 위치·알림 반쪽 카드 내용의 **최소** 높이. 카드 전체는 144 다. 큰 글꼴에서는 내용만큼 늘어난다. */
 private val HALF_CARD_SLOT_HEIGHT = 58.dp
+
+/** 알림 슬롯의 앱 아이콘. 줄 높이(24)보다 작게 둬 글자와 같은 무게로 읽힌다(시안 20). */
+private val NOTIFICATION_APP_ICON_SIZE = 20.dp
 
 private val HOME_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
 private val SLOT_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA)
