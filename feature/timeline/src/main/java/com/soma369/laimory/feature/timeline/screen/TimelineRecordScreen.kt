@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -59,6 +60,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
@@ -100,10 +102,15 @@ import com.soma369.laimory.core.ui.R as UiR
 fun TimelineRecordRoute(
     innerPadding: PaddingValues,
     recordDate: LocalDate?,
+    entryPoint: AnalyticsEntryPoint = AnalyticsEntryPoint.UNKNOWN,
     viewModel: TimelineRecordViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(recordDate) {
-        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(recordDate))
+        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(recordDate, entryPoint))
+    }
+    // ViewModel 은 화면보다 오래 산다(액티비티 범위). 화면이 내려가는 순간을 여기서 알려 준다.
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.sendIntent(TimelineRecordUiIntent.Leave) }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     TimelineRecordContent(

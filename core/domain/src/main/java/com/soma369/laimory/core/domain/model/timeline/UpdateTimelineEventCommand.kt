@@ -10,6 +10,7 @@ import java.time.LocalDateTime
 data class UpdateTimelineEventCommand(
     val timelineEventId: Long,
     val title: String,
+    /** 빈 문자열은 **지움**, null 은 **유지**다 — 서버 PATCH 계약. 지우려고 null 을 보내면 안 바뀐다. */
     val subtitle: String?,
     val startAt: LocalDateTime,
     val endAt: LocalDateTime?,

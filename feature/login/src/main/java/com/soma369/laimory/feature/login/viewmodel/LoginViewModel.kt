@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.exception.SocialLoginException
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.SocialLoginCallback
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
+import com.soma369.laimory.core.domain.usecase.analytics.LogSignUpUseCase
 import com.soma369.laimory.core.domain.usecase.auth.CancelSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.CompleteSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.StartSocialLoginUseCase
@@ -34,6 +35,7 @@ class LoginViewModel
         private val cancelSocialLogin: CancelSocialLoginUseCase,
         private val callbackHandler: SocialLoginCallbackHandler,
         private val getPublicTermLinks: GetPublicTermLinksUseCase,
+        private val logSignUp: LogSignUpUseCase,
     ) : BaseMviViewModel<LoginUiState, LoginUiIntent, LoginUiSideEffect>(LoginUiState()) {
         private var cancelDetectionJob: Job? = null
 
@@ -104,6 +106,10 @@ class LoginViewModel
                     // 보고 정한다 — 이 화면이 홈을 지목하면 온보딩을 마치지 않은 계정도 홈으로 간다.
                     Logger.i(LogDomain.AUTH, "소셜 로그인 완료")
                     updateState { copy(phase = LoginPhase.IDLE, activeProvider = null) }
+                    // 가입 판정은 서버를 한 번 더 묻는다. 로그인 흐름을 기다리게 하지 않도록 따로 돌리고,
+                    // 실패해도 알리지 않는다. 어느 계정으로 들어왔는지 모르면(앱이 다시 시작돼 시도가
+                    // 복원된 경우) 가입 방법을 적을 수 없어 보내지 않는다.
+                    previousState.activeProvider?.let { provider -> safeLaunch(onError = { }) { logSignUp(provider) } }
                 }.onFailure { error ->
                     Logger.w(LogDomain.AUTH, "소셜 로그인 토큰 교환 실패: ${error::class.simpleName}")
                     if (error is SocialLoginException.MissingAttempt && previousState.phase == LoginPhase.IDLE) {

@@ -18,8 +18,10 @@ sealed interface DraftTaskTrackingState {
         val elapsedSeconds: Long,
     ) : WithTask
 
+    /** [eventCount] 는 만들어진 타임라인의 사건 수다. */
     data class Success(
         override val task: ActiveDraftTask,
+        val eventCount: Int,
     ) : WithTask
 
     data class Failed(

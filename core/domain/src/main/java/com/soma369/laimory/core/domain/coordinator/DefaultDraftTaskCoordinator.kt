@@ -341,7 +341,7 @@ class DefaultDraftTaskCoordinator
                                         recordDate = timeline.recordDate,
                                     )
                             }
-                            mutableState.value = DraftTaskTrackingState.Success(task)
+                            mutableState.value = DraftTaskTrackingState.Success(task, eventCount = timeline.events.size)
                         }
 
                         DraftTaskStatus.FAILED ->

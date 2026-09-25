@@ -83,8 +83,8 @@ android {
         minSdk = 28
         targetSdk = 36
         // Play 는 한 번 올라간 버전 코드를 다시 받지 않는다. 스토어에 올릴 때마다 올린다.
-        versionCode = 4
-        versionName = "1.2.0"
+        versionCode = 5
+        versionName = "1.2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

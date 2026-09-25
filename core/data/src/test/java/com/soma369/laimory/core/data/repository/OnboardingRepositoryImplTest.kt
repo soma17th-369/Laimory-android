@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -83,6 +84,19 @@ class OnboardingRepositoryImplTest {
 
             repository.setCompletionPending(false)
             assertFalse(repository.isCompletionPending())
+        }
+
+    @Test
+    fun `회차 토큰은 한 번 만들면 같은 값을 주고 비우면 새로 만든다`() =
+        runTest {
+            val first = repository.flowId()
+
+            assertEquals(first, repository.flowId())
+            assertTrue(first.startsWith("ob_"))
+
+            repository.clear()
+
+            assertNotEquals(first, repository.flowId())
         }
 
     @Test

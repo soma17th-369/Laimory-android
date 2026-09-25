@@ -14,6 +14,7 @@ import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
@@ -846,7 +847,10 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(0, draftTaskCoordinator.discardCount)
-            assertEquals(listOf<Page>(TimelinePage(recordDate = recordDate)), navigationHelper.destinations)
+            assertEquals(
+                listOf<Page>(TimelinePage(recordDate = recordDate, entryPoint = AnalyticsEntryPoint.HOME)),
+                navigationHelper.destinations,
+            )
         }
 
     @Test
@@ -867,7 +871,10 @@ class HomeViewModelTest {
 
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
             assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
-            assertEquals(listOf<Page>(TimelinePage(recordDate = today)), navigationHelper.destinations)
+            assertEquals(
+                listOf<Page>(TimelinePage(recordDate = today, entryPoint = AnalyticsEntryPoint.HOME)),
+                navigationHelper.destinations,
+            )
         }
 
     @Test
@@ -2124,6 +2131,7 @@ class HomeViewModelTest {
             mutableState.value =
                 DraftTaskTrackingState.Success(
                     task = ActiveDraftTask("task-1", recordDate, Instant.EPOCH),
+                    eventCount = 1,
                 )
         }
 

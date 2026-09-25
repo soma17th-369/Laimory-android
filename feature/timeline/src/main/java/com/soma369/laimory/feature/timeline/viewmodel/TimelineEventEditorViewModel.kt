@@ -4,9 +4,15 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventPhotoDeleteException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
+import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventPhotoAddition
@@ -61,6 +67,7 @@ class TimelineEventEditorViewModel
         private val deleteTimelineEventPhotoUseCase: DeleteTimelineEventPhotoUseCase,
         private val createTimelineEventUseCase: CreateTimelineEventUseCase,
         private val recordTimelineEditUseCase: RecordTimelineEditUseCase,
+        private val analyticsHelper: AnalyticsHelper,
         private val navigationHelper: NavigationHelper,
         private val clock: Clock,
     ) : BaseMviViewModel<TimelineEventEditorUiState, TimelineEventEditorUiIntent, TimelineEventEditorUiSideEffect>(
@@ -332,6 +339,8 @@ class TimelineEventEditorViewModel
             val editedEventId = readyState.timelineEventId?.takeIf { readyState.changesContent(readyForm) }
             // 저장이 기록을 다시 읽으므로 작성 중인지는 보내기 전에 본다.
             val editingRecordDate = unsavedTimeline()?.recordDate
+            val changedFields = readyState.changedFields(readyForm)
+            val timelineBeforeSave = observeTimelineRecordUseCase().value
             // 신규는 id 가 없다. 같은 화면이지만 서버 경로가 갈린다.
             val result =
                 if (readyState.timelineEventId == null) {
@@ -344,6 +353,7 @@ class TimelineEventEditorViewModel
                     if (editedEventId != null && editingRecordDate != null) {
                         recordTimelineEditUseCase.edited(editingRecordDate, editedEventId)
                     }
+                    logSaved(readyState, readyForm, changedFields, timelineBeforeSave)
                     clearEditorState()
                     navigationHelper.navigateToBack()
                 }.onFailure(::handleUpdateFailure)
@@ -460,6 +470,10 @@ class TimelineEventEditorViewModel
                     if (outcome == DeleteTimelineEventPhotoOutcome.Deleted && editingRecordDate != null) {
                         recordTimelineEditUseCase.edited(editingRecordDate, timelineEventId)
                     }
+                    // 사진 삭제는 저장과 따로 서버에 바로 반영되므로 수정 한 건으로 따로 센다.
+                    if (outcome == DeleteTimelineEventPhotoOutcome.Deleted) {
+                        logUpdated(timelineEventId, setOf(AnalyticsEventField.PHOTO))
+                    }
                     handlePhotoDeleteSuccess(outcome)
                 }
                 .onFailure { handlePhotoDeleteFailure(photo, it) }
@@ -557,12 +571,14 @@ class TimelineEventEditorViewModel
             // 지우고 나면 세션에서 빠져 AI 가 만든 것인지 알 수 없으므로 먼저 갈무리한다.
             val editingTimeline = unsavedTimeline()
             val deletingQuestion = editingTimeline?.events?.firstOrNull { it.timelineEventId == timelineEventId }?.question
+            val deletingTarget = eventTargetOf(timelineEventId)
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Deleting) }
             deleteTimelineEventUseCase(timelineEventId)
                 .onSuccess {
                     editingTimeline?.let { timeline ->
                         recordTimelineEditUseCase.deleted(timeline.recordDate, timelineEventId, deletingQuestion)
                     }
+                    deletingTarget?.let { analyticsHelper.log(AnalyticsEvent.TimelineEventDeleted(it)) }
                     updateState { copy(deleteDialogState = TimelineDeleteDialogState.Success) }
                 }.onFailure(::handleDeleteFailure)
         }
@@ -648,6 +664,70 @@ class TimelineEventEditorViewModel
          */
         private fun unsavedTimeline() = observeTimelineRecordUseCase().value?.takeIf { it.status != DailyRecordStatus.SAVED }
 
+        /**
+         * 저장이 성공한 뒤 분석 이벤트를 보낸다.
+         *
+         * 새 사건은 추가로, 기존 사건은 바뀐 칸으로 가른다 — 메모만 바꿨으면 메모 저장, 그 밖에는 수정이다.
+         * 편집 화면은 저장하면 닫히므로 여기서 한 번에 종합해 보낸다.
+         */
+        private suspend fun logSaved(
+            savedState: TimelineEventEditorUiState,
+            form: TimelineEventEditorForm,
+            changedFields: Set<AnalyticsEventField>,
+            timelineBeforeSave: DailyTimeline?,
+        ) {
+            val timelineEventId = savedState.timelineEventId
+            if (timelineEventId == null) {
+                val timeline = timelineBeforeSave ?: return
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineEventCreated(
+                        eventType = form.eventType,
+                        photoCount = savedState.pendingPhotos.size,
+                        recordState = AnalyticsTimelineState.of(timeline.status),
+                        recordDate = timeline.recordDate,
+                    ),
+                )
+                return
+            }
+            if (changedFields == setOf(AnalyticsEventField.MEMO)) {
+                val target = eventTargetOf(timelineEventId) ?: return
+                val memo = form.memo.takeUnless(String::isBlank)
+                analyticsHelper.log(AnalyticsEvent.TimelineMemoSaved(target, AnalyticsEvent.TimelineMemoSaved.lengthOf(memo)))
+                return
+            }
+            logUpdated(timelineEventId, changedFields)
+        }
+
+        /** 바뀐 칸이 없으면 보내지 않는다. 사진 수·시작 시각은 수정한 뒤의 세션 값이다. */
+        private suspend fun logUpdated(
+            timelineEventId: Long,
+            changedFields: Set<AnalyticsEventField>,
+        ) {
+            if (changedFields.isEmpty()) return
+            val timeline = observeTimelineRecordUseCase().value ?: return
+            val target = AnalyticsTimelineEventTarget.of(timeline, timelineEventId) ?: return
+            val startAt = timeline.events.first { it.timelineEventId == timelineEventId }.startAt
+            analyticsHelper.log(AnalyticsEvent.TimelineEventUpdated(target, startAt, changedFields))
+        }
+
+        private fun eventTargetOf(timelineEventId: Long): AnalyticsTimelineEventTarget? =
+            observeTimelineRecordUseCase().value?.let { AnalyticsTimelineEventTarget.of(it, timelineEventId) }
+
+        /** 실제로 바뀐 입력칸. 앞뒤 공백만 다른 것은 같다. 새 사건은 비교할 원래 값이 없어 비어 있다. */
+        private fun TimelineEventEditorUiState.changedFields(form: TimelineEventEditorForm): Set<AnalyticsEventField> {
+            if (timelineEventId == null) return emptySet()
+            val original = originalForm ?: return emptySet()
+            return buildSet {
+                if (form.eventType != original.eventType) add(AnalyticsEventField.EVENT_TYPE)
+                if (form.title.trim() != original.title.trim()) add(AnalyticsEventField.TITLE)
+                if (form.subtitle.trim() != original.subtitle.trim()) add(AnalyticsEventField.SUBTITLE)
+                if (form.startAt != original.startAt) add(AnalyticsEventField.START_AT)
+                if (form.endAt != original.endAt) add(AnalyticsEventField.END_AT)
+                if (form.memo.trim() != original.memo.trim()) add(AnalyticsEventField.MEMO)
+                if (pendingPhotos.isNotEmpty()) add(AnalyticsEventField.PHOTO)
+            }
+        }
+
         /** 메모 말고 서버에 남는 내용(종류·제목·설명·시각·사진 추가)을 바꿨는지. 앞뒤 공백만 다른 것은 같다. */
         private fun TimelineEventEditorUiState.changesContent(form: TimelineEventEditorForm): Boolean {
             val original = originalForm ?: return false
@@ -665,7 +745,9 @@ class TimelineEventEditorViewModel
             return UpdateTimelineEventCommand(
                 timelineEventId = requireNotNull(timelineEventId),
                 title = form.title.trim(),
-                subtitle = form.subtitle.trim().ifBlank { null },
+                // 비었으면 빈 문자열을 그대로 보낸다. null 로 바꾸면 서버가 "그대로 두세요" 로 읽어
+                // 설명을 지울 수 없다(서버 계약: 빈 문자열·공백은 비움, null 은 유지).
+                subtitle = form.subtitle.trim(),
                 startAt = form.startAt,
                 endAt = form.endAt,
                 eventType = form.eventType.takeIf { it != original.eventType },

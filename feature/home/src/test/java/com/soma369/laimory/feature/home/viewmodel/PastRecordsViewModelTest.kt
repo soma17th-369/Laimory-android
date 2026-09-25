@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
@@ -131,7 +132,7 @@ class PastRecordsViewModelTest {
             viewModel.sendIntent(PastRecordsUiIntent.SelectRecord(recordDate))
             runCurrent()
 
-            assertEquals(listOf<Page>(TimelinePage(recordDate)), navigationHelper.destinations)
+            assertEquals(listOf<Page>(TimelinePage(recordDate, AnalyticsEntryPoint.PAST_RECORDS)), navigationHelper.destinations)
         }
 
     private fun createViewModel(): PastRecordsViewModel =

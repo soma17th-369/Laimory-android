@@ -49,7 +49,11 @@ internal fun DraftTaskTrackingState.toCreateResult(): Pair<String, AnalyticsEven
     val event =
         when (this) {
             is DraftTaskTrackingState.Success ->
-                AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.SUCCESS, failureCode = null)
+                AnalyticsEvent.TimelineCreateResult(
+                    result = AnalyticsCreateResult.SUCCESS,
+                    recordDate = task.recordDate,
+                    eventCount = eventCount,
+                )
             is DraftTaskTrackingState.Failed ->
                 AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.FAILURE, AnalyticsFailureCode.from(reason))
             is DraftTaskTrackingState.Unavailable ->

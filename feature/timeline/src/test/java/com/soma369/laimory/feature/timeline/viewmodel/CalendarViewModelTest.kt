@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
@@ -339,7 +340,7 @@ class CalendarViewModelTest {
             viewModel.sendIntent(CalendarUiIntent.SelectDate(TODAY))
             advanceUntilIdle()
 
-            assertEquals(listOf<Page>(TimelinePage(TODAY)), navigationHelper.pages)
+            assertEquals(listOf<Page>(TimelinePage(TODAY, AnalyticsEntryPoint.CALENDAR)), navigationHelper.pages)
             assertEquals(TODAY, viewModel.state.value.selectedDate)
         }
 

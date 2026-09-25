@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.navigation
 
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import java.time.LocalDate
 
 /**
@@ -98,21 +99,36 @@ data object PastRecordsPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/**
+ * 하루 기록 타임라인.
+ *
+ * [entryPoint] 는 분석용이다 — 화면은 누가 자기를 열었는지 알 수 없어 여는 쪽이 적어 준다.
+ */
 data class TimelinePage(
     val recordDate: LocalDate,
+    val entryPoint: AnalyticsEntryPoint = AnalyticsEntryPoint.UNKNOWN,
 ) : Page {
     override fun toRoute(): NavRoute =
         NavRoute(
             path = PATH,
-            args = mapOf(RECORD_DATE_ARG to recordDate.toString()),
+            args =
+                mapOf(
+                    RECORD_DATE_ARG to recordDate.toString(),
+                    ENTRY_POINT_ARG to entryPoint.name,
+                ),
         )
 
     companion object {
         const val PATH = "/timeline"
         const val RECORD_DATE_ARG = "recordDate"
+        const val ENTRY_POINT_ARG = "entryPoint"
 
         fun recordDateFrom(args: Map<String, String>): LocalDate? =
             args[RECORD_DATE_ARG]?.let { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
+
+        /** 없거나 모르는 값(이전 빌드가 저장한 백스택)은 [AnalyticsEntryPoint.UNKNOWN] 이다. */
+        fun entryPointFrom(args: Map<String, String>): AnalyticsEntryPoint =
+            AnalyticsEntryPoint.entries.firstOrNull { it.name == args[ENTRY_POINT_ARG] } ?: AnalyticsEntryPoint.UNKNOWN
     }
 }
 

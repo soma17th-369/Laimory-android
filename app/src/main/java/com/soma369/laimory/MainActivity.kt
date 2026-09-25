@@ -30,6 +30,7 @@ import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.settings.AppThemeMode
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
@@ -364,13 +365,13 @@ class MainActivity : ComponentActivity() {
             val (trackingState, completion) = settled ?: return@launch
             // 완료를 우리가 집었으면 로딩 화면을 건너뛰고 서버 결과의 날짜로 바로 연다.
             if (completion != null && draftTaskCoordinator.consumeCompletion(completion.taskId)) {
-                navigationHelper.navigateTo(TimelinePage(completion.recordDate))
+                navigationHelper.navigateTo(TimelinePage(completion.recordDate, AnalyticsEntryPoint.DRAFT_COMPLETE))
                 return@launch
             }
             // 내비게이션 호스트가 먼저 집었더라도 이미 끝난 작업 위에 로딩 화면을 얹지는 않는다.
             // 얹으면 완료가 사라진 뒤라 아무도 화면을 옮겨주지 않아 그대로 멈춘다.
             if (trackingState is DraftTaskTrackingState.Success) {
-                navigationHelper.navigateTo(TimelinePage(trackingState.task.recordDate))
+                navigationHelper.navigateTo(TimelinePage(trackingState.task.recordDate, AnalyticsEntryPoint.DRAFT_COMPLETE))
                 return@launch
             }
             navigationHelper.navigateTo(DraftLoadingPage)

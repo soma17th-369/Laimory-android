@@ -1,9 +1,17 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
@@ -75,6 +83,7 @@ class TimelineEventEditorViewModelTest {
     private lateinit var navigationHelper: RecordingNavigationHelper
     private val messageHelper = NoOpMessageHelper()
     private val editLogRepository = RecordingEditLogRepository()
+    private val analyticsHelper = RecordingAnalyticsHelper()
 
     @Before
     fun setUp() {
@@ -966,6 +975,137 @@ class TimelineEventEditorViewModelTest {
             assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.deletedAi)
         }
 
+    @Test
+    fun `설명을 지우고 저장하면 빈 문자열을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버는 null 을 "그대로 두세요" 로 읽는다. null 로 보내면 설명을 영영 못 지운다.
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeSubtitle("   "))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("", recordRepository.commands.single().subtitle)
+        }
+
+    @Test
+    fun `설명을 바꾸지 않으면 있던 값을 그대로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("강남역 → 성수역", recordRepository.commands.single().subtitle)
+        }
+
+    @Test
+    fun `내용을 고쳐 저장하면 바뀐 칸과 수정 뒤 시작 시각으로 수정을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            val updated = analyticsHelper.logged.single() as AnalyticsEvent.TimelineEventUpdated
+            assertEquals(
+                AnalyticsTimelineEventTarget(
+                    timelineEventId = EVENT_ID,
+                    eventType = TimelineEventType.MOVEMENT,
+                    photoCount = 2,
+                    recordState = AnalyticsTimelineState.DRAFT,
+                    recordDate = LocalDate.of(2026, 5, 8),
+                ),
+                updated.target,
+            )
+            assertEquals(LocalDateTime.of(2026, 5, 8, 8, 30), updated.eventStartAt)
+            assertEquals(AnalyticsUpdateScope.CONTENT, updated.updateScope)
+            assertEquals(1, updated.changedFieldCount)
+        }
+
+    @Test
+    fun `메모만 고쳐 저장하면 수정 대신 메모 저장을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo("친구랑 걸었다"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            val saved = analyticsHelper.logged.single() as AnalyticsEvent.TimelineMemoSaved
+            assertEquals(EVENT_ID, saved.target.timelineEventId)
+            assertEquals(7, saved.memoLength)
+        }
+
+    @Test
+    fun `메모와 내용을 함께 고치면 수정 한 건에 묶는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo("친구랑 걸었다"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            val updated = analyticsHelper.logged.single() as AnalyticsEvent.TimelineEventUpdated
+            assertEquals(AnalyticsUpdateScope.COMBINED, updated.updateScope)
+            assertEquals(2, updated.changedFieldCount)
+        }
+
+    @Test
+    fun `앞뒤 공백만 바꾼 저장은 보내지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("출근길 "))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertTrue(analyticsHelper.logged.isEmpty())
+        }
+
+    @Test
+    fun `사진을 빼면 사진 수정 한 건을 바로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            advanceUntilIdle()
+
+            val updated = analyticsHelper.logged.single() as AnalyticsEvent.TimelineEventUpdated
+            assertEquals(setOf(AnalyticsEventField.PHOTO), updated.changedFields)
+            assertEquals(AnalyticsUpdateScope.PHOTO, updated.updateScope)
+        }
+
+    @Test
+    fun `사건을 지우면 지우기 전 사건 정보로 삭제를 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(status = DailyRecordStatus.SAVED))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.TimelineEventDeleted(
+                        AnalyticsTimelineEventTarget(
+                            timelineEventId = EVENT_ID,
+                            eventType = TimelineEventType.MOVEMENT,
+                            photoCount = 2,
+                            recordState = AnalyticsTimelineState.SAVED,
+                            recordDate = LocalDate.of(2026, 5, 8),
+                        ),
+                    ),
+                ),
+                analyticsHelper.logged,
+            )
+        }
+
     private fun TestScope.initializedViewModel(): TimelineEventEditorViewModel =
         createViewModel().also {
             it.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
@@ -1005,6 +1145,7 @@ class TimelineEventEditorViewModelTest {
                     messageHelper = messageHelper,
                 ),
             recordTimelineEditUseCase = RecordTimelineEditUseCase(editLogRepository),
+            analyticsHelper = analyticsHelper,
             navigationHelper = navigationHelper,
             clock = Clock.fixed(Instant.parse("2026-05-08T13:45:00Z"), ZoneOffset.UTC),
         )
@@ -1232,5 +1373,24 @@ class TimelineEventEditorViewModelTest {
     private companion object {
         const val EVENT_ID = 17L
         val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
+    }
+
+    private class RecordingAnalyticsHelper : AnalyticsHelper {
+        val logged = mutableListOf<AnalyticsEvent>()
+
+        override suspend fun log(event: AnalyticsEvent) {
+            logged += event
+        }
+
+        override suspend fun logOnce(
+            key: AnalyticsDedupeKey,
+            event: AnalyticsEvent,
+        ) = Unit
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
+
+        override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 }

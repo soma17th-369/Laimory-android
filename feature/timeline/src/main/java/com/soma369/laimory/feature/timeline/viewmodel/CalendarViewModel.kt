@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -179,7 +180,7 @@ class CalendarViewModel
             updateState { copy(selectedDate = date) }
             // 기록이 없는 날짜는 선택 테두리만 갱신하고 네트워크·이동을 일으키지 않는다.
             if (content.recordsByDate[date] != null) {
-                navigationHelper.navigateTo(TimelinePage(date))
+                navigationHelper.navigateTo(TimelinePage(date, AnalyticsEntryPoint.CALENDAR))
             }
         }
     }

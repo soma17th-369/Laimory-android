@@ -15,6 +15,21 @@ object AnalyticsDedupeKeys {
 
     fun timelineCreateResult(taskId: String): AnalyticsDedupeKey = AnalyticsDedupeKey("timeline_create_result:$taskId")
 
+    /** 설치 단위다. 탈퇴하면 지워, 같은 기기에서 다시 가입하면 한 번 더 나간다. */
+    val SIGN_UP = AnalyticsDedupeKey("sign_up")
+
+    /** 온보딩 회차 단위다. 계정이 바뀌면 진행 상태와 함께 회차도 새로 시작한다. */
+    fun onboardingStepViewed(
+        flowId: String,
+        step: AnalyticsOnboardingStep,
+    ): AnalyticsDedupeKey = AnalyticsDedupeKey("onboarding_step_viewed:$flowId:${step.name}")
+
+    /** 장마다 처음 고른 행동만 남긴다. */
+    fun onboardingStepAction(
+        flowId: String,
+        step: AnalyticsOnboardingStep,
+    ): AnalyticsDedupeKey = AnalyticsDedupeKey("onboarding_step_action:$flowId:${step.name}")
+
     /**
      * 완료 판정 키. 회원 구분은 **뒤에** 붙인다 — 지울 때는 회원을 모를 수 있어서, 날짜만으로 만든
      * 뿌리 키 하나로 그 날짜의 모든 회원 판정을 함께 지울 수 있어야 한다([timelineCompletedRoot]).
