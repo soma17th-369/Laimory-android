@@ -3,7 +3,6 @@ package com.soma369.laimory.feature.home.viewmodel
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
-import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
@@ -56,7 +55,6 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
-import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Page
@@ -79,14 +77,13 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
-import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
-import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.HomeRangeLock
 import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
@@ -130,7 +127,6 @@ class HomeViewModelTest {
     private val photoSource = FakePhotoSource()
     private val sessionStore = DraftConsentSessionStore()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
-    private val userProfileCoordinator = FakeUserProfileCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val loadingSessionStore = DraftLoadingSessionStore()
     private val dialogHelper = RecordingDialogHelper()
@@ -321,7 +317,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
+            viewModel.openTimeSheet(HomeTimeField.END)
             viewModel.sendIntent(HomeUiIntent.CreateDraft)
             runCurrent()
 
@@ -465,7 +461,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(saved))
+            viewModel.selectDate(saved)
             runCurrent()
 
             assertEquals(saved, viewModel.state.value.selectedDate)
@@ -481,7 +477,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(retentionDays.toLong())))
+            viewModel.selectDate(today.minusDays(retentionDays.toLong()))
             runCurrent()
 
             assertEquals(today, viewModel.state.value.selectedDate)
@@ -543,7 +539,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
             // 기본 날짜와 같은 날을 다시 골라도 사용자가 지정한 범위다.
-            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(1)))
+            viewModel.selectDate(today.minusDays(1))
             runCurrent()
 
             clock.set(today.atTime(6, 0))
@@ -602,7 +598,7 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.RefreshToday)
             runCurrent()
             assertEquals(today.minusDays(1), viewModel.state.value.selectedDate)
-            assertTrue(viewModel.state.value.isDatePickerVisible)
+            assertTrue(viewModel.state.value.datePicker != null)
 
             viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
             viewModel.sendIntent(HomeUiIntent.RefreshToday)
@@ -624,7 +620,7 @@ class HomeViewModelTest {
 
             val gate = CompletableDeferred<List<PhotoCandidate>>()
             photoSource.candidateGates.add(gate)
-            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(1)))
+            viewModel.selectDate(today.minusDays(1))
             runCurrent()
             // 새 창의 후보를 받기 전이다.
             assertFalse(viewModel.state.value.hasLoadedPhotoCandidates)
@@ -941,7 +937,7 @@ class HomeViewModelTest {
             val gate = CompletableDeferred<Unit>()
             recordRepository.dailyRecordGate = gate
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(draft))
+            viewModel.selectDate(draft)
             runCurrent()
             assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
 
@@ -1002,7 +998,7 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
             runCurrent()
 
-            assertTrue(viewModel.state.value.isDatePickerVisible)
+            assertTrue(viewModel.state.value.datePicker != null)
             assertTrue(navigationHelper.destinations.isEmpty())
         }
 
@@ -1017,7 +1013,7 @@ class HomeViewModelTest {
             draftTaskCoordinator.emitSuccess(draftDate)
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(otherDate))
+            viewModel.selectDate(otherDate)
             runCurrent()
 
             assertEquals(otherDate, viewModel.state.value.selectedDate)
@@ -1064,7 +1060,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(selectedDate))
+            viewModel.selectDate(selectedDate)
             runCurrent()
             draftTaskCoordinator.emitProcessing(activeDate)
             runCurrent()
@@ -1073,26 +1069,83 @@ class HomeViewModelTest {
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
         }
 
+    // --- 날짜 피커 세션 · 기록 범위 ---
+
     @Test
-    fun `시각 시트는 확인 전까지 기록 범위를 바꾸지 않는다`() =
+    fun `시트 확인은 피커 세션만 바꾸고 피커 확인에서 범위가 확정된다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
-            viewModel.sendIntent(
-                HomeUiIntent.ChangeSheetTime(HomeTimeField.START, LocalDate.now(ZoneId.systemDefault()), LocalTime.of(9, 0)),
-            )
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
             runCurrent()
-
             assertEquals(LocalTime.of(9, 0), viewModel.state.value.timeSheet?.startTime)
-            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
 
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             runCurrent()
-
-            assertEquals(LocalTime.of(9, 0), viewModel.state.value.startTime)
+            // 시트는 닫히고 세션만 바뀐다. 홈 범위는 아직 그대로다.
             assertNull(viewModel.state.value.timeSheet)
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.datePicker?.startTime)
+            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            assertNull(viewModel.state.value.datePicker)
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.startTime)
+        }
+
+    @Test
+    fun `시트에서 확인한 뒤 피커를 취소하면 날짜와 범위가 모두 그대로이고 기록 창도 다시 읽지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+            val before = viewModel.state.value.selectedDate
+            assertTrue(viewModel.state.value.hasLoadedPhotoCandidates)
+
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.datePicker)
+            assertNull(state.timeSheet)
+            assertEquals(before, state.selectedDate)
+            assertEquals(LocalTime.MIDNIGHT, state.startTime)
+            // 기록 창이 바뀌지 않았으니 사진 후보를 다시 받으러 가지 않는다.
+            assertTrue(state.hasLoadedPhotoCandidates)
+        }
+
+    @Test
+    fun `날짜와 범위를 함께 바꾸면 한 번에 확정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(today.minusDays(2), state.selectedDate)
+            assertEquals(LocalTime.of(6, 0), state.startTime)
         }
 
     @Test
@@ -1100,16 +1153,18 @@ class HomeViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             // 범위를 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길 때마다 자정으로 되돌아가면,
             // 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+            recordRepository.missingRecordIsUnavailable = true
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.openTimeSheet(HomeTimeField.START)
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(6, 0)))
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(2)))
+            viewModel.selectDate(today.minusDays(2))
             runCurrent()
 
             val state = viewModel.state.value
@@ -1120,41 +1175,63 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `시트를 닫으면 고르던 값을 버린다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
-            runCurrent()
-
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
-            viewModel.sendIntent(
-                HomeUiIntent.ChangeSheetTime(HomeTimeField.START, LocalDate.now(ZoneId.systemDefault()), LocalTime.of(9, 0)),
-            )
-            viewModel.sendIntent(HomeUiIntent.DismissTimePicker)
-            runCurrent()
-
-            assertNull(viewModel.state.value.timeSheet)
-            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
-        }
-
-    @Test
-    fun `종료 날짜 롤러가 당일과 익일을 겸한다`() =
+    fun `시트를 닫으면 고르던 값만 버리고 피커 세션은 남는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(1)))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
+            viewModel.sendIntent(HomeUiIntent.DismissTimePicker)
+            runCurrent()
+
+            val session = viewModel.state.value.datePicker
+            assertNull(viewModel.state.value.timeSheet)
+            // 뒤로가기 한 번이 피커까지 닫으면 고른 날짜가 함께 사라진다.
+            assertNotNull(session)
+            assertEquals(today.minusDays(1), session?.date)
+            assertEquals(LocalTime.MIDNIGHT, session?.startTime)
+            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
+        }
+
+    @Test
+    fun `피커를 취소하면 열린 시트까지 함께 닫는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.openTimeSheet(HomeTimeField.END)
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+
+            assertNull(viewModel.state.value.datePicker)
+            assertNull(viewModel.state.value.timeSheet)
+        }
+
+    @Test
+    fun `종료 날짜 롤러가 당일과 익일을 겸한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.openTimeSheet(HomeTimeField.END)
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today, LocalTime.of(23, 0)))
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
 
             assertEquals(DraftEndDay.SAME_DAY, viewModel.state.value.endDay)
             assertEquals(LocalTime.of(23, 0), viewModel.state.value.endTime)
             assertNotNull(viewModel.state.value.recordDateWindow(ZoneId.systemDefault()))
 
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
+            viewModel.openTimeSheet(HomeTimeField.END)
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(2, 0)))
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
 
             assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
@@ -1168,7 +1245,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.openTimeSheet(HomeTimeField.START)
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(23, 55)))
             runCurrent()
 
@@ -1182,88 +1259,254 @@ class HomeViewModelTest {
     @Test
     fun `6시간을 못 채우는 조합은 확인해도 반영되지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
             runCurrent()
             viewModel.selectStartTime(LocalTime.of(9, 0))
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.END))
+            viewModel.openTimeSheet(HomeTimeField.END)
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today, LocalTime.of(14, 0)))
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             runCurrent()
 
-            // 확인이 막히므로 시트는 열린 채 남고 기록 범위도 그대로다.
+            // 확인이 막히므로 시트는 열린 채 남고 세션·기록 범위도 그대로다.
+            assertEquals(false, viewModel.state.value.timeSheet?.isConfirmEnabled)
+            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.datePicker?.endTime)
             assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
             assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.endTime)
-            assertEquals(false, viewModel.state.value.timeSheet?.isConfirmEnabled)
         }
 
-    /** 시각 시트를 열어 시작 시각만 바꾸고 확정하는 흐름. */
-    private fun HomeViewModel.selectStartTime(time: LocalTime) {
-        sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
-        sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, LocalDate.now(ZoneId.systemDefault()), time))
-        sendIntent(HomeUiIntent.ConfirmTimeSheet)
+    @Test
+    fun `저장된 날과 내용 있는 초안 날은 범위가 잠기고 시트가 열리지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val saved = today.minusDays(1)
+            val draft = today.minusDays(2)
+            recordRepository.dailyRecordByDate =
+                mapOf(
+                    saved to pastTimeline(dailyRecordId = 1L, date = saved).copy(status = DailyRecordStatus.SAVED),
+                    draft to pastTimeline(dailyRecordId = 2L, date = draft),
+                )
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+
+            for (date in listOf(saved, draft)) {
+                viewModel.sendIntent(HomeUiIntent.PickDate(date))
+                runCurrent()
+                assertEquals(HomeRangeLock.LOCKED, viewModel.state.value.datePicker?.rangeLock)
+
+                viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+                runCurrent()
+                assertNull(viewModel.state.value.timeSheet)
+            }
+        }
+
+    @Test
+    fun `생성에 실패해 남은 빈 초안 날은 범위를 바꿀 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 월별 도트로는 초안이지만 이벤트가 없다. 확정 후 CTA 도 만들기라 범위도 열어 둔다.
+            val empty = LocalDate.now(ZoneId.systemDefault()).minusDays(1)
+            recordRepository.dailyRecordByDate =
+                mapOf(empty to pastTimeline(dailyRecordId = 1L, date = empty, events = emptyList()))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(empty))
+            runCurrent()
+
+            assertEquals(HomeRangeLock.EDITABLE, viewModel.state.value.datePicker?.rangeLock)
+        }
+
+    @Test
+    fun `범위를 바꾸고 판정 중에 확인한 날이 저장된 날로 판정되면 날짜만 옮기고 범위는 버린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 범위는 서버로 가는 요청이 없어 잘못 확정하면 뒤에서 막아 줄 곳이 없다.
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val saved = today.minusDays(3)
+            recordRepository.dailyRecordByDate =
+                mapOf(saved to pastTimeline(dailyRecordId = 1L, date = saved).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+            val before = viewModel.state.value.selectedDate
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.dailyRecordGate = gate
+            viewModel.sendIntent(HomeUiIntent.PickDate(saved))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+            // 판정 전이라 확정을 미룬다.
+            assertEquals(true, viewModel.state.value.datePicker?.isConfirmPending)
+            assertEquals(before, viewModel.state.value.selectedDate)
+
+            gate.complete(Unit)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.datePicker)
+            assertEquals(saved, state.selectedDate)
+            assertEquals(LocalTime.MIDNIGHT, state.startTime)
+            assertEquals(HomeUiSideEffect.ShowSnackbar("이미 만든 날은 범위를 바꿀 수 없어요"), effect.await())
+        }
+
+    @Test
+    fun `범위를 바꾸고 판정 중에 확인한 날이 기록 없는 날로 판정되면 둘 다 확정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.dailyRecordGate = gate
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(3)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+            assertEquals(true, viewModel.state.value.datePicker?.isConfirmPending)
+
+            gate.complete(Unit)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.datePicker)
+            assertEquals(today.minusDays(3), state.selectedDate)
+            assertEquals(LocalTime.of(6, 0), state.startTime)
+        }
+
+    @Test
+    fun `판정 조회가 실패하면 날짜만 옮기고 바꾼 범위는 버린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val target = today.minusDays(3)
+            val viewModel = createViewModel()
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            recordRepository.failingDates = setOf(target)
+            viewModel.sendIntent(HomeUiIntent.PickDate(target))
+            runCurrent()
+            assertEquals(HomeRangeLock.FAILED, viewModel.state.value.datePicker?.rangeLock)
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.datePicker)
+            assertEquals(target, state.selectedDate)
+            assertEquals(LocalTime.MIDNIGHT, state.startTime)
+            assertEquals(HomeUiSideEffect.ShowSnackbar("기록 상태를 확인하지 못해 범위는 바꾸지 않았어요"), effect.await())
+        }
+
+    @Test
+    fun `확정을 미루는 중에 취소하면 늦게 온 판정은 아무것도 바꾸지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            val before = viewModel.state.value.selectedDate
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.dailyRecordGate = gate
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(3)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            gate.complete(Unit)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.datePicker)
+            assertEquals(before, state.selectedDate)
+            assertEquals(LocalTime.MIDNIGHT, state.startTime)
+        }
+
+    @Test
+    fun `날짜를 다시 고르면 앞선 날의 판정은 버린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.missingRecordIsUnavailable = true
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val saved = today.minusDays(1)
+            recordRepository.dailyRecordByDate =
+                mapOf(saved to pastTimeline(dailyRecordId = 1L, date = saved).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.dailyRecordGate = gate
+
+            viewModel.sendIntent(HomeUiIntent.PickDate(saved))
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(HomeRangeLock.EDITABLE, viewModel.state.value.datePicker?.rangeLock)
+        }
+
+    @Test
+    fun `범위를 건드리지 않았으면 판정을 기다리지 않고 바로 확정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val target = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
+            val viewModel = createViewModel()
+            runCurrent()
+            recordRepository.dailyRecordGate = CompletableDeferred()
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(target))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            assertNull(viewModel.state.value.datePicker)
+            assertEquals(target, viewModel.state.value.selectedDate)
+        }
+
+    /** 피커로 날짜만 고르고 확정한다. 범위를 건드리지 않아 판정을 기다리지 않는다. */
+    private fun HomeViewModel.selectDate(date: LocalDate) {
+        sendIntent(HomeUiIntent.ShowDatePicker)
+        sendIntent(HomeUiIntent.PickDate(date))
+        sendIntent(HomeUiIntent.ConfirmDatePicker)
     }
 
-    @Test
-    fun `닉네임을 받으면 인사말 상태에 반영한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
-            runCurrent()
+    /** 헤더 범위 칩이 없어졌으므로 시트는 날짜 피커의 범위 칩에서만 열린다. */
+    private fun HomeViewModel.openTimeSheet(field: HomeTimeField) {
+        sendIntent(HomeUiIntent.ShowDatePicker)
+        sendIntent(HomeUiIntent.ShowTimePicker(field))
+    }
 
-            userProfileCoordinator.emit(UserProfile.of("김소마"))
-            runCurrent()
-
-            assertEquals("김소마", viewModel.state.value.nickname)
-        }
-
-    @Test
-    fun `닉네임이 없어도 홈은 그대로 열린다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
-            runCurrent()
-
-            userProfileCoordinator.emit(UserProfile.of(null))
-            runCurrent()
-
-            // 조회 실패·미조회와 같은 상태로 두고 화면이 fallback 문구를 쓴다.
-            assertNull(viewModel.state.value.nickname)
-        }
-
-    @Test
-    fun `계정이 바뀌어 공용 프로필이 비면 인사말도 이름을 뗀다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
-            runCurrent()
-            userProfileCoordinator.emit(UserProfile.of("김소마"))
-            runCurrent()
-
-            userProfileCoordinator.emit(null)
-            runCurrent()
-
-            assertNull(viewModel.state.value.nickname)
-        }
-
-    @Test
-    fun `홈이 뜰 때마다 아직 못 받은 프로필을 다시 요청한다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createViewModel()
-            runCurrent()
-            // ViewModel 이 Activity 수명이라 재진입해도 같은 인스턴스다. init 에서만 부르면 첫 조회가
-            // 실패한 세션 내내 닉네임이 fallback 으로 남는다.
-            assertEquals(0, userProfileCoordinator.refreshCount)
-
-            viewModel.sendIntent(HomeUiIntent.RefreshProfile)
-            runCurrent()
-            assertEquals(1, userProfileCoordinator.refreshCount)
-
-            viewModel.sendIntent(HomeUiIntent.RefreshProfile)
-            runCurrent()
-
-            // 성공 뒤의 중복 요청은 coordinator 의 세션 캐시·single-flight 가 막는다.
-            assertEquals(2, userProfileCoordinator.refreshCount)
-        }
+    /**
+     * 시각 시트를 열어 시작 시각만 바꾸고 피커까지 확정하는 흐름.
+     *
+     * 바꾼 범위는 판정이 편집 가능일 때만 반영되므로, 준비하지 않은 날짜를 기록 없음으로 답하게 둔다.
+     */
+    private fun HomeViewModel.selectStartTime(time: LocalTime) {
+        recordRepository.missingRecordIsUnavailable = true
+        openTimeSheet(HomeTimeField.START)
+        sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, LocalDate.now(ZoneId.systemDefault()), time))
+        sendIntent(HomeUiIntent.ConfirmTimeSheet)
+        sendIntent(HomeUiIntent.ConfirmDatePicker)
+    }
 
     // --- 자동 수집 연동 ---
 
@@ -1275,7 +1518,7 @@ class HomeViewModelTest {
             val before = autoCollectionCoordinator.refreshCount
 
             // 고정 날짜를 쓰면 시간이 지나 보존 기간 밖으로 밀려나 선택 자체가 막힌다.
-            viewModel.sendIntent(HomeUiIntent.SelectDate(LocalDate.now(ZoneId.systemDefault()).minusDays(2)))
+            viewModel.selectDate(LocalDate.now(ZoneId.systemDefault()).minusDays(2))
             runCurrent()
 
             assertTrue(autoCollectionCoordinator.refreshCount > before)
@@ -1377,8 +1620,6 @@ class HomeViewModelTest {
             prepareSelectedPhotosUseCase = PrepareSelectedPhotosUseCase(photoSource),
             draftConsentSessionStore = sessionStore,
             draftTaskCoordinator = draftTaskCoordinator,
-            observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
-            refreshUserProfileUseCase = RefreshUserProfileUseCase(userProfileCoordinator),
             navigationHelper = navigationHelper,
             globalLoadingHelper = NoOpGlobalLoadingHelper,
             autoCollectionCoordinator = autoCollectionCoordinator,
@@ -1832,7 +2073,7 @@ class HomeViewModelTest {
             runCurrent()
             assertTrue(viewModel.state.value.isSubmitting)
 
-            viewModel.sendIntent(HomeUiIntent.SelectDate(today.minusDays(1)))
+            viewModel.selectDate(today.minusDays(1))
             viewModel.sendIntent(HomeUiIntent.OpenPhotoSheet)
             runCurrent()
 
@@ -2011,10 +2252,19 @@ class HomeViewModelTest {
         /** 값을 넣으면 그때까지 단건 조회가 응답하지 않는다. 조회를 기다리는 구간을 재현한다. */
         var dailyRecordGate: CompletableDeferred<Unit>? = null
 
+        /** 참이면 준비하지 않은 날짜를 서버의 `-404`(기록 없음)로 답한다. 거짓이면 실패로 던진다. */
+        var missingRecordIsUnavailable = false
+
+        /** 여기 넣은 날짜는 조회가 실패한다. */
+        var failingDates: Set<LocalDate> = emptySet()
+
         override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline {
             dailyRecordCallCount++
             dailyRecordGate?.await()
-            return dailyRecordByDate[recordDate] ?: error("준비하지 않은 날짜: $recordDate")
+            if (recordDate in failingDates) throw ApiException.NetworkException()
+            dailyRecordByDate[recordDate]?.let { return it }
+            if (missingRecordIsUnavailable) throw ApiException.ClientException(errorCode = -404)
+            error("준비하지 않은 날짜: $recordDate")
         }
 
         override suspend fun createEvent(command: CreateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
@@ -2056,24 +2306,6 @@ class HomeViewModelTest {
 
     private data object NoOpMessageHelper : MessageHelper {
         override fun send(message: UserMessage) = Unit
-    }
-
-    /** 공용 프로필 상태를 시험에서 직접 밀어 넣는 대역. */
-    private class FakeUserProfileCoordinator : UserProfileCoordinator {
-        private val mutableProfile = MutableStateFlow<UserProfile?>(null)
-
-        var refreshCount = 0
-            private set
-
-        override val profile: StateFlow<UserProfile?> = mutableProfile
-
-        override fun refresh() {
-            refreshCount++
-        }
-
-        fun emit(profile: UserProfile?) {
-            mutableProfile.value = profile
-        }
     }
 
     private class FakeDraftTaskCoordinator : DraftTaskCoordinator {

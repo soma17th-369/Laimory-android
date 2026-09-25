@@ -50,8 +50,6 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
-import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
-import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -63,8 +61,10 @@ import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
+import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
+import com.soma369.laimory.feature.home.state.HomeRangeLock
 import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeSourcePermissions
@@ -110,8 +110,6 @@ class HomeViewModel
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftConsentSessionStore: DraftConsentSessionStore,
         private val draftTaskCoordinator: DraftTaskCoordinator,
-        private val observeUserProfileUseCase: ObserveUserProfileUseCase,
-        private val refreshUserProfileUseCase: RefreshUserProfileUseCase,
         private val navigationHelper: NavigationHelper,
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
@@ -160,10 +158,12 @@ class HomeViewModel
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
         private var recordStateJob: Job? = null
 
+        /** 날짜 피커에서 임시로 고른 날의 범위 잠금 판정. 날짜를 다시 고르면 이전 판정을 끊는다. */
+        private var rangeLockJob: Job? = null
+
         init {
             observeSummary()
             observeDraftTask()
-            observeUserProfile()
             observeAccountSession()
             observeSubmissionExclusions()
             observeSelectionLock()
@@ -210,26 +210,8 @@ class HomeViewModel
                 }
             }
 
-        /**
-         * 공용 회원 정보를 인사말에 반영한다.
-         *
-         * 조회 자체는 coordinator 가 세션당 한 번만 하므로 여기서 서버를 부르지 않는다.
-         * 재시도는 [HomeUiIntent.RefreshProfile] 이 맡는다.
-         */
-        private fun observeUserProfile() {
-            safeLaunch {
-                observeUserProfileUseCase().collect { profile ->
-                    updateState { copy(nickname = profile?.nickname) }
-                }
-            }
-        }
-
         override suspend fun handleIntent(intent: HomeUiIntent) {
             when (intent) {
-                // 화면이 뜰 때마다 부른다. ViewModel 이 Activity 수명이라 init 에서 한 번만 부르면
-                // 첫 조회가 실패한 세션 내내 닉네임이 fallback 으로 남는다. 성공한 뒤의 중복 요청은
-                // coordinator 의 세션 캐시·single-flight 가 막는다.
-                HomeUiIntent.RefreshProfile -> refreshUserProfileUseCase()
                 HomeUiIntent.RefreshToday -> refreshToday()
                 // 버튼만 숨기지 않고 호출 경계에서도 막는다 — release 에는 라우트 자체가 없다.
                 HomeUiIntent.NavigateToCollection ->
@@ -247,10 +229,11 @@ class HomeViewModel
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
                 HomeUiIntent.ShowDatePicker -> showDatePicker()
-                HomeUiIntent.DismissDatePicker -> updateState { copy(isDatePickerVisible = false) }
+                HomeUiIntent.DismissDatePicker -> dismissDatePicker()
+                is HomeUiIntent.PickDate -> pickDate(intent.date)
+                HomeUiIntent.ConfirmDatePicker -> confirmDatePicker()
                 is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
                 HomeUiIntent.RefreshRecordState -> refreshSelectedRecord()
-                is HomeUiIntent.SelectDate -> selectDate(intent.date)
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
                 is HomeUiIntent.ExpandTimeField ->
                     updateState { copy(timeSheet = timeSheet?.copy(expandedField = intent.field)) }
@@ -447,8 +430,140 @@ class HomeViewModel
          * 표시하던 날짜는 지우지 않는다(다시 받는 사이 비었다 차면 격자가 깜빡인다).
          */
         private fun showDatePicker() {
+            if (state.value.isDateLocked) return
             loadedRecordMonths.clear()
-            updateState { copy(isDatePickerVisible = true) }
+            val current = state.value
+            updateState {
+                copy(
+                    datePicker =
+                        HomeDatePickerSession(
+                            date = selectedDate,
+                            startTime = startTime,
+                            endDay = endDay,
+                            endTime = endTime,
+                            rangeLock = HomeRangeLock.CHECKING,
+                        ),
+                )
+            }
+            // 확정된 날짜도 판정을 새로 받는다. 받아 둔 판정은 앱을 켠 직후엔 아직 없을 수 있다.
+            judgeRangeLock(current.selectedDate)
+        }
+
+        /** 피커를 닫는다. 세션 전체를 버리므로 아무것도 확정되지 않고 기록 창도 그대로다. */
+        private fun dismissDatePicker() {
+            rangeLockJob?.cancel()
+            updateState { copy(datePicker = null, timeSheet = null) }
+        }
+
+        private fun pickDate(date: LocalDate) {
+            val session = state.value.datePicker ?: return
+            if (session.isConfirmPending) return
+            if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
+            if (date == session.date) return
+            updateState { copy(datePicker = session.copy(date = date, rangeLock = HomeRangeLock.CHECKING)) }
+            judgeRangeLock(date)
+        }
+
+        /**
+         * 임시 날짜의 범위 잠금을 판정한다. 확정 후 CTA 와 같은 단건 조회를 쓴다.
+         *
+         * 응답이 오기 전에 날짜를 다시 고르거나 피커를 닫으면 이 판정은 버린다.
+         */
+        private fun judgeRangeLock(date: LocalDate) {
+            rangeLockJob?.cancel()
+            rangeLockJob =
+                safeLaunch(
+                    onError = { error -> if (error !is CancellationException) applyRangeLock(date, HomeRangeLock.FAILED) },
+                ) {
+                    val lock = if (recordStateOf(date).isViewable) HomeRangeLock.LOCKED else HomeRangeLock.EDITABLE
+                    applyRangeLock(date, lock)
+                }
+        }
+
+        private fun applyRangeLock(
+            date: LocalDate,
+            lock: HomeRangeLock,
+        ) {
+            val session = state.value.datePicker ?: return
+            if (session.date != date) return
+            updateState { copy(datePicker = session.copy(rangeLock = lock)) }
+            // 판정을 기다리며 미뤄 둔 확인이 있으면 이제 적용한다.
+            if (session.isConfirmPending) confirmDatePicker()
+        }
+
+        /**
+         * 피커의 확인. 날짜와 범위를 한 번에 확정한다.
+         *
+         * 범위는 서버로 가는 요청이 없어 잘못 확정해도 뒤에서 막아 줄 곳이 없다. 그래서 **바뀐 범위는 판정이
+         * [HomeRangeLock.EDITABLE] 일 때만** 반영한다 — 판정 중이면 끝날 때까지 미루고, 잠겼거나 조회에
+         * 실패하면 날짜만 확정한다. 범위를 건드리지 않았으면 판정을 기다리지 않는다.
+         */
+        private fun confirmDatePicker() {
+            val current = state.value
+            val session = current.datePicker ?: return
+            // 피커를 연 뒤 생성이 시작됐으면 날짜를 옮기지 않는다. 확인이 아무 일도 안 하면 닫히지 않은
+            // 다이얼로그만 남으므로 세션을 버린다.
+            if (current.isDateLocked) return dismissDatePicker()
+            val isRangeChanged = !session.hasRangeOf(current.startTime, current.endDay, current.endTime)
+            if (!isRangeChanged) {
+                commitDatePicker(session, applyRange = false)
+                return
+            }
+            when (session.rangeLock) {
+                HomeRangeLock.CHECKING ->
+                    updateState { copy(datePicker = session.copy(isConfirmPending = true), timeSheet = null) }
+                HomeRangeLock.EDITABLE -> commitDatePicker(session, applyRange = true)
+                HomeRangeLock.LOCKED -> {
+                    commitDatePicker(session, applyRange = false)
+                    sendEffect(HomeUiSideEffect.ShowSnackbar(RANGE_LOCKED_MESSAGE))
+                }
+                HomeRangeLock.FAILED -> {
+                    commitDatePicker(session, applyRange = false)
+                    sendEffect(HomeUiSideEffect.ShowSnackbar(RANGE_UNCHECKED_MESSAGE))
+                }
+            }
+        }
+
+        /**
+         * 세션을 홈 상태로 옮기고 피커를 닫는다.
+         *
+         * 날짜와 범위를 **한 번의 상태 갱신**으로 옮긴다. 따로 옮기면 그 사이 한 번은 새 날짜 + 옛 범위의 창으로
+         * 카드를 센다. 기록 창이 바뀐 경우에만 창 갱신을 한 번 부른다.
+         */
+        private fun commitDatePicker(
+            session: HomeDatePickerSession,
+            applyRange: Boolean,
+        ) {
+            rangeLockJob?.cancel()
+            // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
+            // 지금 날짜를 그대로 다시 골라도 마찬가지다.
+            dateSource = DateSource.USER
+            // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
+            startAutoCollectionAhead()
+            val isDateChanged = session.date != state.value.selectedDate
+            val isRangeChanged =
+                applyRange && !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
+            updateState {
+                val closed = copy(datePicker = null, timeSheet = null)
+                if (!isDateChanged && !isRangeChanged) return@updateState closed
+                // 시간 범위는 날짜를 옮겨도 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
+                // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                val next =
+                    closed.copy(
+                        selectedDate = session.date,
+                        startTime = if (isRangeChanged) session.startTime else startTime,
+                        endDay = if (isRangeChanged) session.endDay else endDay,
+                        endTime = if (isRangeChanged) session.endTime else endTime,
+                        draftStatus = DraftCreationStatus.IDLE,
+                        draftRetryMode = null,
+                        draftMessage = null,
+                        selectedRecord = if (isDateChanged) cachedRecordState(session.date) else selectedRecord,
+                    ).withSourceSummary(sourceItems, photoCandidates)
+                if (isDateChanged) next.withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value) else next
+            }
+            if (!isDateChanged && !isRangeChanged) return
+            onRecordWindowChanged()
+            if (isDateChanged) refreshSelectedRecord()
         }
 
         /**
@@ -582,20 +697,6 @@ class HomeViewModel
             )
         }
 
-        private fun selectDate(date: LocalDate) {
-            if (state.value.isDateLocked) return
-            // 피커가 막는 날짜를 경계에서 한 번 더 막는다 — 보존 기간 밖은 기기의 재료가 이미 지워졌다.
-            // 저장된 날짜는 막지 않는다. 고르면 CTA 가 `타임라인 확인하기` 로 그 기록을 연다.
-            if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
-            // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
-            // 지금 날짜를 그대로 다시 골라도 마찬가지다.
-            dateSource = DateSource.USER
-            // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
-            startAutoCollectionAhead()
-            updateState { copy(isDatePickerVisible = false) }
-            moveToDate(date)
-        }
-
         private fun moveToDate(date: LocalDate) {
             updateState {
                 if (date == selectedDate) return@updateState this
@@ -643,7 +744,7 @@ class HomeViewModel
                     !current.isDateLocked &&
                     !current.isPhotoSheetVisible &&
                     current.timeSheet == null &&
-                    !current.isDatePickerVisible
+                    current.datePicker == null
             when {
                 canMove && current.selectedDate != defaultDate -> moveToDate(defaultDate)
                 // 같은 날짜라도 시간대가 바뀌면 기록 창의 시각이 달라진다.
@@ -651,16 +752,18 @@ class HomeViewModel
             }
         }
 
+        /** 날짜 피커 세션의 범위로 시트를 연다. 임시로 고른 날짜를 기준으로 당일·익일을 센다. */
         private fun showTimeSheet(field: HomeTimeField) {
-            if (state.value.isInputLocked) return
+            val session = state.value.datePicker ?: return
+            if (!session.isRangeEditable) return
             updateState {
                 copy(
                     timeSheet =
                         HomeTimeSheetState(
-                            recordDate = selectedDate,
-                            startTime = startTime,
-                            endDay = endDay,
-                            endTime = endTime,
+                            recordDate = session.date,
+                            startTime = session.startTime,
+                            endDay = session.endDay,
+                            endTime = session.endTime,
                             expandedField = field,
                         ),
                 )
@@ -689,23 +792,27 @@ class HomeViewModel
             }
         }
 
+        /**
+         * 시트의 확인. **피커 세션의 범위만** 바꾼다.
+         *
+         * 여기서 홈 범위를 바꾸면 피커를 취소해도 범위가 남는다. 확정과 기록 창 갱신은 피커의 확인이 한다.
+         */
         private fun confirmTimeSheet() {
-            val sheet = state.value.timeSheet ?: return
-            if (state.value.isInputLocked || !sheet.isConfirmEnabled) return
+            val current = state.value
+            val sheet = current.timeSheet ?: return
+            val session = current.datePicker ?: return
+            if (!session.isRangeEditable || !sheet.isConfirmEnabled) return
             updateState {
-                val next =
-                    copy(
-                        startTime = sheet.startTime,
-                        endDay = sheet.endDay,
-                        endTime = sheet.endTime,
-                        timeSheet = null,
-                        draftStatus = DraftCreationStatus.IDLE,
-                        draftRetryMode = null,
-                        draftMessage = null,
-                    )
-                next.withSourceSummary(sourceItems, photoCandidates)
+                copy(
+                    datePicker =
+                        session.copy(
+                            startTime = sheet.startTime,
+                            endDay = sheet.endDay,
+                            endTime = sheet.endTime,
+                        ),
+                    timeSheet = null,
+                )
             }
-            onRecordWindowChanged()
         }
 
         /**
@@ -1308,5 +1415,11 @@ class HomeViewModel
              * 상한을 넘기면 기존 저장 데이터로 생성을 이어 간다 — 수집이 느리다고 생성이 막히면 안 된다.
              */
             const val AUTO_COLLECTION_TIMEOUT_MILLIS = 10_000L
+
+            /** 잠긴 날이라 피커에서 바꾼 범위를 버렸을 때. 날짜 피커의 잠금 안내와 같은 문구다. */
+            const val RANGE_LOCKED_MESSAGE = "이미 만든 날은 범위를 바꿀 수 없어요"
+
+            /** 판정 조회가 실패해 바꾼 범위를 버렸을 때. 날짜는 확정됐다. */
+            const val RANGE_UNCHECKED_MESSAGE = "기록 상태를 확인하지 못해 범위는 바꾸지 않았어요"
         }
     }

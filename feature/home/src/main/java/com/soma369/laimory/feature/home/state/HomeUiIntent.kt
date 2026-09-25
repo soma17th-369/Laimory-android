@@ -8,9 +8,6 @@ import java.time.LocalTime
 import java.time.YearMonth
 
 sealed interface HomeUiIntent : UiIntent {
-    /** 화면 진입·복귀. 아직 못 받은 닉네임을 다시 요청한다. */
-    data object RefreshProfile : HomeUiIntent
-
     /**
      * 화면 진입·복귀와 날짜가 바뀌는 시각([HomeDefaultDate.nextChangeAfter])에 오늘을 다시 계산한다.
      *
@@ -58,9 +55,25 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object ContinueWithoutPhotos : HomeUiIntent
 
+    /** 날짜 피커를 연다. 지금 확정된 날짜·범위로 세션을 만든다. */
     data object ShowDatePicker : HomeUiIntent
 
+    /** 날짜 피커를 닫는다. 열린 시간 시트까지 포함해 세션 전체를 버리고 아무것도 확정하지 않는다. */
     data object DismissDatePicker : HomeUiIntent
+
+    /** 피커 안에서 날짜를 골랐다(격자·오늘·어제 칩). 세션 날짜만 바꾸고 그 날의 범위 잠금을 판정한다. */
+    data class PickDate(
+        val date: LocalDate,
+    ) : HomeUiIntent
+
+    /**
+     * 피커의 확인. 세션의 날짜와 범위를 한 번에 확정한다.
+     *
+     * 범위를 바꿨으면 그 날의 판정이 [HomeRangeLock.EDITABLE] 로 확정될 때만 범위까지 반영한다 — 판정
+     * 중이면 끝날 때까지 미루고, 잠겼거나 조회에 실패하면 날짜만 확정한다. 범위는 서버로 가는 요청이
+     * 없어 뒤늦게 막아 줄 곳이 없다.
+     */
+    data object ConfirmDatePicker : HomeUiIntent
 
     /**
      * 날짜 피커가 보여 주는 달의 기록 상태를 받아 온다.
@@ -80,11 +93,7 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object RefreshRecordState : HomeUiIntent
 
-    data class SelectDate(
-        val date: LocalDate,
-    ) : HomeUiIntent
-
-    /** 시각 선택 시트를 열고 누른 줄을 펼친다. */
+    /** 날짜 피커의 범위 칩에서 시각 선택 시트를 열고 누른 줄을 펼친다. */
     data class ShowTimePicker(
         val field: HomeTimeField,
     ) : HomeUiIntent
@@ -105,9 +114,10 @@ sealed interface HomeUiIntent : UiIntent {
         val time: LocalTime,
     ) : HomeUiIntent
 
-    /** 시트의 확인 — 임시 값을 기록 범위로 확정한다. */
+    /** 시트의 확인 — 날짜 피커 세션의 범위만 바꾼다. 확정은 피커의 확인이 한다. */
     data object ConfirmTimeSheet : HomeUiIntent
 
+    /** 시트만 닫는다. 시트에서 바꾸던 값은 버리고 날짜 피커 세션은 그대로 둔다. */
     data object DismissTimePicker : HomeUiIntent
 
     /** 전송 스냅샷을 확정하고 데이터 전송 동의 화면으로 이동한다. 생성 API 는 동의 완료 후에만 호출된다. */
