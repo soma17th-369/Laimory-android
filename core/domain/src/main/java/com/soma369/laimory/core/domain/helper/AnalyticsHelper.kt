@@ -2,6 +2,7 @@ package com.soma369.laimory.core.domain.helper
 
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 
 /**
  * 사용자가 어떤 기능을 이용했고 전환했는지 측정하는 **제품 분석** 포트.
@@ -51,4 +52,12 @@ interface AnalyticsHelper {
      * 이벤트 속성에는 싣지 않는다 — 버킷의 사용자 구분 자리에만 건다.
      */
     fun setUserId(userId: Long?)
+
+    /**
+     * 이후 이벤트를 [attribution] 의 설치 유입으로 묶는다.
+     *
+     * 이벤트마다 UTM 을 싣지 않고 버킷의 사용자 속성 자리에 건다. 설치에 딸린 값이라 [setUserId] 와 달리
+     * 로그아웃·계정 전환에 풀지 않는다.
+     */
+    fun setInstallAttribution(attribution: InstallAttribution)
 }
