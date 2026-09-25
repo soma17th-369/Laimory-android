@@ -1,21 +1,27 @@
 package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.component.LaimoryDialog
 import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
+import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoViewerDialog
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
@@ -103,25 +110,56 @@ private fun PhotoSection(photoUris: List<String>) {
                 )
             }
         } else {
-            // 낱장을 읽어 주지 않는다 — 몇 장인지는 위 줄이 말한다.
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
-            ) {
-                items(photoUris) { uri ->
-                    AsyncImage(
-                        model = uri,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier =
-                            Modifier
-                                .size(THUMBNAIL_SIZE)
-                                .clip(RoundedCornerShape(THUMBNAIL_CORNER))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                    )
-                }
-            }
+            PhotoStrip(photoUris = photoUris)
         }
+    }
+}
+
+/**
+ * 고른 사진 한 줄. 누르거나 꾹 누르면 크게 본다 — 64 칸으로는 무슨 사진인지 가늠이 안 된다.
+ *
+ * 뷰어는 이 다이얼로그 안에서 여는 별도 창이라 확인 다이얼로그 위에 뜨고, 닫으면 다이얼로그로 돌아온다.
+ */
+@Composable
+private fun PhotoStrip(photoUris: List<String>) {
+    var viewerIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+    ) {
+        itemsIndexed(photoUris) { index, uri ->
+            AsyncImage(
+                model = uri,
+                contentDescription = "사진 ${index + 1}",
+                contentScale = ContentScale.Crop,
+                modifier =
+                    Modifier
+                        .size(THUMBNAIL_SIZE)
+                        .clip(RoundedCornerShape(THUMBNAIL_CORNER))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .combinedClickable(
+                            onClickLabel = "사진 크게 보기",
+                            onLongClickLabel = "사진 크게 보기",
+                            onLongClick = { viewerIndex = index },
+                            onClick = { viewerIndex = index },
+                        ),
+            )
+        }
+    }
+    viewerIndex?.let { initialIndex ->
+        LaimoryPhotoViewerDialog(
+            photoCount = photoUris.size,
+            initialIndex = initialIndex,
+            onDismiss = { viewerIndex = null },
+            photo = { index ->
+                AsyncImage(
+                    model = photoUris[index],
+                    contentDescription = "사진 ${index + 1}",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+        )
     }
 }
 
