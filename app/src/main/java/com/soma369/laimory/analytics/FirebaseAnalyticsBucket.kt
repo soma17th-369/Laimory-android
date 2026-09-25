@@ -33,8 +33,20 @@ internal class FirebaseAnalyticsBucket(
         firebaseAnalytics.logEvent(payload.name, parameters)
     }
 
+    override fun setUserProperty(
+        name: String,
+        value: String?,
+    ) {
+        firebaseAnalytics.setUserProperty(name, value)
+    }
+
     override fun setEnabled(enabled: Boolean) {
         this.enabled.set(enabled)
         firebaseAnalytics.setAnalyticsCollectionEnabled(enabled)
+    }
+
+    /** GA4 User-ID. SDK 가 앱 재시작 뒤에도 기억하므로 로그아웃 때 null 로 풀어야 한다. */
+    override fun setUserId(userId: String?) {
+        firebaseAnalytics.setUserId(userId)
     }
 }

@@ -7,6 +7,12 @@ import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingStep
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersion
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
@@ -20,6 +26,7 @@ import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
+import com.soma369.laimory.core.domain.usecase.GetOnboardingFlowIdUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
@@ -347,18 +354,118 @@ class OnboardingConsentTest {
         coordinator: TermsAgreementCoordinator,
         displayTerms: TermsRepository = EmptyTermsRepository,
         completion: FakeOnboardingCompletionCoordinator = FakeOnboardingCompletionCoordinator(),
+        savedPageKey: String? = null,
     ) = OnboardingViewModel(
-        observeOnboardingProgressUseCase = ObserveOnboardingProgressUseCase(FakeOnboardingRepository),
+        observeOnboardingProgressUseCase = ObserveOnboardingProgressUseCase(FakeOnboardingRepository(savedPageKey)),
         observeUserProfileUseCase = ObserveUserProfileUseCase(FakeUserProfileCoordinator),
-        saveOnboardingProgressUseCase = SaveOnboardingProgressUseCase(FakeOnboardingRepository),
+        saveOnboardingProgressUseCase = SaveOnboardingProgressUseCase(FakeOnboardingRepository(savedPageKey)),
         completeOnboardingUseCase = CompleteOnboardingUseCase(completion),
         reconcileLocationTrackingUseCase = ReconcileLocationTrackingUseCase(FakeLocationTrackingRepository),
         termsCoordinator = coordinator,
         getDisplayTerms = GetDisplayTermsUseCase(displayTerms),
         logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
+        getOnboardingFlowId = GetOnboardingFlowIdUseCase(FakeOnboardingRepository(savedPageKey)),
+        analyticsHelper = analyticsHelper,
     )
 
     private val analyticsHelper = RecordingAnalyticsHelper()
+
+    @Test
+    fun `처음 연 온보딩의 첫 장은 처음 표시로, 넘겨 도착한 장은 이동으로 한 번씩 남긴다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.PageChanged(0, AnalyticsOnboardingEligibility.NOT_APPLICABLE))
+            viewModel.sendIntent(OnboardingUiIntent.PageChanged(1, AnalyticsOnboardingEligibility.NEEDS_REQUEST))
+            viewModel.sendIntent(OnboardingUiIntent.PageChanged(0, AnalyticsOnboardingEligibility.NOT_APPLICABLE))
+            runCurrent()
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.OnboardingStepViewed(
+                        flowId = FLOW_ID,
+                        version = AnalyticsOnboardingVersion.V1,
+                        step = AnalyticsOnboardingStep.INTRO,
+                        stepIndex = 0,
+                        entryMode = AnalyticsOnboardingEntryMode.INITIAL,
+                        eligibility = AnalyticsOnboardingEligibility.NOT_APPLICABLE,
+                    ),
+                    AnalyticsEvent.OnboardingStepViewed(
+                        flowId = FLOW_ID,
+                        version = AnalyticsOnboardingVersion.V1,
+                        step = AnalyticsOnboardingStep.PHOTO,
+                        stepIndex = 1,
+                        entryMode = AnalyticsOnboardingEntryMode.NAVIGATION,
+                        eligibility = AnalyticsOnboardingEligibility.NEEDS_REQUEST,
+                    ),
+                ),
+                analyticsHelper.logged.filterIsInstance<AnalyticsEvent.OnboardingStepViewed>(),
+            )
+        }
+
+    @Test
+    fun `저장된 장에서 이어 열면 이어 보기로 남긴다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour), savedPageKey = "calendar")
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.PageChanged(2, AnalyticsOnboardingEligibility.ALREADY_USABLE))
+            runCurrent()
+
+            val viewed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.OnboardingStepViewed>().single()
+            assertEquals(AnalyticsOnboardingStep.CALENDAR, viewed.step)
+            assertEquals(AnalyticsOnboardingEntryMode.RESUME, viewed.entryMode)
+        }
+
+    @Test
+    fun `장마다 처음 고른 행동만 남긴다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour))
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.StepAction(1, AnalyticsOnboardingAction.BACK))
+            viewModel.sendIntent(OnboardingUiIntent.StepAction(1, AnalyticsOnboardingAction.NEXT))
+            viewModel.sendIntent(OnboardingUiIntent.StepAction(2, AnalyticsOnboardingAction.SKIP))
+            runCurrent()
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.OnboardingStepAction(
+                        FLOW_ID,
+                        AnalyticsOnboardingVersion.V1,
+                        AnalyticsOnboardingStep.PHOTO,
+                        AnalyticsOnboardingAction.BACK,
+                    ),
+                    AnalyticsEvent.OnboardingStepAction(
+                        FLOW_ID,
+                        AnalyticsOnboardingVersion.V1,
+                        AnalyticsOnboardingStep.CALENDAR,
+                        AnalyticsOnboardingAction.SKIP,
+                    ),
+                ),
+                analyticsHelper.logged.filterIsInstance<AnalyticsEvent.OnboardingStepAction>(),
+            )
+        }
+
+    @Test
+    fun `동의 기록에 성공해야 마지막 장의 완료를 남긴다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour, agreeFailure = IllegalStateException("offline")))
+            runCurrent()
+            viewModel.sendIntent(OnboardingUiIntent.Complete)
+            runCurrent()
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.OnboardingStepAction })
+
+            val succeeding = createViewModel(FakeTermsCoordinator(pending = allFour))
+            runCurrent()
+            succeeding.sendIntent(OnboardingUiIntent.Complete)
+            runCurrent()
+
+            val action = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.OnboardingStepAction>().single()
+            assertEquals(AnalyticsOnboardingStep.DONE, action.step)
+            assertEquals(AnalyticsOnboardingAction.FINISH, action.action)
+        }
 
     private fun document(
         type: TermType,
@@ -439,7 +546,9 @@ class OnboardingConsentTest {
         override suspend fun agree(documents: List<TermDocument>) = Unit
     }
 
-    private object FakeOnboardingRepository : OnboardingRepository {
+    private class FakeOnboardingRepository(
+        private val savedPageKey: String? = null,
+    ) : OnboardingRepository {
         override suspend fun cachedCompletion(): Boolean? = null
 
         override suspend fun cacheCompletion(isCompleted: Boolean) = Unit
@@ -456,9 +565,11 @@ class OnboardingConsentTest {
 
         override suspend fun fetchCompletion(): Result<Boolean> = Result.success(false)
 
-        override fun observeLastPageKey(): Flow<String?> = flowOf(null)
+        override fun observeLastPageKey(): Flow<String?> = flowOf(savedPageKey)
 
         override suspend fun saveProgress(pageKey: String) = Unit
+
+        override suspend fun flowId(): String = FLOW_ID
 
         override suspend fun clear() = Unit
     }
@@ -496,16 +607,28 @@ class OnboardingConsentTest {
 
     private class RecordingAnalyticsHelper : AnalyticsHelper {
         val logged = mutableListOf<AnalyticsEvent>()
+        private val onceKeys = mutableSetOf<AnalyticsDedupeKey>()
 
         override suspend fun log(event: AnalyticsEvent) {
             logged += event
         }
 
+        /** 실제처럼 같은 키는 한 번만 남긴다. */
         override suspend fun logOnce(
             key: AnalyticsDedupeKey,
             event: AnalyticsEvent,
         ) {
-            logged += event
+            if (onceKeys.add(key)) logged += event
         }
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
+
+        override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
+    }
+
+    private companion object {
+        const val FLOW_ID = "ob_test"
     }
 }

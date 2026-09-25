@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
+import java.util.UUID
 import javax.inject.Inject
 
 internal class OnboardingRepositoryImpl
@@ -60,6 +61,15 @@ internal class OnboardingRepositoryImpl
             dataStore.edit { preferences -> preferences[KEY_LAST_PAGE_KEY] = pageKey }
         }
 
+        /** 읽고 없으면 쓰는 것을 한 번의 편집으로 한다 — 두 곳이 동시에 물어도 토큰이 갈리지 않는다. */
+        override suspend fun flowId(): String {
+            var flowId: String? = null
+            dataStore.edit { preferences ->
+                flowId = preferences[KEY_FLOW_ID] ?: newFlowId().also { preferences[KEY_FLOW_ID] = it }
+            }
+            return checkNotNull(flowId)
+        }
+
         override suspend fun clear() {
             dataStore.edit { preferences -> preferences.clear() }
         }
@@ -75,5 +85,9 @@ internal class OnboardingRepositoryImpl
             val KEY_LAST_PAGE_KEY = stringPreferencesKey("last_page_key")
             val KEY_COMPLETION_PENDING = booleanPreferencesKey("completion_pending")
             val KEY_AGE_CONFIRMED = booleanPreferencesKey("age_confirmed")
+            val KEY_FLOW_ID = stringPreferencesKey("analytics_flow_id")
+
+            /** 사람·기기와 무관한 무작위 값이면 된다. 짧게 잘라 전송값 길이를 줄인다. */
+            fun newFlowId(): String = "ob_" + UUID.randomUUID().toString().replace("-", "").take(12)
         }
     }

@@ -55,6 +55,29 @@ class UserRemoteDataSourceImplTest {
         }
 
     @Test
+    fun `회원 식별자를 닉네임과 함께 옮긴다`() =
+        runTest {
+            server.enqueue(success("""{"userId":42,"nickname":"김소마"}"""))
+
+            val profile = remote.getMyProfile().toDomain()
+
+            assertEquals(42L, profile.userId)
+            assertEquals("김소마", profile.nickname)
+        }
+
+    @Test
+    fun `회원 식별자를 내려주지 않는 서버에서도 닉네임은 받는다`() =
+        runTest {
+            // 필수로 받으면 응답 전체가 깨져 닉네임 인사까지 사라진다.
+            server.enqueue(success("""{"nickname":"김소마"}"""))
+
+            val profile = remote.getMyProfile().toDomain()
+
+            assertNull(profile.userId)
+            assertEquals("김소마", profile.nickname)
+        }
+
+    @Test
     fun `명시적 null 닉네임은 오류가 아니라 값 없음으로 옮긴다`() =
         runTest {
             // 서버는 key 를 생략하지 않고 JSON null 을 보낸다. 닉네임 미설정은 정상 상태다.

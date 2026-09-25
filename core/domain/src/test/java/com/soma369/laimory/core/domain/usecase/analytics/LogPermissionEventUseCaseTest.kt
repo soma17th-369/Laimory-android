@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -73,5 +74,11 @@ class LogPermissionEventUseCaseTest {
         ) {
             loggedOnce += key to event
         }
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
+
+        override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 }

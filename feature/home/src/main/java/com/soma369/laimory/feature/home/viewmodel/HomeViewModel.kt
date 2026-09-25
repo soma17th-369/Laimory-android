@@ -9,6 +9,7 @@ import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
@@ -788,18 +789,21 @@ class HomeViewModel
             // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤로 미룬다. 여기서 끊으면 아직 한 번도
             // 수집하지 않은 사용자가 수집 기회를 갖기 전에 생성이 막힌다.
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
-            val dayRelation = AnalyticsRecordDayRelation.of(current.selectedDate, clock)
+            val recordDate = current.selectedDate
+            val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
             consentPreparationJob =
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
-                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation))
+                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate, AnalyticsEntryPoint.HOME))
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
                     if (collected.isEmpty() && selectedPhotoItems.isEmpty()) {
-                        analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, dayRelation))
+                        analyticsHelper.log(
+                            AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, dayRelation, recordDate),
+                        )
                         sendEffect(HomeUiSideEffect.ShowSnackbar("선택한 범위에 모인 데이터가 없어요."))
                         return@safeLaunch
                     }
@@ -831,16 +835,19 @@ class HomeViewModel
         private suspend fun showCreateConfirm() {
             val preparation = draftConsentSessionStore.preparation.value ?: return
             val submission = submissionOf(preparation)
-            val dayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock)
+            val recordDate = preparation.recordDate
+            val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
             if (submission.items.isEmpty()) {
-                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation))
+                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation, recordDate))
                 draftConsentSessionStore.clearPreparation()
                 sendEffect(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요."))
                 return
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
-            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, preparation.selection.analyticsCounts().total))
+            analyticsHelper.log(
+                AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, preparation.selection.analyticsCounts().total),
+            )
             confirmedSubmission = submission
             updateState { copy(createConfirm = submission.toCreateConfirm()) }
         }
@@ -853,6 +860,7 @@ class HomeViewModel
             analyticsHelper.log(
                 AnalyticsEvent.TimelineEventReviewCompleted(
                     recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                    recordDate = preparation.recordDate,
                     initialCounts = preparation.selection.analyticsCounts(),
                     finalCounts = submission.analyticsCounts(),
                 ),
@@ -872,6 +880,7 @@ class HomeViewModel
                 AnalyticsEvent.TimelineCreateStopped(
                     AnalyticsCreateStopReason.CANCELLED,
                     AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                    preparation.recordDate,
                 ),
             )
             draftConsentSessionStore.clearPreparation()
@@ -919,6 +928,7 @@ class HomeViewModel
                 analyticsHelper.log(
                     AnalyticsEvent.TimelineCreateRequested(
                         recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        recordDate = preparation.recordDate,
                         itemCount = submission.items.size,
                     ),
                 )
@@ -932,6 +942,7 @@ class HomeViewModel
                 analyticsHelper.log(
                     AnalyticsEvent.TimelineCreateRequestFailed(
                         recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        recordDate = preparation.recordDate,
                         failureCode = AnalyticsFailureCode.from(error),
                     ),
                 )
@@ -1164,7 +1175,7 @@ class HomeViewModel
         private fun viewDraft() {
             val current = state.value
             if (current.timelineButtonStatus != DraftCreationStatus.SUCCESS) return
-            navigationHelper.navigateTo(TimelinePage(current.selectedDate))
+            navigationHelper.navigateTo(TimelinePage(current.selectedDate, AnalyticsEntryPoint.HOME))
         }
 
         /**

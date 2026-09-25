@@ -10,9 +10,11 @@ import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
@@ -363,6 +365,8 @@ class SettingsViewModelTest {
             assertEquals(LoginPage, navigationHelper.replacedRoot)
             assertTrue(globalLoadingHelper.startedKeys.contains("settings-withdraw"))
             assertEquals(listOf(UserMessage.AccountWithdrawalAccepted), messageHelper.sentMessages)
+            // 같은 기기에서 다시 가입하면 새 가입으로 한 번 더 나가야 한다.
+            assertEquals(listOf(AnalyticsDedupeKeys.SIGN_UP), analyticsHelper.forgotten)
         }
 
     @Test
@@ -381,6 +385,8 @@ class SettingsViewModelTest {
             assertEquals(1, repository.clearSessionCount)
             assertEquals(LoginPage, navigationHelper.replacedRoot)
             assertEquals(listOf(UserMessage.AccountWithdrawalUnverified), messageHelper.sentMessages)
+            // 탈퇴됐는지 모르므로 가입 판정은 그대로 둔다.
+            assertTrue(analyticsHelper.forgotten.isEmpty())
         }
 
     @Test
@@ -461,6 +467,7 @@ class SettingsViewModelTest {
             observeLocationTracking = ObserveLocationTrackingUseCase(locationTrackingRepository),
             setLocationTracking = SetLocationTrackingUseCase(locationTrackingRepository),
             logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
+            analyticsHelper = analyticsHelper,
         )
 
     @Test
@@ -667,5 +674,15 @@ class SettingsViewModelTest {
         ) {
             logged += event
         }
+
+        val forgotten = mutableListOf<AnalyticsDedupeKey>()
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) {
+            forgotten += key
+        }
+
+        override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 }

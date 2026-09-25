@@ -3,21 +3,39 @@ package com.soma369.laimory.core.data.analytics
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingStep
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersion
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
+import com.soma369.laimory.core.domain.model.analytics.InstallCampaign
+import com.soma369.laimory.core.domain.model.analytics.InstallReferrerStatus
+import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * 전송 이름과 값을 고정한다.
@@ -30,6 +48,27 @@ import org.junit.Test
  */
 class AnalyticsEventMapperTest {
     private val today = AnalyticsRecordDayRelation.TODAY
+    private val date = LocalDate.parse("2026-09-21")
+    private val startAt = LocalDateTime.parse("2026-09-21T08:30:00")
+    private val target =
+        AnalyticsTimelineEventTarget(
+            timelineEventId = 42L,
+            eventType = TimelineEventType.MEAL,
+            photoCount = 3,
+            recordState = AnalyticsTimelineState.SAVED,
+            recordDate = date,
+        )
+
+    /** 칸마다 값을 달리 둬 서로 바뀌어 실려도 드러나게 한다. */
+    private val eventSummary =
+        AnalyticsTimelineEventSummary(
+            aiEventCount = 8,
+            aiMemoEventCount = 3,
+            aiEditedEventCount = 2,
+            aiDeletedEventCount = 1,
+            manualEventCount = 4,
+            manualMemoEventCount = 5,
+        )
 
     @Test
     fun `이벤트마다 이름과 속성 이름을 고정한다`() {
@@ -37,7 +76,7 @@ class AnalyticsEventMapperTest {
             listOf(
                 Expectation(
                     AnalyticsEvent.PermissionRequestStarted(AnalyticsPermissionType.PHOTO, AnalyticsPromptContext.HOME),
-                    "permission_request_started",
+                    "permission_request_start",
                     setOf("permission_type", "prompt_context"),
                 ),
                 Expectation(
@@ -50,37 +89,44 @@ class AnalyticsEventMapperTest {
                     "data_collection_ready",
                     setOf("ready_trigger"),
                 ),
-                Expectation(AnalyticsEvent.TimelineCreateStarted(today), "timeline_create_started", setOf("record_day_relation")),
                 Expectation(
-                    AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, today),
-                    "timeline_create_stopped",
-                    setOf("reason", "record_day_relation"),
+                    AnalyticsEvent.TimelineCreateStarted(today, date, AnalyticsEntryPoint.HOME),
+                    "timeline_create_started",
+                    setOf("record_day_relation", "entry_point"),
+                    setOf("record_date"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineEventReviewStarted(today, initialItemCount = 5),
+                    AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, today, date),
+                    "timeline_create_stopped",
+                    setOf("reason", "record_day_relation"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventReviewStarted(today, date, initialItemCount = 5),
                     "timeline_event_review_started",
                     setOf("record_day_relation"),
-                    setOf("initial_event_item_count"),
+                    setOf("initial_event_item_count", "record_date"),
                 ),
                 Expectation(
                     reviewCompleted(),
                     "timeline_event_review_completed",
                     setOf("record_day_relation"),
-                    setOf("initial_event_item_count", "final_event_item_count", "net_removed_item_count") +
+                    setOf("initial_event_item_count", "final_event_item_count", "net_removed_item_count", "record_date") +
                         listOf("photo", "calendar", "location", "health", "notification").flatMap { group ->
                             listOf("initial_${group}_item_count", "final_${group}_item_count")
                         },
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineCreateRequested(today, itemCount = 4),
+                    AnalyticsEvent.TimelineCreateRequested(today, date, itemCount = 4),
                     "timeline_create_requested",
                     setOf("record_day_relation"),
-                    setOf("event_item_count"),
+                    setOf("event_item_count", "record_date"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineCreateRequestFailed(today, AnalyticsFailureCode.NETWORK),
+                    AnalyticsEvent.TimelineCreateRequestFailed(today, date, AnalyticsFailureCode.NETWORK),
                     "timeline_create_request_failed",
                     setOf("record_day_relation", "failure_code"),
+                    setOf("record_date"),
                 ),
                 Expectation(
                     AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.FAILURE, AnalyticsFailureCode.SERVER),
@@ -88,20 +134,101 @@ class AnalyticsEventMapperTest {
                     setOf("result", "failure_code"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, today),
-                    "timeline_opened",
-                    setOf("timeline_state", "record_day_relation"),
+                    AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.SUCCESS, recordDate = date, eventCount = 6),
+                    "timeline_create_result",
+                    setOf("result"),
+                    setOf("record_date", "event_cnt"),
                 ),
-                Expectation(AnalyticsEvent.TimelineCompletionStarted(today), "timeline_completion_started", setOf("record_day_relation")),
                 Expectation(
-                    AnalyticsEvent.TimelineCompleted(today, AnalyticsCompletionOutcome.TRANSITIONED),
+                    AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, today, date, AnalyticsEntryPoint.CALENDAR),
+                    "timeline_opened",
+                    setOf("timeline_state", "record_day_relation", "entry_point"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelinePastRecordOpened(AnalyticsRecordAgeBucket.D7_29, AnalyticsEntryPoint.CALENDAR, date),
+                    "timeline_past_record_opened",
+                    setOf("record_age_bucket", "entry_point"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineCompletionStarted(today, date),
+                    "timeline_completion_started",
+                    setOf("record_day_relation"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineCompleted(today, date, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary),
                     "timeline_completed",
                     setOf("record_day_relation", "completion_outcome"),
+                    setOf(
+                        "record_date",
+                        "ai_event_count",
+                        "ai_memo_event_count",
+                        "ai_edited_event_count",
+                        "ai_deleted_event_count",
+                        "manual_event_count",
+                        "manual_memo_event_count",
+                    ),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineCompletionFailed(today, AnalyticsFailureCode.UNKNOWN),
-                    "timeline_completion_failed",
+                    AnalyticsEvent.TimelineCompletionFailed(today, date, AnalyticsFailureCode.UNKNOWN),
+                    "timeline_completion_fail",
                     setOf("record_day_relation", "failure_code"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineMemoSaved(target, memoLength = 12),
+                    "timeline_memo_saved",
+                    setOf("event_type", "record_state"),
+                    setOf("event_id", "photo_cnt", "record_date", "memo_length"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventUpdated(target, startAt, setOf(AnalyticsEventField.TITLE)),
+                    "timeline_event_updated",
+                    setOf("event_type", "record_state", "update_scope"),
+                    setOf("event_id", "photo_cnt", "record_date", "event_start_at", "changed_field_count"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventDeleted(target),
+                    "timeline_event_deleted",
+                    setOf("event_type", "record_state"),
+                    setOf("event_id", "photo_cnt", "record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.SignUp(SocialLoginProvider.GOOGLE),
+                    "sign_up",
+                    setOf("method"),
+                ),
+                Expectation(
+                    stepViewed(),
+                    "onboarding_step_viewed",
+                    setOf("flow_id", "onboarding_version", "step_id", "entry_mode", "eligibility"),
+                    setOf("step_index"),
+                ),
+                Expectation(
+                    stepAction(),
+                    "onboarding_step_action",
+                    setOf("flow_id", "onboarding_version", "step_id", "action"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventCreated(TimelineEventType.MEAL, photoCount = 1, AnalyticsTimelineState.DRAFT, date),
+                    "timeline_event_created",
+                    setOf("event_type", "record_state"),
+                    setOf("photo_cnt", "record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.InstallAttributionResolved(fullAttribution),
+                    "install_attribution_resolved",
+                    setOf(
+                        "attribution_method",
+                        "referrer_status",
+                        "utm_source",
+                        "utm_medium",
+                        "utm_campaign",
+                        "utm_content",
+                        "utm_id",
+                    ),
                 ),
             )
 
@@ -115,11 +242,21 @@ class AnalyticsEventMapperTest {
     }
 
     @Test
-    fun `성공한 생성 결과에는 실패 코드를 싣지 않는다`() {
-        val payload = AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.SUCCESS, failureCode = null).toPayload()
+    fun `성공한 생성 결과에는 실패 코드 대신 기록 날짜와 사건 수를 싣는다`() {
+        val payload =
+            AnalyticsEvent.TimelineCreateResult(AnalyticsCreateResult.SUCCESS, recordDate = date, eventCount = 6).toPayload()
 
         assertEquals("success", payload.strings["result"])
         assertFalse(payload.strings.containsKey("failure_code"))
+        assertEquals(6L, payload.counts["event_cnt"])
+    }
+
+    @Test
+    fun `기록 날짜는 서울 기준 그날 00시의 UTC epoch ms 로 싣는다`() {
+        // 2026-09-21 00:00 (UTC+9) = 2026-09-20T15:00:00Z
+        val payload = AnalyticsEvent.TimelineCreateStarted(today, date, AnalyticsEntryPoint.HOME).toPayload()
+
+        assertEquals(1_789_916_400_000L, payload.counts["record_date"])
     }
 
     @Test
@@ -134,6 +271,18 @@ class AnalyticsEventMapperTest {
         assertEquals(2L, payload.counts["final_calendar_item_count"])
         // 없는 묶음도 0 으로 싣는다.
         assertEquals(0L, payload.counts["initial_health_item_count"])
+    }
+
+    @Test
+    fun `완료에 이벤트 요약 건수를 칸마다 싣는다`() {
+        val counts = AnalyticsEvent.TimelineCompleted(today, date, AnalyticsCompletionOutcome.TRANSITIONED, eventSummary).toPayload().counts
+
+        assertEquals(8L, counts["ai_event_count"])
+        assertEquals(3L, counts["ai_memo_event_count"])
+        assertEquals(2L, counts["ai_edited_event_count"])
+        assertEquals(1L, counts["ai_deleted_event_count"])
+        assertEquals(4L, counts["manual_event_count"])
+        assertEquals(5L, counts["manual_memo_event_count"])
     }
 
     @Test
@@ -221,7 +370,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsRecordDayRelation.entries,
             "record_day_relation",
-        ) { AnalyticsEvent.TimelineCreateStarted(it) }
+        ) { AnalyticsEvent.TimelineCreateStarted(it, date, AnalyticsEntryPoint.HOME) }
 
     @Test
     fun `중단 이유 전송값을 고정한다`() =
@@ -233,7 +382,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsCreateStopReason.entries,
             "reason",
-        ) { AnalyticsEvent.TimelineCreateStopped(it, today) }
+        ) { AnalyticsEvent.TimelineCreateStopped(it, today, date) }
 
     @Test
     fun `실패 코드 전송값을 고정한다`() =
@@ -250,7 +399,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsFailureCode.entries,
             "failure_code",
-        ) { AnalyticsEvent.TimelineCompletionFailed(today, it) }
+        ) { AnalyticsEvent.TimelineCompletionFailed(today, date, it) }
 
     @Test
     fun `생성 결과 전송값을 고정한다`() =
@@ -261,7 +410,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsCreateResult.entries,
             "result",
-        ) { AnalyticsEvent.TimelineCreateResult(it, failureCode = null) }
+        ) { AnalyticsEvent.TimelineCreateResult(it) }
 
     @Test
     fun `타임라인 상태 전송값을 고정한다`() =
@@ -272,7 +421,40 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsTimelineState.entries,
             "timeline_state",
-        ) { AnalyticsEvent.TimelineOpened(it, today) }
+        ) { AnalyticsEvent.TimelineOpened(it, today, date, AnalyticsEntryPoint.UNKNOWN) }
+
+    @Test
+    fun `설치 유입 확정에는 귀속 방식과 있는 캠페인 값만 싣는다`() {
+        val parsed = AnalyticsEvent.InstallAttributionResolved(fullAttribution).toPayload()
+        assertEquals("play_install_referrer", parsed.strings["attribution_method"])
+        assertEquals("meta", parsed.strings["utm_source"])
+        assertEquals("paid", parsed.strings["utm_medium"])
+        assertEquals("sleep_hook_20260924", parsed.strings["utm_campaign"])
+        assertEquals("video_a", parsed.strings["utm_content"])
+        assertEquals("120212345", parsed.strings["utm_id"])
+
+        val noCampaign =
+            AnalyticsEvent.InstallAttributionResolved(InstallAttribution(InstallReferrerStatus.NO_CAMPAIGN)).toPayload()
+        assertEquals(setOf("attribution_method", "referrer_status"), noCampaign.strings.keys)
+    }
+
+    @Test
+    fun `설치 유입 상태 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                InstallReferrerStatus.PARSED to "parsed",
+                InstallReferrerStatus.PROVIDER to "provider",
+                InstallReferrerStatus.NO_CAMPAIGN to "no_campaign",
+                InstallReferrerStatus.INVALID to "invalid",
+                InstallReferrerStatus.UNAVAILABLE to "unavailable",
+            ),
+            InstallReferrerStatus.entries,
+            "referrer_status",
+        ) { status ->
+            AnalyticsEvent.InstallAttributionResolved(
+                InstallAttribution(status, campaign = InstallCampaign(source = "meta").takeIf { status.carriesCampaign }),
+            )
+        }
 
     @Test
     fun `완료 방식 전송값을 고정한다`() =
@@ -283,7 +465,197 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsCompletionOutcome.entries,
             "completion_outcome",
-        ) { AnalyticsEvent.TimelineCompleted(today, it) }
+        ) { AnalyticsEvent.TimelineCompleted(today, date, it, eventSummary) }
+
+    @Test
+    fun `진입 경로 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsEntryPoint.PAST_RECORDS to "past_records",
+                AnalyticsEntryPoint.CALENDAR to "calendar",
+                AnalyticsEntryPoint.HOME to "home",
+                AnalyticsEntryPoint.DRAFT_COMPLETE to "draft_complete",
+                AnalyticsEntryPoint.UNKNOWN to "unknown",
+            ),
+            AnalyticsEntryPoint.entries,
+            "entry_point",
+        ) { AnalyticsEvent.TimelinePastRecordOpened(AnalyticsRecordAgeBucket.D1, it, date) }
+
+    @Test
+    fun `지난 기록 경과 구간 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsRecordAgeBucket.D1 to "d1",
+                AnalyticsRecordAgeBucket.D2_6 to "d2_6",
+                AnalyticsRecordAgeBucket.D7_29 to "d7_29",
+                AnalyticsRecordAgeBucket.D30_PLUS to "d30_plus",
+            ),
+            AnalyticsRecordAgeBucket.entries,
+            "record_age_bucket",
+        ) { AnalyticsEvent.TimelinePastRecordOpened(it, AnalyticsEntryPoint.UNKNOWN, date) }
+
+    @Test
+    fun `편집 이벤트에 사건 값을 싣는다`() {
+        val payload =
+            AnalyticsEvent
+                .TimelineEventUpdated(
+                    target,
+                    startAt,
+                    setOf(AnalyticsEventField.TITLE, AnalyticsEventField.SUBTITLE, AnalyticsEventField.START_AT),
+                ).toPayload()
+
+        assertEquals(42L, payload.counts["event_id"])
+        assertEquals(3L, payload.counts["photo_cnt"])
+        assertEquals("meal", payload.strings["event_type"])
+        assertEquals("saved", payload.strings["record_state"])
+        assertEquals("combined", payload.strings["update_scope"])
+        assertEquals(3L, payload.counts["changed_field_count"])
+        // 2026-09-21 08:30 (UTC+9) = 2026-09-20T23:30:00Z
+        assertEquals(1_789_947_000_000L, payload.counts["event_start_at"])
+    }
+
+    @Test
+    fun `사건 종류 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                TimelineEventType.WAKE_UP to "wake_up",
+                TimelineEventType.SLEEP to "sleep",
+                TimelineEventType.MOVEMENT to "movement",
+                TimelineEventType.CALENDAR_EVENT to "calendar_event",
+                TimelineEventType.MEAL to "meal",
+                TimelineEventType.PHOTO_MOMENT to "photo_moment",
+                TimelineEventType.MEETING to "meeting",
+                TimelineEventType.CLASS to "class",
+                TimelineEventType.WORK to "work",
+                TimelineEventType.EXERCISE to "exercise",
+                TimelineEventType.SOCIAL to "social",
+                TimelineEventType.REST to "rest",
+                TimelineEventType.UNKNOWN to "unknown",
+            ),
+            TimelineEventType.entries,
+            "event_type",
+        ) { AnalyticsEvent.TimelineEventDeleted(target.copy(eventType = it)) }
+
+    @Test
+    fun `수정 범위 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsUpdateScope.CONTENT to "content",
+                AnalyticsUpdateScope.TIME to "time",
+                AnalyticsUpdateScope.PHOTO to "photo",
+                AnalyticsUpdateScope.MEMO to "memo",
+                AnalyticsUpdateScope.COMBINED to "combined",
+            ),
+            AnalyticsUpdateScope.entries,
+            "update_scope",
+        ) { scope ->
+            val fields =
+                when (scope) {
+                    AnalyticsUpdateScope.CONTENT -> setOf(AnalyticsEventField.TITLE)
+                    AnalyticsUpdateScope.TIME -> setOf(AnalyticsEventField.START_AT)
+                    AnalyticsUpdateScope.PHOTO -> setOf(AnalyticsEventField.PHOTO)
+                    AnalyticsUpdateScope.MEMO -> setOf(AnalyticsEventField.MEMO)
+                    AnalyticsUpdateScope.COMBINED -> setOf(AnalyticsEventField.TITLE, AnalyticsEventField.MEMO)
+                }
+            AnalyticsEvent.TimelineEventUpdated(target, startAt, fields)
+        }
+
+    @Test
+    fun `가입 방법 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                SocialLoginProvider.GOOGLE to "google",
+                SocialLoginProvider.KAKAO to "kakao",
+            ),
+            SocialLoginProvider.entries,
+            "method",
+        ) { AnalyticsEvent.SignUp(it) }
+
+    @Test
+    fun `온보딩 판과 회차 토큰을 그대로 싣는다`() {
+        val payload = stepViewed().toPayload()
+
+        assertEquals("ob_7f9c2a", payload.strings["flow_id"])
+        assertEquals("v1", payload.strings["onboarding_version"])
+        assertEquals(1L, payload.counts["step_index"])
+    }
+
+    @Test
+    fun `온보딩 장 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingStep.INTRO to "intro",
+                AnalyticsOnboardingStep.PHOTO to "photo",
+                AnalyticsOnboardingStep.CALENDAR to "calendar",
+                AnalyticsOnboardingStep.LOCATION to "location",
+                AnalyticsOnboardingStep.NOTIFICATION to "notification",
+                AnalyticsOnboardingStep.APP_NOTIFICATION to "app_notification",
+                AnalyticsOnboardingStep.DONE to "done",
+            ),
+            AnalyticsOnboardingStep.entries,
+            "step_id",
+        ) { stepAction(step = it) }
+
+    @Test
+    fun `온보딩 표시 방식 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingEntryMode.INITIAL to "initial",
+                AnalyticsOnboardingEntryMode.RESUME to "resume",
+                AnalyticsOnboardingEntryMode.NAVIGATION to "navigation",
+            ),
+            AnalyticsOnboardingEntryMode.entries,
+            "entry_mode",
+        ) { stepViewed(entryMode = it) }
+
+    @Test
+    fun `온보딩 권한 상태 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingEligibility.NEEDS_REQUEST to "needs_request",
+                AnalyticsOnboardingEligibility.ALREADY_USABLE to "already_usable",
+                AnalyticsOnboardingEligibility.SETTINGS_ONLY to "settings_only",
+                AnalyticsOnboardingEligibility.NOT_SUPPORTED to "not_supported",
+                AnalyticsOnboardingEligibility.NOT_APPLICABLE to "not_applicable",
+            ),
+            AnalyticsOnboardingEligibility.entries,
+            "eligibility",
+        ) { stepViewed(eligibility = it) }
+
+    @Test
+    fun `온보딩 행동 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingAction.SKIP to "skip",
+                AnalyticsOnboardingAction.NEXT to "next",
+                AnalyticsOnboardingAction.BACK to "back",
+                AnalyticsOnboardingAction.FINISH to "finish",
+            ),
+            AnalyticsOnboardingAction.entries,
+            "action",
+        ) { stepAction(action = it) }
+
+    private fun stepViewed(
+        entryMode: AnalyticsOnboardingEntryMode = AnalyticsOnboardingEntryMode.INITIAL,
+        eligibility: AnalyticsOnboardingEligibility = AnalyticsOnboardingEligibility.NEEDS_REQUEST,
+    ) = AnalyticsEvent.OnboardingStepViewed(
+        flowId = "ob_7f9c2a",
+        version = AnalyticsOnboardingVersion.V1,
+        step = AnalyticsOnboardingStep.PHOTO,
+        stepIndex = 1,
+        entryMode = entryMode,
+        eligibility = eligibility,
+    )
+
+    private fun stepAction(
+        step: AnalyticsOnboardingStep = AnalyticsOnboardingStep.PHOTO,
+        action: AnalyticsOnboardingAction = AnalyticsOnboardingAction.NEXT,
+    ) = AnalyticsEvent.OnboardingStepAction(
+        flowId = "ob_7f9c2a",
+        version = AnalyticsOnboardingVersion.V1,
+        step = step,
+        action = action,
+    )
 
     private fun <T> assertWireValues(
         expected: Map<T, String>,
@@ -301,6 +673,7 @@ class AnalyticsEventMapperTest {
     private fun reviewCompleted() =
         AnalyticsEvent.TimelineEventReviewCompleted(
             recordDayRelation = today,
+            recordDate = date,
             initialCounts =
                 AnalyticsItemCounts.of(
                     listOf(ItemType.PHOTO) + List(3) { ItemType.CALENDAR } + listOf(ItemType.STAY, ItemType.STAY, ItemType.MOVEMENT),
@@ -316,6 +689,19 @@ class AnalyticsEventMapperTest {
         state: AnalyticsPermissionState = AnalyticsPermissionState.GRANTED,
         promptContext: AnalyticsPromptContext = AnalyticsPromptContext.HOME,
     ) = AnalyticsEvent.PermissionResult(permission = permission, state = state, promptContext = promptContext)
+
+    private val fullAttribution =
+        InstallAttribution(
+            status = InstallReferrerStatus.PARSED,
+            campaign =
+                InstallCampaign(
+                    source = "meta",
+                    medium = "paid",
+                    campaign = "sleep_hook_20260924",
+                    content = "video_a",
+                    campaignId = "120212345",
+                ),
+        )
 
     private data class Expectation(
         val event: AnalyticsEvent,

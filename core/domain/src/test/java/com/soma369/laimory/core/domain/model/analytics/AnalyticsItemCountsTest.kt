@@ -3,6 +3,7 @@ package com.soma369.laimory.core.domain.model.analytics
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.time.LocalDate
 
 class AnalyticsItemCountsTest {
     @Test
@@ -28,6 +29,7 @@ class AnalyticsItemCountsTest {
         val event =
             AnalyticsEvent.TimelineEventReviewCompleted(
                 recordDayRelation = AnalyticsRecordDayRelation.TODAY,
+                recordDate = LocalDate.parse("2026-09-21"),
                 initialCounts = AnalyticsItemCounts.of(listOf(ItemType.CALENDAR, ItemType.CALENDAR, ItemType.NOTIFICATION)),
                 finalCounts = AnalyticsItemCounts.of(listOf(ItemType.CALENDAR, ItemType.NOTIFICATION)),
             )

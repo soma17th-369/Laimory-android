@@ -29,4 +29,22 @@ interface AnalyticsBucket {
      * 나중에 다시 보내려고 쌓아 두지도 않는다.
      */
     fun setEnabled(enabled: Boolean)
+
+    /**
+     * 이후 이벤트를 묶을 사용자 구분을 건다. null 이면 푼다.
+     *
+     * 대상마다 사용자 구분을 다루는 방식이 달라 문자열로만 넘긴다. 실패는 예외로 알린다.
+     */
+    fun setUserId(userId: String?)
+
+    /**
+     * 이후 이벤트에 붙을 사용자 속성을 건다. [value] 가 null 이면 푼다.
+     *
+     * 이름과 값은 버킷 밖에서 정해 오고, 가장 좁은 대상인 GA4 제한(이름 24자 · 값 36자) 안에 이미 들어와 있다.
+     * 버킷은 자르지 않는다 — 잘린 캠페인 값은 다른 캠페인이 된다. 실패는 예외로 알린다.
+     */
+    fun setUserProperty(
+        name: String,
+        value: String?,
+    )
 }

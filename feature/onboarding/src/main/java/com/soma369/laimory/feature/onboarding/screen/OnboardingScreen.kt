@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -37,6 +38,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.permission.DataPermission
@@ -51,6 +54,7 @@ import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 import com.soma369.laimory.feature.onboarding.model.PermissionGuideSpec
 import com.soma369.laimory.feature.onboarding.model.advancesAfterGrant
+import com.soma369.laimory.feature.onboarding.model.eligibilityOf
 import com.soma369.laimory.feature.onboarding.model.isPageDone
 import com.soma369.laimory.feature.onboarding.model.permissionGuideSpec
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
@@ -93,10 +97,17 @@ private fun OnboardingContent(
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { state.pages.size })
     val scope = rememberCoroutineScope()
 
+    // 권한 상태는 컴포지션마다 새로 읽힌다. 장이 보인 순간의 것을 넘기도록 최신 값을 따라간다.
+    val currentPermissionState by rememberUpdatedState(permissionState)
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }
             .distinctUntilChanged()
-            .collect { page -> onIntent(OnboardingUiIntent.PageChanged(page)) }
+            .collect { page ->
+                val eligibility =
+                    state.pages.getOrNull(page)?.let { currentPermissionState.eligibilityOf(it) }
+                        ?: AnalyticsOnboardingEligibility.NOT_APPLICABLE
+                onIntent(OnboardingUiIntent.PageChanged(page, eligibility))
+            }
     }
 
     // 백그라운드 위치까지 받았으면 수집 상태를 맞춘다. 전환이 아니라 상태를 본다 — 진입 시점에
@@ -128,6 +139,10 @@ private fun OnboardingContent(
     // 띄우는 것과, 허용이 끝나면 다음 장으로 넘기는 것. 누르지 않은 장에는 둘 다 하지 않는다.
     var requestedPermissions by remember { mutableStateOf(emptySet<DataPermission>()) }
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
+    // 떠나는 장에서 고른 행동이다. 넘기기 전에 보내야 지금 장으로 남는다.
+    val reportAction: (AnalyticsOnboardingAction) -> Unit = { action ->
+        onIntent(OnboardingUiIntent.StepAction(pagerState.currentPage, action))
+    }
 
     // 허용이 끝나면 버튼을 한 번 더 누르지 않아도 넘어간다. 넘기면서 표시를 지워 **한 번의 허용에
     // 한 장만** 넘긴다 — 결과 콜백과 복귀 재조회가 잇따라 와도 두 장을 건너뛰지 않는다.
@@ -144,6 +159,7 @@ private fun OnboardingContent(
             )
         if (!advances) return@LaunchedEffect
         requestedPermissions = requestedPermissions - permission
+        reportAction(AnalyticsOnboardingAction.NEXT)
         goNext()
     }
 
@@ -186,14 +202,23 @@ private fun OnboardingContent(
                 // 불러오지 못한 채로 끝낼 수 없다. 같은 자리에서 다시 시도한다.
                 isLastPage && state.hasConsentLoadFailed -> onIntent(OnboardingUiIntent.RetryConsentLoad)
                 isLastPage -> onIntent(OnboardingUiIntent.Complete)
-                else -> goNext()
+                else -> {
+                    reportAction(AnalyticsOnboardingAction.NEXT)
+                    goNext()
+                }
             }
         },
         onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
         onAgeConfirmationToggle = { onIntent(OnboardingUiIntent.AgeConfirmationToggled) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
-        onSkipClick = goNext,
-        onBack = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
+        onSkipClick = {
+            reportAction(AnalyticsOnboardingAction.SKIP)
+            goNext()
+        },
+        onBack = {
+            reportAction(AnalyticsOnboardingAction.BACK)
+            scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+        },
     )
 }
 

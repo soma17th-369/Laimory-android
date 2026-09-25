@@ -25,6 +25,7 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.terms.TermsGateState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
@@ -128,7 +129,7 @@ fun LaimoryNavGraph(
             ::Triple,
         ).collectLatest { (completion, isShowingLoading, isShowingHome) ->
             if (completion == null) return@collectLatest
-            val timelineRoute = TimelinePage(completion.recordDate).toRoute()
+            val timelineRoute = TimelinePage(completion.recordDate, AnalyticsEntryPoint.DRAFT_COMPLETE).toRoute()
             // 결과를 확인했으므로 백그라운드에서 온 알림은 더 알릴 것이 없다.
             DraftCompletionNotificationChannel.dismissAll(context)
             if (isShowingLoading) {

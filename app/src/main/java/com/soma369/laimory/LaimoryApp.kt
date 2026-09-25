@@ -4,8 +4,10 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import com.soma369.laimory.analytics.AnalyticsSessionReporter
 import com.soma369.laimory.analytics.DataCollectionReadyReporter
 import com.soma369.laimory.analytics.DraftTaskResultReporter
+import com.soma369.laimory.analytics.InstallAttributionReporter
 import com.soma369.laimory.collection.AutoCollectionProcessLifecycleObserver
 import com.soma369.laimory.collection.LocationTrackingProcessLifecycleObserver
 import com.soma369.laimory.core.collection.health.sleep.detection.SleepDetectionEntryPoint
@@ -31,10 +33,16 @@ class LaimoryApp :
     Application(),
     Configuration.Provider {
     @Inject
+    lateinit var analyticsSessionReporter: AnalyticsSessionReporter
+
+    @Inject
     lateinit var draftTaskResultReporter: DraftTaskResultReporter
 
     @Inject
     lateinit var dataCollectionReadyReporter: DataCollectionReadyReporter
+
+    @Inject
+    lateinit var installAttributionReporter: InstallAttributionReporter
 
     @Inject
     lateinit var draftTaskProcessLifecycleObserver: DraftTaskProcessLifecycleObserver
@@ -71,8 +79,10 @@ class LaimoryApp :
         super.onCreate()
         installCrashReporter()
         applyLogLevel()
+        analyticsSessionReporter.start()
         draftTaskResultReporter.start()
         dataCollectionReadyReporter.start()
+        installAttributionReporter.start()
         ProcessLifecycleOwner.get().lifecycle.addObserver(draftTaskProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(autoCollectionProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(locationTrackingProcessLifecycleObserver)
