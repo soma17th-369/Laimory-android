@@ -17,6 +17,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
@@ -2012,6 +2013,97 @@ class TimelineRecordViewModelTest {
             assertNull(viewModel.state.value.emotionSheet)
             assertEquals(emptyList<Pair<LocalDate, TimelineEmotion>>(), recordRepository.updatedEmotions)
         }
+
+    @Test
+    fun `메모 저장은 바로 보내지 않고 화면을 나갈 때 사건마다 마지막 것 한 건만 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            commitMemo(viewModel, "첫 메모")
+            commitMemo(viewModel, "고친 메모입니다")
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.TimelineMemoSaved })
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Leave)
+            advanceUntilIdle()
+
+            val saved = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineMemoSaved>().single()
+            assertEquals(
+                AnalyticsTimelineEventTarget(
+                    timelineEventId = 1L,
+                    eventType = TimelineEventType.WORK,
+                    photoCount = 0,
+                    recordState = AnalyticsTimelineState.DRAFT,
+                    recordDate = RECORD_DATE,
+                ),
+                saved.target,
+            )
+            assertEquals(8, saved.memoLength)
+        }
+
+    @Test
+    fun `모으는 사이 원래 메모로 되돌렸으면 메모 저장을 보내지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(timeline(events = listOf(event(memo = "원래 메모"))))
+
+            commitMemo(viewModel, "잠깐 바꾼 메모")
+            commitMemo(viewModel, "원래 메모")
+            viewModel.sendIntent(TimelineRecordUiIntent.Leave)
+            advanceUntilIdle()
+
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.TimelineMemoSaved })
+        }
+
+    @Test
+    fun `기록을 완료하면 모아 둔 메모 저장을 작성 중 상태로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+            commitMemo(viewModel, "메모")
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            val saved = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineMemoSaved>().single()
+            assertEquals(AnalyticsTimelineState.DRAFT, saved.target.recordState)
+            assertEquals(2, saved.memoLength)
+        }
+
+    @Test
+    fun `메모를 지우면 글자 수 0 으로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(timeline(events = listOf(event(memo = "지울 메모"))))
+
+            commitMemo(viewModel, "")
+            viewModel.sendIntent(TimelineRecordUiIntent.Leave)
+            advanceUntilIdle()
+
+            assertEquals(0, analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineMemoSaved>().single().memoLength)
+        }
+
+    @Test
+    fun `타임라인에서 사건을 지우면 삭제를 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(timeline(events = listOf(event(timelineEventId = 1L), event(timelineEventId = 2L))))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestEventDelete(timelineEventId = 2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEventDelete)
+            advanceUntilIdle()
+
+            val deleted = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineEventDeleted>().single()
+            assertEquals(2L, deleted.target.timelineEventId)
+            assertEquals(TimelineEventType.WORK, deleted.target.eventType)
+        }
+
+    private fun TestScope.commitMemo(
+        viewModel: TimelineRecordViewModel,
+        memo: String,
+    ) {
+        viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
+        viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = memo))
+        viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
+        advanceUntilIdle()
+    }
 
     private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {
         recordRepository.dailyRecordResult = Result.success(record)

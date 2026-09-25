@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.domain.model.analytics
 
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * 제품 분석으로 보낼 수 있는 이벤트.
@@ -12,8 +14,9 @@ import java.time.LocalDate
  * **보내지 않는 것**: 기록·메모·질문·감정 원문, 사진·좌표·주소, 일정·알림·건강 원문,
  * 사용자·record·task 내부 ID, 예외 메시지와 스택트레이스. 숫자 속성도 이 목록을 따른다 — 집계값만 싣는다.
  *
- * 기록 날짜(`record date`)는 GA4 스펙이 싣기로 해 보낸다. 오늘과의 관계([AnalyticsRecordDayRelation])도
- * 그대로 함께 싣는다 — 두 값의 날짜 경계는 같은 서울 기준이다.
+ * GA4 스펙이 싣기로 한 값은 보낸다: 기록 날짜(`record date`), 편집 이벤트의 사건 ID 와 사건 시작 시각.
+ * 오늘과의 관계([AnalyticsRecordDayRelation])도 그대로 함께 싣는다 — 날짜·시각의 경계는 모두 서울 기준이다.
+ * 메모는 원문 대신 글자 수만 싣는다.
  *
  * 기록 시점은 클릭이 아니라 **화면 표시 또는 서버 성공이 확정된 시점**이다.
  */
@@ -138,5 +141,52 @@ sealed interface AnalyticsEvent {
         val recordDayRelation: AnalyticsRecordDayRelation,
         val recordDate: LocalDate,
         val failureCode: AnalyticsFailureCode,
+    ) : AnalyticsEvent
+
+    /**
+     * 사건 메모 저장이 서버에서 성공했다. 사건마다 모아 두었다가 기록을 완료하거나 화면을 나갈 때 한 번 보낸다.
+     *
+     * [memoLength] 는 마지막으로 저장한 메모의 글자 수다. 0 이면 메모를 지웠다.
+     */
+    data class TimelineMemoSaved(
+        val target: AnalyticsTimelineEventTarget,
+        val memoLength: Int,
+    ) : AnalyticsEvent {
+        companion object {
+            /** 원문 대신 싣는 글자 수. 이모지처럼 두 칸을 쓰는 글자도 한 글자로 센다. */
+            fun lengthOf(memo: String?): Int = memo?.let { it.codePointCount(0, it.length) } ?: 0
+        }
+    }
+
+    /**
+     * 사건 수정이 서버에서 성공했다. 바뀐 칸이 없으면 보내지 않는다.
+     *
+     * [eventStartAt] 은 수정한 뒤 사건의 시작 시각이다(서버와 같이 시간대 없는 벽시계 시각).
+     */
+    data class TimelineEventUpdated(
+        val target: AnalyticsTimelineEventTarget,
+        val eventStartAt: LocalDateTime,
+        val changedFields: Set<AnalyticsEventField>,
+    ) : AnalyticsEvent {
+        init {
+            require(changedFields.isNotEmpty()) { "바뀐 칸이 없는 수정은 보내지 않는다." }
+        }
+
+        val updateScope: AnalyticsUpdateScope get() = requireNotNull(AnalyticsUpdateScope.of(changedFields))
+
+        val changedFieldCount: Int get() = changedFields.size
+    }
+
+    /** 사건 하나를 지웠다. 하루 기록 전체를 지운 것은 아니다. */
+    data class TimelineEventDeleted(
+        val target: AnalyticsTimelineEventTarget,
+    ) : AnalyticsEvent
+
+    /** 편집 화면에서 새 사건을 직접 추가했다. */
+    data class TimelineEventCreated(
+        val eventType: TimelineEventType,
+        val photoCount: Int,
+        val recordState: AnalyticsTimelineState,
+        val recordDate: LocalDate,
     ) : AnalyticsEvent
 }

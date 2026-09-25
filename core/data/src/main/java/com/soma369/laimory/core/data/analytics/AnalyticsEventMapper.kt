@@ -14,8 +14,12 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /** 모든 이벤트에 붙는 스키마 판. 속성 의미가 바뀌면 올려 옛 데이터와 섞이지 않게 한다. */
 internal const val ANALYTICS_SCHEMA_VERSION = 1L
@@ -30,6 +34,14 @@ private const val PARAM_RECORD_DATE = "record_date"
 private const val PARAM_EVENT_COUNT = "event_cnt"
 private const val PARAM_ENTRY_POINT = "entry_point"
 private const val PARAM_RECORD_AGE_BUCKET = "record_age_bucket"
+private const val PARAM_EVENT_ID = "event_id"
+private const val PARAM_EVENT_TYPE = "event_type"
+private const val PARAM_PHOTO_COUNT = "photo_cnt"
+private const val PARAM_RECORD_STATE = "record_state"
+private const val PARAM_MEMO_LENGTH = "memo_length"
+private const val PARAM_EVENT_START_AT = "event_start_at"
+private const val PARAM_UPDATE_SCOPE = "update_scope"
+private const val PARAM_CHANGED_FIELD_COUNT = "changed_field_count"
 private const val PARAM_STOP_REASON = "reason"
 private const val PARAM_INITIAL_ITEM_COUNT = "initial_event_item_count"
 private const val PARAM_FINAL_ITEM_COUNT = "final_event_item_count"
@@ -202,6 +214,43 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                         PARAM_FAILURE_CODE to failureCode.paramValue,
                     ),
             )
+        is AnalyticsEvent.TimelineMemoSaved ->
+            payload(
+                name = "timeline_memo_saved",
+                recordDate = target.recordDate,
+                strings = target.strings(),
+                counts = target.counts() + (PARAM_MEMO_LENGTH to memoLength.toLong()),
+            )
+        is AnalyticsEvent.TimelineEventUpdated ->
+            payload(
+                name = "timeline_event_updated",
+                recordDate = target.recordDate,
+                strings = target.strings() + (PARAM_UPDATE_SCOPE to updateScope.paramValue),
+                counts =
+                    target.counts() +
+                        mapOf(
+                            PARAM_EVENT_START_AT to eventStartAt.toAnalyticsEpochMillis(),
+                            PARAM_CHANGED_FIELD_COUNT to changedFieldCount.toLong(),
+                        ),
+            )
+        is AnalyticsEvent.TimelineEventDeleted ->
+            payload(
+                name = "timeline_event_deleted",
+                recordDate = target.recordDate,
+                strings = target.strings(),
+                counts = target.counts(),
+            )
+        is AnalyticsEvent.TimelineEventCreated ->
+            payload(
+                name = "timeline_event_created",
+                recordDate = recordDate,
+                strings =
+                    mapOf(
+                        PARAM_EVENT_TYPE to eventType.paramValue,
+                        PARAM_RECORD_STATE to recordState.paramValue,
+                    ),
+                counts = mapOf(PARAM_PHOTO_COUNT to photoCount.toLong()),
+            )
     }
 
 private const val STAGE_INITIAL = "initial"
@@ -240,6 +289,25 @@ private fun payload(
  */
 internal fun LocalDate.toAnalyticsEpochMillis(): Long =
     atStartOfDay(AnalyticsRecordDayRelation.DAY_BOUNDARY_ZONE).toInstant().toEpochMilli()
+
+/**
+ * 시간대 없는 벽시계 시각을 **서울 시각으로 읽어** UTC epoch ms 로 바꾼다. 서버의 사건 시각에는 시간대가 없어,
+ * 기록 날짜와 같은 서울 기준으로 읽는다.
+ */
+internal fun LocalDateTime.toAnalyticsEpochMillis(): Long = atZone(AnalyticsRecordDayRelation.DAY_BOUNDARY_ZONE).toInstant().toEpochMilli()
+
+/** 편집 이벤트 셋이 공통으로 싣는 사건 속성. */
+private fun AnalyticsTimelineEventTarget.strings(): Map<String, String> =
+    mapOf(
+        PARAM_EVENT_TYPE to eventType.paramValue,
+        PARAM_RECORD_STATE to recordState.paramValue,
+    )
+
+private fun AnalyticsTimelineEventTarget.counts(): Map<String, Long> =
+    mapOf(
+        PARAM_EVENT_ID to timelineEventId,
+        PARAM_PHOTO_COUNT to photoCount.toLong(),
+    )
 
 /*
  * 전송 값을 상수마다 적어 둔다.
@@ -368,4 +436,32 @@ private val AnalyticsRecordAgeBucket.paramValue: String
             AnalyticsRecordAgeBucket.D2_6 -> "d2_6"
             AnalyticsRecordAgeBucket.D7_29 -> "d7_29"
             AnalyticsRecordAgeBucket.D30_PLUS -> "d30_plus"
+        }
+
+private val TimelineEventType.paramValue: String
+    get() =
+        when (this) {
+            TimelineEventType.WAKE_UP -> "wake_up"
+            TimelineEventType.SLEEP -> "sleep"
+            TimelineEventType.MOVEMENT -> "movement"
+            TimelineEventType.CALENDAR_EVENT -> "calendar_event"
+            TimelineEventType.MEAL -> "meal"
+            TimelineEventType.PHOTO_MOMENT -> "photo_moment"
+            TimelineEventType.MEETING -> "meeting"
+            TimelineEventType.CLASS -> "class"
+            TimelineEventType.WORK -> "work"
+            TimelineEventType.EXERCISE -> "exercise"
+            TimelineEventType.SOCIAL -> "social"
+            TimelineEventType.REST -> "rest"
+            TimelineEventType.UNKNOWN -> "unknown"
+        }
+
+private val AnalyticsUpdateScope.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsUpdateScope.CONTENT -> "content"
+            AnalyticsUpdateScope.TIME -> "time"
+            AnalyticsUpdateScope.PHOTO -> "photo"
+            AnalyticsUpdateScope.MEMO -> "memo"
+            AnalyticsUpdateScope.COMBINED -> "combined"
         }

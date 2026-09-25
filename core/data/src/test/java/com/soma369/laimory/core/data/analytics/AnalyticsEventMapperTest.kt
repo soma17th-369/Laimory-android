@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
@@ -15,13 +16,17 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
 import com.soma369.laimory.core.domain.model.collection.ItemType
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * 전송 이름과 값을 고정한다.
@@ -35,6 +40,15 @@ import java.time.LocalDate
 class AnalyticsEventMapperTest {
     private val today = AnalyticsRecordDayRelation.TODAY
     private val date = LocalDate.parse("2026-09-21")
+    private val startAt = LocalDateTime.parse("2026-09-21T08:30:00")
+    private val target =
+        AnalyticsTimelineEventTarget(
+            timelineEventId = 42L,
+            eventType = TimelineEventType.MEAL,
+            photoCount = 3,
+            recordState = AnalyticsTimelineState.SAVED,
+            recordDate = date,
+        )
 
     /** 칸마다 값을 달리 둬 서로 바뀌어 실려도 드러나게 한다. */
     private val eventSummary =
@@ -153,6 +167,30 @@ class AnalyticsEventMapperTest {
                     "timeline_completion_fail",
                     setOf("record_day_relation", "failure_code"),
                     setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineMemoSaved(target, memoLength = 12),
+                    "timeline_memo_saved",
+                    setOf("event_type", "record_state"),
+                    setOf("event_id", "photo_cnt", "record_date", "memo_length"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventUpdated(target, startAt, setOf(AnalyticsEventField.TITLE)),
+                    "timeline_event_updated",
+                    setOf("event_type", "record_state", "update_scope"),
+                    setOf("event_id", "photo_cnt", "record_date", "event_start_at", "changed_field_count"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventDeleted(target),
+                    "timeline_event_deleted",
+                    setOf("event_type", "record_state"),
+                    setOf("event_id", "photo_cnt", "record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineEventCreated(TimelineEventType.MEAL, photoCount = 1, AnalyticsTimelineState.DRAFT, date),
+                    "timeline_event_created",
+                    setOf("event_type", "record_state"),
+                    setOf("photo_cnt", "record_date"),
                 ),
             )
 
@@ -384,6 +422,72 @@ class AnalyticsEventMapperTest {
             AnalyticsRecordAgeBucket.entries,
             "record_age_bucket",
         ) { AnalyticsEvent.TimelinePastRecordOpened(it, AnalyticsEntryPoint.UNKNOWN, date) }
+
+    @Test
+    fun `편집 이벤트에 사건 값을 싣는다`() {
+        val payload =
+            AnalyticsEvent
+                .TimelineEventUpdated(
+                    target,
+                    startAt,
+                    setOf(AnalyticsEventField.TITLE, AnalyticsEventField.SUBTITLE, AnalyticsEventField.START_AT),
+                ).toPayload()
+
+        assertEquals(42L, payload.counts["event_id"])
+        assertEquals(3L, payload.counts["photo_cnt"])
+        assertEquals("meal", payload.strings["event_type"])
+        assertEquals("saved", payload.strings["record_state"])
+        assertEquals("combined", payload.strings["update_scope"])
+        assertEquals(3L, payload.counts["changed_field_count"])
+        // 2026-09-21 08:30 (UTC+9) = 2026-09-20T23:30:00Z
+        assertEquals(1_789_947_000_000L, payload.counts["event_start_at"])
+    }
+
+    @Test
+    fun `사건 종류 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                TimelineEventType.WAKE_UP to "wake_up",
+                TimelineEventType.SLEEP to "sleep",
+                TimelineEventType.MOVEMENT to "movement",
+                TimelineEventType.CALENDAR_EVENT to "calendar_event",
+                TimelineEventType.MEAL to "meal",
+                TimelineEventType.PHOTO_MOMENT to "photo_moment",
+                TimelineEventType.MEETING to "meeting",
+                TimelineEventType.CLASS to "class",
+                TimelineEventType.WORK to "work",
+                TimelineEventType.EXERCISE to "exercise",
+                TimelineEventType.SOCIAL to "social",
+                TimelineEventType.REST to "rest",
+                TimelineEventType.UNKNOWN to "unknown",
+            ),
+            TimelineEventType.entries,
+            "event_type",
+        ) { AnalyticsEvent.TimelineEventDeleted(target.copy(eventType = it)) }
+
+    @Test
+    fun `수정 범위 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsUpdateScope.CONTENT to "content",
+                AnalyticsUpdateScope.TIME to "time",
+                AnalyticsUpdateScope.PHOTO to "photo",
+                AnalyticsUpdateScope.MEMO to "memo",
+                AnalyticsUpdateScope.COMBINED to "combined",
+            ),
+            AnalyticsUpdateScope.entries,
+            "update_scope",
+        ) { scope ->
+            val fields =
+                when (scope) {
+                    AnalyticsUpdateScope.CONTENT -> setOf(AnalyticsEventField.TITLE)
+                    AnalyticsUpdateScope.TIME -> setOf(AnalyticsEventField.START_AT)
+                    AnalyticsUpdateScope.PHOTO -> setOf(AnalyticsEventField.PHOTO)
+                    AnalyticsUpdateScope.MEMO -> setOf(AnalyticsEventField.MEMO)
+                    AnalyticsUpdateScope.COMBINED -> setOf(AnalyticsEventField.TITLE, AnalyticsEventField.MEMO)
+                }
+            AnalyticsEvent.TimelineEventUpdated(target, startAt, fields)
+        }
 
     private fun <T> assertWireValues(
         expected: Map<T, String>,

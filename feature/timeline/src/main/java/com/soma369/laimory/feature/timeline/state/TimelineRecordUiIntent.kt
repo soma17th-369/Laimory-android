@@ -14,6 +14,9 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object RetryLoad : TimelineRecordUiIntent
 
+    /** 화면이 내려갔다(뒤로·다른 화면으로 이동). 모아 둔 분석 이벤트를 보낸다. */
+    data object Leave : TimelineRecordUiIntent
+
     data object NavigateBack : TimelineRecordUiIntent
 
     /** 저장 CTA — 곧바로 저장하지 않고 감정 선택 시트를 연다. */
