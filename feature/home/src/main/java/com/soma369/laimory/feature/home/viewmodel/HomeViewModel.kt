@@ -148,6 +148,14 @@ class HomeViewModel
         private var preparedPhotoCache: PreparedPhotoCache? = null
         private var dateSource = DateSource.DEFAULT
         private var consentPreparationJob: Job? = null
+
+        /**
+         * 확인창이 보여 준 제출 목록. `만들기` 는 이것을 그대로 보낸다.
+         *
+         * 만들기 때 스토어에서 다시 만들면 안 된다 — 확인창이 떠 있는 동안 수집 갱신이 제외 집합에서 사라진
+         * 항목을 걷어 내는데, 준비 스냅샷에는 그 항목이 남아 있어 사용자가 뺐던 것이 확인창에 없던 채로 나간다.
+         */
+        private var confirmedSubmission: DraftSourceItemSelection? = null
         private var locationConsentJob: Job? = null
 
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
@@ -198,7 +206,18 @@ class HomeViewModel
                 draftConsentSessionStore.accountSession.drop(1).collect {
                     locationConsentJob?.cancel()
                     attemptedStayRawIds.clear()
-                    updateState { copy(isLocationConsentGranted = false) }
+                    // 확인창·고른 사진은 이전 계정의 시도다. 스토어는 이미 비었으므로 남겨 두면 새 계정 홈에
+                    // 이전 계정의 썸네일이 다시 뜨고, `만들기` 는 준비 스냅샷이 없어 무반응이다.
+                    confirmedSubmission = null
+                    updateState {
+                        copy(
+                            isLocationConsentGranted = false,
+                            createConfirm = null,
+                            selectedPhotoIds = emptySet(),
+                            pendingPhotoIds = emptySet(),
+                            isPhotoSheetVisible = false,
+                        )
+                    }
                 }
             }
 
@@ -822,15 +841,15 @@ class HomeViewModel
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
             analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, preparation.selection.analyticsCounts().total))
+            confirmedSubmission = submission
             updateState { copy(createConfirm = submission.toCreateConfirm()) }
         }
 
-        /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 스냅샷을 그대로 제출한다. */
+        /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 목록을 그대로 제출한다. */
         private suspend fun confirmCreateDraft() {
-            if (state.value.createConfirm == null) return
-            updateState { copy(createConfirm = null) }
+            val submission = confirmedSubmission ?: return
+            closeCreateConfirm()
             val preparation = draftConsentSessionStore.preparation.value ?: return
-            val submission = submissionOf(preparation)
             analyticsHelper.log(
                 AnalyticsEvent.TimelineEventReviewCompleted(
                     recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
@@ -846,8 +865,8 @@ class HomeViewModel
          * 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
          */
         private suspend fun dismissCreateConfirm() {
-            if (state.value.createConfirm == null) return
-            updateState { copy(createConfirm = null) }
+            if (confirmedSubmission == null) return
+            closeCreateConfirm()
             val preparation = draftConsentSessionStore.preparation.value ?: return
             analyticsHelper.log(
                 AnalyticsEvent.TimelineCreateStopped(
@@ -856,6 +875,11 @@ class HomeViewModel
                 ),
             )
             draftConsentSessionStore.clearPreparation()
+        }
+
+        private fun closeCreateConfirm() {
+            confirmedSubmission = null
+            updateState { copy(createConfirm = null) }
         }
 
         /**

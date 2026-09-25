@@ -217,6 +217,50 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `확인창이 떠 있는 동안 원천이 갱신돼도 보여 준 목록 그대로 제출한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 제외한 A 가 수집 결과에서 사라지면 제외 집합에서도 걷힌다. 만들기 때 제출 목록을 다시
+            // 만들면 준비 스냅샷에 남은 A 가 확인창에 없던 채로 되살아난다.
+            sourceRepository.items.value = listOf(todayItem("a"), todayItem("b"))
+            val viewModel = createViewModel()
+            runCurrent()
+            sessionStore.toggleExcluded("a")
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            createDraft(viewModel)
+            assertEquals(1, viewModel.state.value.createConfirm!!.counts.sumOf { it.count })
+
+            sourceRepository.items.value = listOf(todayItem("b"))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(listOf("b"), draftRepository.createdItems.map(SourceItem::rawId))
+        }
+
+    @Test
+    fun `계정이 바뀌면 떠 있던 확인창과 고른 사진을 거둔다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            createDraft(viewModel)
+            assertNotNull(viewModel.state.value.createConfirm)
+
+            sessionStore.clearAll()
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertEquals(emptySet<Long>(), viewModel.state.value.selectedPhotoIds)
+        }
+
+    @Test
     fun `빈 범위면 시작 뒤 데이터 없음으로 중단을 기록한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
