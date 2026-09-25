@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -55,7 +53,6 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
-import com.soma369.laimory.feature.home.state.HomeRangeLock
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
 import java.time.LocalDate
 import java.time.LocalTime
@@ -96,8 +93,6 @@ internal fun HomeDatePickerDialog(
     // 어긋나지 않는다.
     val today = remember { LocalDate.now() }
     var visibleMonth by remember { mutableStateOf(YearMonth.from(session.date)) }
-    // 범위를 바꾼 채 확인을 눌러 판정을 기다리는 동안은 취소만 받는다.
-    val isInputEnabled = !session.isConfirmPending
 
     // 달을 넘길 때마다 그 달의 기록을 받는다. 열자마자 현재 값이 한 번 흘러 첫 달도 받는다.
     LaunchedEffect(visibleMonth) { onDisplayedMonthChange(visibleMonth) }
@@ -106,10 +101,8 @@ internal fun HomeDatePickerDialog(
     // 고르면 CTA 가 `타임라인 확인하기` 로 그 기록을 연다. 달을 넘겨 보는 것은 막지 않는다.
     val isSelectable: (LocalDate) -> Boolean = { date -> isSelectableRecordDate(date, today, retentionDays) }
     val pickDate: (LocalDate) -> Unit = { date ->
-        if (isInputEnabled) {
-            onPickDate(date)
-            visibleMonth = YearMonth.from(date)
-        }
+        onPickDate(date)
+        visibleMonth = YearMonth.from(date)
     }
 
     Dialog(
@@ -137,14 +130,14 @@ internal fun HomeDatePickerDialog(
                             label = "오늘",
                             date = today,
                             isSelected = session.date == today,
-                            isEnabled = isInputEnabled && isSelectable(today),
+                            isEnabled = isSelectable(today),
                             onClick = { pickDate(today) },
                         )
                         QuickDateChip(
                             label = "어제",
                             date = today.minusDays(1),
                             isSelected = session.date == today.minusDays(1),
-                            isEnabled = isInputEnabled && isSelectable(today.minusDays(1)),
+                            isEnabled = isSelectable(today.minusDays(1)),
                             onClick = { pickDate(today.minusDays(1)) },
                         )
                     }
@@ -189,21 +182,9 @@ internal fun HomeDatePickerDialog(
                     }
                     TextButton(
                         onClick = onConfirm,
-                        // 조회가 끝나기 전에 고른 날짜가 뒤늦게 보존 기간 밖으로 판정될 수 있다.
-                        enabled = isInputEnabled && isSelectable(session.date),
+                        enabled = isSelectable(session.date),
                     ) {
-                        if (session.isConfirmPending) {
-                            // 글자 대신 진행 표시를 두되 버튼 폭은 그대로 둔다 — 취소 버튼이 옆으로 밀리지 않게.
-                            Box(contentAlignment = Alignment.Center) {
-                                Text("확인", modifier = Modifier.alpha(0f))
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(ConfirmProgressSize),
-                                    strokeWidth = 2.dp,
-                                )
-                            }
-                        } else {
-                            Text("확인")
-                        }
+                        Text("확인")
                     }
                 }
             }
@@ -214,8 +195,7 @@ internal fun HomeDatePickerDialog(
 /**
  * 격자 아래 기록 범위 한 줄(Figma 2806:1062).
  *
- * 칩은 판정 중·조회 실패에도 누를 수 있다. 바꾼 범위가 실제로 반영될지는 확인에서 판정으로 가린다.
- * 잠긴 날은 칩을 막고, 안내 문구를 왜 막혔는지로 바꾼다.
+ * 범위는 홈 카드의 데이터를 거르는 필터라 어느 날이든 바꿀 수 있다.
  */
 @Composable
 private fun RecordRangeSection(
@@ -234,19 +214,10 @@ private fun RecordRangeSection(
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            RangeChip(
-                label = session.timeRangeLabel(),
-                isEnabled = session.isRangeEditable,
-                onClick = onRangeClick,
-            )
+            RangeChip(label = session.timeRangeLabel(), onClick = onRangeClick)
         }
         Text(
-            text =
-                if (session.rangeLock == HomeRangeLock.LOCKED) {
-                    "이미 만든 날은 범위를 바꿀 수 없어요"
-                } else {
-                    "6시간 이상 · 종료는 익일 06:00까지"
-                },
+            text = "6시간 이상 · 종료는 익일 06:00까지",
             modifier = Modifier.padding(top = Spacing.small),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -258,12 +229,10 @@ private fun RecordRangeSection(
 @Composable
 private fun RangeChip(
     label: String,
-    isEnabled: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
-        enabled = isEnabled,
         modifier = Modifier.semantics { role = Role.Button },
         shape = RoundedCornerShape(percent = CHIP_CORNER_PERCENT),
         color = MaterialTheme.colorScheme.surface,
@@ -272,8 +241,7 @@ private fun RangeChip(
         Row(
             modifier =
                 Modifier
-                    .padding(start = Spacing.medium, end = Spacing.small, top = Spacing.small, bottom = Spacing.small)
-                    .alpha(if (isEnabled) 1f else DISABLED_DOT_ALPHA),
+                    .padding(start = Spacing.medium, end = Spacing.small, top = Spacing.small, bottom = Spacing.small),
             horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -434,7 +402,6 @@ private val RecordDotSize = 6.dp
 private const val DISABLED_DOT_ALPHA = 0.38f
 private val StepperTouchTarget = 44.dp
 private val RangeCaretSize = 16.dp
-private val ConfirmProgressSize = 16.dp
 private val StepperIconSize = 20.dp
 private const val CHIP_CORNER_PERCENT = 50
 
@@ -456,7 +423,6 @@ private fun HomeDatePickerDialogPreview() {
                         startTime = LocalTime.MIDNIGHT,
                         endDay = DraftEndDay.NEXT_DAY,
                         endTime = LocalTime.MIDNIGHT,
-                        rangeLock = HomeRangeLock.EDITABLE,
                     ),
                 savedDates = setOf(today.minusDays(3)),
                 draftDates = setOf(today.minusDays(1)),

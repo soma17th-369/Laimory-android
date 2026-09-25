@@ -64,7 +64,6 @@ import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
-import com.soma369.laimory.feature.home.state.HomeRangeLock
 import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeSourcePermissions
@@ -157,9 +156,6 @@ class HomeViewModel
 
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
         private var recordStateJob: Job? = null
-
-        /** 날짜 피커에서 임시로 고른 날의 범위 잠금 판정. 날짜를 다시 고르면 이전 판정을 끊는다. */
-        private var rangeLockJob: Job? = null
 
         init {
             observeSummary()
@@ -432,7 +428,6 @@ class HomeViewModel
         private fun showDatePicker() {
             if (state.value.isDateLocked) return
             loadedRecordMonths.clear()
-            val current = state.value
             updateState {
                 copy(
                     datePicker =
@@ -441,87 +436,30 @@ class HomeViewModel
                             startTime = startTime,
                             endDay = endDay,
                             endTime = endTime,
-                            rangeLock = HomeRangeLock.CHECKING,
                         ),
                 )
             }
-            // 확정된 날짜도 판정을 새로 받는다. 받아 둔 판정은 앱을 켠 직후엔 아직 없을 수 있다.
-            judgeRangeLock(current.selectedDate)
         }
 
         /** 피커를 닫는다. 세션 전체를 버리므로 아무것도 확정되지 않고 기록 창도 그대로다. */
         private fun dismissDatePicker() {
-            rangeLockJob?.cancel()
             updateState { copy(datePicker = null, timeSheet = null) }
         }
 
         private fun pickDate(date: LocalDate) {
             val session = state.value.datePicker ?: return
-            if (session.isConfirmPending) return
             if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
-            if (date == session.date) return
-            updateState { copy(datePicker = session.copy(date = date, rangeLock = HomeRangeLock.CHECKING)) }
-            judgeRangeLock(date)
+            updateState { copy(datePicker = session.copy(date = date)) }
         }
 
-        /**
-         * 임시 날짜의 범위 잠금을 판정한다. 확정 후 CTA 와 같은 단건 조회를 쓴다.
-         *
-         * 응답이 오기 전에 날짜를 다시 고르거나 피커를 닫으면 이 판정은 버린다.
-         */
-        private fun judgeRangeLock(date: LocalDate) {
-            rangeLockJob?.cancel()
-            rangeLockJob =
-                safeLaunch(
-                    onError = { error -> if (error !is CancellationException) applyRangeLock(date, HomeRangeLock.FAILED) },
-                ) {
-                    val lock = if (recordStateOf(date).isViewable) HomeRangeLock.LOCKED else HomeRangeLock.EDITABLE
-                    applyRangeLock(date, lock)
-                }
-        }
-
-        private fun applyRangeLock(
-            date: LocalDate,
-            lock: HomeRangeLock,
-        ) {
-            val session = state.value.datePicker ?: return
-            if (session.date != date) return
-            updateState { copy(datePicker = session.copy(rangeLock = lock)) }
-            // 판정을 기다리며 미뤄 둔 확인이 있으면 이제 적용한다.
-            if (session.isConfirmPending) confirmDatePicker()
-        }
-
-        /**
-         * 피커의 확인. 날짜와 범위를 한 번에 확정한다.
-         *
-         * 범위는 서버로 가는 요청이 없어 잘못 확정해도 뒤에서 막아 줄 곳이 없다. 그래서 **바뀐 범위는 판정이
-         * [HomeRangeLock.EDITABLE] 일 때만** 반영한다 — 판정 중이면 끝날 때까지 미루고, 잠겼거나 조회에
-         * 실패하면 날짜만 확정한다. 범위를 건드리지 않았으면 판정을 기다리지 않는다.
-         */
+        /** 피커의 확인. 날짜와 범위를 한 번에 확정한다. */
         private fun confirmDatePicker() {
             val current = state.value
             val session = current.datePicker ?: return
             // 피커를 연 뒤 생성이 시작됐으면 날짜를 옮기지 않는다. 확인이 아무 일도 안 하면 닫히지 않은
             // 다이얼로그만 남으므로 세션을 버린다.
             if (current.isDateLocked) return dismissDatePicker()
-            val isRangeChanged = !session.hasRangeOf(current.startTime, current.endDay, current.endTime)
-            if (!isRangeChanged) {
-                commitDatePicker(session, applyRange = false)
-                return
-            }
-            when (session.rangeLock) {
-                HomeRangeLock.CHECKING ->
-                    updateState { copy(datePicker = session.copy(isConfirmPending = true), timeSheet = null) }
-                HomeRangeLock.EDITABLE -> commitDatePicker(session, applyRange = true)
-                HomeRangeLock.LOCKED -> {
-                    commitDatePicker(session, applyRange = false)
-                    sendEffect(HomeUiSideEffect.ShowSnackbar(RANGE_LOCKED_MESSAGE))
-                }
-                HomeRangeLock.FAILED -> {
-                    commitDatePicker(session, applyRange = false)
-                    sendEffect(HomeUiSideEffect.ShowSnackbar(RANGE_UNCHECKED_MESSAGE))
-                }
-            }
+            commitDatePicker(session)
         }
 
         /**
@@ -530,19 +468,14 @@ class HomeViewModel
          * 날짜와 범위를 **한 번의 상태 갱신**으로 옮긴다. 따로 옮기면 그 사이 한 번은 새 날짜 + 옛 범위의 창으로
          * 카드를 센다. 기록 창이 바뀐 경우에만 창 갱신을 한 번 부른다.
          */
-        private fun commitDatePicker(
-            session: HomeDatePickerSession,
-            applyRange: Boolean,
-        ) {
-            rangeLockJob?.cancel()
+        private fun commitDatePicker(session: HomeDatePickerSession) {
             // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
             // 지금 날짜를 그대로 다시 골라도 마찬가지다.
             dateSource = DateSource.USER
             // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
             startAutoCollectionAhead()
             val isDateChanged = session.date != state.value.selectedDate
-            val isRangeChanged =
-                applyRange && !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
+            val isRangeChanged = !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
             updateState {
                 val closed = copy(datePicker = null, timeSheet = null)
                 if (!isDateChanged && !isRangeChanged) return@updateState closed
@@ -551,10 +484,12 @@ class HomeViewModel
                 val next =
                     closed.copy(
                         selectedDate = session.date,
-                        startTime = if (isRangeChanged) session.startTime else startTime,
-                        endDay = if (isRangeChanged) session.endDay else endDay,
-                        endTime = if (isRangeChanged) session.endTime else endTime,
-                        draftStatus = DraftCreationStatus.IDLE,
+                        startTime = session.startTime,
+                        endDay = session.endDay,
+                        endTime = session.endTime,
+                        // 같은 날 범위만 바꿨으면 방금 끝난 완료 표시는 그대로 둔다 — 기록은 그대로 있다.
+                        draftStatus =
+                            if (!isDateChanged && draftStatus == DraftCreationStatus.SUCCESS) draftStatus else DraftCreationStatus.IDLE,
                         draftRetryMode = null,
                         draftMessage = null,
                         selectedRecord = if (isDateChanged) cachedRecordState(session.date) else selectedRecord,
@@ -755,7 +690,6 @@ class HomeViewModel
         /** 날짜 피커 세션의 범위로 시트를 연다. 임시로 고른 날짜를 기준으로 당일·익일을 센다. */
         private fun showTimeSheet(field: HomeTimeField) {
             val session = state.value.datePicker ?: return
-            if (!session.isRangeEditable) return
             updateState {
                 copy(
                     timeSheet =
@@ -801,7 +735,7 @@ class HomeViewModel
             val current = state.value
             val sheet = current.timeSheet ?: return
             val session = current.datePicker ?: return
-            if (!session.isRangeEditable || !sheet.isConfirmEnabled) return
+            if (!sheet.isConfirmEnabled) return
             updateState {
                 copy(
                     datePicker =
@@ -1415,11 +1349,5 @@ class HomeViewModel
              * 상한을 넘기면 기존 저장 데이터로 생성을 이어 간다 — 수집이 느리다고 생성이 막히면 안 된다.
              */
             const val AUTO_COLLECTION_TIMEOUT_MILLIS = 10_000L
-
-            /** 잠긴 날이라 피커에서 바꾼 범위를 버렸을 때. 날짜 피커의 잠금 안내와 같은 문구다. */
-            const val RANGE_LOCKED_MESSAGE = "이미 만든 날은 범위를 바꿀 수 없어요"
-
-            /** 판정 조회가 실패해 바꾼 범위를 버렸을 때. 날짜는 확정됐다. */
-            const val RANGE_UNCHECKED_MESSAGE = "기록 상태를 확인하지 못해 범위는 바꾸지 않았어요"
         }
     }
