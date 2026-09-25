@@ -24,6 +24,9 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSum
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
+import com.soma369.laimory.core.domain.model.analytics.InstallCampaign
+import com.soma369.laimory.core.domain.model.analytics.InstallReferrerStatus
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -213,6 +216,19 @@ class AnalyticsEventMapperTest {
                     "timeline_event_created",
                     setOf("event_type", "record_state"),
                     setOf("photo_cnt", "record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.InstallAttributionResolved(fullAttribution),
+                    "install_attribution_resolved",
+                    setOf(
+                        "attribution_method",
+                        "referrer_status",
+                        "utm_source",
+                        "utm_medium",
+                        "utm_campaign",
+                        "utm_content",
+                        "utm_id",
+                    ),
                 ),
             )
 
@@ -406,6 +422,39 @@ class AnalyticsEventMapperTest {
             AnalyticsTimelineState.entries,
             "timeline_state",
         ) { AnalyticsEvent.TimelineOpened(it, today, date, AnalyticsEntryPoint.UNKNOWN) }
+
+    @Test
+    fun `설치 유입 확정에는 귀속 방식과 있는 캠페인 값만 싣는다`() {
+        val parsed = AnalyticsEvent.InstallAttributionResolved(fullAttribution).toPayload()
+        assertEquals("play_install_referrer", parsed.strings["attribution_method"])
+        assertEquals("meta", parsed.strings["utm_source"])
+        assertEquals("paid", parsed.strings["utm_medium"])
+        assertEquals("sleep_hook_20260924", parsed.strings["utm_campaign"])
+        assertEquals("video_a", parsed.strings["utm_content"])
+        assertEquals("120212345", parsed.strings["utm_id"])
+
+        val noCampaign =
+            AnalyticsEvent.InstallAttributionResolved(InstallAttribution(InstallReferrerStatus.NO_CAMPAIGN)).toPayload()
+        assertEquals(setOf("attribution_method", "referrer_status"), noCampaign.strings.keys)
+    }
+
+    @Test
+    fun `설치 유입 상태 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                InstallReferrerStatus.PARSED to "parsed",
+                InstallReferrerStatus.PROVIDER to "provider",
+                InstallReferrerStatus.NO_CAMPAIGN to "no_campaign",
+                InstallReferrerStatus.INVALID to "invalid",
+                InstallReferrerStatus.UNAVAILABLE to "unavailable",
+            ),
+            InstallReferrerStatus.entries,
+            "referrer_status",
+        ) { status ->
+            AnalyticsEvent.InstallAttributionResolved(
+                InstallAttribution(status, campaign = InstallCampaign(source = "meta").takeIf { status.carriesCampaign }),
+            )
+        }
 
     @Test
     fun `완료 방식 전송값을 고정한다`() =
@@ -640,6 +689,19 @@ class AnalyticsEventMapperTest {
         state: AnalyticsPermissionState = AnalyticsPermissionState.GRANTED,
         promptContext: AnalyticsPromptContext = AnalyticsPromptContext.HOME,
     ) = AnalyticsEvent.PermissionResult(permission = permission, state = state, promptContext = promptContext)
+
+    private val fullAttribution =
+        InstallAttribution(
+            status = InstallReferrerStatus.PARSED,
+            campaign =
+                InstallCampaign(
+                    source = "meta",
+                    medium = "paid",
+                    campaign = "sleep_hook_20260924",
+                    content = "video_a",
+                    campaignId = "120212345",
+                ),
+        )
 
     private data class Expectation(
         val event: AnalyticsEvent,

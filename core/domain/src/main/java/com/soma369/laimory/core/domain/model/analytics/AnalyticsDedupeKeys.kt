@@ -46,4 +46,10 @@ object AnalyticsDedupeKeys {
 
     /** 그 날짜 완료 판정의 뿌리. 지울 때 쓴다. */
     fun timelineCompletedRoot(recordDate: LocalDate): AnalyticsDedupeKey = AnalyticsDedupeKey("timeline_completed:$recordDate")
+
+    /**
+     * 설치 유입 확정 판정 키. 설치마다 새로 만드는 [installId] 를 붙인다 — 판정 기록은 백업에서 되살아날 수
+     * 있는데, 고정 키면 재설치한 설치의 확정 이벤트가 옛 판정에 막힌다.
+     */
+    fun installAttributionResolved(installId: String): AnalyticsDedupeKey = AnalyticsDedupeKey("install_attribution_resolved:$installId")
 }

@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligib
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingStep
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersion
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
@@ -623,6 +624,8 @@ class OnboardingConsentTest {
         override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
 
         override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 
     private companion object {

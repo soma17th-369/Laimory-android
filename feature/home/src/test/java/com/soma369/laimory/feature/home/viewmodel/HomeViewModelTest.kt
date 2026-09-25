@@ -21,6 +21,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
@@ -1419,6 +1420,8 @@ class HomeViewModelTest {
         override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
 
         override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 
     private class FakeDraftRepository : TimelineDraftRepository {

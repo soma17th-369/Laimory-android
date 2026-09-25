@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginAttempt
@@ -306,6 +307,8 @@ class LoginViewModelTest {
         override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
 
         override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 
     /** 약관 주소는 로그인 흐름과 무관한 곁가지라 조회가 비어도 화면 동작이 달라지지 않는다. */

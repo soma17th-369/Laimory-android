@@ -294,6 +294,11 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                         PARAM_ACTION to action.paramValue,
                     ),
             )
+        is AnalyticsEvent.InstallAttributionResolved ->
+            payload(
+                name = "install_attribution_resolved",
+                strings = attribution.toEventStrings(),
+            )
     }
 
 private const val STAGE_INITIAL = "initial"

@@ -192,6 +192,8 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.analytics)
+    // 설치 유입 UTM(#424). Play 서비스 의존은 app 에만 둔다.
+    implementation(libs.installreferrer)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -11,6 +11,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
@@ -1389,5 +1390,7 @@ class TimelineEventEditorViewModelTest {
         override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
 
         override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 }

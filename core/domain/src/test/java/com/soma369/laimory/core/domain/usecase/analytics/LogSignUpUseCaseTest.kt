@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import kotlinx.coroutines.flow.Flow
@@ -96,5 +97,7 @@ class LogSignUpUseCaseTest {
         override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
 
         override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 }
