@@ -1,6 +1,5 @@
 package com.soma369.laimory.feature.onboarding.viewmodel
 
-import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
@@ -32,8 +31,6 @@ import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -60,18 +57,17 @@ class OnboardingViewModel
          */
         private var recordableConsents: List<TermDocument> = emptyList()
 
-        /**
-         * 이번 온보딩 회차의 분석용 토큰. 읽기에 실패하면 null 이고 온보딩 이벤트를 보내지 않는다.
-         *
-         * 저장소를 거쳐 오므로 기다려야 한다. 온보딩 흐름을 이 값에 묶지 않도록 분석 쪽에서만 기다린다.
-         */
-        private val flowId: Deferred<String?> = viewModelScope.async { runCatching { getOnboardingFlowId() }.getOrNull() }
-
         /** 저장된 진행 위치에서 이어 열었는지. 복원이 끝나야 정해진다. */
         private var isResumed = false
 
-        /** 첫 장이 보인 뒤로는 모두 앞뒤로 넘겨 도착한 것이다. */
-        private var hasShownFirstPage = false
+        /**
+         * 장 표시를 마지막으로 남긴 회차. 회차가 바뀐 뒤 처음 보인 장이 그 회차의 첫 장이고, 그 뒤로는 모두 앞뒤로
+         * 넘겨 도착한 것이다.
+         *
+         * 회차 토큰을 들고 있지 않고 매번 저장소에서 읽는다 — 이 ViewModel 은 화면보다 오래 살아서, 계정을 바꿔
+         * 온보딩을 다시 보면 저장소의 토큰은 새로 바뀌어 있다.
+         */
+        private var viewedFlowId: String? = null
 
         init {
             // 복원을 약관 조회 뒤로 미루지 않는다. 장 목록은 조회 결과와 무관하게 고정이고,
@@ -188,15 +184,15 @@ class OnboardingViewModel
             pageIndex: Int,
             eligibility: AnalyticsOnboardingEligibility,
         ) {
+            val step = state.value.pages.getOrNull(pageIndex)?.analyticsStep ?: return
+            val flowId = currentFlowId() ?: return
             val entryMode =
                 when {
-                    hasShownFirstPage -> AnalyticsOnboardingEntryMode.NAVIGATION
+                    viewedFlowId == flowId -> AnalyticsOnboardingEntryMode.NAVIGATION
                     isResumed -> AnalyticsOnboardingEntryMode.RESUME
                     else -> AnalyticsOnboardingEntryMode.INITIAL
                 }
-            hasShownFirstPage = true
-            val step = state.value.pages.getOrNull(pageIndex)?.analyticsStep ?: return
-            val flowId = flowId.await() ?: return
+            viewedFlowId = flowId
             analyticsHelper.logOnce(
                 AnalyticsDedupeKeys.onboardingStepViewed(flowId, step),
                 AnalyticsEvent.OnboardingStepViewed(
@@ -210,13 +206,16 @@ class OnboardingViewModel
             )
         }
 
+        /** 이번 회차의 토큰. 읽지 못하면 null 이고 온보딩 이벤트를 보내지 않는다 — 온보딩 흐름은 막지 않는다. */
+        private suspend fun currentFlowId(): String? = runCatching { getOnboardingFlowId() }.getOrNull()
+
         /** 장마다 처음 고른 행동만 남긴다 — 뒤로 갔다 다시 넘긴 것은 첫 선택이 아니다. */
         private suspend fun logStepAction(
             pageIndex: Int,
             action: AnalyticsOnboardingAction,
         ) {
             val step = state.value.pages.getOrNull(pageIndex)?.analyticsStep ?: return
-            val flowId = flowId.await() ?: return
+            val flowId = currentFlowId() ?: return
             analyticsHelper.logOnce(
                 AnalyticsDedupeKeys.onboardingStepAction(flowId, step),
                 AnalyticsEvent.OnboardingStepAction(flowId = flowId, version = ONBOARDING_VERSION, step = step, action = action),
