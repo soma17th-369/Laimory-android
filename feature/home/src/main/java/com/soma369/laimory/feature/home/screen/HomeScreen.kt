@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,10 +43,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -64,8 +62,6 @@ import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
-import com.soma369.laimory.core.ui.greeting.GreetingEmphasis
-import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataPermissionState
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
@@ -73,6 +69,7 @@ import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.util.permission.PhotoPermission
+import com.soma369.laimory.feature.home.component.DraftCreateConfirmDialog
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
 import com.soma369.laimory.feature.home.component.HomePhotoGrid
 import com.soma369.laimory.feature.home.component.HomeRotatingContent
@@ -83,7 +80,6 @@ import com.soma369.laimory.feature.home.component.cardBody
 import com.soma369.laimory.feature.home.component.cardClick
 import com.soma369.laimory.feature.home.component.permissionAction
 import com.soma369.laimory.feature.home.component.photoEmptyMessage
-import com.soma369.laimory.feature.home.component.timeRangeLabel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeCalendarItem
@@ -96,7 +92,6 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.isDateLocked
-import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import com.soma369.laimory.feature.home.viewmodel.HomeViewModel
 import kotlinx.coroutines.delay
@@ -131,7 +126,6 @@ fun HomeRoute(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         // 다른 갱신보다 먼저 보낸다. 날짜가 바뀌었으면 뒤따르는 조회가 바뀐 날짜로 돌아야 한다.
         viewModel.sendIntent(HomeUiIntent.RefreshToday)
-        viewModel.sendIntent(HomeUiIntent.RefreshProfile)
         viewModel.sendIntent(
             HomeUiIntent.RefreshPhotos(
                 hasAccess = PhotoPermission.canRead(context),
@@ -237,18 +231,29 @@ private fun HomeContent(
         )
     }
 
-    if (state.isDatePickerVisible) {
+    state.datePicker?.let { session ->
         HomeDatePickerDialog(
-            initialDate = state.selectedDate,
+            session = session,
             savedDates = state.savedRecordDates,
             draftDates = state.draftRecordDates,
             retentionDays = state.retentionDays,
-            onSelect = { onIntent(HomeUiIntent.SelectDate(it)) },
+            onPickDate = { onIntent(HomeUiIntent.PickDate(it)) },
+            onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
+            onConfirm = { onIntent(HomeUiIntent.ConfirmDatePicker) },
             onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },
         )
     }
 
+    state.createConfirm?.let { confirm ->
+        DraftCreateConfirmDialog(
+            confirm = confirm,
+            onConfirm = { onIntent(HomeUiIntent.ConfirmCreateDraft) },
+            onDismiss = { onIntent(HomeUiIntent.DismissCreateConfirm) },
+        )
+    }
+
+    // 날짜 피커 위에 겹쳐 뜬다. 뒤에 그려야 창이 위로 올라가, 뒤로가기·바깥 탭이 이 시트만 닫고 피커로 돌아간다.
     state.timeSheet?.let { sheet ->
         LaimoryTimePickerSheet(
             fields = draftTimePickerFields(sheet),
@@ -261,7 +266,7 @@ private fun HomeContent(
             },
             onConfirm = { onIntent(HomeUiIntent.ConfirmTimeSheet) },
             onDismiss = { onIntent(HomeUiIntent.DismissTimePicker) },
-            title = "초안 범위 시각",
+            title = "시간 설정",
             confirmEnabled = sheet.isConfirmEnabled,
             supportingText = DRAFT_WINDOW_GUIDE,
         )
@@ -331,37 +336,26 @@ private fun HomeScreen(
                     .padding(top = HOME_TOP_PADDING, bottom = Spacing.large),
             verticalArrangement = Arrangement.spacedBy(Spacing.large),
         ) {
-            // 인사말과 날짜는 한 덩어리다(시안 간격 2). 카드 사이 간격으로 벌리면 둘이 따로 논다.
-            Column(verticalArrangement = Arrangement.spacedBy(HEADER_LINE_GAP)) {
-                HomeHeaderRow(
-                    nickname = state.nickname,
-                    onPastRecordsClick = { onIntent(HomeUiIntent.OpenPastRecords) },
-                    // 개발 도구는 버튼을 두지 않고 인사말 뒤에 숨긴다. release 에는 진입점 자체가 없다
-                    // (ViewModel 도 호출 경계에서 한 번 더 막는다).
-                    onOpenCollectionLab =
-                        if (state.isCollectionLabAccessible) {
-                            { onIntent(HomeUiIntent.NavigateToCollection) }
-                        } else {
-                            null
-                        },
-                    onOpenHealthDetail =
-                        if (state.isCollectionLabAccessible) {
-                            { onIntent(HomeUiIntent.OpenHealthDetail) }
-                        } else {
-                            null
-                        },
-                )
-                HomeDateRow(
-                    selectedDate = state.selectedDate,
-                    windowText = state.timeRangeLabel(),
-                    isDateEnabled = !state.isDateLocked,
-                    // 시각은 만들 것이 있는 날만 바꾼다. 날짜 줄과 같은 조건을 쓰면 완성된 날에 눌리는 것처럼
-                    // 보이는데 ViewModel 이 조용히 무시한다.
-                    isRangeEnabled = !state.isInputLocked,
-                    onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
-                    onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
-                )
-            }
+            HomeHeaderRow(
+                selectedDate = state.selectedDate,
+                isDateEnabled = !state.isDateLocked,
+                onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
+                onPastRecordsClick = { onIntent(HomeUiIntent.OpenPastRecords) },
+                // 개발 도구는 버튼을 두지 않고 날짜 줄 길게 누르기 뒤에 숨긴다. release 에는 진입점 자체가 없다
+                // (ViewModel 도 호출 경계에서 한 번 더 막는다).
+                onOpenCollectionLab =
+                    if (state.isCollectionLabAccessible) {
+                        { onIntent(HomeUiIntent.NavigateToCollection) }
+                    } else {
+                        null
+                    },
+                onOpenHealthDetail =
+                    if (state.isCollectionLabAccessible) {
+                        { onIntent(HomeUiIntent.OpenHealthDetail) }
+                    } else {
+                        null
+                    },
+            )
 
             HomeSourceCard(
                 kind = HomeSourceKind.PHOTO,
@@ -452,9 +446,6 @@ private fun HomeScreen(
 /** 상태 표시줄 아래 첫 줄까지(시안 6). */
 private val HOME_TOP_PADDING = 6.dp
 
-/** 인사말과 날짜 줄 사이(시안 2). */
-private val HEADER_LINE_GAP = 2.dp
-
 /**
  * CTA 와 바텀바 사이. 붙어 있으면 시그니처 버튼이 바텀바의 일부처럼 보인다.
  *
@@ -466,14 +457,19 @@ private val HEADER_LINE_GAP = 2.dp
 private val HOME_BOTTOM_PADDING = Spacing.large
 
 /**
- * 인사말 + `지난 기록`.
+ * 날짜 + `지난 기록` 한 줄(Figma 2525:12694).
  *
- * 개발 도구 진입점이 하나라도 있으면(debug) 인사말을 눌러 **개발 메뉴**를 연다 — 수집 데이터와
+ * 날짜와 캐럿이 **한 탭 대상**이다 — 누르면 날짜 피커가 뜨고, 기록 범위도 그 안에서 고른다.
+ *
+ * 개발 도구 진입점이 하나라도 있으면(debug) 날짜를 **길게 눌러** 개발 메뉴를 연다 — 수집 데이터와
  * 건강 상세. 버튼으로 두면 개발 빌드에서만 홈이 한 줄 늘어 release 와 다른 화면을 보게 된다.
+ * 생성 중이라 날짜를 못 바꿀 때도 길게 누르기는 열어 둔다 — 수집 상태를 가장 보고 싶은 때가 그때다.
  */
 @Composable
 private fun HomeHeaderRow(
-    nickname: String?,
+    selectedDate: LocalDate,
+    isDateEnabled: Boolean,
+    onDateClick: () -> Unit,
     onPastRecordsClick: () -> Unit,
     onOpenCollectionLab: (() -> Unit)?,
     onOpenHealthDetail: (() -> Unit)?,
@@ -481,16 +477,44 @@ private fun HomeHeaderRow(
     var isDebugMenuExpanded by remember { mutableStateOf(false) }
     val hasDebugMenu = onOpenCollectionLab != null || onOpenHealthDetail != null
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        // 시안의 헤더 틀은 위아래 8 을 둔다. 줄 높이는 지난 기록 아이콘(32)이 정한다.
+        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.small),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 메뉴는 인사말에 붙여 띄운다. Popup 은 감싼 상자를 기준으로 자리를 잡는다.
+        // 메뉴는 날짜에 붙여 띄운다. Popup 은 감싼 상자를 기준으로 자리를 잡는다.
         Box {
-            HomeGreeting(
-                nickname = nickname,
-                onClick = if (hasDebugMenu) ({ isDebugMenuExpanded = true }) else null,
-            )
+            Row(
+                modifier =
+                    Modifier
+                        .clip(RoundedCornerShape(Spacing.small))
+                        .combinedClickable(
+                            // 막힌 날짜 줄도 개발 메뉴를 위해 눌린다. 짧게 누르기는 그때 아무 일도 하지 않는다.
+                            enabled = isDateEnabled || hasDebugMenu,
+                            onClickLabel = if (isDateEnabled) "날짜와 시간 범위 바꾸기" else null,
+                            onClick = { if (isDateEnabled) onDateClick() },
+                            onLongClickLabel = if (hasDebugMenu) "개발 메뉴 열기" else null,
+                            onLongClick = if (hasDebugMenu) ({ isDebugMenuExpanded = true }) else null,
+                        ),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = HOME_DATE_FORMAT.format(selectedDate),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Icon(
+                    painter = painterResource(UiR.drawable.ico_default_caret_down),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    // 날짜를 바꿀 수 없을 때는 캐럿만 흐린다. 날짜 글자까지 흐리면 오늘이 어느 날인지 읽기 어렵다.
+                    tint =
+                        MaterialTheme.colorScheme.onSurfaceVariant.let {
+                            if (isDateEnabled) it else it.copy(alpha = DISABLED_CARET_ALPHA)
+                        },
+                )
+            }
             LaimoryDropdownMenu(
                 expanded = isDebugMenuExpanded,
                 onDismissRequest = { isDebugMenuExpanded = false },
@@ -529,43 +553,8 @@ private fun HomeHeaderRow(
     }
 }
 
-/** 날짜 + 기록 범위 칩. 날짜를 누르면 피커, 칩을 누르면 타임 피커다. */
-@Composable
-private fun HomeDateRow(
-    selectedDate: LocalDate,
-    windowText: String,
-    isDateEnabled: Boolean,
-    isRangeEnabled: Boolean,
-    onDateClick: () -> Unit,
-    onRangeClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = HOME_DATE_FORMAT.format(selectedDate),
-            modifier =
-                Modifier
-                    .clip(RoundedCornerShape(Spacing.small))
-                    .clickable(enabled = isDateEnabled, onClick = onDateClick)
-                    .padding(vertical = Spacing.extraSmall),
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = windowText,
-            modifier =
-                Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = isRangeEnabled, onClick = onRangeClick)
-                    .padding(horizontal = Spacing.extraSmall, vertical = 2.dp),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-    }
-}
+/** 날짜를 바꿀 수 없을 때의 캐럿. 다른 비활성 요소와 같은 비율이다. */
+private const val DISABLED_CARET_ALPHA = 0.38f
 
 /** 일정 카드 내용. 3초마다 한 건씩 넘기고 우측에 순번을 적는다. */
 @Composable
@@ -582,7 +571,11 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            // 시간과 제목 사이 4. 붙이면 두 줄이 한 덩어리로 읽혀 어느 쪽이 제목인지 흐려진다.
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+            ) {
                 Text(
                     text = item.timeText(),
                     style = MaterialTheme.typography.bodySmall,
@@ -618,7 +611,8 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
                 .fillMaxWidth()
                 .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
-        verticalArrangement = Arrangement.SpaceBetween,
+        // 라벨 아래 값을 둔다(시안 간격 8 — 위아래 4 + 18 + 8 + 24 로 슬롯 58 을 꼭 채운다).
+        verticalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
         Text(
             text = "앱 별 알림 건수",
@@ -631,12 +625,12 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
                 horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val icon = rememberAppIcon(packageName = app.packageName, size = 24.dp)
+                val icon = rememberAppIcon(packageName = app.packageName, size = NOTIFICATION_APP_ICON_SIZE)
                 if (icon == null) {
                     // 삭제된 앱은 아이콘을 읽을 수 없다. 자리를 비우면 글자가 흔들린다.
-                    Box(modifier = Modifier.size(24.dp))
+                    Box(modifier = Modifier.size(NOTIFICATION_APP_ICON_SIZE))
                 } else {
-                    Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(24.dp))
+                    Image(bitmap = icon, contentDescription = null, modifier = Modifier.size(NOTIFICATION_APP_ICON_SIZE))
                 }
                 Text(
                     text = "${app.appName} ${app.count}",
@@ -679,14 +673,14 @@ private fun HomeLabeledSlot(
     label: String,
     value: String,
 ) {
-    // 라벨과 값을 위아래로 벌린다. 붙여 두면 두 줄이 한 덩어리로 읽혀 무엇이 제목인지 흐려진다.
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
-        verticalArrangement = Arrangement.SpaceBetween,
+        // 라벨 아래 값을 둔다(시안 간격 8 — 위아래 4 + 18 + 8 + 24 로 슬롯 58 을 꼭 채운다).
+        verticalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
         Text(
             text = label,
@@ -713,14 +707,17 @@ private fun HomeCalendarItem.timeText(): String =
     }
 
 /**
- * 일정 카드 내용의 **최소** 높이. 카드 126 = 패딩 12 + 분류 24 + 8 + **40** + 8 + 본문 22 + 패딩 12.
+ * 일정 카드 내용의 **최소** 높이. 시간 18 + 간격 4 + 제목 24.
  *
- * 고정값으로 두지 않는다. 시간·제목 두 줄은 큰 글꼴(1.3배)에서 45 가까이 되어, 고정하면 제목이 잘린다.
+ * 고정값으로 두지 않는다. 큰 글꼴(1.3배)에서는 두 줄이 더 커져, 고정하면 제목이 잘린다.
  */
-private val CALENDAR_SLOT_HEIGHT = 40.dp
+private val CALENDAR_SLOT_HEIGHT = 46.dp
 
 /** 위치·알림 반쪽 카드 내용의 **최소** 높이. 카드 전체는 144 다. 큰 글꼴에서는 내용만큼 늘어난다. */
 private val HALF_CARD_SLOT_HEIGHT = 58.dp
+
+/** 알림 슬롯의 앱 아이콘. 줄 높이(24)보다 작게 둬 글자와 같은 무게로 읽힌다(시안 20). */
+private val NOTIFICATION_APP_ICON_SIZE = 20.dp
 
 private val HOME_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
 private val SLOT_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.KOREA)
@@ -738,46 +735,3 @@ private fun DataPermissionState.locationDotStatus(): DataSourceStatus =
         LocationPermissionStep.BACKGROUND -> DataSourceStatus.LIMITED
         LocationPermissionStep.ACTIVITY, LocationPermissionStep.GRANTED -> DataSourceStatus.GRANTED
     }
-
-/**
- * 홈 인사말.
- *
- * 닉네임 유무와 무관하게 같은 타이포(`titleLarge`)를 쓴다. 조회가 늦게 끝나도 글자 크기가 바뀌지
- * 않아 목록 첫 줄이 튀지 않는다. 강조는 굵기가 아니라 색 대비다(Figma 규격).
- */
-@Composable
-private fun HomeGreeting(
-    nickname: String?,
-    onClick: (() -> Unit)?,
-) {
-    val normalColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val nicknameColor = MaterialTheme.colorScheme.onSurface
-    // 조각을 나눠 여러 Text 로 두면 접근성 서비스가 따로 읽으므로 한 문장으로 합친다.
-    val greeting =
-        remember(nickname, normalColor, nicknameColor) {
-            buildAnnotatedString {
-                nicknameGreetingSegments(nickname).forEach { segment ->
-                    val color =
-                        when (segment.emphasis) {
-                            GreetingEmphasis.NORMAL -> normalColor
-                            GreetingEmphasis.NICKNAME -> nicknameColor
-                        }
-                    withStyle(SpanStyle(color = color)) { append(segment.text) }
-                }
-            }
-        }
-    Text(
-        text = greeting,
-        // 겉모습은 그대로 둔다 — 개발 도구로 가는 숨은 입구라 눌러 보라고 권하지 않는다. 대신
-        // 낭독에는 무엇을 여는지 알린다.
-        modifier =
-            if (onClick != null) {
-                Modifier
-                    .clip(RoundedCornerShape(Spacing.small))
-                    .clickable(onClickLabel = "개발 메뉴 열기", onClick = onClick)
-            } else {
-                Modifier
-            },
-        style = MaterialTheme.typography.titleLarge,
-    )
-}

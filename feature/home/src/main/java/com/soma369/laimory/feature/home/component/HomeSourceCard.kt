@@ -82,12 +82,13 @@ private fun CategoryRow(
             painter = painterResource(kind.iconRes),
             contentDescription = null,
             modifier = Modifier.size(24.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurface,
         )
+        // 분류 이름은 카드의 제목이다. 본문(`M개 중 N개`)과 같은 흐린 색이면 어느 카드인지 먼저 읽히지 않는다.
         Text(
             text = kind.label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         StatusDot(status = status)
     }

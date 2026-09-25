@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.component
 
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.HomeSourceCount
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeSourceTapTarget
@@ -28,6 +29,16 @@ internal fun HomeUiState.statusOf(kind: HomeSourceKind): DataSourceStatus =
         HomeSourceKind.NOTIFICATION -> permissions.notification
     }
 
+/** 건수 단위. 확인 다이얼로그와 같은 표를 써서 카드와 다이얼로그가 같은 것을 다르게 세지 않는다. */
+private val HomeSourceKind.countUnit: String
+    get() =
+        when (this) {
+            HomeSourceKind.PHOTO -> DraftConsentTypeGroup.PHOTO
+            HomeSourceKind.CALENDAR -> DraftConsentTypeGroup.CALENDAR
+            HomeSourceKind.LOCATION -> DraftConsentTypeGroup.LOCATION
+            HomeSourceKind.NOTIFICATION -> DraftConsentTypeGroup.NOTIFICATION
+        }.countUnit
+
 private fun HomeSourceKind.permission(): DataPermission =
     when (this) {
         HomeSourceKind.PHOTO -> DataPermission.PHOTO
@@ -39,7 +50,7 @@ private fun HomeSourceKind.permission(): DataPermission =
 /**
  * 카드 본문 한 줄.
  *
- * 규칙은 `후보 M개 중 N개` 다. 다만 **볼 것도 권한도 없을 때만** 문구를 바꾼다 — 도트가 꺼졌어도
+ * 규칙은 `후보 M개 중 N개` 이고, 단위는 확인 다이얼로그와 같다(사진 장·일정 개·위치 건·알림 건). 다만 **볼 것도 권한도 없을 때만** 문구를 바꾼다 — 도트가 꺼졌어도
  * 모인 것이 있으면 건수를 보여 주는 편이 사용자가 아는 것에 가깝다. 지원하지 않는 기기에는
  * 허용하라고 하지 않는다.
  *
@@ -51,7 +62,7 @@ internal fun HomeUiState.cardBody(kind: HomeSourceKind): String {
     val status = statusOf(kind)
     return when {
         status == DataSourceStatus.UNSUPPORTED -> "이 기기에서는 지원하지 않아요"
-        count.candidate > 0 -> "${count.candidate}개 중 ${count.sending}개"
+        count.candidate > 0 -> kind.countUnit.let { "${count.candidate}$it 중 ${count.sending}$it" }
         status != DataSourceStatus.GRANTED -> "탭하여 허용"
         else -> "아직 모인 것이 없어요"
     }
