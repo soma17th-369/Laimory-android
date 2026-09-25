@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.settings.viewmodel
 
 import androidx.lifecycle.viewModelScope
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
@@ -8,6 +9,7 @@ import com.soma369.laimory.core.domain.message.DialogActionStyle
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.LoginPage
@@ -52,6 +54,7 @@ class SettingsViewModel
         observeLocationTracking: ObserveLocationTrackingUseCase,
         private val setLocationTracking: SetLocationTrackingUseCase,
         private val logPermissionEvent: LogPermissionEventUseCase,
+        private val analyticsHelper: AnalyticsHelper,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
@@ -203,6 +206,8 @@ class SettingsViewModel
             try {
                 globalLoadingHelper.withLoading(WITHDRAW_LOADING_KEY) {
                     val outcome = withdrawAccountUseCase().getOrThrow()
+                    // 탈퇴가 접수됐으면 이 기기에서 다시 가입하는 것은 새 가입이다. 판정을 지워 한 번 더 나가게 한다.
+                    if (outcome == AccountWithdrawalOutcome.Accepted) analyticsHelper.forgetOnce(AnalyticsDedupeKeys.SIGN_UP)
                     navigationHelper.replaceRoot(LoginPage)
                     messageHelper.send(
                         when (outcome) {

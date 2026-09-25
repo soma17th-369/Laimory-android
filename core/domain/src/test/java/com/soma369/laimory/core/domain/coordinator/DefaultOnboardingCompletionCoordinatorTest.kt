@@ -239,6 +239,8 @@ class DefaultOnboardingCompletionCoordinatorTest {
 
         override fun observeLastPageKey(): Flow<String?> = flowOf(null)
 
+        override suspend fun flowId(): String = "ob_test"
+
         override suspend fun saveProgress(pageKey: String) = Unit
 
         override suspend fun clear() {

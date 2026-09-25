@@ -8,6 +8,11 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingStep
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersion
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
@@ -19,6 +24,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSum
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
+import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import org.junit.Assert.assertEquals
@@ -185,6 +191,22 @@ class AnalyticsEventMapperTest {
                     "timeline_event_deleted",
                     setOf("event_type", "record_state"),
                     setOf("event_id", "photo_cnt", "record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.SignUp(SocialLoginProvider.GOOGLE),
+                    "sign_up",
+                    setOf("method"),
+                ),
+                Expectation(
+                    stepViewed(),
+                    "onboarding_step_viewed",
+                    setOf("flow_id", "onboarding_version", "step_id", "entry_mode", "eligibility"),
+                    setOf("step_index"),
+                ),
+                Expectation(
+                    stepAction(),
+                    "onboarding_step_action",
+                    setOf("flow_id", "onboarding_version", "step_id", "action"),
                 ),
                 Expectation(
                     AnalyticsEvent.TimelineEventCreated(TimelineEventType.MEAL, photoCount = 1, AnalyticsTimelineState.DRAFT, date),
@@ -488,6 +510,103 @@ class AnalyticsEventMapperTest {
                 }
             AnalyticsEvent.TimelineEventUpdated(target, startAt, fields)
         }
+
+    @Test
+    fun `가입 방법 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                SocialLoginProvider.GOOGLE to "google",
+                SocialLoginProvider.KAKAO to "kakao",
+            ),
+            SocialLoginProvider.entries,
+            "method",
+        ) { AnalyticsEvent.SignUp(it) }
+
+    @Test
+    fun `온보딩 판과 회차 토큰을 그대로 싣는다`() {
+        val payload = stepViewed().toPayload()
+
+        assertEquals("ob_7f9c2a", payload.strings["flow_id"])
+        assertEquals("v1", payload.strings["onboarding_version"])
+        assertEquals(1L, payload.counts["step_index"])
+    }
+
+    @Test
+    fun `온보딩 장 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingStep.INTRO to "intro",
+                AnalyticsOnboardingStep.PHOTO to "photo",
+                AnalyticsOnboardingStep.CALENDAR to "calendar",
+                AnalyticsOnboardingStep.LOCATION to "location",
+                AnalyticsOnboardingStep.NOTIFICATION to "notification",
+                AnalyticsOnboardingStep.APP_NOTIFICATION to "app_notification",
+                AnalyticsOnboardingStep.DONE to "done",
+            ),
+            AnalyticsOnboardingStep.entries,
+            "step_id",
+        ) { stepAction(step = it) }
+
+    @Test
+    fun `온보딩 표시 방식 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingEntryMode.INITIAL to "initial",
+                AnalyticsOnboardingEntryMode.RESUME to "resume",
+                AnalyticsOnboardingEntryMode.NAVIGATION to "navigation",
+            ),
+            AnalyticsOnboardingEntryMode.entries,
+            "entry_mode",
+        ) { stepViewed(entryMode = it) }
+
+    @Test
+    fun `온보딩 권한 상태 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingEligibility.NEEDS_REQUEST to "needs_request",
+                AnalyticsOnboardingEligibility.ALREADY_USABLE to "already_usable",
+                AnalyticsOnboardingEligibility.SETTINGS_ONLY to "settings_only",
+                AnalyticsOnboardingEligibility.NOT_SUPPORTED to "not_supported",
+                AnalyticsOnboardingEligibility.NOT_APPLICABLE to "not_applicable",
+            ),
+            AnalyticsOnboardingEligibility.entries,
+            "eligibility",
+        ) { stepViewed(eligibility = it) }
+
+    @Test
+    fun `온보딩 행동 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsOnboardingAction.SKIP to "skip",
+                AnalyticsOnboardingAction.NEXT to "next",
+                AnalyticsOnboardingAction.BACK to "back",
+                AnalyticsOnboardingAction.FINISH to "finish",
+            ),
+            AnalyticsOnboardingAction.entries,
+            "action",
+        ) { stepAction(action = it) }
+
+    private fun stepViewed(
+        entryMode: AnalyticsOnboardingEntryMode = AnalyticsOnboardingEntryMode.INITIAL,
+        eligibility: AnalyticsOnboardingEligibility = AnalyticsOnboardingEligibility.NEEDS_REQUEST,
+    ) = AnalyticsEvent.OnboardingStepViewed(
+        flowId = "ob_7f9c2a",
+        version = AnalyticsOnboardingVersion.V1,
+        step = AnalyticsOnboardingStep.PHOTO,
+        stepIndex = 1,
+        entryMode = entryMode,
+        eligibility = eligibility,
+    )
+
+    private fun stepAction(
+        step: AnalyticsOnboardingStep = AnalyticsOnboardingStep.PHOTO,
+        action: AnalyticsOnboardingAction = AnalyticsOnboardingAction.NEXT,
+    ) = AnalyticsEvent.OnboardingStepAction(
+        flowId = "ob_7f9c2a",
+        version = AnalyticsOnboardingVersion.V1,
+        step = step,
+        action = action,
+    )
 
     private fun <T> assertWireValues(
         expected: Map<T, String>,

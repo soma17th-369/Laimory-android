@@ -1,12 +1,27 @@
 package com.soma369.laimory.feature.onboarding.state
 
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.base.UiIntent
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 
 sealed interface OnboardingUiIntent : UiIntent {
-    /** 사용자가 장을 넘겼다. 진행 상태를 기록한다. */
-    data class PageChanged(val pageIndex: Int) : OnboardingUiIntent
+    /**
+     * 장이 보였다. 진행 상태를 기록한다.
+     *
+     * [eligibility] 는 그 순간의 권한 상태다 — 권한은 화면이 Android 에 물어 알므로 화면이 함께 넘긴다.
+     */
+    data class PageChanged(
+        val pageIndex: Int,
+        val eligibility: AnalyticsOnboardingEligibility = AnalyticsOnboardingEligibility.NOT_APPLICABLE,
+    ) : OnboardingUiIntent
+
+    /** 장에서 넘기기·건너뛰기·뒤로를 골랐다. 분석에만 쓴다. */
+    data class StepAction(
+        val pageIndex: Int,
+        val action: AnalyticsOnboardingAction,
+    ) : OnboardingUiIntent
 
     /** 동의 항목 하나를 켜고 끈다. 버튼을 누르면 남은 것이 한꺼번에 채워진다. */
     data class ConsentToggled(val termType: TermType) : OnboardingUiIntent

@@ -7,6 +7,11 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingStep
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersion
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
@@ -17,6 +22,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
+import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -42,6 +48,14 @@ private const val PARAM_MEMO_LENGTH = "memo_length"
 private const val PARAM_EVENT_START_AT = "event_start_at"
 private const val PARAM_UPDATE_SCOPE = "update_scope"
 private const val PARAM_CHANGED_FIELD_COUNT = "changed_field_count"
+private const val PARAM_METHOD = "method"
+private const val PARAM_FLOW_ID = "flow_id"
+private const val PARAM_ONBOARDING_VERSION = "onboarding_version"
+private const val PARAM_STEP_ID = "step_id"
+private const val PARAM_STEP_INDEX = "step_index"
+private const val PARAM_ENTRY_MODE = "entry_mode"
+private const val PARAM_ELIGIBILITY = "eligibility"
+private const val PARAM_ACTION = "action"
 private const val PARAM_STOP_REASON = "reason"
 private const val PARAM_INITIAL_ITEM_COUNT = "initial_event_item_count"
 private const val PARAM_FINAL_ITEM_COUNT = "final_event_item_count"
@@ -250,6 +264,35 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                         PARAM_RECORD_STATE to recordState.paramValue,
                     ),
                 counts = mapOf(PARAM_PHOTO_COUNT to photoCount.toLong()),
+            )
+        is AnalyticsEvent.SignUp ->
+            payload(
+                name = "sign_up",
+                strings = mapOf(PARAM_METHOD to method.paramValue),
+            )
+        is AnalyticsEvent.OnboardingStepViewed ->
+            payload(
+                name = "onboarding_step_viewed",
+                strings =
+                    mapOf(
+                        PARAM_FLOW_ID to flowId,
+                        PARAM_ONBOARDING_VERSION to version.paramValue,
+                        PARAM_STEP_ID to step.paramValue,
+                        PARAM_ENTRY_MODE to entryMode.paramValue,
+                        PARAM_ELIGIBILITY to eligibility.paramValue,
+                    ),
+                counts = mapOf(PARAM_STEP_INDEX to stepIndex.toLong()),
+            )
+        is AnalyticsEvent.OnboardingStepAction ->
+            payload(
+                name = "onboarding_step_action",
+                strings =
+                    mapOf(
+                        PARAM_FLOW_ID to flowId,
+                        PARAM_ONBOARDING_VERSION to version.paramValue,
+                        PARAM_STEP_ID to step.paramValue,
+                        PARAM_ACTION to action.paramValue,
+                    ),
             )
     }
 
@@ -464,4 +507,56 @@ private val AnalyticsUpdateScope.paramValue: String
             AnalyticsUpdateScope.PHOTO -> "photo"
             AnalyticsUpdateScope.MEMO -> "memo"
             AnalyticsUpdateScope.COMBINED -> "combined"
+        }
+
+private val SocialLoginProvider.paramValue: String
+    get() =
+        when (this) {
+            SocialLoginProvider.GOOGLE -> "google"
+            SocialLoginProvider.KAKAO -> "kakao"
+        }
+
+private val AnalyticsOnboardingVersion.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsOnboardingVersion.V1 -> "v1"
+        }
+
+private val AnalyticsOnboardingStep.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsOnboardingStep.INTRO -> "intro"
+            AnalyticsOnboardingStep.PHOTO -> "photo"
+            AnalyticsOnboardingStep.CALENDAR -> "calendar"
+            AnalyticsOnboardingStep.LOCATION -> "location"
+            AnalyticsOnboardingStep.NOTIFICATION -> "notification"
+            AnalyticsOnboardingStep.APP_NOTIFICATION -> "app_notification"
+            AnalyticsOnboardingStep.DONE -> "done"
+        }
+
+private val AnalyticsOnboardingEntryMode.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsOnboardingEntryMode.INITIAL -> "initial"
+            AnalyticsOnboardingEntryMode.RESUME -> "resume"
+            AnalyticsOnboardingEntryMode.NAVIGATION -> "navigation"
+        }
+
+private val AnalyticsOnboardingEligibility.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsOnboardingEligibility.NEEDS_REQUEST -> "needs_request"
+            AnalyticsOnboardingEligibility.ALREADY_USABLE -> "already_usable"
+            AnalyticsOnboardingEligibility.SETTINGS_ONLY -> "settings_only"
+            AnalyticsOnboardingEligibility.NOT_SUPPORTED -> "not_supported"
+            AnalyticsOnboardingEligibility.NOT_APPLICABLE -> "not_applicable"
+        }
+
+private val AnalyticsOnboardingAction.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsOnboardingAction.SKIP -> "skip"
+            AnalyticsOnboardingAction.NEXT -> "next"
+            AnalyticsOnboardingAction.BACK -> "back"
+            AnalyticsOnboardingAction.FINISH -> "finish"
         }

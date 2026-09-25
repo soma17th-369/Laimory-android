@@ -1,6 +1,10 @@
 package com.soma369.laimory.feature.login.viewmodel
 
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginAttempt
@@ -10,8 +14,10 @@ import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.repository.AuthRepository
+import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
+import com.soma369.laimory.core.domain.usecase.analytics.LogSignUpUseCase
 import com.soma369.laimory.core.domain.usecase.auth.CancelSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.CompleteSocialLoginUseCase
 import com.soma369.laimory.core.domain.usecase.auth.IssueAuthTokensUseCase
@@ -45,6 +51,8 @@ class LoginViewModelTest {
     private val socialRepository = FakeSocialLoginRepository()
     private val authRepository = FakeAuthRepository()
     private val callbackHandler = FakeCallbackHandler()
+    private val onboardingRepository = FakeOnboardingRepository()
+    private val analyticsHelper = RecordingAnalyticsHelper()
 
     @After
     fun tearDown() {
@@ -79,6 +87,36 @@ class LoginViewModelTest {
             assertEquals("code", authRepository.appCode)
             assertEquals("verifier", authRepository.appVerifier)
             assertEquals(LoginPhase.IDLE, viewModel.state.value.phase)
+        }
+
+    @Test
+    fun `온보딩 전인 계정으로 로그인하면 고른 제공자로 가입을 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            onboardingRepository.remoteCompletion = Result.success(false)
+            val viewModel = createViewModel()
+            viewModel.sendIntent(LoginUiIntent.ProviderClicked(SocialLoginProvider.KAKAO))
+            runCurrent()
+
+            callbackHandler.handle(SocialLoginCallback(appCode = "code"))
+            runCurrent()
+
+            assertEquals(
+                listOf(AnalyticsDedupeKeys.SIGN_UP to AnalyticsEvent.SignUp(SocialLoginProvider.KAKAO)),
+                analyticsHelper.loggedOnce,
+            )
+        }
+
+    @Test
+    fun `온보딩을 마친 계정의 로그인은 가입이 아니다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(LoginUiIntent.ProviderClicked(SocialLoginProvider.GOOGLE))
+            runCurrent()
+
+            callbackHandler.handle(SocialLoginCallback(appCode = "code"))
+            runCurrent()
+
+            assertTrue(analyticsHelper.loggedOnce.isEmpty())
         }
 
     @Test
@@ -221,7 +259,54 @@ class LoginViewModelTest {
             cancelSocialLogin = CancelSocialLoginUseCase(socialRepository),
             callbackHandler = callbackHandler,
             getPublicTermLinks = GetPublicTermLinksUseCase(EmptyTermsRepository),
+            logSignUp = LogSignUpUseCase(onboardingRepository, analyticsHelper),
         )
+
+    /** 가입 판정이 묻는 것은 서버의 온보딩 완료 여부뿐이다. */
+    private class FakeOnboardingRepository : OnboardingRepository {
+        var remoteCompletion: Result<Boolean> = Result.success(true)
+
+        override suspend fun cachedCompletion(): Boolean? = null
+
+        override suspend fun cacheCompletion(isCompleted: Boolean) = Unit
+
+        override suspend fun isAgeConfirmed(): Boolean = false
+
+        override suspend fun cacheCompletionWithAgeConfirmation() = Unit
+
+        override suspend fun recordCompletion() = Unit
+
+        override suspend fun isCompletionPending(): Boolean = false
+
+        override suspend fun setCompletionPending(isPending: Boolean) = Unit
+
+        override suspend fun fetchCompletion(): Result<Boolean> = remoteCompletion
+
+        override fun observeLastPageKey(): Flow<String?> = emptyFlow()
+
+        override suspend fun saveProgress(pageKey: String) = Unit
+
+        override suspend fun flowId(): String = "ob_test"
+
+        override suspend fun clear() = Unit
+    }
+
+    private class RecordingAnalyticsHelper : AnalyticsHelper {
+        val loggedOnce = mutableListOf<Pair<AnalyticsDedupeKey, AnalyticsEvent>>()
+
+        override suspend fun log(event: AnalyticsEvent) = Unit
+
+        override suspend fun logOnce(
+            key: AnalyticsDedupeKey,
+            event: AnalyticsEvent,
+        ) {
+            loggedOnce += key to event
+        }
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
+
+        override fun setUserId(userId: Long?) = Unit
+    }
 
     /** 약관 주소는 로그인 흐름과 무관한 곁가지라 조회가 비어도 화면 동작이 달라지지 않는다. */
     private object EmptyTermsRepository : TermsRepository {

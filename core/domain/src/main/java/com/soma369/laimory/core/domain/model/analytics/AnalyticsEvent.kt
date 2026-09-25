@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.model.analytics
 
+import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -188,5 +189,35 @@ sealed interface AnalyticsEvent {
         val photoCount: Int,
         val recordState: AnalyticsTimelineState,
         val recordDate: LocalDate,
+    ) : AnalyticsEvent
+
+    /**
+     * 가입했다. 로그인 직후 서버가 온보딩을 마치지 않은 계정이라고 답했으면 새 계정으로 **추정**한다 —
+     * 서버가 신규 여부를 따로 주지 않는다. 온보딩을 끝내지 않은 채 재설치한 기존 계정도 여기 섞인다.
+     */
+    data class SignUp(
+        val method: SocialLoginProvider,
+    ) : AnalyticsEvent
+
+    /**
+     * 온보딩의 장이 보였다. 회차([flowId])마다 장별로 한 번.
+     *
+     * [flowId] 는 온보딩 회차를 잇는 무작위 토큰이다 — 사람도 기기도 가리키지 않는다.
+     */
+    data class OnboardingStepViewed(
+        val flowId: String,
+        val version: AnalyticsOnboardingVersion,
+        val step: AnalyticsOnboardingStep,
+        val stepIndex: Int,
+        val entryMode: AnalyticsOnboardingEntryMode,
+        val eligibility: AnalyticsOnboardingEligibility,
+    ) : AnalyticsEvent
+
+    /** 온보딩의 장에서 행동을 골랐다. 회차마다 장별로 처음 고른 것 하나만. */
+    data class OnboardingStepAction(
+        val flowId: String,
+        val version: AnalyticsOnboardingVersion,
+        val step: AnalyticsOnboardingStep,
+        val action: AnalyticsOnboardingAction,
     ) : AnalyticsEvent
 }

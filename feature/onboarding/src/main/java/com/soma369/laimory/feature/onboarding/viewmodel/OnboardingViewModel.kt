@@ -1,12 +1,20 @@
 package com.soma369.laimory.feature.onboarding.viewmodel
 
+import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.StaleTermVersionException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.usecase.CompleteOnboardingUseCase
+import com.soma369.laimory.core.domain.usecase.GetOnboardingFlowIdUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
@@ -17,11 +25,15 @@ import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
+import com.soma369.laimory.feature.onboarding.model.ONBOARDING_VERSION
+import com.soma369.laimory.feature.onboarding.model.analyticsStep
 import com.soma369.laimory.feature.onboarding.model.indexOfKeyOrFirst
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -37,6 +49,8 @@ class OnboardingViewModel
         private val termsCoordinator: TermsAgreementCoordinator,
         private val getDisplayTerms: GetDisplayTermsUseCase,
         private val logPermissionEvent: LogPermissionEventUseCase,
+        private val getOnboardingFlowId: GetOnboardingFlowIdUseCase,
+        private val analyticsHelper: AnalyticsHelper,
     ) : BaseMviViewModel<OnboardingUiState, OnboardingUiIntent, OnboardingUiSideEffect>(OnboardingUiState()) {
         /**
          * 실제로 서버에 보낼 문서. 화면에 보이는 목록과 다를 수 있다.
@@ -45,6 +59,19 @@ class OnboardingViewModel
          * 그 환경 DB 에 없는 행을 보내면 전부 거절되고, 서버도 그 단계를 강제하지 않는다.
          */
         private var recordableConsents: List<TermDocument> = emptyList()
+
+        /**
+         * 이번 온보딩 회차의 분석용 토큰. 읽기에 실패하면 null 이고 온보딩 이벤트를 보내지 않는다.
+         *
+         * 저장소를 거쳐 오므로 기다려야 한다. 온보딩 흐름을 이 값에 묶지 않도록 분석 쪽에서만 기다린다.
+         */
+        private val flowId: Deferred<String?> = viewModelScope.async { runCatching { getOnboardingFlowId() }.getOrNull() }
+
+        /** 저장된 진행 위치에서 이어 열었는지. 복원이 끝나야 정해진다. */
+        private var isResumed = false
+
+        /** 첫 장이 보인 뒤로는 모두 앞뒤로 넘겨 도착한 것이다. */
+        private var hasShownFirstPage = false
 
         init {
             // 복원을 약관 조회 뒤로 미루지 않는다. 장 목록은 조회 결과와 무관하게 고정이고,
@@ -110,6 +137,7 @@ class OnboardingViewModel
          */
         private suspend fun restoreLastPage() {
             val savedPageKey = observeOnboardingProgressUseCase().first()
+            isResumed = savedPageKey != null
             updateState { copy(initialPageIndex = pages.indexOfKeyOrFirst(savedPageKey)) }
         }
 
@@ -125,7 +153,8 @@ class OnboardingViewModel
         override suspend fun handleIntent(intent: OnboardingUiIntent) {
             when (intent) {
                 is OnboardingUiIntent.PermissionEvent -> logPermission(intent.event)
-                is OnboardingUiIntent.PageChanged -> onPageChanged(intent.pageIndex)
+                is OnboardingUiIntent.PageChanged -> onPageChanged(intent.pageIndex, intent.eligibility)
+                is OnboardingUiIntent.StepAction -> logStepAction(intent.pageIndex, intent.action)
                 is OnboardingUiIntent.ConsentToggled -> toggleConsent(intent.termType)
                 OnboardingUiIntent.AgeConfirmationToggled -> updateState { copy(isAgeConfirmed = !isAgeConfirmed) }
                 OnboardingUiIntent.RetryConsentLoad -> retryConsentLoad()
@@ -141,9 +170,57 @@ class OnboardingViewModel
          * Pager 가 그 오래된 자리에서 새로 만들어져 첫 장으로 돌아간다. 저장은 다음 실행을 위한
          * 것이고, 이 값은 지금 화면을 위한 것이다.
          */
-        private fun onPageChanged(pageIndex: Int) {
+        private suspend fun onPageChanged(
+            pageIndex: Int,
+            eligibility: AnalyticsOnboardingEligibility,
+        ) {
             updateState { copy(initialPageIndex = pageIndex) }
             saveProgress(pageIndex)
+            logStepViewed(pageIndex, eligibility)
+        }
+
+        /**
+         * 장이 보인 것을 회차마다 장별로 한 번 남긴다.
+         *
+         * 원문을 보러 나갔다 오면 같은 장이 다시 보고되는데, 판정 키가 그것을 거른다.
+         */
+        private suspend fun logStepViewed(
+            pageIndex: Int,
+            eligibility: AnalyticsOnboardingEligibility,
+        ) {
+            val entryMode =
+                when {
+                    hasShownFirstPage -> AnalyticsOnboardingEntryMode.NAVIGATION
+                    isResumed -> AnalyticsOnboardingEntryMode.RESUME
+                    else -> AnalyticsOnboardingEntryMode.INITIAL
+                }
+            hasShownFirstPage = true
+            val step = state.value.pages.getOrNull(pageIndex)?.analyticsStep ?: return
+            val flowId = flowId.await() ?: return
+            analyticsHelper.logOnce(
+                AnalyticsDedupeKeys.onboardingStepViewed(flowId, step),
+                AnalyticsEvent.OnboardingStepViewed(
+                    flowId = flowId,
+                    version = ONBOARDING_VERSION,
+                    step = step,
+                    stepIndex = pageIndex,
+                    entryMode = entryMode,
+                    eligibility = eligibility,
+                ),
+            )
+        }
+
+        /** 장마다 처음 고른 행동만 남긴다 — 뒤로 갔다 다시 넘긴 것은 첫 선택이 아니다. */
+        private suspend fun logStepAction(
+            pageIndex: Int,
+            action: AnalyticsOnboardingAction,
+        ) {
+            val step = state.value.pages.getOrNull(pageIndex)?.analyticsStep ?: return
+            val flowId = flowId.await() ?: return
+            analyticsHelper.logOnce(
+                AnalyticsDedupeKeys.onboardingStepAction(flowId, step),
+                AnalyticsEvent.OnboardingStepAction(flowId = flowId, version = ONBOARDING_VERSION, step = step, action = action),
+            )
         }
 
         /** 진행 기록 실패는 알리지 않는다 — 다음에 첫 장부터 볼 뿐 지금 흐름을 막을 이유가 없다. */
@@ -246,6 +323,7 @@ class OnboardingViewModel
                 }
                 return
             }
+            logStepAction(state.value.pages.lastIndex, AnalyticsOnboardingAction.FINISH)
             markCompleted()
         }
 

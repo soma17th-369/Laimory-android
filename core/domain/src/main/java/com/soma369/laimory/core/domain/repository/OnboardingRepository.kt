@@ -55,6 +55,13 @@ interface OnboardingRepository {
 
     suspend fun saveProgress(pageKey: String)
 
+    /**
+     * 이번 온보딩 회차의 분석용 토큰. 없으면 새로 만들어 남긴다.
+     *
+     * 진행 위치와 함께 남아 앱을 다시 켜도 같은 회차로 이어지고, [clear] 로 계정 경계에서 함께 비워진다.
+     */
+    suspend fun flowId(): String
+
     /** 계정 경계에서 캐시와 진행 위치를 모두 비운다. */
     suspend fun clear()
 }
