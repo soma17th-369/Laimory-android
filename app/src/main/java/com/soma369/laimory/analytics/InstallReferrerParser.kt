@@ -19,12 +19,16 @@ import java.time.format.ResolverStyle
  * - **공급자 값(Google·Play)** 은 거르거나 고치지 않고 형식만 본다. 대문자처럼 형식에 맞지 않으면 바꾸지
  *   않고 [InstallReferrerStatus.INVALID] 로 둔다.
  * - 허용 키 밖(`gclid`·`utm_term` 등)은 버린다.
+ * - Play 가 값을 모를 때 채우는 `(not set)` 은 **키가 없는 것**으로 본다. 우리 링크가 깨진 것이 아니라서
+ *   [InstallReferrerStatus.INVALID] 로 두면 링크 오류 신호에 일반 설치가 섞이고, 결과는 한 번 확정되면 다시
+ *   조회하지 않아 그 설치에 영영 남는다.
  *
  * 원문은 이 함수 안에서만 다룬다. 저장·로그·전송하지 않는다.
  */
 internal object InstallReferrerParser {
     fun parse(referrer: String?): InstallAttribution {
         if (referrer.isNullOrBlank()) return NO_CAMPAIGN
+        val seenKeys = mutableSetOf<String>()
         val values = mutableMapOf<String, String>()
         for (segment in referrer.split('&')) {
             if (segment.isEmpty()) continue
@@ -33,7 +37,10 @@ internal object InstallReferrerParser {
             val key = rawKey.decodeOrNull() ?: return INVALID
             if (key !in ALLOWED_KEYS) continue
             val value = (if (separator < 0) "" else segment.substring(separator + 1)).decodeOrNull() ?: return INVALID
-            if (values.put(key, value) != null) return INVALID
+            // 값이 `(not set)` 이어도 같은 키가 두 번 온 것은 거절한다.
+            if (!seenKeys.add(key)) return INVALID
+            if (value == NOT_SET) continue
+            values[key] = value
         }
         if (values.isEmpty()) return NO_CAMPAIGN
         val source = values[KEY_SOURCE] ?: return INVALID
@@ -108,6 +115,9 @@ internal object InstallReferrerParser {
     private const val KEY_CONTENT = "utm_content"
     private const val KEY_ID = "utm_id"
     private val ALLOWED_KEYS = setOf(KEY_SOURCE, KEY_MEDIUM, KEY_CAMPAIGN, KEY_CONTENT, KEY_ID)
+
+    /** Play 가 값을 모를 때 채우는 표기. decode 한 뒤의 모양이다(`(not%20set)`·`(not+set)` 모두 이것이 된다). */
+    private const val NOT_SET = "(not set)"
 
     /** 넓힐 때는 04 문서 · 실험 레지스트리 · 링크 생성기와 함께 고친다(04 §2.1). */
     private val MANUAL_SOURCES = setOf("meta")

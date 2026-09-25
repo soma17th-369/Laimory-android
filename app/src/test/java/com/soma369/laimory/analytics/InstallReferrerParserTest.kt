@@ -76,6 +76,21 @@ class InstallReferrerParserTest {
     }
 
     @Test
+    fun `Play 의 (not set) 은 키가 없는 것으로 본다`() {
+        assertEquals(InstallReferrerStatus.NO_CAMPAIGN, parse("utm_source=(not%20set)&utm_medium=(not%20set)").status)
+        assertEquals(InstallReferrerStatus.NO_CAMPAIGN, parse("utm_source=(not+set)&utm_medium=(not+set)").status)
+
+        val partial = parse("utm_source=google-play&utm_medium=(not%20set)")
+        assertEquals(InstallReferrerStatus.PROVIDER, partial.status)
+        assertEquals(InstallCampaign(source = "google-play"), partial.campaign)
+    }
+
+    @Test
+    fun `(not set) 이어도 같은 키가 두 번 오면 거절한다`() {
+        assertEquals(InstallReferrerStatus.INVALID, parse("utm_source=(not%20set)&utm_source=google-play").status)
+    }
+
+    @Test
     fun `같은 키가 두 번 오면 거절한다`() {
         assertEquals(
             InstallReferrerStatus.INVALID,
