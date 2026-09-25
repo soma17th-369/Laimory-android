@@ -1318,6 +1318,20 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `지우고 같은 날짜로 다시 만든 기록은 편집 모드로 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 생성 결과는 조회를 거치지 않고 세션 방출로 들어온다. 날짜로만 보면 앞 기록에서 정한
+            // 읽기 모드가 남아, 새 초안인데 질문·메모·편집이 모두 가려진다.
+            val viewModel = createLoadedViewModel(record = timeline(status = DailyRecordStatus.SAVED))
+            assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
+
+            repository.save(timeline(status = DailyRecordStatus.DRAFT).copy(dailyRecordId = DAILY_RECORD_ID + 1))
+            advanceUntilIdle()
+
+            assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
+        }
+
+    @Test
     fun `세션이 갱신돼도 편집 모드를 유지한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel =

@@ -12,6 +12,9 @@ import java.time.format.DateTimeFormatter
  * `title`·`startAt` 은 항상 보낸다. `subtitle`·`endAt` 은 키가 필수고 값이 nullable 이라 기본값을
  * 주지 않는다 — 요청 Json 이 `explicitNulls = true` 라 `null` 이 그대로 실린다.
  *
+ * `subtitle` 은 **빈 문자열이 지움, `null` 이 유지**다. 서버가 키의 null 여부로 바꿀지를 가리므로,
+ * 지우려면 빈 문자열을 보내야 한다.
+ *
  * `eventType`·`photosToAdd` 는 안 보내면 안 바뀌므로 기본값을 준다. `memo` 만 지움(`null` 전송)과
  * 안 바꿈(키 생략)을 함께 표현해야 해서 [PatchField] 를 쓴다.
  */
