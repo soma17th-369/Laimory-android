@@ -248,7 +248,7 @@ private fun RangeChip(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = MaterialTheme.colorScheme.onSurface,
             )
             Icon(
                 painter = painterResource(UiR.drawable.ico_default_caret_down),
