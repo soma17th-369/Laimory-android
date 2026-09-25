@@ -123,6 +123,12 @@ sealed interface HomeUiIntent : UiIntent {
     /** 전송 스냅샷을 확정하고 데이터 전송 동의 화면으로 이동한다. 생성 API 는 동의 완료 후에만 호출된다. */
     data object CreateDraft : HomeUiIntent
 
+    /** 확인 다이얼로그의 `만들기`. 확정해 둔 스냅샷을 그대로 제출한다. */
+    data object ConfirmCreateDraft : HomeUiIntent
+
+    /** 확인 다이얼로그의 `취소`·바깥 탭·뒤로가기. 제출용 스냅샷만 버린다. */
+    data object DismissCreateConfirm : HomeUiIntent
+
     /**
      * 원천별 권한 도트를 다시 본다. 판정은 화면이 하고 결과만 싣는다.
      *

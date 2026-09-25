@@ -69,6 +69,7 @@ import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.util.permission.PhotoPermission
+import com.soma369.laimory.feature.home.component.DraftCreateConfirmDialog
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
 import com.soma369.laimory.feature.home.component.HomePhotoGrid
 import com.soma369.laimory.feature.home.component.HomeRotatingContent
@@ -241,6 +242,14 @@ private fun HomeContent(
             onConfirm = { onIntent(HomeUiIntent.ConfirmDatePicker) },
             onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },
+        )
+    }
+
+    state.createConfirm?.let { confirm ->
+        DraftCreateConfirmDialog(
+            confirm = confirm,
+            onConfirm = { onIntent(HomeUiIntent.ConfirmCreateDraft) },
+            onDismiss = { onIntent(HomeUiIntent.DismissCreateConfirm) },
         )
     }
 

@@ -8,8 +8,6 @@ import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
-import com.soma369.laimory.core.domain.message.DialogRequest
-import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
@@ -81,6 +79,8 @@ import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
+import com.soma369.laimory.feature.home.state.DraftCreateConfirm
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeRecordState
@@ -96,6 +96,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -128,7 +129,7 @@ class HomeViewModelTest {
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val loadingSessionStore = DraftLoadingSessionStore()
-    private val dialogHelper = RecordingDialogHelper()
+    private val confirmDialog = ConfirmDialogRecorder()
     private val draftRepository = FakeDraftRepository()
     private val termsCoordinator = FakeHomeTermsCoordinator()
     private val addressResolver = FakeHomeAddressResolver()
@@ -144,8 +145,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             assertNull(sessionStore.preparation.value)
             assertTrue(navigationHelper.destinations.isEmpty())
@@ -160,16 +160,60 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             // 화면을 한 장 더 두지 않고 다이얼로그 → 로딩이다.
             assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
-            val request = dialogHelper.twoButtonRequests.single()
-            assertEquals("타임라인을 만들까요?", request.title)
-            assertTrue(request.body.contains("일정 1개"))
+            val confirm = confirmDialog.shown.single()
+            assertEquals(1, confirm.counts.single { it.group == DraftConsentTypeGroup.CALENDAR }.count)
+            assertTrue(confirm.photoUris.isEmpty())
+            assertNull(viewModel.state.value.createConfirm)
             assertEquals(listOf("first"), draftRepository.createdItems.map(SourceItem::rawId))
             assertEquals(LocalDate.now(zone), loadingSessionStore.session.value?.recordDate)
+        }
+
+    @Test
+    fun `확인 다이얼로그는 고른 사진과 일정·위치·알림 칸을 싣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            confirmDialog.answer = ConfirmAnswer.HOLD
+
+            createDraft(viewModel)
+
+            val confirm = viewModel.state.value.createConfirm
+            assertNotNull(confirm)
+            assertEquals(1, confirm!!.photoUris.size)
+            // 0건이어도 칸은 둔다. 건강은 보낼 때만 붙는다.
+            assertEquals(
+                listOf(DraftConsentTypeGroup.CALENDAR, DraftConsentTypeGroup.LOCATION, DraftConsentTypeGroup.NOTIFICATION),
+                confirm.counts.map { it.group },
+            )
+            assertEquals(listOf(1, 0, 0), confirm.counts.map { it.count })
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `확인 다이얼로그를 닫으면 만들지 않고 다이얼로그를 거둔다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            confirmDialog.answer = ConfirmAnswer.CANCEL
+            sourceRepository.items.value = listOf(todayItem("first"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+            assertTrue(navigationHelper.destinations.isEmpty())
         }
 
     @Test
@@ -178,8 +222,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             val events = analyticsHelper.logged
             assertEquals(listOf("TimelineCreateStarted", "TimelineCreateStopped"), events.map { it::class.simpleName })
@@ -193,8 +236,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             val events = analyticsHelper.logged
             assertEquals(
@@ -214,13 +256,12 @@ class HomeViewModelTest {
     @Test
     fun `확인 창에서 취소하면 검토 완료 대신 취소로 중단을 기록한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            dialogHelper.answer = DialogResult.Secondary
+            confirmDialog.answer = ConfirmAnswer.CANCEL
             sourceRepository.items.value = listOf(todayItem("first"))
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             val events = analyticsHelper.logged
             assertEquals(
@@ -238,8 +279,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             val failed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().single()
             assertEquals(AnalyticsFailureCode.NETWORK, failed.failureCode)
@@ -279,31 +319,27 @@ class HomeViewModelTest {
             runCurrent()
 
             // 다이얼로그가 떠 있는 동안 CTA 를 또 눌러도 준비를 다시 시작하지 않는다.
-            dialogHelper.gate = CompletableDeferred()
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            createDraft(viewModel)
+            createDraft(viewModel)
 
-            assertEquals(1, dialogHelper.twoButtonRequests.size)
+            assertEquals(1, confirmDialog.shown.size)
             assertEquals(0, draftRepository.createCount)
         }
 
     @Test
     fun `취소한 뒤 다시 누르면 새 시도로 준비한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            dialogHelper.answer = DialogResult.Secondary
+            confirmDialog.answer = ConfirmAnswer.CANCEL
             sourceRepository.items.value = listOf(todayItem("first"))
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
+            createDraft(viewModel)
 
             // 취소는 제출용 스냅샷만 버린다. 다시 누르면 새 시도로 확인부터 다시 묻는다.
-            assertEquals(2, dialogHelper.twoButtonRequests.size)
+            assertEquals(2, confirmDialog.shown.size)
             assertEquals(0, draftRepository.createCount)
             assertNull(sessionStore.preparation.value)
         }
@@ -317,8 +353,7 @@ class HomeViewModelTest {
             runCurrent()
 
             viewModel.openTimeSheet(HomeTimeField.END)
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.draftStatus)
             // 추적 중에는 시각 시트를 열지도 못한다.
@@ -648,7 +683,7 @@ class HomeViewModelTest {
             assertFalse(state.isPhotoSheetVisible)
             assertEquals(emptySet<Long>(), state.selectedPhotoIds)
             assertTrue(navigationHelper.destinations.isEmpty())
-            assertTrue(dialogHelper.twoButtonRequests.isEmpty())
+            assertTrue(confirmDialog.shown.isEmpty())
         }
 
     @Test
@@ -671,7 +706,7 @@ class HomeViewModelTest {
             assertFalse(viewModel.state.value.isPhotoSheetVisible)
             assertTrue(navigationHelper.destinations.isEmpty())
             // 확인 다이얼로그는 CTA 만 띄운다. 고르고 닫았을 뿐인데 물으면 흐름이 어긋난다.
-            assertTrue(dialogHelper.twoButtonRequests.isEmpty())
+            assertTrue(confirmDialog.shown.isEmpty())
         }
 
     @Test
@@ -771,8 +806,7 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 2L))
             viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             val items = draftRepository.createdItems
             assertEquals(
@@ -800,8 +834,7 @@ class HomeViewModelTest {
             photoSource.unavailableIds = setOf(1L)
 
             // 삭제는 CTA 시점 준비에서 드러난다 — 시트는 이제 고르고 닫히기만 한다.
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             assertNull(sessionStore.preparation.value)
             assertTrue(navigationHelper.destinations.isEmpty())
@@ -1372,8 +1405,7 @@ class HomeViewModelTest {
             runCurrent()
             val before = autoCollectionCoordinator.refreshCount
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             assertTrue(autoCollectionCoordinator.refreshCount > before)
         }
@@ -1386,8 +1418,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
 
             assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
         }
@@ -1452,7 +1483,6 @@ class HomeViewModelTest {
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
             createTimelineDraftUseCase = CreateTimelineDraftUseCase(draftRepository, NoOpMessageHelper),
             loadingSessionStore = loadingSessionStore,
-            messageHelper = dialogHelper,
             termsCoordinator = termsCoordinator,
             resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
             analyticsHelper = analyticsHelper,
@@ -1505,21 +1535,32 @@ class HomeViewModelTest {
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
     }
 
-    /** 확인 다이얼로그 요청을 기록하고 답을 정해 준다. */
-    private class RecordingDialogHelper : MessageHelper {
-        var answer: DialogResult = DialogResult.Primary
-
-        /** 답을 붙잡아 두는 문. 다이얼로그가 떠 있는 동안을 만든다. */
-        var gate: CompletableDeferred<Unit>? = null
-        val twoButtonRequests = mutableListOf<DialogRequest.TwoButton>()
-
-        override fun send(message: UserMessage) = Unit
-
-        override suspend fun showTwoButtonDialog(request: DialogRequest.TwoButton): DialogResult {
-            twoButtonRequests += request
-            gate?.await()
-            return answer
+    /**
+     * CTA 를 누르고, 확인 다이얼로그가 새로 뜨면 [confirmDialog] 의 답을 인텐트로 보낸다.
+     * [ConfirmAnswer.HOLD] 면 다이얼로그를 띄운 채로 둔다.
+     */
+    private fun TestScope.createDraft(viewModel: HomeViewModel) {
+        val before = viewModel.state.value.createConfirm
+        viewModel.sendIntent(HomeUiIntent.CreateDraft)
+        runCurrent()
+        val confirm = viewModel.state.value.createConfirm ?: return
+        // 이미 떠 있던 다이얼로그는 새로 뜬 것이 아니다.
+        if (confirm === before) return
+        confirmDialog.shown += confirm
+        when (confirmDialog.answer) {
+            ConfirmAnswer.CREATE -> viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            ConfirmAnswer.CANCEL -> viewModel.sendIntent(HomeUiIntent.DismissCreateConfirm)
+            ConfirmAnswer.HOLD -> return
         }
+        runCurrent()
+    }
+
+    private enum class ConfirmAnswer { CREATE, CANCEL, HOLD }
+
+    /** 뜬 확인 다이얼로그를 기록하고 무엇으로 답할지 정해 둔다. */
+    private class ConfirmDialogRecorder {
+        var answer: ConfirmAnswer = ConfirmAnswer.CREATE
+        val shown = mutableListOf<DraftCreateConfirm>()
     }
 
     private class FakeHomeTermsCoordinator : TermsAgreementCoordinator {
@@ -1841,9 +1882,8 @@ class HomeViewModelTest {
             assertNotNull(sessionStore.selection.value)
             assertNull(sessionStore.preparation.value)
             // 상시 스냅샷이 있어도 CTA 는 막히지 않는다.
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
-            assertEquals(1, dialogHelper.twoButtonRequests.size)
+            createDraft(viewModel)
+            assertEquals(1, confirmDialog.shown.size)
         }
 
     @Test
@@ -1889,14 +1929,13 @@ class HomeViewModelTest {
             // 날이 아니라 이전 날의 로딩으로 간다.
             val today = LocalDate.now(ZoneId.systemDefault())
             sourceRepository.items.value = listOf(todayItem("calendar"))
-            dialogHelper.answer = DialogResult.Primary
+            confirmDialog.answer = ConfirmAnswer.CREATE
             val gate = CompletableDeferred<Unit>()
             draftRepository.createGate = gate
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.CreateDraft)
-            runCurrent()
+            createDraft(viewModel)
             assertTrue(viewModel.state.value.isSubmitting)
 
             viewModel.selectDate(today.minusDays(1))

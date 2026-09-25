@@ -7,10 +7,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
-import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
-import com.soma369.laimory.core.domain.message.DialogRequest
-import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
@@ -72,7 +69,6 @@ import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
-import com.soma369.laimory.feature.home.state.confirmDialogBody
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
@@ -81,6 +77,7 @@ import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
+import com.soma369.laimory.feature.home.state.toCreateConfirm
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -115,7 +112,6 @@ class HomeViewModel
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val loadingSessionStore: DraftLoadingSessionStore,
-        private val messageHelper: MessageHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
         private val analyticsHelper: AnalyticsHelper,
@@ -237,6 +233,8 @@ class HomeViewModel
                 HomeUiIntent.ConfirmTimeSheet -> confirmTimeSheet()
                 HomeUiIntent.DismissTimePicker -> updateState { copy(timeSheet = null) }
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
+                HomeUiIntent.ConfirmCreateDraft -> confirmCreateDraft()
+                HomeUiIntent.DismissCreateConfirm -> dismissCreateConfirm()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
@@ -801,28 +799,19 @@ class HomeViewModel
                         selection = selection,
                         discardActiveTask = shouldDiscardPreviousTask,
                     )
-                    confirmAndSubmit()
+                    showCreateConfirm()
                 }
         }
 
         /**
-         * 확인 다이얼로그를 띄우고, 만들기를 고르면 그대로 제출한다.
+         * 확인 다이얼로그를 띄운다. 제출은 다이얼로그의 `만들기`([confirmCreateDraft])가 한다.
          *
          * 화면을 한 장 더 두지 않는다 — 보낼 데이터를 보여 주고 유형 상세로 들어가는 일은 이미
          * 홈 카드가 하므로, 남는 것은 "이 건수로 만들겠습니까" 라는 마지막 확인뿐이다.
          */
-        private suspend fun confirmAndSubmit() {
+        private suspend fun showCreateConfirm() {
             val preparation = draftConsentSessionStore.preparation.value ?: return
-            // 제출 목록은 **소유자인 스토어**를 읽어 만든다. 위치가 꺼져 있으면 이 시점 스냅샷의
-            // 위치 항목 전체를 함께 뺀다 — 스위치를 끈 뒤 수집된 것까지 덮어야 어긋나지 않는다.
-            val excluded =
-                draftConsentSessionStore.excludedRawIds.value +
-                    if (draftConsentSessionStore.isLocationSendEnabled.value) {
-                        emptySet()
-                    } else {
-                        preparation.selection.locationRawIds()
-                    }
-            val submission = preparation.selection.excluding(excluded)
+            val submission = submissionOf(preparation)
             val dayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock)
             if (submission.items.isEmpty()) {
                 analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation))
@@ -832,32 +821,56 @@ class HomeViewModel
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
-            val initialCounts = preparation.selection.analyticsCounts()
-            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, initialCounts.total))
-            val result =
-                messageHelper.showTwoButtonDialog(
-                    DialogRequest.TwoButton(
-                        title = "타임라인을 만들까요?",
-                        body = submission.confirmDialogBody(),
-                        primaryLabel = "만들기",
-                        secondaryLabel = "취소",
-                    ),
-                )
-            // 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은
-            // 남긴다 — 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
-            if (result != DialogResult.Primary) {
-                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.CANCELLED, dayRelation))
-                draftConsentSessionStore.clearPreparation()
-                return
-            }
+            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, preparation.selection.analyticsCounts().total))
+            updateState { copy(createConfirm = submission.toCreateConfirm()) }
+        }
+
+        /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 스냅샷을 그대로 제출한다. */
+        private suspend fun confirmCreateDraft() {
+            if (state.value.createConfirm == null) return
+            updateState { copy(createConfirm = null) }
+            val preparation = draftConsentSessionStore.preparation.value ?: return
+            val submission = submissionOf(preparation)
             analyticsHelper.log(
                 AnalyticsEvent.TimelineEventReviewCompleted(
-                    recordDayRelation = dayRelation,
-                    initialCounts = initialCounts,
+                    recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                    initialCounts = preparation.selection.analyticsCounts(),
                     finalCounts = submission.analyticsCounts(),
                 ),
             )
-            submitDraft(preparation, submission)
+            safeLaunch(onError = ::handleDraftCreationFailure) { submitDraft(preparation, submission) }
+        }
+
+        /**
+         * 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은 남긴다 —
+         * 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
+         */
+        private suspend fun dismissCreateConfirm() {
+            if (state.value.createConfirm == null) return
+            updateState { copy(createConfirm = null) }
+            val preparation = draftConsentSessionStore.preparation.value ?: return
+            analyticsHelper.log(
+                AnalyticsEvent.TimelineCreateStopped(
+                    AnalyticsCreateStopReason.CANCELLED,
+                    AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                ),
+            )
+            draftConsentSessionStore.clearPreparation()
+        }
+
+        /**
+         * 제출 목록은 **소유자인 스토어**를 읽어 만든다. 위치가 꺼져 있으면 이 시점 스냅샷의 위치 항목
+         * 전체를 함께 뺀다 — 스위치를 끈 뒤 수집된 것까지 덮어야 어긋나지 않는다.
+         */
+        private fun submissionOf(preparation: DraftConsentPreparation): DraftSourceItemSelection {
+            val excluded =
+                draftConsentSessionStore.excludedRawIds.value +
+                    if (draftConsentSessionStore.isLocationSendEnabled.value) {
+                        emptySet()
+                    } else {
+                        preparation.selection.locationRawIds()
+                    }
+            return preparation.selection.excluding(excluded)
         }
 
         private suspend fun submitDraft(

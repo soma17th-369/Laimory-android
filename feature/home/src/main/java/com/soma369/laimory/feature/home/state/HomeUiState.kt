@@ -66,6 +66,8 @@ data class HomeUiState(
     /** 시간 시트. 날짜 피커의 범위 칩에서만 열리고, 확인해도 [datePicker] 세션만 바뀐다. */
     val timeSheet: HomeTimeSheetState? = null,
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
+    /** 타임라인 만들기 확인 다이얼로그. 제출할 스냅샷이 확정된 동안만 있다. */
+    val createConfirm: DraftCreateConfirm? = null,
     /**
      * `만들기` 를 누른 뒤 사진 업로드·생성 요청의 응답을 기다리는 중.
      *
