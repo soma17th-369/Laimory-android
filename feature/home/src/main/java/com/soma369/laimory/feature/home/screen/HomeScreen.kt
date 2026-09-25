@@ -602,8 +602,8 @@ private fun HomeNotificationSlot(apps: List<HomeNotificationApp>) {
                 .fillMaxWidth()
                 .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
-        // 라벨 바로 아래 값을 붙인다(시안 간격 4). 남는 높이는 아래로 흘려 두 반쪽 카드의 줄이 맞는다.
-        verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        // 라벨 아래 값을 둔다(시안 간격 8 — 위아래 4 + 18 + 8 + 24 로 슬롯 58 을 꼭 채운다).
+        verticalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
         Text(
             text = "앱 별 알림 건수",
@@ -670,8 +670,8 @@ private fun HomeLabeledSlot(
                 .fillMaxWidth()
                 .heightIn(min = HALF_CARD_SLOT_HEIGHT)
                 .padding(vertical = Spacing.extraSmall),
-        // 라벨 바로 아래 값을 붙인다(시안 간격 4). 남는 높이는 아래로 흘려 두 반쪽 카드의 줄이 맞는다.
-        verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        // 라벨 아래 값을 둔다(시안 간격 8 — 위아래 4 + 18 + 8 + 24 로 슬롯 58 을 꼭 채운다).
+        verticalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
         Text(
             text = label,
