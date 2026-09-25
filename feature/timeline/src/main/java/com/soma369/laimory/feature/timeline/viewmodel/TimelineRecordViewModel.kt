@@ -10,8 +10,10 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSnapshot
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
@@ -86,6 +88,9 @@ class TimelineRecordViewModel
         ) {
         private var requestedRecordDate: LocalDate? = null
 
+        /** 이 화면을 연 자리. 분석에만 쓴다. */
+        private var entryPoint = AnalyticsEntryPoint.UNKNOWN
+
         /**
          * 최초 진입 모드를 이미 적용한 **기록**(`dailyRecordId`).
          *
@@ -158,7 +163,7 @@ class TimelineRecordViewModel
 
         override suspend fun handleIntent(intent: TimelineRecordUiIntent) {
             when (intent) {
-                is TimelineRecordUiIntent.Initialize -> initialize(intent.recordDate)
+                is TimelineRecordUiIntent.Initialize -> initialize(intent.recordDate, intent.entryPoint)
                 TimelineRecordUiIntent.RetryLoad -> requestedRecordDate?.let(::loadRecord)
                 TimelineRecordUiIntent.NavigateBack ->
                     navigateBack()
@@ -197,7 +202,11 @@ class TimelineRecordViewModel
             navigationHelper.navigateToBack()
         }
 
-        private fun initialize(recordDate: LocalDate?) {
+        private fun initialize(
+            recordDate: LocalDate?,
+            entryPoint: AnalyticsEntryPoint,
+        ) {
+            this.entryPoint = entryPoint
             if (recordDate == null) {
                 loadJob?.cancel()
                 requestedRecordDate = null
@@ -249,13 +258,7 @@ class TimelineRecordViewModel
                                             mode = record.initialMode(),
                                         )
                                     }
-                                    analyticsHelper.log(
-                                        AnalyticsEvent.TimelineOpened(
-                                            timelineState = record.analyticsState(),
-                                            recordDayRelation = dayRelationOf(record.recordDate),
-                                            recordDate = record.recordDate,
-                                        ),
-                                    )
+                                    logOpened(record)
                                 }
                                 DailyRecordReadOutcome.Unavailable ->
                                     updateState { copy(content = TimelineRecordUiContent.Unavailable) }
@@ -555,6 +558,27 @@ class TimelineRecordViewModel
                     recordDate = recordDate,
                     completionOutcome = completionOutcome,
                     eventSummary = AnalyticsTimelineEventSummary.of(completedEvents, editLog),
+                ),
+            )
+        }
+
+        /** 열람을 기록한다. 완료한 지난 기록이면 지난 기록 열람도 함께 남긴다. */
+        private suspend fun logOpened(record: TimelineRecordUiModel) {
+            analyticsHelper.log(
+                AnalyticsEvent.TimelineOpened(
+                    timelineState = record.analyticsState(),
+                    recordDayRelation = dayRelationOf(record.recordDate),
+                    recordDate = record.recordDate,
+                    entryPoint = entryPoint,
+                ),
+            )
+            if (!record.isSaved) return
+            val ageBucket = AnalyticsRecordAgeBucket.of(record.recordDate, clock) ?: return
+            analyticsHelper.log(
+                AnalyticsEvent.TimelinePastRecordOpened(
+                    recordAgeBucket = ageBucket,
+                    entryPoint = entryPoint,
+                    recordDate = record.recordDate,
                 ),
             )
         }

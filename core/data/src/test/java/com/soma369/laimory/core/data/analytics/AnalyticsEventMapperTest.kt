@@ -3,6 +3,7 @@ package com.soma369.laimory.core.data.analytics
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
@@ -10,6 +11,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
@@ -65,9 +67,9 @@ class AnalyticsEventMapperTest {
                     setOf("ready_trigger"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineCreateStarted(today, date),
+                    AnalyticsEvent.TimelineCreateStarted(today, date, AnalyticsEntryPoint.HOME),
                     "timeline_create_started",
-                    setOf("record_day_relation"),
+                    setOf("record_day_relation", "entry_point"),
                     setOf("record_date"),
                 ),
                 Expectation(
@@ -115,9 +117,15 @@ class AnalyticsEventMapperTest {
                     setOf("record_date", "event_cnt"),
                 ),
                 Expectation(
-                    AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, today, date),
+                    AnalyticsEvent.TimelineOpened(AnalyticsTimelineState.DRAFT, today, date, AnalyticsEntryPoint.CALENDAR),
                     "timeline_opened",
-                    setOf("timeline_state", "record_day_relation"),
+                    setOf("timeline_state", "record_day_relation", "entry_point"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelinePastRecordOpened(AnalyticsRecordAgeBucket.D7_29, AnalyticsEntryPoint.CALENDAR, date),
+                    "timeline_past_record_opened",
+                    setOf("record_age_bucket", "entry_point"),
                     setOf("record_date"),
                 ),
                 Expectation(
@@ -170,7 +178,7 @@ class AnalyticsEventMapperTest {
     @Test
     fun `기록 날짜는 서울 기준 그날 00시의 UTC epoch ms 로 싣는다`() {
         // 2026-09-21 00:00 (UTC+9) = 2026-09-20T15:00:00Z
-        val payload = AnalyticsEvent.TimelineCreateStarted(today, date).toPayload()
+        val payload = AnalyticsEvent.TimelineCreateStarted(today, date, AnalyticsEntryPoint.HOME).toPayload()
 
         assertEquals(1_789_916_400_000L, payload.counts["record_date"])
     }
@@ -286,7 +294,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsRecordDayRelation.entries,
             "record_day_relation",
-        ) { AnalyticsEvent.TimelineCreateStarted(it, date) }
+        ) { AnalyticsEvent.TimelineCreateStarted(it, date, AnalyticsEntryPoint.HOME) }
 
     @Test
     fun `중단 이유 전송값을 고정한다`() =
@@ -337,7 +345,7 @@ class AnalyticsEventMapperTest {
             ),
             AnalyticsTimelineState.entries,
             "timeline_state",
-        ) { AnalyticsEvent.TimelineOpened(it, today, date) }
+        ) { AnalyticsEvent.TimelineOpened(it, today, date, AnalyticsEntryPoint.UNKNOWN) }
 
     @Test
     fun `완료 방식 전송값을 고정한다`() =
@@ -349,6 +357,33 @@ class AnalyticsEventMapperTest {
             AnalyticsCompletionOutcome.entries,
             "completion_outcome",
         ) { AnalyticsEvent.TimelineCompleted(today, date, it, eventSummary) }
+
+    @Test
+    fun `진입 경로 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsEntryPoint.PAST_RECORDS to "past_records",
+                AnalyticsEntryPoint.CALENDAR to "calendar",
+                AnalyticsEntryPoint.HOME to "home",
+                AnalyticsEntryPoint.DRAFT_COMPLETE to "draft_complete",
+                AnalyticsEntryPoint.UNKNOWN to "unknown",
+            ),
+            AnalyticsEntryPoint.entries,
+            "entry_point",
+        ) { AnalyticsEvent.TimelinePastRecordOpened(AnalyticsRecordAgeBucket.D1, it, date) }
+
+    @Test
+    fun `지난 기록 경과 구간 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsRecordAgeBucket.D1 to "d1",
+                AnalyticsRecordAgeBucket.D2_6 to "d2_6",
+                AnalyticsRecordAgeBucket.D7_29 to "d7_29",
+                AnalyticsRecordAgeBucket.D30_PLUS to "d30_plus",
+            ),
+            AnalyticsRecordAgeBucket.entries,
+            "record_age_bucket",
+        ) { AnalyticsEvent.TimelinePastRecordOpened(it, AnalyticsEntryPoint.UNKNOWN, date) }
 
     private fun <T> assertWireValues(
         expected: Map<T, String>,

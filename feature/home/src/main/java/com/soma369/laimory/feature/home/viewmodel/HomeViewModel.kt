@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
@@ -736,7 +737,7 @@ class HomeViewModel
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
-                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
+                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate, AnalyticsEntryPoint.HOME))
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
@@ -1093,7 +1094,7 @@ class HomeViewModel
         private fun viewDraft() {
             val current = state.value
             if (current.timelineButtonStatus != DraftCreationStatus.SUCCESS) return
-            navigationHelper.navigateTo(TimelinePage(current.selectedDate))
+            navigationHelper.navigateTo(TimelinePage(current.selectedDate, AnalyticsEntryPoint.HOME))
         }
 
         /**

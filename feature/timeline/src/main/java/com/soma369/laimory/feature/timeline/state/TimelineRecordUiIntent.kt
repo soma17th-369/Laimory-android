@@ -1,12 +1,15 @@
 package com.soma369.laimory.feature.timeline.state
 
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.ui.base.UiIntent
 import java.time.LocalDate
 
 sealed interface TimelineRecordUiIntent : UiIntent {
+    /** [entryPoint] 는 분석용 — 이 화면을 연 자리다. */
     data class Initialize(
         val recordDate: LocalDate?,
+        val entryPoint: AnalyticsEntryPoint = AnalyticsEntryPoint.UNKNOWN,
     ) : TimelineRecordUiIntent
 
     data object RetryLoad : TimelineRecordUiIntent

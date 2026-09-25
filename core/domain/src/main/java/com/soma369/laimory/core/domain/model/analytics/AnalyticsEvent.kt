@@ -40,6 +40,7 @@ sealed interface AnalyticsEvent {
     data class TimelineCreateStarted(
         val recordDayRelation: AnalyticsRecordDayRelation,
         val recordDate: LocalDate,
+        val entryPoint: AnalyticsEntryPoint,
     ) : AnalyticsEvent
 
     /** 준비를 시작했지만 생성 요청까지 가지 않고 멈췄다. 이유마다 고칠 곳이 다르다. */
@@ -103,6 +104,14 @@ sealed interface AnalyticsEvent {
     data class TimelineOpened(
         val timelineState: AnalyticsTimelineState,
         val recordDayRelation: AnalyticsRecordDayRelation,
+        val recordDate: LocalDate,
+        val entryPoint: AnalyticsEntryPoint,
+    ) : AnalyticsEvent
+
+    /** 완료한 지난 기록(오늘 이전 날짜)을 열었다. [TimelineOpened] 와 함께 나간다. */
+    data class TimelinePastRecordOpened(
+        val recordAgeBucket: AnalyticsRecordAgeBucket,
+        val entryPoint: AnalyticsEntryPoint,
         val recordDate: LocalDate,
     ) : AnalyticsEvent
 

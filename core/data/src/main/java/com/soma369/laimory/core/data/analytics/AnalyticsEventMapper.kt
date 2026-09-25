@@ -3,6 +3,7 @@ package com.soma369.laimory.core.data.analytics
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
@@ -10,6 +11,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
@@ -26,6 +28,8 @@ private const val PARAM_READY_TRIGGER = "ready_trigger"
 private const val PARAM_RECORD_DAY_RELATION = "record_day_relation"
 private const val PARAM_RECORD_DATE = "record_date"
 private const val PARAM_EVENT_COUNT = "event_cnt"
+private const val PARAM_ENTRY_POINT = "entry_point"
+private const val PARAM_RECORD_AGE_BUCKET = "record_age_bucket"
 private const val PARAM_STOP_REASON = "reason"
 private const val PARAM_INITIAL_ITEM_COUNT = "initial_event_item_count"
 private const val PARAM_FINAL_ITEM_COUNT = "final_event_item_count"
@@ -79,7 +83,11 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
             payload(
                 name = "timeline_create_started",
                 recordDate = recordDate,
-                strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
+                strings =
+                    mapOf(
+                        PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
+                        PARAM_ENTRY_POINT to entryPoint.paramValue,
+                    ),
             )
         is AnalyticsEvent.TimelineCreateStopped ->
             payload(
@@ -146,6 +154,17 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                     mapOf(
                         PARAM_TIMELINE_STATE to timelineState.paramValue,
                         PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
+                        PARAM_ENTRY_POINT to entryPoint.paramValue,
+                    ),
+            )
+        is AnalyticsEvent.TimelinePastRecordOpened ->
+            payload(
+                name = "timeline_past_record_opened",
+                recordDate = recordDate,
+                strings =
+                    mapOf(
+                        PARAM_RECORD_AGE_BUCKET to recordAgeBucket.paramValue,
+                        PARAM_ENTRY_POINT to entryPoint.paramValue,
                     ),
             )
         is AnalyticsEvent.TimelineCompletionStarted ->
@@ -330,4 +349,23 @@ private val AnalyticsCompletionOutcome.paramValue: String
         when (this) {
             AnalyticsCompletionOutcome.TRANSITIONED -> "transitioned"
             AnalyticsCompletionOutcome.RECOVERED -> "recovered"
+        }
+
+private val AnalyticsEntryPoint.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsEntryPoint.PAST_RECORDS -> "past_records"
+            AnalyticsEntryPoint.CALENDAR -> "calendar"
+            AnalyticsEntryPoint.HOME -> "home"
+            AnalyticsEntryPoint.DRAFT_COMPLETE -> "draft_complete"
+            AnalyticsEntryPoint.UNKNOWN -> "unknown"
+        }
+
+private val AnalyticsRecordAgeBucket.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsRecordAgeBucket.D1 -> "d1"
+            AnalyticsRecordAgeBucket.D2_6 -> "d2_6"
+            AnalyticsRecordAgeBucket.D7_29 -> "d7_29"
+            AnalyticsRecordAgeBucket.D30_PLUS -> "d30_plus"
         }

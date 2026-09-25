@@ -188,6 +188,7 @@ val appRoutes: List<AppRoute> =
                 TimelineRecordRoute(
                     innerPadding = innerPadding,
                     recordDate = TimelinePage.recordDateFrom(args),
+                    entryPoint = TimelinePage.entryPointFrom(args),
                 )
             },
         ),

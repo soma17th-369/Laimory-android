@@ -10,8 +10,10 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
@@ -1746,10 +1748,52 @@ class TimelineRecordViewModelTest {
                         AnalyticsTimelineState.DRAFT,
                         AnalyticsRecordDayRelation.of(RECORD_DATE, clock),
                         RECORD_DATE,
+                        AnalyticsEntryPoint.UNKNOWN,
                     ),
                 ),
                 analyticsHelper.logged,
             )
+        }
+
+    @Test
+    fun `완료한 지난 기록을 열면 연 자리와 경과 구간으로 지난 기록 열람도 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            clock = Clock.fixed(Instant.parse("2026-05-15T12:00:00Z"), ZoneOffset.UTC)
+            recordRepository.dailyRecordResult = Result.success(timeline(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE, AnalyticsEntryPoint.CALENDAR))
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.TimelineOpened(
+                        AnalyticsTimelineState.SAVED,
+                        AnalyticsRecordDayRelation.OLDER,
+                        RECORD_DATE,
+                        AnalyticsEntryPoint.CALENDAR,
+                    ),
+                    AnalyticsEvent.TimelinePastRecordOpened(AnalyticsRecordAgeBucket.D7_29, AnalyticsEntryPoint.CALENDAR, RECORD_DATE),
+                ),
+                analyticsHelper.logged,
+            )
+        }
+
+    @Test
+    fun `지난 날짜라도 작성 중인 기록은 지난 기록 열람으로 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            clock = Clock.fixed(Instant.parse("2026-05-15T12:00:00Z"), ZoneOffset.UTC)
+            createLoadedViewModel(timeline(status = DailyRecordStatus.DRAFT))
+
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.TimelinePastRecordOpened })
+        }
+
+    @Test
+    fun `오늘 완료한 기록은 지난 기록 열람으로 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            createLoadedViewModel(timeline(status = DailyRecordStatus.SAVED))
+
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.TimelinePastRecordOpened })
         }
 
     @Test

@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
@@ -34,7 +35,10 @@ class PastRecordsViewModel
         override suspend fun handleIntent(intent: PastRecordsUiIntent) {
             when (intent) {
                 PastRecordsUiIntent.Sync -> sync()
-                is PastRecordsUiIntent.SelectRecord -> navigationHelper.navigateTo(TimelinePage(intent.recordDate))
+                is PastRecordsUiIntent.SelectRecord ->
+                    navigationHelper.navigateTo(
+                        TimelinePage(intent.recordDate, AnalyticsEntryPoint.PAST_RECORDS),
+                    )
                 PastRecordsUiIntent.NavigateBack -> navigationHelper.navigateToBack()
             }
         }

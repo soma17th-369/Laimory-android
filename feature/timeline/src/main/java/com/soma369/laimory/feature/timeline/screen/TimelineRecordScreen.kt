@@ -59,6 +59,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
@@ -100,10 +101,11 @@ import com.soma369.laimory.core.ui.R as UiR
 fun TimelineRecordRoute(
     innerPadding: PaddingValues,
     recordDate: LocalDate?,
+    entryPoint: AnalyticsEntryPoint = AnalyticsEntryPoint.UNKNOWN,
     viewModel: TimelineRecordViewModel = hiltViewModel(),
 ) {
     LaunchedEffect(recordDate) {
-        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(recordDate))
+        viewModel.sendIntent(TimelineRecordUiIntent.Initialize(recordDate, entryPoint))
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     TimelineRecordContent(
