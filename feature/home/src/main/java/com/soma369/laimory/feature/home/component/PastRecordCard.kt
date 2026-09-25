@@ -1,9 +1,7 @@
 package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -22,17 +19,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.soma369.laimory.core.ui.component.EmotionIcon
+import com.soma369.laimory.core.ui.component.EmotionIconDefaults
 import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.theme.Emotion
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
-import com.soma369.laimory.core.ui.theme.color
 import com.soma369.laimory.core.ui.theme.containerColor
 import com.soma369.laimory.feature.home.model.PastRecordUiModel
 import java.time.LocalDate
@@ -77,17 +73,12 @@ internal fun PastRecordCard(
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Spacer(modifier = Modifier.weight(1f))
-                    // 시안은 이모지가 아니라 8dp 점이다. 색은 캘린더 셀과 같은 emotion 팔레트를
-                    // 쓴다 — 이모지 에셋 팔레트와는 다른 축이다.
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                // 감정을 알 수 없는 기록도 자리를 지킨다. 점이 사라지면 줄이 흔들린다.
-                                .background(record.emotion?.color() ?: MaterialTheme.colorScheme.outlineVariant)
-                                // 색만으로는 읽히지 않으므로 스크린 리더가 읽을 이름을 붙인다.
-                                .semantics { contentDescription = "감정 ${record.emotion.displayLabel()}" },
+                    // 캘린더·타임라인과 같은 감정 이모지로 보여 준다. 점은 색만으로 감정을 가려 읽기 어려웠다.
+                    // 감정을 알 수 없는 기록도 물음표로 자리를 지킨다 — 비우면 줄이 흔들린다.
+                    EmotionIcon(
+                        emotion = record.emotion,
+                        size = EmotionIconDefaults.CompactSize,
+                        contentDescription = "감정 ${record.emotion.displayLabel()}",
                     )
                 }
                 Text(

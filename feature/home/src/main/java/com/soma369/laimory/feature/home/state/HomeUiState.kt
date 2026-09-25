@@ -20,8 +20,6 @@ import java.time.ZoneId
 data class HomeUiState(
     /** 수집 실험실 진입 가능 여부. 개발 도구라 debug 빌드에서만 참이다. */
     val isCollectionLabAccessible: Boolean = false,
-    /** 인사말에 쓸 닉네임. 조회 전·없음·실패를 구분하지 않는다 — 어느 쪽이든 문구가 같다. */
-    val nickname: String? = null,
     val selectedDate: LocalDate = LocalDate.now(),
     /**
      * 달력상 오늘. CTA 부제의 `오늘`·`어제` 가 쓴다.
@@ -63,9 +61,13 @@ data class HomeUiState(
      */
     val isPhotoAccessDenied: Boolean = false,
     val isPhotoSheetVisible: Boolean = false,
-    val isDatePickerVisible: Boolean = false,
+    /** 날짜 피커가 열려 있으면 그 안에서 고르는 날짜·범위의 임시 값. */
+    val datePicker: HomeDatePickerSession? = null,
+    /** 시간 시트. 날짜 피커의 범위 칩에서만 열리고, 확인해도 [datePicker] 세션만 바뀐다. */
     val timeSheet: HomeTimeSheetState? = null,
     val draftStatus: DraftCreationStatus = DraftCreationStatus.IDLE,
+    /** 타임라인 만들기 확인 다이얼로그. 제출할 스냅샷이 확정된 동안만 있다. */
+    val createConfirm: DraftCreateConfirm? = null,
     /**
      * `만들기` 를 누른 뒤 사진 업로드·생성 요청의 응답을 기다리는 중.
      *

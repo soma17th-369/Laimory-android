@@ -3,6 +3,7 @@ package com.soma369.laimory.core.ui.component
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -55,6 +56,34 @@ fun LaimoryDialog(
     dismissible: Boolean = true,
     consent: LaimoryDialogConsent? = null,
 ) {
+    LaimoryDialog(
+        title = title,
+        buttons = buttons,
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        dismissible = dismissible,
+    ) {
+        DialogBodyText(body = body)
+        if (consent != null) DialogConsentRow(consent = consent)
+    }
+}
+
+/**
+ * 본문을 글 한 단락 대신 직접 그리는 다이얼로그.
+ *
+ * 틀(폭·여백·모서리·그림자)과 제목·버튼은 글 본문 다이얼로그와 같다 — 본문만 바뀌는 다이얼로그가 틀까지
+ * 따로 그리면 화면마다 다이얼로그가 조금씩 달라진다. [content] 는 제목 아래에 같은 간격으로 쌓이고,
+ * 버튼은 늘 남긴 채 이 영역만 스크롤한다.
+ */
+@Composable
+fun LaimoryDialog(
+    title: String,
+    buttons: LaimoryDialogButtons,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    dismissible: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Dialog(
         onDismissRequest = {
             if (dismissible) onDismissRequest()
@@ -75,10 +104,9 @@ fun LaimoryDialog(
         ) {
             LaimoryDialogContent(
                 title = title,
-                body = body,
                 buttons = buttons,
                 modifier = modifier,
-                consent = consent,
+                content = content,
             )
         }
     }
@@ -87,10 +115,9 @@ fun LaimoryDialog(
 @Composable
 private fun LaimoryDialogContent(
     title: String,
-    body: String,
     buttons: LaimoryDialogButtons,
     modifier: Modifier = Modifier,
-    consent: LaimoryDialogConsent? = null,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
         modifier =
@@ -125,18 +152,37 @@ private fun LaimoryDialogContent(
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Text(
-                    modifier = Modifier.heightIn(min = DialogBodyMinHeight),
-                    text = body,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (consent != null) DialogConsentRow(consent = consent)
+                content()
             }
             Spacer(modifier = Modifier.height(Spacing.extraLarge))
             DialogActions(buttons = buttons)
         }
     }
+}
+
+/** 글 본문 다이얼로그의 틀. 프리뷰가 [Dialog] 창 없이 그릴 때 쓴다. */
+@Composable
+private fun LaimoryDialogContent(
+    title: String,
+    body: String,
+    buttons: LaimoryDialogButtons,
+    modifier: Modifier = Modifier,
+    consent: LaimoryDialogConsent? = null,
+) {
+    LaimoryDialogContent(title = title, buttons = buttons, modifier = modifier) {
+        DialogBodyText(body = body)
+        if (consent != null) DialogConsentRow(consent = consent)
+    }
+}
+
+@Composable
+private fun DialogBodyText(body: String) {
+    Text(
+        modifier = Modifier.heightIn(min = DialogBodyMinHeight),
+        text = body,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

@@ -7,10 +7,7 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
-import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
-import com.soma369.laimory.core.domain.message.DialogRequest
-import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
@@ -50,8 +47,6 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
-import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
-import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -63,6 +58,7 @@ import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
+import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeRecordState
@@ -73,7 +69,6 @@ import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
-import com.soma369.laimory.feature.home.state.confirmDialogBody
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
@@ -82,6 +77,7 @@ import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
+import com.soma369.laimory.feature.home.state.toCreateConfirm
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -110,15 +106,12 @@ class HomeViewModel
         private val prepareSelectedPhotosUseCase: PrepareSelectedPhotosUseCase,
         private val draftConsentSessionStore: DraftConsentSessionStore,
         private val draftTaskCoordinator: DraftTaskCoordinator,
-        private val observeUserProfileUseCase: ObserveUserProfileUseCase,
-        private val refreshUserProfileUseCase: RefreshUserProfileUseCase,
         private val navigationHelper: NavigationHelper,
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val loadingSessionStore: DraftLoadingSessionStore,
-        private val messageHelper: MessageHelper,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
         private val analyticsHelper: AnalyticsHelper,
@@ -155,6 +148,14 @@ class HomeViewModel
         private var preparedPhotoCache: PreparedPhotoCache? = null
         private var dateSource = DateSource.DEFAULT
         private var consentPreparationJob: Job? = null
+
+        /**
+         * 확인창이 보여 준 제출 목록. `만들기` 는 이것을 그대로 보낸다.
+         *
+         * 만들기 때 스토어에서 다시 만들면 안 된다 — 확인창이 떠 있는 동안 수집 갱신이 제외 집합에서 사라진
+         * 항목을 걷어 내는데, 준비 스냅샷에는 그 항목이 남아 있어 사용자가 뺐던 것이 확인창에 없던 채로 나간다.
+         */
+        private var confirmedSubmission: DraftSourceItemSelection? = null
         private var locationConsentJob: Job? = null
 
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
@@ -163,7 +164,6 @@ class HomeViewModel
         init {
             observeSummary()
             observeDraftTask()
-            observeUserProfile()
             observeAccountSession()
             observeSubmissionExclusions()
             observeSelectionLock()
@@ -206,30 +206,23 @@ class HomeViewModel
                 draftConsentSessionStore.accountSession.drop(1).collect {
                     locationConsentJob?.cancel()
                     attemptedStayRawIds.clear()
-                    updateState { copy(isLocationConsentGranted = false) }
+                    // 확인창·고른 사진은 이전 계정의 시도다. 스토어는 이미 비었으므로 남겨 두면 새 계정 홈에
+                    // 이전 계정의 썸네일이 다시 뜨고, `만들기` 는 준비 스냅샷이 없어 무반응이다.
+                    confirmedSubmission = null
+                    updateState {
+                        copy(
+                            isLocationConsentGranted = false,
+                            createConfirm = null,
+                            selectedPhotoIds = emptySet(),
+                            pendingPhotoIds = emptySet(),
+                            isPhotoSheetVisible = false,
+                        )
+                    }
                 }
             }
-
-        /**
-         * 공용 회원 정보를 인사말에 반영한다.
-         *
-         * 조회 자체는 coordinator 가 세션당 한 번만 하므로 여기서 서버를 부르지 않는다.
-         * 재시도는 [HomeUiIntent.RefreshProfile] 이 맡는다.
-         */
-        private fun observeUserProfile() {
-            safeLaunch {
-                observeUserProfileUseCase().collect { profile ->
-                    updateState { copy(nickname = profile?.nickname) }
-                }
-            }
-        }
 
         override suspend fun handleIntent(intent: HomeUiIntent) {
             when (intent) {
-                // 화면이 뜰 때마다 부른다. ViewModel 이 Activity 수명이라 init 에서 한 번만 부르면
-                // 첫 조회가 실패한 세션 내내 닉네임이 fallback 으로 남는다. 성공한 뒤의 중복 요청은
-                // coordinator 의 세션 캐시·single-flight 가 막는다.
-                HomeUiIntent.RefreshProfile -> refreshUserProfileUseCase()
                 HomeUiIntent.RefreshToday -> refreshToday()
                 // 버튼만 숨기지 않고 호출 경계에서도 막는다 — release 에는 라우트 자체가 없다.
                 HomeUiIntent.NavigateToCollection ->
@@ -247,10 +240,11 @@ class HomeViewModel
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
                 HomeUiIntent.ShowDatePicker -> showDatePicker()
-                HomeUiIntent.DismissDatePicker -> updateState { copy(isDatePickerVisible = false) }
+                HomeUiIntent.DismissDatePicker -> dismissDatePicker()
+                is HomeUiIntent.PickDate -> pickDate(intent.date)
+                HomeUiIntent.ConfirmDatePicker -> confirmDatePicker()
                 is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
                 HomeUiIntent.RefreshRecordState -> refreshSelectedRecord()
-                is HomeUiIntent.SelectDate -> selectDate(intent.date)
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
                 is HomeUiIntent.ExpandTimeField ->
                     updateState { copy(timeSheet = timeSheet?.copy(expandedField = intent.field)) }
@@ -258,6 +252,8 @@ class HomeViewModel
                 HomeUiIntent.ConfirmTimeSheet -> confirmTimeSheet()
                 HomeUiIntent.DismissTimePicker -> updateState { copy(timeSheet = null) }
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
+                HomeUiIntent.ConfirmCreateDraft -> confirmCreateDraft()
+                HomeUiIntent.DismissCreateConfirm -> dismissCreateConfirm()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
@@ -447,8 +443,79 @@ class HomeViewModel
          * 표시하던 날짜는 지우지 않는다(다시 받는 사이 비었다 차면 격자가 깜빡인다).
          */
         private fun showDatePicker() {
+            if (state.value.isDateLocked) return
             loadedRecordMonths.clear()
-            updateState { copy(isDatePickerVisible = true) }
+            updateState {
+                copy(
+                    datePicker =
+                        HomeDatePickerSession(
+                            date = selectedDate,
+                            startTime = startTime,
+                            endDay = endDay,
+                            endTime = endTime,
+                        ),
+                )
+            }
+        }
+
+        /** 피커를 닫는다. 세션 전체를 버리므로 아무것도 확정되지 않고 기록 창도 그대로다. */
+        private fun dismissDatePicker() {
+            updateState { copy(datePicker = null, timeSheet = null) }
+        }
+
+        private fun pickDate(date: LocalDate) {
+            val session = state.value.datePicker ?: return
+            if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
+            updateState { copy(datePicker = session.copy(date = date)) }
+        }
+
+        /** 피커의 확인. 날짜와 범위를 한 번에 확정한다. */
+        private fun confirmDatePicker() {
+            val current = state.value
+            val session = current.datePicker ?: return
+            // 피커를 연 뒤 생성이 시작됐으면 날짜를 옮기지 않는다. 확인이 아무 일도 안 하면 닫히지 않은
+            // 다이얼로그만 남으므로 세션을 버린다.
+            if (current.isDateLocked) return dismissDatePicker()
+            commitDatePicker(session)
+        }
+
+        /**
+         * 세션을 홈 상태로 옮기고 피커를 닫는다.
+         *
+         * 날짜와 범위를 **한 번의 상태 갱신**으로 옮긴다. 따로 옮기면 그 사이 한 번은 새 날짜 + 옛 범위의 창으로
+         * 카드를 센다. 기록 창이 바뀐 경우에만 창 갱신을 한 번 부른다.
+         */
+        private fun commitDatePicker(session: HomeDatePickerSession) {
+            // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
+            // 지금 날짜를 그대로 다시 골라도 마찬가지다.
+            dateSource = DateSource.USER
+            // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
+            startAutoCollectionAhead()
+            val isDateChanged = session.date != state.value.selectedDate
+            val isRangeChanged = !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
+            updateState {
+                val closed = copy(datePicker = null, timeSheet = null)
+                if (!isDateChanged && !isRangeChanged) return@updateState closed
+                // 시간 범위는 날짜를 옮겨도 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
+                // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                val next =
+                    closed.copy(
+                        selectedDate = session.date,
+                        startTime = session.startTime,
+                        endDay = session.endDay,
+                        endTime = session.endTime,
+                        // 같은 날 범위만 바꿨으면 방금 끝난 완료 표시는 그대로 둔다 — 기록은 그대로 있다.
+                        draftStatus =
+                            if (!isDateChanged && draftStatus == DraftCreationStatus.SUCCESS) draftStatus else DraftCreationStatus.IDLE,
+                        draftRetryMode = null,
+                        draftMessage = null,
+                        selectedRecord = if (isDateChanged) cachedRecordState(session.date) else selectedRecord,
+                    ).withSourceSummary(sourceItems, photoCandidates)
+                if (isDateChanged) next.withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value) else next
+            }
+            if (!isDateChanged && !isRangeChanged) return
+            onRecordWindowChanged()
+            if (isDateChanged) refreshSelectedRecord()
         }
 
         /**
@@ -582,20 +649,6 @@ class HomeViewModel
             )
         }
 
-        private fun selectDate(date: LocalDate) {
-            if (state.value.isDateLocked) return
-            // 피커가 막는 날짜를 경계에서 한 번 더 막는다 — 보존 기간 밖은 기기의 재료가 이미 지워졌다.
-            // 저장된 날짜는 막지 않는다. 고르면 CTA 가 `타임라인 확인하기` 로 그 기록을 연다.
-            if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
-            // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
-            // 지금 날짜를 그대로 다시 골라도 마찬가지다.
-            dateSource = DateSource.USER
-            // 날짜를 확정한 시점부터 미리 긁어 둬야 최종 생성에서 기다리는 시간이 짧다.
-            startAutoCollectionAhead()
-            updateState { copy(isDatePickerVisible = false) }
-            moveToDate(date)
-        }
-
         private fun moveToDate(date: LocalDate) {
             updateState {
                 if (date == selectedDate) return@updateState this
@@ -643,7 +696,7 @@ class HomeViewModel
                     !current.isDateLocked &&
                     !current.isPhotoSheetVisible &&
                     current.timeSheet == null &&
-                    !current.isDatePickerVisible
+                    current.datePicker == null
             when {
                 canMove && current.selectedDate != defaultDate -> moveToDate(defaultDate)
                 // 같은 날짜라도 시간대가 바뀌면 기록 창의 시각이 달라진다.
@@ -651,16 +704,17 @@ class HomeViewModel
             }
         }
 
+        /** 날짜 피커 세션의 범위로 시트를 연다. 임시로 고른 날짜를 기준으로 당일·익일을 센다. */
         private fun showTimeSheet(field: HomeTimeField) {
-            if (state.value.isInputLocked) return
+            val session = state.value.datePicker ?: return
             updateState {
                 copy(
                     timeSheet =
                         HomeTimeSheetState(
-                            recordDate = selectedDate,
-                            startTime = startTime,
-                            endDay = endDay,
-                            endTime = endTime,
+                            recordDate = session.date,
+                            startTime = session.startTime,
+                            endDay = session.endDay,
+                            endTime = session.endTime,
                             expandedField = field,
                         ),
                 )
@@ -689,23 +743,27 @@ class HomeViewModel
             }
         }
 
+        /**
+         * 시트의 확인. **피커 세션의 범위만** 바꾼다.
+         *
+         * 여기서 홈 범위를 바꾸면 피커를 취소해도 범위가 남는다. 확정과 기록 창 갱신은 피커의 확인이 한다.
+         */
         private fun confirmTimeSheet() {
-            val sheet = state.value.timeSheet ?: return
-            if (state.value.isInputLocked || !sheet.isConfirmEnabled) return
+            val current = state.value
+            val sheet = current.timeSheet ?: return
+            val session = current.datePicker ?: return
+            if (!sheet.isConfirmEnabled) return
             updateState {
-                val next =
-                    copy(
-                        startTime = sheet.startTime,
-                        endDay = sheet.endDay,
-                        endTime = sheet.endTime,
-                        timeSheet = null,
-                        draftStatus = DraftCreationStatus.IDLE,
-                        draftRetryMode = null,
-                        draftMessage = null,
-                    )
-                next.withSourceSummary(sourceItems, photoCandidates)
+                copy(
+                    datePicker =
+                        session.copy(
+                            startTime = sheet.startTime,
+                            endDay = sheet.endDay,
+                            endTime = sheet.endTime,
+                        ),
+                    timeSheet = null,
+                )
             }
-            onRecordWindowChanged()
         }
 
         /**
@@ -760,28 +818,19 @@ class HomeViewModel
                         selection = selection,
                         discardActiveTask = shouldDiscardPreviousTask,
                     )
-                    confirmAndSubmit()
+                    showCreateConfirm()
                 }
         }
 
         /**
-         * 확인 다이얼로그를 띄우고, 만들기를 고르면 그대로 제출한다.
+         * 확인 다이얼로그를 띄운다. 제출은 다이얼로그의 `만들기`([confirmCreateDraft])가 한다.
          *
          * 화면을 한 장 더 두지 않는다 — 보낼 데이터를 보여 주고 유형 상세로 들어가는 일은 이미
          * 홈 카드가 하므로, 남는 것은 "이 건수로 만들겠습니까" 라는 마지막 확인뿐이다.
          */
-        private suspend fun confirmAndSubmit() {
+        private suspend fun showCreateConfirm() {
             val preparation = draftConsentSessionStore.preparation.value ?: return
-            // 제출 목록은 **소유자인 스토어**를 읽어 만든다. 위치가 꺼져 있으면 이 시점 스냅샷의
-            // 위치 항목 전체를 함께 뺀다 — 스위치를 끈 뒤 수집된 것까지 덮어야 어긋나지 않는다.
-            val excluded =
-                draftConsentSessionStore.excludedRawIds.value +
-                    if (draftConsentSessionStore.isLocationSendEnabled.value) {
-                        emptySet()
-                    } else {
-                        preparation.selection.locationRawIds()
-                    }
-            val submission = preparation.selection.excluding(excluded)
+            val submission = submissionOf(preparation)
             val dayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock)
             if (submission.items.isEmpty()) {
                 analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation))
@@ -791,32 +840,61 @@ class HomeViewModel
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
-            val initialCounts = preparation.selection.analyticsCounts()
-            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, initialCounts.total))
-            val result =
-                messageHelper.showTwoButtonDialog(
-                    DialogRequest.TwoButton(
-                        title = "타임라인을 만들까요?",
-                        body = submission.confirmDialogBody(),
-                        primaryLabel = "만들기",
-                        secondaryLabel = "취소",
-                    ),
-                )
-            // 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은
-            // 남긴다 — 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
-            if (result != DialogResult.Primary) {
-                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.CANCELLED, dayRelation))
-                draftConsentSessionStore.clearPreparation()
-                return
-            }
+            analyticsHelper.log(AnalyticsEvent.TimelineEventReviewStarted(dayRelation, preparation.selection.analyticsCounts().total))
+            confirmedSubmission = submission
+            updateState { copy(createConfirm = submission.toCreateConfirm()) }
+        }
+
+        /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 목록을 그대로 제출한다. */
+        private suspend fun confirmCreateDraft() {
+            val submission = confirmedSubmission ?: return
+            closeCreateConfirm()
+            val preparation = draftConsentSessionStore.preparation.value ?: return
             analyticsHelper.log(
                 AnalyticsEvent.TimelineEventReviewCompleted(
-                    recordDayRelation = dayRelation,
-                    initialCounts = initialCounts,
+                    recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                    initialCounts = preparation.selection.analyticsCounts(),
                     finalCounts = submission.analyticsCounts(),
                 ),
             )
-            submitDraft(preparation, submission)
+            safeLaunch(onError = ::handleDraftCreationFailure) { submitDraft(preparation, submission) }
+        }
+
+        /**
+         * 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은 남긴다 —
+         * 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
+         */
+        private suspend fun dismissCreateConfirm() {
+            if (confirmedSubmission == null) return
+            closeCreateConfirm()
+            val preparation = draftConsentSessionStore.preparation.value ?: return
+            analyticsHelper.log(
+                AnalyticsEvent.TimelineCreateStopped(
+                    AnalyticsCreateStopReason.CANCELLED,
+                    AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                ),
+            )
+            draftConsentSessionStore.clearPreparation()
+        }
+
+        private fun closeCreateConfirm() {
+            confirmedSubmission = null
+            updateState { copy(createConfirm = null) }
+        }
+
+        /**
+         * 제출 목록은 **소유자인 스토어**를 읽어 만든다. 위치가 꺼져 있으면 이 시점 스냅샷의 위치 항목
+         * 전체를 함께 뺀다 — 스위치를 끈 뒤 수집된 것까지 덮어야 어긋나지 않는다.
+         */
+        private fun submissionOf(preparation: DraftConsentPreparation): DraftSourceItemSelection {
+            val excluded =
+                draftConsentSessionStore.excludedRawIds.value +
+                    if (draftConsentSessionStore.isLocationSendEnabled.value) {
+                        emptySet()
+                    } else {
+                        preparation.selection.locationRawIds()
+                    }
+            return preparation.selection.excluding(excluded)
         }
 
         private suspend fun submitDraft(
