@@ -222,6 +222,13 @@ data object ThemeSettingsPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/** 설정 > 지원 > 공지사항. 목록만 앱이 그리고 원문은 게시된 페이지를 브라우저로 연다. */
+data object NoticesPage : Page {
+    const val PATH = "/settings/notices"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object CalendarPage : Page {
     const val PATH = "/calendar"
 

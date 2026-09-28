@@ -59,6 +59,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.LocalLaimoryColors
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.component.DataSourceSheet
+import com.soma369.laimory.feature.settings.component.NewNoticeDot
 import com.soma369.laimory.feature.settings.model.DataSourceUiModel
 import com.soma369.laimory.feature.settings.model.needsAttention
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
@@ -77,6 +78,7 @@ fun SettingsRoute(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.sendIntent(SettingsUiIntent.RefreshProfile)
         viewModel.sendIntent(SettingsUiIntent.RefreshTermLinks)
+        viewModel.sendIntent(SettingsUiIntent.RefreshNoticeBadge)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     SettingsContent(
@@ -233,6 +235,22 @@ private fun SettingsScreen(
                                     title = "테마",
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.ThemeSettingsClicked) },
+                                ),
+                            ),
+                    )
+                }
+                // 정보는 약관·버전처럼 바뀌지 않는 읽을거리다. 새 글이 올라오는 공지와 입력 화면인
+                // 문의는 성격이 달라 따로 묶는다.
+                SettingsSection(title = "지원") {
+                    SettingsGroup(
+                        items =
+                            listOf(
+                                SettingsItem(
+                                    iconRes = CoreUiR.drawable.ico_setting_notice,
+                                    title = "공지사항",
+                                    showNewBadge = state.hasNewNotice,
+                                    showChevron = true,
+                                    onClick = { onIntent(SettingsUiIntent.NoticesClicked) },
                                 ),
                             ),
                     )
@@ -420,14 +438,21 @@ private fun SettingsRow(item: SettingsItem) {
             contentDescription = null,
             tint = contentColor,
         )
-        Text(
+        Row(
             modifier = Modifier.weight(1f),
-            text = item.title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = contentColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                modifier = Modifier.weight(1f, fill = false),
+                text = item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (item.showNewBadge) NewNoticeDot()
+        }
         item.trailingText?.let { trailingText ->
             val trailingColor =
                 item.trailingColor.takeUnless { it == Color.Unspecified }
@@ -470,6 +495,8 @@ private data class SettingsItem(
     val trailingColor: Color = Color.Unspecified,
     /** 색 말고도 알아볼 수 있게 후행 문구 앞에 점을 찍을지. */
     val showTrailingDot: Boolean = false,
+    /** 제목 바로 뒤에 새 소식 점을 찍을지. 지금은 `공지사항` 줄만 쓴다. */
+    val showNewBadge: Boolean = false,
     val contentColor: Color = Color.Unspecified,
     val isEnabled: Boolean = true,
     val showChevron: Boolean = false,
