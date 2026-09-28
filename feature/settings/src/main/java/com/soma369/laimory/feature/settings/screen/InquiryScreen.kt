@@ -5,9 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,14 +17,11 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,18 +29,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -57,6 +43,9 @@ import com.soma369.laimory.core.domain.model.inquiry.InquiryInputRules
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTextField
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.component.photo.LaimoryAddPhotoTile
+import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoRemoval
+import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoTile
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.state.InquiryUiIntent
@@ -65,7 +54,6 @@ import com.soma369.laimory.feature.settings.state.InquiryUiState
 import com.soma369.laimory.feature.settings.viewmodel.InquiryViewModel
 import kotlinx.coroutines.flow.Flow
 import java.text.NumberFormat
-import com.soma369.laimory.core.ui.R as CoreUiR
 
 @Composable
 fun InquiryRoute(
@@ -234,116 +222,35 @@ private fun AttachmentSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
+            val isPreview = LocalInspectionMode.current
             attachmentUris.forEachIndexed { index, uri ->
-                AttachmentThumbnail(
-                    uri = uri,
-                    contentDescription = "첨부한 사진 ${index + 1}",
-                    enabled = enabled,
-                    onRemove = { onRemove(uri) },
-                )
-            }
-            if (canAdd) AddAttachmentTile(onClick = onAddClick)
-        }
-    }
-}
-
-/**
- * 첨부한 사진 한 장. 모양·색은 타임라인 이벤트 편집의 사진 칸과 같다 — 앱 안에서 사진을 붙이는
- * 자리는 한 모양이어야 한다.
- *
- * 빼기 버튼은 반전 색(inverseSurface 위 inverseOnSurface)이다. 사진 위에 뜨므로 사진 밝기와 무관하게
- * 보여야 하고, 반전 색이라 라이트·다크 어느 쪽에서도 바탕과 대비가 난다.
- */
-@Composable
-private fun AttachmentThumbnail(
-    uri: String,
-    contentDescription: String,
-    enabled: Boolean,
-    onRemove: () -> Unit,
-) {
-    Box(
-        modifier =
-            Modifier
-                .size(THUMBNAIL_SIZE)
-                .clip(MaterialTheme.shapes.medium)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .dashedBorder(MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        // 미리보기는 실제 사진을 불러올 수 없다.
-        if (!LocalInspectionMode.current) {
-            AsyncImage(
-                model = uri,
-                contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        if (enabled) {
-            Surface(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(2.dp)
-                        .size(REMOVE_BUTTON_SIZE),
-                onClick = onRemove,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.inverseSurface,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(CoreUiR.drawable.ico_timeline_tool_delete),
-                        contentDescription = "$contentDescription 빼기",
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.inverseOnSurface,
-                    )
+                val description = "첨부한 사진 ${index + 1}"
+                // 첨부에서 빼기만 한다 — 갤러리 원본은 그대로라 X 다.
+                LaimoryPhotoTile(
+                    removal = LaimoryPhotoRemoval.Detach,
+                    removeContentDescription = "$description 빼기",
+                    onRemove = if (enabled) ({ onRemove(uri) }) else null,
+                ) {
+                    // 미리보기는 실제 사진을 불러올 수 없다.
+                    if (!isPreview) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = description,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
+            if (canAdd) LaimoryAddPhotoTile(onClick = onAddClick)
         }
     }
 }
-
-@Composable
-private fun AddAttachmentTile(onClick: () -> Unit) {
-    Box(
-        modifier =
-            Modifier
-                .size(THUMBNAIL_SIZE)
-                .clip(MaterialTheme.shapes.medium)
-                .background(MaterialTheme.colorScheme.surface)
-                .dashedBorder(MaterialTheme.colorScheme.outlineVariant)
-                .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(CoreUiR.drawable.ico_timeline_editor_add_photo),
-            contentDescription = "사진 추가",
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/** 타임라인 이벤트 편집의 사진 칸과 같은 점선 테두리. */
-private fun Modifier.dashedBorder(color: Color): Modifier =
-    drawWithCache {
-        val strokeWidth = 1.dp.toPx()
-        val radius = 12.dp.toPx()
-        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))
-        onDrawBehind {
-            drawRoundRect(
-                color = color,
-                cornerRadius = CornerRadius(radius, radius),
-                style = Stroke(width = strokeWidth, pathEffect = pathEffect),
-            )
-        }
-    }
 
 private val COUNT_FORMAT: NumberFormat = NumberFormat.getIntegerInstance()
 
 private val SCREEN_HORIZONTAL_PADDING = 24.dp
 private val BODY_FIELD_HEIGHT = 200.dp
-private val THUMBNAIL_SIZE = 64.dp
-private val REMOVE_BUTTON_SIZE = 22.dp
 private val CTA_HEIGHT = 52.dp
 
 @Preview(name = "문의 - 빈 화면", showBackground = true, widthDp = 360, heightDp = 720)

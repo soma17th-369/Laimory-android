@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,13 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
@@ -43,6 +36,9 @@ import coil.compose.AsyncImage
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.ui.component.LaimorySelectField
 import com.soma369.laimory.core.ui.component.LaimoryTextField
+import com.soma369.laimory.core.ui.component.photo.LaimoryAddPhotoTile
+import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoRemoval
+import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoTile
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
@@ -253,10 +249,12 @@ internal fun TimelineEventPhotoSection(
                 items = existingPhotos,
                 key = TimelineEventExistingPhoto::timelineItemId,
             ) { photo ->
+                // 저장된 사진은 확인을 거쳐 서버에서 지운다 — 휴지통.
                 TimelineEditorPhoto(
                     model = photo.photoUrl,
                     contentDescription = "기존 이벤트 사진",
-                    removeContentDescription = "이벤트에서 사진 제거",
+                    removal = LaimoryPhotoRemoval.Delete,
+                    removeContentDescription = "이벤트 사진 삭제",
                     onRemove =
                         if (enabled) {
                             { onRemoveExisting(photo.timelineItemId) }
@@ -266,10 +264,12 @@ internal fun TimelineEventPhotoSection(
                 )
             }
             items(pendingPhotos, key = TimelineEventPendingPhoto::rawId) { photo ->
+                // 아직 올리지 않은 사진은 고른 것에서 빼기만 한다 — X.
                 TimelineEditorPhoto(
                     model = photo.clientPhotoUri,
                     contentDescription = "추가할 이벤트 사진",
                     uploadState = photo.uploadState,
+                    removal = LaimoryPhotoRemoval.Detach,
                     removeContentDescription = "추가 대상에서 제외",
                     onRemove =
                         if (enabled) {
@@ -280,23 +280,7 @@ internal fun TimelineEventPhotoSection(
                 )
             }
             item(key = "add-photo") {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(PhotoSize)
-                            .clip(MaterialTheme.shapes.medium)
-                            .background(MaterialTheme.colorScheme.surface)
-                            .dashedBorder(MaterialTheme.colorScheme.outlineVariant)
-                            .clickable(enabled = enabled, onClick = onAddClick),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painter = painterResource(UiR.drawable.ico_timeline_editor_add_photo),
-                        contentDescription = "사진 추가",
-                        modifier = Modifier.size(PhotoIconSize),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                LaimoryAddPhotoTile(onClick = onAddClick, enabled = enabled)
             }
         }
     }
@@ -362,18 +346,17 @@ private fun TimelineTimeField(
 private fun TimelineEditorPhoto(
     model: String?,
     contentDescription: String,
+    removal: LaimoryPhotoRemoval,
     uploadState: TimelineEventPhotoUploadState? = null,
     removeContentDescription: String? = null,
     onRemove: (() -> Unit)? = null,
 ) {
     val isPreview = LocalInspectionMode.current
-    Box(
-        modifier =
-            Modifier
-                .size(PhotoSize)
-                .clip(MaterialTheme.shapes.medium)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .dashedBorder(MaterialTheme.colorScheme.outlineVariant),
+    LaimoryPhotoTile(
+        removal = removal,
+        removeContentDescription = removeContentDescription,
+        onRemove = onRemove,
+        overlay = { PhotoUploadOverlay(uploadState) },
     ) {
         if (!isPreview && model != null) {
             AsyncImage(
@@ -393,8 +376,13 @@ private fun TimelineEditorPhoto(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
 
-        if (uploadState == TimelineEventPhotoUploadState.UPLOADING) {
+@Composable
+private fun PhotoUploadOverlay(uploadState: TimelineEventPhotoUploadState?) {
+    when (uploadState) {
+        TimelineEventPhotoUploadState.UPLOADING ->
             Box(
                 modifier =
                     Modifier
@@ -408,8 +396,7 @@ private fun TimelineEditorPhoto(
                     strokeWidth = 2.dp,
                 )
             }
-        }
-        if (uploadState == TimelineEventPhotoUploadState.FAILED) {
+        TimelineEventPhotoUploadState.FAILED ->
             Box(
                 modifier =
                     Modifier
@@ -423,48 +410,9 @@ private fun TimelineEditorPhoto(
                     color = MaterialTheme.colorScheme.onErrorContainer,
                 )
             }
-        }
-        onRemove?.let {
-            Surface(
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(2.dp)
-                        .size(22.dp),
-                onClick = it,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.inverseSurface,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(UiR.drawable.ico_timeline_tool_delete),
-                        contentDescription = removeContentDescription,
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.inverseOnSurface,
-                    )
-                }
-            }
-        }
+        else -> Unit
     }
 }
-
-private fun Modifier.dashedBorder(color: Color): Modifier =
-    drawWithCache {
-        val strokeWidth = 1.dp.toPx()
-        val radius = 12.dp.toPx()
-        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))
-        onDrawBehind {
-            drawRoundRect(
-                color = color,
-                cornerRadius = CornerRadius(radius, radius),
-                style =
-                    Stroke(
-                        width = strokeWidth,
-                        pathEffect = pathEffect,
-                    ),
-            )
-        }
-    }
 
 private val SummaryTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val SummaryDateFormatter = DateTimeFormatter.ofPattern("MM.dd")
@@ -473,5 +421,4 @@ private val EventTypeIconSize = 24.dp
 private val EventTypeItemWidth = 44.dp
 private val SingleLineFieldHeight = 48.dp
 private val MemoFieldHeight = 120.dp
-private val PhotoSize = 64.dp
 private val PhotoIconSize = 20.dp
