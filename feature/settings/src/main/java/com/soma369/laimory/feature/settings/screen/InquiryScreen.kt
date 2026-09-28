@@ -5,7 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +37,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.painterResource
@@ -242,6 +247,13 @@ private fun AttachmentSection(
     }
 }
 
+/**
+ * 첨부한 사진 한 장. 모양·색은 타임라인 이벤트 편집의 사진 칸과 같다 — 앱 안에서 사진을 붙이는
+ * 자리는 한 모양이어야 한다.
+ *
+ * 빼기 버튼은 반전 색(inverseSurface 위 inverseOnSurface)이다. 사진 위에 뜨므로 사진 밝기와 무관하게
+ * 보여야 하고, 반전 색이라 라이트·다크 어느 쪽에서도 바탕과 대비가 난다.
+ */
 @Composable
 private fun AttachmentThumbnail(
     uri: String,
@@ -254,7 +266,8 @@ private fun AttachmentThumbnail(
             Modifier
                 .size(THUMBNAIL_SIZE)
                 .clip(MaterialTheme.shapes.medium)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .dashedBorder(MaterialTheme.colorScheme.outlineVariant),
     ) {
         // 미리보기는 실제 사진을 불러올 수 없다.
         if (!LocalInspectionMode.current) {
@@ -266,23 +279,24 @@ private fun AttachmentThumbnail(
             )
         }
         if (enabled) {
-            Box(
+            Surface(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
-                        .padding(Spacing.extraSmall)
-                        .size(REMOVE_BUTTON_SIZE)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.6f))
-                        .clickable(role = Role.Button, onClick = onRemove),
-                contentAlignment = Alignment.Center,
+                        .padding(2.dp)
+                        .size(REMOVE_BUTTON_SIZE),
+                onClick = onRemove,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.inverseSurface,
             ) {
-                Icon(
-                    painter = painterResource(CoreUiR.drawable.ico_default_close),
-                    contentDescription = "$contentDescription 빼기",
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.surface,
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(CoreUiR.drawable.ico_timeline_tool_delete),
+                        contentDescription = "$contentDescription 빼기",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.inverseOnSurface,
+                    )
+                }
             }
         }
     }
@@ -295,24 +309,40 @@ private fun AddAttachmentTile(onClick: () -> Unit) {
             Modifier
                 .size(THUMBNAIL_SIZE)
                 .clip(MaterialTheme.shapes.medium)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surface)
+                .dashedBorder(MaterialTheme.colorScheme.outlineVariant)
                 .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = painterResource(CoreUiR.drawable.ico_setting_datasource_photo),
+            painter = painterResource(CoreUiR.drawable.ico_timeline_editor_add_photo),
             contentDescription = "사진 추가",
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(20.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
+/** 타임라인 이벤트 편집의 사진 칸과 같은 점선 테두리. */
+private fun Modifier.dashedBorder(color: Color): Modifier =
+    drawWithCache {
+        val strokeWidth = 1.dp.toPx()
+        val radius = 12.dp.toPx()
+        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))
+        onDrawBehind {
+            drawRoundRect(
+                color = color,
+                cornerRadius = CornerRadius(radius, radius),
+                style = Stroke(width = strokeWidth, pathEffect = pathEffect),
+            )
+        }
+    }
+
 private val COUNT_FORMAT: NumberFormat = NumberFormat.getIntegerInstance()
 
 private val SCREEN_HORIZONTAL_PADDING = 24.dp
 private val BODY_FIELD_HEIGHT = 200.dp
-private val THUMBNAIL_SIZE = 72.dp
+private val THUMBNAIL_SIZE = 64.dp
 private val REMOVE_BUTTON_SIZE = 22.dp
 private val CTA_HEIGHT = 52.dp
 
