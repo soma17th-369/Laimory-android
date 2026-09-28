@@ -40,6 +40,7 @@ class InquiryViewModel
         override suspend fun handleIntent(intent: InquiryUiIntent) {
             if (state.value.isSubmitting) return
             when (intent) {
+                InquiryUiIntent.Opened -> updateState { InquiryUiState() }
                 is InquiryUiIntent.EmailChanged -> updateState { copy(email = intent.email, emailError = null) }
                 is InquiryUiIntent.BodyChanged ->
                     updateState { copy(body = intent.body.take(InquiryInputRules.BODY_MAX_LENGTH)) }
@@ -83,7 +84,7 @@ class InquiryViewModel
                         ),
                     ).onSuccess {
                         messageHelper.send(UserMessage.InquirySubmitted)
-                        navigationHelper.navigateToBack()
+                        closeAndClear()
                     }.onFailure(::onSubmitFailed)
                 }
         }
@@ -104,7 +105,7 @@ class InquiryViewModel
 
         private fun leave() {
             if (!state.value.hasInput) {
-                navigationHelper.navigateToBack()
+                closeAndClear()
                 return
             }
             if (leaveConfirmJob?.isActive == true) return
@@ -119,7 +120,13 @@ class InquiryViewModel
                                 secondaryLabel = "계속 쓰기",
                             ),
                         )
-                    if (result == DialogResult.Primary) navigationHelper.navigateToBack()
+                    if (result == DialogResult.Primary) closeAndClear()
                 }
+        }
+
+        /** 나가면서 입력을 비운다. 이메일·본문을 다음 진입까지 메모리에 남겨 둘 이유가 없다. */
+        private fun closeAndClear() {
+            updateState { InquiryUiState() }
+            navigationHelper.navigateToBack()
         }
     }

@@ -31,6 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +67,14 @@ fun InquiryRoute(
     innerPadding: PaddingValues,
     viewModel: InquiryViewModel = hiltViewModel(),
 ) {
+    // 새 진입에서만 한 번. 저장 상태에 남으므로 회전으로는 다시 보내지 않는다.
+    var opened by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!opened) {
+            opened = true
+            viewModel.sendIntent(InquiryUiIntent.Opened)
+        }
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     InquiryContent(
         innerPadding = innerPadding,

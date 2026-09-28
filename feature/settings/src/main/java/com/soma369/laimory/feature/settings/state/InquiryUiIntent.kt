@@ -3,6 +3,14 @@ package com.soma369.laimory.feature.settings.state
 import com.soma369.laimory.core.ui.base.UiIntent
 
 sealed interface InquiryUiIntent : UiIntent {
+    /**
+     * 화면에 새로 들어왔다. 지난번 입력을 비운다.
+     *
+     * ViewModel 이 Activity 수명이라 그대로 두면 지난번에 쓰다 만 내용이나 보낸 뒤 상태가 남는다.
+     * 회전 같은 구성 변경으로는 보내지 않는다(화면이 저장 상태로 한 번만 보낸다).
+     */
+    data object Opened : InquiryUiIntent
+
     data class EmailChanged(
         val email: String,
     ) : InquiryUiIntent

@@ -13,6 +13,7 @@ import com.soma369.laimory.core.domain.repository.InquiryRepository
 import com.soma369.laimory.core.domain.usecase.inquiry.SubmitInquiryUseCase
 import com.soma369.laimory.feature.settings.state.InquiryUiIntent
 import com.soma369.laimory.feature.settings.state.InquiryUiSideEffect
+import com.soma369.laimory.feature.settings.state.InquiryUiState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -78,6 +79,35 @@ class InquiryViewModelTest {
             assertEquals(listOf(InquirySubmission("user@example.com", "문의\n내용", listOf("content://a"))), repository.submissions)
             assertEquals(listOf<UserMessage>(UserMessage.InquirySubmitted), messageHelper.sent)
             assertEquals(1, navigationHelper.backCount)
+            // ViewModel 이 Activity 수명이라 비우지 않으면 다음에 열 때 보낸 내용과 보내는 중 상태가 남는다.
+            assertEquals(InquiryUiState(), viewModel.state.value)
+        }
+
+    @Test
+    fun `새로 들어오면 지난번에 쓰다 만 내용을 비운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.fill(email = "user@example.com", body = "쓰다 만 내용")
+            viewModel.sendIntent(InquiryUiIntent.AttachmentsPicked(listOf("content://a")))
+
+            viewModel.sendIntent(InquiryUiIntent.Opened)
+            advanceUntilIdle()
+
+            assertEquals(InquiryUiState(), viewModel.state.value)
+        }
+
+    @Test
+    fun `나가기를 고르면 입력을 비우고 나간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.fill(body = "쓰던 내용")
+            messageHelper.result = DialogResult.Primary
+
+            viewModel.sendIntent(InquiryUiIntent.BackPressed)
+            advanceUntilIdle()
+
+            assertEquals(1, navigationHelper.backCount)
+            assertEquals(InquiryUiState(), viewModel.state.value)
         }
 
     @Test
