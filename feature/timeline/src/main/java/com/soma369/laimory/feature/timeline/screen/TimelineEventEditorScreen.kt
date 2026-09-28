@@ -54,7 +54,6 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEditorTextSection
-import com.soma369.laimory.feature.timeline.component.TimelineEventPhotoDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEventPhotoSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTimeSection
 import com.soma369.laimory.feature.timeline.component.TimelineEventTypeSection
@@ -67,7 +66,6 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiState
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorValidation
 import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
 import com.soma369.laimory.feature.timeline.state.TimelineEventPendingPhoto
-import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeSheetState
@@ -199,7 +197,15 @@ private fun TimelineEventEditorContent(
         AlertDialog(
             onDismissRequest = { onIntent(TimelineEventEditorUiIntent.DismissDiscard) },
             title = { Text("변경사항을 버릴까요?") },
-            text = { Text("저장하지 않은 내용과 추가할 사진이 사라집니다.") },
+            text = {
+                Text(
+                    buildString {
+                        append("저장하지 않은 내용과 추가할 사진이 사라집니다.")
+                        // 빼기는 저장 때 반영되므로, 나가면 뺀 사진은 되돌아온다.
+                        if (state.removedPhotoIds.isNotEmpty()) append("\n뺀 사진은 그대로 남아요.")
+                    },
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { onIntent(TimelineEventEditorUiIntent.ConfirmDiscard) }) {
                     Text("나가기")
@@ -228,12 +234,6 @@ private fun TimelineEventEditorContent(
         onConfirm = { onIntent(TimelineEventEditorUiIntent.ConfirmDelete) },
         onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissDelete) },
         onFinish = { onIntent(TimelineEventEditorUiIntent.FinishDelete) },
-    )
-
-    TimelineEventPhotoDeleteDialog(
-        state = state.photoDeleteDialogState,
-        onConfirm = { onIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval) },
-        onDismiss = { onIntent(TimelineEventEditorUiIntent.DismissExistingPhotoRemoval) },
     )
 }
 
@@ -344,10 +344,7 @@ private fun TimelineEventEditorBody(
     listState: LazyListState,
     titleFocusRequester: FocusRequester,
 ) {
-    val enabled =
-        !state.isSaving &&
-            state.deleteDialogState == TimelineDeleteDialogState.Hidden &&
-            state.photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
+    val enabled = !state.isSaving && state.deleteDialogState == TimelineDeleteDialogState.Hidden
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -407,12 +404,12 @@ private fun TimelineEventEditorBody(
             }
             item {
                 TimelineEventPhotoSection(
-                    existingPhotos = state.existingPhotos,
+                    existingPhotos = state.visibleExistingPhotos,
                     pendingPhotos = state.pendingPhotos,
                     enabled = enabled,
                     onAddClick = { onIntent(TimelineEventEditorUiIntent.OpenPhotoPicker) },
                     onRemoveExisting = {
-                        onIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(it))
+                        onIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(it))
                     },
                     onRemovePending = { onIntent(TimelineEventEditorUiIntent.RemovePendingPhoto(it)) },
                 )

@@ -11,7 +11,8 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 /**
  * 이벤트 삭제 확인.
  *
- * 카드의 휴지통은 한 번 누르면 되돌릴 수 없는 자리라, 사진 삭제와 같은 형태로 한 번 더 묻는다.
+ * 카드의 휴지통은 누르면 바로 서버에서 지워져 되돌릴 수 없는 자리라 한 번 더 묻는다. 편집 화면의 사진 빼기는
+ * `저장` 때 반영돼 되돌릴 수 있으므로 묻지 않는다.
  * 성공 화면은 두지 않는다 — 지워진 이벤트가 목록에서 사라지는 것이 곧 결과다.
  */
 @Composable
