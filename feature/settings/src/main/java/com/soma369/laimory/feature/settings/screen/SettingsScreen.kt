@@ -252,6 +252,12 @@ private fun SettingsScreen(
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.NoticesClicked) },
                                 ),
+                                SettingsItem(
+                                    iconRes = CoreUiR.drawable.ico_setting_inquiry,
+                                    title = "문의하기",
+                                    showChevron = true,
+                                    onClick = { onIntent(SettingsUiIntent.InquiryClicked) },
+                                ),
                             ),
                     )
                 }

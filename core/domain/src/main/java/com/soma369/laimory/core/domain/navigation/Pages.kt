@@ -229,6 +229,13 @@ data object NoticesPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/** 설정 > 지원 > 문의하기. 접수만 있고 답변은 입력한 이메일로 온다. */
+data object InquiryPage : Page {
+    const val PATH = "/settings/inquiry"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 data object CalendarPage : Page {
     const val PATH = "/calendar"
 

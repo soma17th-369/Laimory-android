@@ -280,4 +280,5 @@ private fun UserMessage.toText(): String =
         UserMessage.AccountWithdrawalAccepted -> "계정 삭제를 접수했어요. 삭제 처리에는 시간이 걸릴 수 있어요."
         // 서버가 만료 세션과 이미 탈퇴한 회원을 같은 401 로 합치므로 완료를 단정하지 않는다.
         UserMessage.AccountWithdrawalUnverified -> "로그인이 만료되어 삭제 결과를 확인하지 못했어요. 다시 로그인해 확인해 주세요."
+        UserMessage.InquirySubmitted -> "문의를 보냈어요. 답변은 입력한 이메일로 보내드릴게요."
     }

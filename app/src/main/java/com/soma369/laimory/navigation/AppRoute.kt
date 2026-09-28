@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
 import com.soma369.laimory.core.domain.navigation.HomePage
+import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
@@ -32,6 +33,7 @@ import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.home.screen.PastRecordsRoute
 import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.onboarding.screen.OnboardingRoute
+import com.soma369.laimory.feature.settings.screen.InquiryRoute
 import com.soma369.laimory.feature.settings.screen.NoticesRoute
 import com.soma369.laimory.feature.settings.screen.NotificationSettingsRoute
 import com.soma369.laimory.feature.settings.screen.SettingsRoute
@@ -169,6 +171,10 @@ val appRoutes: List<AppRoute> =
         AppRoute(
             path = NoticesPage.PATH,
             render = { innerPadding, _ -> NoticesRoute(innerPadding = innerPadding) },
+        ),
+        AppRoute(
+            path = InquiryPage.PATH,
+            render = { innerPadding, _ -> InquiryRoute(innerPadding = innerPadding) },
         ),
         // 아래는 바텀바에 노출하지 않는 non-tab 루트(테스트/디버그 진입점 보존).
         AppRoute(
