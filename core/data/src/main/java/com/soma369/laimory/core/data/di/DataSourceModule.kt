@@ -4,6 +4,8 @@ import com.soma369.laimory.core.data.datasource.remote.AuthRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.AuthRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.Feature1RemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.Feature1RemoteDataSourceImpl
+import com.soma369.laimory.core.data.datasource.remote.InquiryRemoteDataSource
+import com.soma369.laimory.core.data.datasource.remote.InquiryRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.IntroRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.IntroRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.NoticeRemoteDataSource
@@ -22,6 +24,8 @@ import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataS
 import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.UserRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.UserRemoteDataSourceImpl
+import com.soma369.laimory.core.data.inquiry.InquiryAttachmentPreparer
+import com.soma369.laimory.core.data.inquiry.InquiryAttachmentPreparerImpl
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolverImpl
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
@@ -98,4 +102,12 @@ abstract class DataSourceModule {
     @Binds
     @Singleton
     abstract fun bindNoticeRemoteDataSource(impl: NoticeRemoteDataSourceImpl): NoticeRemoteDataSource
+
+    @Binds
+    @Singleton
+    abstract fun bindInquiryRemoteDataSource(impl: InquiryRemoteDataSourceImpl): InquiryRemoteDataSource
+
+    @Binds
+    @Singleton
+    internal abstract fun bindInquiryAttachmentPreparer(impl: InquiryAttachmentPreparerImpl): InquiryAttachmentPreparer
 }

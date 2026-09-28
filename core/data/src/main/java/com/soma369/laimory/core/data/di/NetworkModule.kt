@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.network.ApiPrefix
 import com.soma369.laimory.core.data.network.SplitJsonConverterFactory
 import com.soma369.laimory.core.data.network.api.AuthApi
 import com.soma369.laimory.core.data.network.api.Feature1Api
+import com.soma369.laimory.core.data.network.api.InquiryApi
 import com.soma369.laimory.core.data.network.api.IntroApi
 import com.soma369.laimory.core.data.network.api.NoticeApi
 import com.soma369.laimory.core.data.network.api.OnboardingApi
@@ -281,6 +282,12 @@ object NetworkModule {
     fun provideNoticeApi(
         @PublicRetrofit retrofit: Retrofit,
     ): NoticeApi = retrofit.create(NoticeApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideInquiryApi(
+        @AuthRetrofit retrofit: Retrofit,
+    ): InquiryApi = retrofit.create(InquiryApi::class.java)
 
     @Provides
     @Singleton

@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.repository.AppThemeRepositoryImpl
 import com.soma369.laimory.core.data.repository.AppUpdateRepositoryImpl
 import com.soma369.laimory.core.data.repository.AuthRepositoryImpl
 import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
+import com.soma369.laimory.core.data.repository.InquiryRepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
 import com.soma369.laimory.core.data.repository.NoticeRepositoryImpl
 import com.soma369.laimory.core.data.repository.OnboardingRepositoryImpl
@@ -21,6 +22,7 @@ import com.soma369.laimory.core.domain.repository.AppThemeRepository
 import com.soma369.laimory.core.domain.repository.AppUpdateRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
+import com.soma369.laimory.core.domain.repository.InquiryRepository
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
@@ -104,4 +106,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindNoticeRepository(impl: NoticeRepositoryImpl): NoticeRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindInquiryRepository(impl: InquiryRepositoryImpl): InquiryRepository
 }
