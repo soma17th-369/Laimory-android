@@ -30,20 +30,6 @@ import com.soma369.laimory.core.ui.R
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 
-/**
- * 사진 칸의 빼기 버튼이 하는 일. 아이콘이 그 일을 말해야 한다.
- *
- * 둘을 한 아이콘으로 두면, 원본이 남는 빼기를 누르려던 사람이 사진이 지워질까 망설이거나
- * 지워지는 삭제를 가볍게 누른다.
- */
-enum class LaimoryPhotoRemoval {
-    /** 이번 선택·첨부에서 빼기만 한다. 원본은 그대로다. X(Figma `icon/cancel`). */
-    Detach,
-
-    /** 저장된 사진을 지운다(보통 확인을 거친다). 휴지통. */
-    Delete,
-}
-
 object LaimoryPhotoTileDefaults {
     /** 타임라인 이벤트 편집 시안의 사진 칸 크기. */
     val Size: Dp = 64.dp
@@ -55,15 +41,15 @@ object LaimoryPhotoTileDefaults {
  * `core:ui` 는 이미지 로더에 의존하지 않는다 — 사진은 [image] 로 호출부가 그린다(보통 Coil `AsyncImage`).
  * 칸에 덧씌울 상태(업로드 중·실패)는 [overlay] 로 받는다.
  *
- * 빼기 버튼은 반전 색(inverseSurface 위 inverseOnSurface)이다. 사진 위에 뜨므로 사진 밝기와 무관하게
- * 보여야 하고, 반전 색이라 라이트·다크 어느 쪽에서도 대비가 난다.
+ * 빼기 버튼은 반전 색(inverseSurface 위 inverseOnSurface) 원에 X(Figma `icon/cancel`)다. 사진 위에 뜨므로
+ * 사진 밝기와 무관하게 보여야 하고, 반전 색이라 라이트·다크 어느 쪽에서도 대비가 난다. 빼는 일이
+ * 첨부 해제든 저장된 사진 제거든 아이콘은 하나로 둔다 — 무엇이 일어나는지는 호출부의 확인창이 말한다.
  *
  * @param onRemove 없으면 빼기 버튼을 그리지 않는다(보내는 중처럼 손댈 수 없을 때).
  */
 @Composable
 fun LaimoryPhotoTile(
     modifier: Modifier = Modifier,
-    removal: LaimoryPhotoRemoval = LaimoryPhotoRemoval.Detach,
     removeContentDescription: String? = null,
     onRemove: (() -> Unit)? = null,
     overlay: @Composable BoxScope.() -> Unit = {},
@@ -92,7 +78,7 @@ fun LaimoryPhotoTile(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        painter = painterResource(removal.iconRes),
+                        painter = painterResource(R.drawable.ico_default_close),
                         contentDescription = removeContentDescription,
                         modifier = Modifier.size(REMOVE_ICON_SIZE),
                         tint = MaterialTheme.colorScheme.inverseOnSurface,
@@ -129,13 +115,6 @@ fun LaimoryAddPhotoTile(
         )
     }
 }
-
-private val LaimoryPhotoRemoval.iconRes: Int
-    get() =
-        when (this) {
-            LaimoryPhotoRemoval.Detach -> R.drawable.ico_default_close
-            LaimoryPhotoRemoval.Delete -> R.drawable.ico_timeline_tool_delete
-        }
 
 /** 시안의 점선 테두리(1dp, 4·3 간격, 모서리 12). */
 private fun Modifier.photoTileBorder(color: Color): Modifier =
@@ -178,8 +157,8 @@ private fun PhotoTilePreviewRow() {
         modifier = Modifier.padding(Spacing.large),
         horizontalArrangement = Arrangement.spacedBy(Spacing.medium),
     ) {
-        LaimoryPhotoTile(removal = LaimoryPhotoRemoval.Detach, onRemove = {}) {}
-        LaimoryPhotoTile(removal = LaimoryPhotoRemoval.Delete, onRemove = {}) {}
+        LaimoryPhotoTile(onRemove = {}) {}
+        LaimoryPhotoTile {}
         LaimoryAddPhotoTile(onClick = {})
     }
 }

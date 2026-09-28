@@ -37,7 +37,6 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.ui.component.LaimorySelectField
 import com.soma369.laimory.core.ui.component.LaimoryTextField
 import com.soma369.laimory.core.ui.component.photo.LaimoryAddPhotoTile
-import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoRemoval
 import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoTile
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
@@ -249,12 +248,10 @@ internal fun TimelineEventPhotoSection(
                 items = existingPhotos,
                 key = TimelineEventExistingPhoto::timelineItemId,
             ) { photo ->
-                // 저장된 사진은 확인을 거쳐 서버에서 지운다 — 휴지통.
                 TimelineEditorPhoto(
                     model = photo.photoUrl,
                     contentDescription = "기존 이벤트 사진",
-                    removal = LaimoryPhotoRemoval.Delete,
-                    removeContentDescription = "이벤트 사진 삭제",
+                    removeContentDescription = "이벤트에서 사진 제거",
                     onRemove =
                         if (enabled) {
                             { onRemoveExisting(photo.timelineItemId) }
@@ -264,12 +261,10 @@ internal fun TimelineEventPhotoSection(
                 )
             }
             items(pendingPhotos, key = TimelineEventPendingPhoto::rawId) { photo ->
-                // 아직 올리지 않은 사진은 고른 것에서 빼기만 한다 — X.
                 TimelineEditorPhoto(
                     model = photo.clientPhotoUri,
                     contentDescription = "추가할 이벤트 사진",
                     uploadState = photo.uploadState,
-                    removal = LaimoryPhotoRemoval.Detach,
                     removeContentDescription = "추가 대상에서 제외",
                     onRemove =
                         if (enabled) {
@@ -346,14 +341,12 @@ private fun TimelineTimeField(
 private fun TimelineEditorPhoto(
     model: String?,
     contentDescription: String,
-    removal: LaimoryPhotoRemoval,
     uploadState: TimelineEventPhotoUploadState? = null,
     removeContentDescription: String? = null,
     onRemove: (() -> Unit)? = null,
 ) {
     val isPreview = LocalInspectionMode.current
     LaimoryPhotoTile(
-        removal = removal,
         removeContentDescription = removeContentDescription,
         onRemove = onRemove,
         overlay = { PhotoUploadOverlay(uploadState) },

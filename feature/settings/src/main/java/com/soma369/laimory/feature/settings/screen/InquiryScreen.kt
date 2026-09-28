@@ -44,7 +44,6 @@ import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTextField
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.component.photo.LaimoryAddPhotoTile
-import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoRemoval
 import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoTile
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -225,9 +224,7 @@ private fun AttachmentSection(
             val isPreview = LocalInspectionMode.current
             attachmentUris.forEachIndexed { index, uri ->
                 val description = "첨부한 사진 ${index + 1}"
-                // 첨부에서 빼기만 한다 — 갤러리 원본은 그대로라 X 다.
                 LaimoryPhotoTile(
-                    removal = LaimoryPhotoRemoval.Detach,
                     removeContentDescription = "$description 빼기",
                     onRemove = if (enabled) ({ onRemove(uri) }) else null,
                 ) {
