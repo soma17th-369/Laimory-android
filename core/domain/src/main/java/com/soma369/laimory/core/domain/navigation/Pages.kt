@@ -236,14 +236,7 @@ data object InquiryPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
-/** 설정 > 지원 > 문의 내역. 내가 보낸 문의와 처리 상태. */
-data object InquiriesPage : Page {
-    const val PATH = "/settings/inquiries"
-
-    override fun toRoute(): NavRoute = NavRoute(PATH)
-}
-
-/** 문의 내역의 한 건. */
+/** 문의 화면 `문의 내역` 탭의 한 건. */
 data class InquiryDetailPage(
     val inquiryId: Long,
 ) : Page {

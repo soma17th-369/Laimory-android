@@ -87,7 +87,9 @@ class InquiryViewModel
                         ),
                     ).onSuccess {
                         messageHelper.send(UserMessage.InquirySubmitted)
-                        closeAndClear()
+                        // 화면은 두고 입력만 비운다 — 보낸 문의가 바로 보이도록 내역 탭으로 넘긴다.
+                        updateState { InquiryUiState() }
+                        sendEffect(InquiryUiSideEffect.ShowHistory)
                     }.onFailure(::onSubmitFailed)
                 }
         }

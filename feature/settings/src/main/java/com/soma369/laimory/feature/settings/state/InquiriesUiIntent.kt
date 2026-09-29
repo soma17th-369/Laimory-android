@@ -12,6 +12,4 @@ sealed interface InquiriesUiIntent : UiIntent {
     data class InquiryClicked(
         val inquiryId: Long,
     ) : InquiriesUiIntent
-
-    data object NavigateBack : InquiriesUiIntent
 }

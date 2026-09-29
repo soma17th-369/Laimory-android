@@ -12,7 +12,6 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
-import com.soma369.laimory.core.domain.navigation.InquiriesPage
 import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
@@ -135,7 +134,6 @@ class SettingsViewModel
                     navigationHelper.navigateTo(ThemeSettingsPage)
                 SettingsUiIntent.NoticesClicked -> navigationHelper.navigateTo(NoticesPage)
                 SettingsUiIntent.InquiryClicked -> navigationHelper.navigateTo(InquiryPage)
-                SettingsUiIntent.InquiriesClicked -> navigationHelper.navigateTo(InquiriesPage)
                 SettingsUiIntent.RefreshNoticeBadge -> refreshNoticeBadge()
                 is SettingsUiIntent.LocationCollectionToggled -> setLocationTracking(intent.enabled)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()

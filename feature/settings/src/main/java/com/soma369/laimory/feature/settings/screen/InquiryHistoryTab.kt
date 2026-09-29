@@ -1,6 +1,5 @@
 package com.soma369.laimory.feature.settings.screen
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,13 +25,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.inquiry.InquiryStatus
 import com.soma369.laimory.core.domain.model.inquiry.InquirySummary
-import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.component.InquiryStatusChip
@@ -43,50 +40,39 @@ import com.soma369.laimory.feature.settings.viewmodel.InquiriesViewModel
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+/**
+ * 문의 화면의 `문의 내역` 탭. 앱바·뒤로가기는 문의 화면이 갖는다.
+ *
+ * 처리 상태는 관리자가 바꾸는 값이라, 탭이 보일 때마다(탭 전환·상세에서 복귀·문의를 보낸 뒤) 새로 받는다.
+ * 탭이 새로 그려지면 이미 켜져 있는 화면에서도 ON_RESUME 이 한 번 온다.
+ */
 @Composable
-fun InquiriesRoute(
-    innerPadding: PaddingValues,
-    viewModel: InquiriesViewModel = hiltViewModel(),
+internal fun InquiryHistoryTab(
+    viewModel: InquiriesViewModel,
+    modifier: Modifier = Modifier,
 ) {
-    // 처리 상태는 관리자가 바꾸는 값이다. 상세를 보고 돌아오거나 문의를 보낸 뒤에도 새로 받는다.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.sendIntent(InquiriesUiIntent.Sync)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    InquiriesScreen(
-        innerPadding = innerPadding,
+    InquiryHistoryContent(
         state = state,
         onIntent = viewModel::sendIntent,
+        modifier = modifier,
     )
 }
 
 @Composable
-private fun InquiriesScreen(
-    innerPadding: PaddingValues,
+private fun InquiryHistoryContent(
     state: InquiriesUiState,
     onIntent: (InquiriesUiIntent) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding),
-    ) {
-        LaimoryTopAppBar(
-            title = {
-                Text(
-                    text = "문의 내역",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            },
-            onBackClick = { onIntent(InquiriesUiIntent.NavigateBack) },
-        )
+    Column(modifier = modifier.fillMaxSize()) {
         when (val content = state.content) {
             InquiryListContent.Loading -> InquiriesLoading()
             InquiryListContent.Empty ->
-                InquiriesMessage(text = "아직 보낸 문의가 없어요.\n궁금한 점은 설정 > 문의하기에서 남겨 주세요.")
+                InquiriesMessage(text = "아직 보낸 문의가 없어요.\n궁금한 점은 문의하기 탭에서 남겨 주세요.")
             InquiryListContent.LoadFailed -> InquiriesLoadFailed(onRetryClick = { onIntent(InquiriesUiIntent.Sync) })
             is InquiryListContent.Items ->
                 LazyColumn(contentPadding = PaddingValues(bottom = LIST_BOTTOM_PADDING)) {
@@ -202,8 +188,7 @@ private val LIST_BOTTOM_PADDING = 24.dp
 @Composable
 private fun InquiriesPreview() {
     LaimoryTheme {
-        InquiriesScreen(
-            innerPadding = PaddingValues(),
+        InquiryHistoryContent(
             state =
                 InquiriesUiState(
                     content =
@@ -229,6 +214,6 @@ private fun InquiriesPreview() {
 @Composable
 private fun InquiriesEmptyPreview() {
     LaimoryTheme(darkTheme = true) {
-        InquiriesScreen(innerPadding = PaddingValues(), state = InquiriesUiState(InquiryListContent.Empty), onIntent = {})
+        InquiryHistoryContent(state = InquiriesUiState(InquiryListContent.Empty), onIntent = {})
     }
 }

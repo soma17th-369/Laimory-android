@@ -72,7 +72,7 @@ class InquiryViewModelTest {
         }
 
     @Test
-    fun `보내면 알리고 이전 화면으로 돌아간다`() =
+    fun `보내면 알리고 입력을 비운 뒤 문의 내역 탭으로 넘긴다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
             viewModel.fill(email = " user@example.com ", title = " 사진이 빠져요 ", description = "문의\n내용")
@@ -83,7 +83,9 @@ class InquiryViewModelTest {
 
             assertEquals(listOf(InquirySubmission("user@example.com", "사진이 빠져요", "문의\n내용", listOf("content://a"))), repository.submissions)
             assertEquals(listOf<UserMessage>(UserMessage.InquirySubmitted), messageHelper.sent)
-            assertEquals(1, navigationHelper.backCount)
+            // 화면은 그대로 두고 내역 탭에서 방금 보낸 문의를 보게 한다.
+            assertEquals(0, navigationHelper.backCount)
+            assertEquals(InquiryUiSideEffect.ShowHistory, viewModel.sideEffect.first())
             // ViewModel 이 Activity 수명이라 비우지 않으면 다음에 열 때 보낸 내용과 보내는 중 상태가 남는다.
             assertEquals(InquiryUiState(), viewModel.state.value)
         }
@@ -118,7 +120,7 @@ class InquiryViewModelTest {
     @Test
     fun `보내는 동안에는 다시 보내거나 나갈 수 없다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 서버는 같은 내용을 새 문의로 또 받는다. 뒤로가기가 쌓였다가 끝난 뒤 처리되면 설정까지 닫힌다.
+            // 서버는 같은 내용을 새 문의로 또 받는다. 보내는 동안 쌓인 뒤로가기가 끝난 뒤 처리되면 안 된다.
             val gate = CompletableDeferred<Unit>()
             repository.gate = gate
             val viewModel = createViewModel()
@@ -137,7 +139,7 @@ class InquiryViewModelTest {
 
             assertEquals(1, repository.submissions.size)
             assertEquals("문의", repository.submissions.single().description)
-            assertEquals(1, navigationHelper.backCount)
+            assertEquals(0, navigationHelper.backCount)
             assertTrue(messageHelper.dialogs.isEmpty())
         }
 

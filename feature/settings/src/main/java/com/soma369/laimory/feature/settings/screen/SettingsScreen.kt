@@ -258,12 +258,6 @@ private fun SettingsScreen(
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.InquiryClicked) },
                                 ),
-                                SettingsItem(
-                                    iconRes = CoreUiR.drawable.ico_setting_inquiry_history,
-                                    title = "문의 내역",
-                                    showChevron = true,
-                                    onClick = { onIntent(SettingsUiIntent.InquiriesClicked) },
-                                ),
                             ),
                     )
                 }

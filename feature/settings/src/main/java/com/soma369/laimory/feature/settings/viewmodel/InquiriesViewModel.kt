@@ -12,7 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import javax.inject.Inject
 
-/** 설정 > 지원 > 문의 내역. 내가 보낸 문의와 처리 상태를 훑고, 한 건을 누르면 상세로 간다. */
+/** 문의 화면의 `문의 내역` 탭. 내가 보낸 문의와 처리 상태를 훑고, 한 건을 누르면 상세로 간다. */
 @HiltViewModel
 class InquiriesViewModel
     @Inject
@@ -26,7 +26,6 @@ class InquiriesViewModel
             when (intent) {
                 InquiriesUiIntent.Sync -> sync()
                 is InquiriesUiIntent.InquiryClicked -> navigationHelper.navigateTo(InquiryDetailPage(intent.inquiryId))
-                InquiriesUiIntent.NavigateBack -> navigationHelper.navigateToBack()
             }
         }
 

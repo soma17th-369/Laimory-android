@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -22,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +53,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.state.InquiryUiIntent
 import com.soma369.laimory.feature.settings.state.InquiryUiSideEffect
 import com.soma369.laimory.feature.settings.state.InquiryUiState
+import com.soma369.laimory.feature.settings.viewmodel.InquiriesViewModel
 import com.soma369.laimory.feature.settings.viewmodel.InquiryViewModel
 import kotlinx.coroutines.flow.Flow
 import java.text.NumberFormat
@@ -58,7 +62,10 @@ import java.text.NumberFormat
 fun InquiryRoute(
     innerPadding: PaddingValues,
     viewModel: InquiryViewModel = hiltViewModel(),
+    historyViewModel: InquiriesViewModel = hiltViewModel(),
 ) {
+    // 새 진입은 늘 문의하기 탭부터. 저장 상태에 남으므로 회전해도 보던 탭을 지킨다.
+    var selectedTab by rememberSaveable { mutableStateOf(InquiryTab.COMPOSE) }
     // 새 진입에서만 한 번. 저장 상태에 남으므로 회전으로는 다시 보내지 않는다.
     var opened by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -71,17 +78,31 @@ fun InquiryRoute(
     InquiryContent(
         innerPadding = innerPadding,
         state = state,
+        selectedTab = selectedTab,
+        onSelectTab = { selectedTab = it },
         onIntent = viewModel::sendIntent,
         sideEffectFlow = viewModel.sideEffect,
+        history = { InquiryHistoryTab(viewModel = historyViewModel) },
     )
+}
+
+/** 문의 화면의 두 탭. 설정에는 `문의하기` 한 줄만 두고, 보낸 문의는 이 화면 안에서 본다. */
+private enum class InquiryTab(
+    val label: String,
+) {
+    COMPOSE("문의하기"),
+    HISTORY("문의 내역"),
 }
 
 @Composable
 private fun InquiryContent(
     innerPadding: PaddingValues,
     state: InquiryUiState,
+    selectedTab: InquiryTab,
+    onSelectTab: (InquiryTab) -> Unit,
     onIntent: (InquiryUiIntent) -> Unit,
     sideEffectFlow: Flow<InquiryUiSideEffect>,
+    history: @Composable () -> Unit,
 ) {
     val snackbarHostState = LocalSnackbarHostState.current
     // 여러 장을 고르는 선택기는 상한이 2 이상이어야 한다. 한 자리만 남으면 한 장 선택기를 연다.
@@ -101,14 +122,20 @@ private fun InquiryContent(
                     if (effect.maxItems > 1) pickMany.launch(request) else pickOne.launch(request)
                 }
                 is InquiryUiSideEffect.ShowSnackbar -> snackbarHostState.showSnackbar(effect.message)
+                // 보낸 문의가 바로 보이도록 내역으로 넘긴다. 목록은 탭이 보일 때 새로 받는다.
+                InquiryUiSideEffect.ShowHistory -> onSelectTab(InquiryTab.HISTORY)
             }
         }
     }
+    // 어느 탭에서 나가든 쓰던 문의는 문의하기 탭의 것이다. 나가기 확인은 그쪽이 판단한다.
     BackHandler { onIntent(InquiryUiIntent.BackPressed) }
     InquiryScreen(
         innerPadding = innerPadding,
         state = state,
+        selectedTab = selectedTab,
+        onSelectTab = onSelectTab,
         onIntent = onIntent,
+        history = history,
     )
 }
 
@@ -116,9 +143,11 @@ private fun InquiryContent(
 private fun InquiryScreen(
     innerPadding: PaddingValues,
     state: InquiryUiState,
+    selectedTab: InquiryTab,
+    onSelectTab: (InquiryTab) -> Unit,
     onIntent: (InquiryUiIntent) -> Unit,
+    history: @Composable () -> Unit,
 ) {
-    val editable = !state.isSubmitting
     Column(
         modifier =
             Modifier
@@ -131,90 +160,117 @@ private fun InquiryScreen(
         LaimoryTopAppBar(
             title = {
                 Text(
-                    text = "문의하기",
+                    text = "문의",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             },
             onBackClick = { onIntent(InquiryUiIntent.BackPressed) },
         )
-        Column(
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = SCREEN_HORIZONTAL_PADDING, vertical = Spacing.large),
-            verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
+        SecondaryTabRow(
+            selectedTabIndex = selectedTab.ordinal,
+            containerColor = MaterialTheme.colorScheme.background,
+            contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
-            Text(
-                text = "궁금한 점이나 불편한 점을 남겨 주세요.\n답변은 입력한 이메일로 보내드려요.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            LaimoryTextField(
-                value = state.email,
-                onValueChange = { onIntent(InquiryUiIntent.EmailChanged(it)) },
-                label = "답변 받을 이메일",
-                placeholder = "example@email.com",
-                error = state.emailError,
-                enabled = editable,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-            )
-            LaimoryTextField(
-                value = state.title,
-                onValueChange = { onIntent(InquiryUiIntent.TitleChanged(it)) },
-                label = "제목",
-                placeholder = "무엇에 대한 문의인지 짧게 적어 주세요.",
-                // 규칙·서버와 같이 앞뒤 공백을 뺀 길이를 보여 준다.
-                counterText =
-                    "${COUNT_FORMAT.format(state.title.trim().length)} / " +
-                        COUNT_FORMAT.format(InquiryInputRules.TITLE_MAX_LENGTH),
-                enabled = editable,
-            )
-            LaimoryTextField(
-                value = state.description,
-                onValueChange = { onIntent(InquiryUiIntent.DescriptionChanged(it)) },
-                label = "내용",
-                placeholder = "어떤 점이 궁금하거나 불편했는지 적어 주세요.",
-                counterText =
-                    "${COUNT_FORMAT.format(state.description.length)} / " +
-                        COUNT_FORMAT.format(InquiryInputRules.DESCRIPTION_MAX_LENGTH),
-                enabled = editable,
-                singleLine = false,
-                fieldHeight = BODY_FIELD_HEIGHT,
-            )
-            AttachmentSection(
-                attachmentUris = state.attachmentUris,
-                canAdd = editable && state.remainingAttachmentSlots > 0,
-                enabled = editable,
-                onAddClick = { onIntent(InquiryUiIntent.AddAttachmentClicked) },
-                onRemove = { onIntent(InquiryUiIntent.AttachmentRemoved(it)) },
-            )
-            Text(
-                text = "입력한 이메일과 문의 내용, 첨부한 사진은 답변에만 쓰고 계정을 삭제하면 함께 지워져요.",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Button(
-            onClick = { onIntent(InquiryUiIntent.SubmitClicked) },
-            enabled = state.canSubmit,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = SCREEN_HORIZONTAL_PADDING, vertical = Spacing.medium)
-                    .height(CTA_HEIGHT),
-            shape = MaterialTheme.shapes.medium,
-        ) {
-            if (state.isSubmitting) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp,
+            InquiryTab.entries.forEach { tab ->
+                Tab(
+                    selected = tab == selectedTab,
+                    onClick = { onSelectTab(tab) },
+                    text = { Text(text = tab.label, style = MaterialTheme.typography.titleSmall) },
+                    selectedContentColor = MaterialTheme.colorScheme.onSurface,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                Text(text = "보내기", style = MaterialTheme.typography.titleSmall)
             }
+        }
+        when (selectedTab) {
+            InquiryTab.COMPOSE -> InquiryForm(state = state, onIntent = onIntent)
+            InquiryTab.HISTORY -> history()
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.InquiryForm(
+    state: InquiryUiState,
+    onIntent: (InquiryUiIntent) -> Unit,
+) {
+    val editable = !state.isSubmitting
+    Column(
+        modifier =
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = SCREEN_HORIZONTAL_PADDING, vertical = Spacing.large),
+        verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
+    ) {
+        Text(
+            text = "궁금한 점이나 불편한 점을 남겨 주세요.\n답변은 입력한 이메일로 보내드려요.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LaimoryTextField(
+            value = state.email,
+            onValueChange = { onIntent(InquiryUiIntent.EmailChanged(it)) },
+            label = "답변 받을 이메일",
+            placeholder = "example@email.com",
+            error = state.emailError,
+            enabled = editable,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+        )
+        LaimoryTextField(
+            value = state.title,
+            onValueChange = { onIntent(InquiryUiIntent.TitleChanged(it)) },
+            label = "제목",
+            placeholder = "무엇에 대한 문의인지 짧게 적어 주세요.",
+            // 규칙·서버와 같이 앞뒤 공백을 뺀 길이를 보여 준다.
+            counterText =
+                "${COUNT_FORMAT.format(state.title.trim().length)} / " +
+                    COUNT_FORMAT.format(InquiryInputRules.TITLE_MAX_LENGTH),
+            enabled = editable,
+        )
+        LaimoryTextField(
+            value = state.description,
+            onValueChange = { onIntent(InquiryUiIntent.DescriptionChanged(it)) },
+            label = "내용",
+            placeholder = "어떤 점이 궁금하거나 불편했는지 적어 주세요.",
+            counterText =
+                "${COUNT_FORMAT.format(state.description.length)} / " +
+                    COUNT_FORMAT.format(InquiryInputRules.DESCRIPTION_MAX_LENGTH),
+            enabled = editable,
+            singleLine = false,
+            fieldHeight = BODY_FIELD_HEIGHT,
+        )
+        AttachmentSection(
+            attachmentUris = state.attachmentUris,
+            canAdd = editable && state.remainingAttachmentSlots > 0,
+            enabled = editable,
+            onAddClick = { onIntent(InquiryUiIntent.AddAttachmentClicked) },
+            onRemove = { onIntent(InquiryUiIntent.AttachmentRemoved(it)) },
+        )
+        Text(
+            text = "입력한 이메일과 문의 내용, 첨부한 사진은 답변에만 쓰고 계정을 삭제하면 함께 지워져요.",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Button(
+        onClick = { onIntent(InquiryUiIntent.SubmitClicked) },
+        enabled = state.canSubmit,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SCREEN_HORIZONTAL_PADDING, vertical = Spacing.medium)
+                .height(CTA_HEIGHT),
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        if (state.isSubmitting) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = MaterialTheme.colorScheme.onPrimary,
+                strokeWidth = 2.dp,
+            )
+        } else {
+            Text(text = "보내기", style = MaterialTheme.typography.titleSmall)
         }
     }
 }
@@ -267,7 +323,14 @@ private val CTA_HEIGHT = 52.dp
 @Composable
 private fun InquiryEmptyPreview() {
     LaimoryTheme {
-        InquiryScreen(innerPadding = PaddingValues(), state = InquiryUiState(), onIntent = {})
+        InquiryScreen(
+            innerPadding = PaddingValues(),
+            state = InquiryUiState(),
+            selectedTab = InquiryTab.COMPOSE,
+            onSelectTab = {},
+            onIntent = {},
+            history = {},
+        )
     }
 }
 
@@ -285,7 +348,10 @@ private fun InquiryFilledPreview() {
                     attachmentUris = listOf("content://a", "content://b"),
                     emailError = "답변을 받을 수 있는 이메일 주소를 입력해 주세요.",
                 ),
+            selectedTab = InquiryTab.COMPOSE,
+            onSelectTab = {},
             onIntent = {},
+            history = {},
         )
     }
 }
