@@ -11,6 +11,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class InquiryCreateRequest(
     val email: String,
-    val body: String,
+    val title: String,
+    val description: String,
     val attachmentFilenames: List<String> = emptyList(),
 )

@@ -15,9 +15,14 @@ sealed interface InquiryUiIntent : UiIntent {
         val email: String,
     ) : InquiryUiIntent
 
+    /** 100자를 넘는 부분은 받지 않는다. 서버는 앞뒤 공백을 뺀 길이로 재지만, 입력 중에는 그대로 센다. */
+    data class TitleChanged(
+        val title: String,
+    ) : InquiryUiIntent
+
     /** 2,000자를 넘는 부분은 받지 않는다. */
-    data class BodyChanged(
-        val body: String,
+    data class DescriptionChanged(
+        val description: String,
     ) : InquiryUiIntent
 
     data object AddAttachmentClicked : InquiryUiIntent

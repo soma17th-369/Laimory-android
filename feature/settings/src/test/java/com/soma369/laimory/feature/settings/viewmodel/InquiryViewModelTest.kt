@@ -36,15 +36,18 @@ class InquiryViewModelTest {
     private val messageHelper = RecordingMessageHelper()
 
     @Test
-    fun `주소와 내용이 있어야 보낼 수 있다`() =
+    fun `주소·제목·내용이 있어야 보낼 수 있다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
             assertFalse(viewModel.state.value.canSubmit)
 
-            viewModel.fill(email = "user@example.com", body = " ")
+            viewModel.fill(email = "user@example.com", title = "제목", description = " ")
             assertFalse(viewModel.state.value.canSubmit)
 
-            viewModel.fill(body = "문의")
+            viewModel.fill(title = " ", description = "문의")
+            assertFalse(viewModel.state.value.canSubmit)
+
+            viewModel.fill(title = "제목")
             assertTrue(viewModel.state.value.canSubmit)
         }
 
@@ -53,7 +56,7 @@ class InquiryViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             // 입력 중에 틀렸다고 띄우면 `user@` 까지 친 사람에게 오류를 보여 주는 셈이다.
             val viewModel = createViewModel()
-            viewModel.fill(email = "user@example", body = "문의")
+            viewModel.fill(email = "user@example", title = "제목", description = "문의")
             assertNull(viewModel.state.value.emailError)
 
             viewModel.sendIntent(InquiryUiIntent.SubmitClicked)
@@ -70,13 +73,13 @@ class InquiryViewModelTest {
     fun `보내면 알리고 이전 화면으로 돌아간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
-            viewModel.fill(email = " user@example.com ", body = "문의\n내용")
+            viewModel.fill(email = " user@example.com ", title = " 사진이 빠져요 ", description = "문의\n내용")
             viewModel.sendIntent(InquiryUiIntent.AttachmentsPicked(listOf("content://a")))
 
             viewModel.sendIntent(InquiryUiIntent.SubmitClicked)
             advanceUntilIdle()
 
-            assertEquals(listOf(InquirySubmission("user@example.com", "문의\n내용", listOf("content://a"))), repository.submissions)
+            assertEquals(listOf(InquirySubmission("user@example.com", "사진이 빠져요", "문의\n내용", listOf("content://a"))), repository.submissions)
             assertEquals(listOf<UserMessage>(UserMessage.InquirySubmitted), messageHelper.sent)
             assertEquals(1, navigationHelper.backCount)
             // ViewModel 이 Activity 수명이라 비우지 않으면 다음에 열 때 보낸 내용과 보내는 중 상태가 남는다.
@@ -87,7 +90,7 @@ class InquiryViewModelTest {
     fun `새로 들어오면 지난번에 쓰다 만 내용을 비운다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
-            viewModel.fill(email = "user@example.com", body = "쓰다 만 내용")
+            viewModel.fill(email = "user@example.com", title = "제목", description = "쓰다 만 내용")
             viewModel.sendIntent(InquiryUiIntent.AttachmentsPicked(listOf("content://a")))
 
             viewModel.sendIntent(InquiryUiIntent.Opened)
@@ -100,7 +103,7 @@ class InquiryViewModelTest {
     fun `나가기를 고르면 입력을 비우고 나간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
-            viewModel.fill(body = "쓰던 내용")
+            viewModel.fill(description = "쓰던 내용")
             messageHelper.result = DialogResult.Primary
 
             viewModel.sendIntent(InquiryUiIntent.BackPressed)
@@ -117,21 +120,21 @@ class InquiryViewModelTest {
             val gate = CompletableDeferred<Unit>()
             repository.gate = gate
             val viewModel = createViewModel()
-            viewModel.fill(email = "user@example.com", body = "문의")
+            viewModel.fill(email = "user@example.com", title = "제목", description = "문의")
 
             viewModel.sendIntent(InquiryUiIntent.SubmitClicked)
             advanceUntilIdle()
             assertTrue(viewModel.state.value.isSubmitting)
             viewModel.sendIntent(InquiryUiIntent.SubmitClicked)
             viewModel.sendIntent(InquiryUiIntent.BackPressed)
-            viewModel.sendIntent(InquiryUiIntent.BodyChanged("바뀜"))
+            viewModel.sendIntent(InquiryUiIntent.DescriptionChanged("바뀜"))
             advanceUntilIdle()
 
             gate.complete(Unit)
             advanceUntilIdle()
 
             assertEquals(1, repository.submissions.size)
-            assertEquals("문의", repository.submissions.single().body)
+            assertEquals("문의", repository.submissions.single().description)
             assertEquals(1, navigationHelper.backCount)
             assertTrue(messageHelper.dialogs.isEmpty())
         }
@@ -141,13 +144,13 @@ class InquiryViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             repository.failure = ApiException.NetworkException()
             val viewModel = createViewModel()
-            viewModel.fill(email = "user@example.com", body = "문의")
+            viewModel.fill(email = "user@example.com", title = "제목", description = "문의")
 
             viewModel.sendIntent(InquiryUiIntent.SubmitClicked)
             advanceUntilIdle()
 
             assertFalse(viewModel.state.value.isSubmitting)
-            assertEquals("문의", viewModel.state.value.body)
+            assertEquals("문의", viewModel.state.value.description)
             assertEquals(InquiryUiSideEffect.ShowSnackbar("인터넷 연결을 확인하고 다시 보내 주세요."), viewModel.sideEffect.first())
             assertEquals(0, navigationHelper.backCount)
         }
@@ -157,7 +160,7 @@ class InquiryViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             repository.failure = InquiryAttachmentException("decode")
             val viewModel = createViewModel()
-            viewModel.fill(email = "user@example.com", body = "문의")
+            viewModel.fill(email = "user@example.com", title = "제목", description = "문의")
 
             viewModel.sendIntent(InquiryUiIntent.SubmitClicked)
             advanceUntilIdle()
@@ -169,13 +172,14 @@ class InquiryViewModelTest {
         }
 
     @Test
-    fun `내용은 2000자에서 자른다`() =
+    fun `제목은 100자, 내용은 2000자에서 자른다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
 
-            viewModel.fill(body = "가".repeat(2_010))
+            viewModel.fill(title = "가".repeat(110), description = "가".repeat(2_010))
 
-            assertEquals(2_000, viewModel.state.value.body.length)
+            assertEquals(100, viewModel.state.value.title.length)
+            assertEquals(2_000, viewModel.state.value.description.length)
         }
 
     @Test
@@ -213,7 +217,7 @@ class InquiryViewModelTest {
     fun `입력이 있으면 확인을 받고, 계속 쓰기를 고르면 남는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
-            viewModel.fill(body = "쓰던 내용")
+            viewModel.fill(description = "쓰던 내용")
 
             messageHelper.result = DialogResult.Secondary
             viewModel.sendIntent(InquiryUiIntent.BackPressed)
@@ -236,10 +240,12 @@ class InquiryViewModelTest {
 
     private suspend fun InquiryViewModel.fill(
         email: String? = null,
-        body: String? = null,
+        title: String? = null,
+        description: String? = null,
     ) {
         email?.let { sendIntent(InquiryUiIntent.EmailChanged(it)) }
-        body?.let { sendIntent(InquiryUiIntent.BodyChanged(it)) }
+        title?.let { sendIntent(InquiryUiIntent.TitleChanged(it)) }
+        description?.let { sendIntent(InquiryUiIntent.DescriptionChanged(it)) }
         mainDispatcherRule.testDispatcher.scheduler.advanceUntilIdle()
     }
 

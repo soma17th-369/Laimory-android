@@ -161,11 +161,21 @@ private fun InquiryScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
             )
             LaimoryTextField(
-                value = state.body,
-                onValueChange = { onIntent(InquiryUiIntent.BodyChanged(it)) },
-                label = "문의 내용",
+                value = state.title,
+                onValueChange = { onIntent(InquiryUiIntent.TitleChanged(it)) },
+                label = "제목",
+                placeholder = "무엇에 대한 문의인지 짧게 적어 주세요.",
+                counterText = "${COUNT_FORMAT.format(state.title.length)} / ${COUNT_FORMAT.format(InquiryInputRules.TITLE_MAX_LENGTH)}",
+                enabled = editable,
+            )
+            LaimoryTextField(
+                value = state.description,
+                onValueChange = { onIntent(InquiryUiIntent.DescriptionChanged(it)) },
+                label = "내용",
                 placeholder = "어떤 점이 궁금하거나 불편했는지 적어 주세요.",
-                counterText = "${COUNT_FORMAT.format(state.body.length)} / ${COUNT_FORMAT.format(InquiryInputRules.BODY_MAX_LENGTH)}",
+                counterText =
+                    "${COUNT_FORMAT.format(state.description.length)} / " +
+                        COUNT_FORMAT.format(InquiryInputRules.DESCRIPTION_MAX_LENGTH),
                 enabled = editable,
                 singleLine = false,
                 fieldHeight = BODY_FIELD_HEIGHT,
@@ -267,7 +277,8 @@ private fun InquiryFilledPreview() {
             state =
                 InquiryUiState(
                     email = "user@example",
-                    body = "타임라인을 만들 때 사진이 빠져요.",
+                    title = "사진이 빠져요",
+                    description = "타임라인을 만들 때 사진이 빠져요.",
                     attachmentUris = listOf("content://a", "content://b"),
                     emailError = "답변을 받을 수 있는 이메일 주소를 입력해 주세요.",
                 ),

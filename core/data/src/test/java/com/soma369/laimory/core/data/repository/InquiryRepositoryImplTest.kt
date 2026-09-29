@@ -34,10 +34,10 @@ class InquiryRepositoryImplTest {
     fun `첨부가 없으면 발급을 부르지 않고 바로 접수한다`() =
         runTest {
             // 서버는 빈 첨부 발급을 400 으로 돌려준다.
-            repository.submit(InquirySubmission(email = "user@example.com", body = "문의"))
+            repository.submit(InquirySubmission(email = "user@example.com", title = "제목", description = "문의"))
 
             assertNull(remote.uploadRequest)
-            assertEquals(InquiryCreateRequest("user@example.com", "문의", emptyList()), remote.created)
+            assertEquals(InquiryCreateRequest("user@example.com", "제목", "문의", emptyList()), remote.created)
         }
 
     @Test
@@ -91,7 +91,13 @@ class InquiryRepositoryImplTest {
             preparer.files.forEach { assertFalse(it.name, it.exists()) }
         }
 
-    private fun submission(vararg uris: String) = InquirySubmission(email = "user@example.com", body = "문의", attachmentUris = uris.toList())
+    private fun submission(vararg uris: String) =
+        InquirySubmission(
+            email = "user@example.com",
+            title = "제목",
+            description = "문의",
+            attachmentUris = uris.toList(),
+        )
 
     private inner class FakePreparer : InquiryAttachmentPreparer {
         val files = mutableListOf<File>()

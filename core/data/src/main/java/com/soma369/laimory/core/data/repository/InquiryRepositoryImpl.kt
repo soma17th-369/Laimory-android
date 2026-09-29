@@ -34,7 +34,8 @@ class InquiryRepositoryImpl
                 remoteDataSource.createInquiry(
                     InquiryCreateRequest(
                         email = submission.email,
-                        body = submission.body,
+                        title = submission.title,
+                        description = submission.description,
                         attachmentFilenames = filenames,
                     ),
                 )

@@ -8,7 +8,8 @@ package com.soma369.laimory.core.domain.model.inquiry
  */
 object InquiryInputRules {
     const val EMAIL_MAX_LENGTH = 255
-    const val BODY_MAX_LENGTH = 2_000
+    const val TITLE_MAX_LENGTH = 100
+    const val DESCRIPTION_MAX_LENGTH = 2_000
     const val MAX_ATTACHMENTS = 3
 
     // 서버 `@Email` 보다 조금 좁다 — 도메인에 점이 없는 주소는 답장을 받을 수 없어 앱이 먼저 거른다.
@@ -19,6 +20,12 @@ object InquiryInputRules {
         return trimmed.length <= EMAIL_MAX_LENGTH && EMAIL_PATTERN.matches(trimmed)
     }
 
+    /** 공백만은 안 되고, 서버처럼 앞뒤 공백을 뺀 길이로 잰다. */
+    fun isValidTitle(title: String): Boolean {
+        val trimmed = title.trim()
+        return trimmed.isNotEmpty() && trimmed.length <= TITLE_MAX_LENGTH
+    }
+
     /** 공백만은 안 되고, 줄바꿈을 포함한 원문 길이로 잰다(서버와 같다). */
-    fun isValidBody(body: String): Boolean = body.isNotBlank() && body.length <= BODY_MAX_LENGTH
+    fun isValidDescription(description: String): Boolean = description.isNotBlank() && description.length <= DESCRIPTION_MAX_LENGTH
 }

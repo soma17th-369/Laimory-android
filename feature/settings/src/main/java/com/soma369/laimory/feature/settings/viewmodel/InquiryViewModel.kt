@@ -42,8 +42,10 @@ class InquiryViewModel
             when (intent) {
                 InquiryUiIntent.Opened -> updateState { InquiryUiState() }
                 is InquiryUiIntent.EmailChanged -> updateState { copy(email = intent.email, emailError = null) }
-                is InquiryUiIntent.BodyChanged ->
-                    updateState { copy(body = intent.body.take(InquiryInputRules.BODY_MAX_LENGTH)) }
+                is InquiryUiIntent.TitleChanged ->
+                    updateState { copy(title = intent.title.take(InquiryInputRules.TITLE_MAX_LENGTH)) }
+                is InquiryUiIntent.DescriptionChanged ->
+                    updateState { copy(description = intent.description.take(InquiryInputRules.DESCRIPTION_MAX_LENGTH)) }
                 InquiryUiIntent.AddAttachmentClicked -> requestPhotoPicker()
                 is InquiryUiIntent.AttachmentsPicked -> addAttachments(intent.uris)
                 is InquiryUiIntent.AttachmentRemoved ->
@@ -79,7 +81,8 @@ class InquiryViewModel
                     submitInquiryUseCase(
                         InquirySubmission(
                             email = current.email,
-                            body = current.body,
+                            title = current.title,
+                            description = current.description,
                             attachmentUris = current.attachmentUris,
                         ),
                     ).onSuccess {

@@ -26,14 +26,22 @@ class InquiryInputRulesTest {
 
     @Test
     fun `본문은 공백만은 안 되고 줄바꿈을 포함해 2000자까지다`() {
-        assertFalse(InquiryInputRules.isValidBody(" \n "))
-        assertTrue(InquiryInputRules.isValidBody("가\n".repeat(1_000)))
-        assertFalse(InquiryInputRules.isValidBody("가\n".repeat(1_000) + "나"))
+        assertFalse(InquiryInputRules.isValidDescription(" \n "))
+        assertTrue(InquiryInputRules.isValidDescription("가\n".repeat(1_000)))
+        assertFalse(InquiryInputRules.isValidDescription("가\n".repeat(1_000) + "나"))
+    }
+
+    @Test
+    fun `제목은 공백만은 안 되고 앞뒤 공백을 뺀 100자까지다`() {
+        // 서버가 앞뒤 공백을 뺀 뒤 길이를 잰다. 공백 때문에 막히면 안 된다.
+        assertFalse(InquiryInputRules.isValidTitle("   "))
+        assertTrue(InquiryInputRules.isValidTitle("  " + "가".repeat(100) + "  "))
+        assertFalse(InquiryInputRules.isValidTitle("가".repeat(101)))
     }
 
     @Test
     fun `첨부는 3장까지다`() {
-        val base = InquirySubmission(email = "user@example.com", body = "문의")
+        val base = InquirySubmission(email = "user@example.com", title = "제목", description = "문의")
         assertTrue(base.copy(attachmentUris = List(3) { "content://photo/$it" }).isValid)
         assertFalse(base.copy(attachmentUris = List(4) { "content://photo/$it" }).isValid)
     }

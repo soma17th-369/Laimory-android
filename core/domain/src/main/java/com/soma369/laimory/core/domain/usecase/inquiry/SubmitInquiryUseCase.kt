@@ -15,6 +15,6 @@ class SubmitInquiryUseCase
     ) : BaseUseCase(messageHelper) {
         suspend operator fun invoke(submission: InquirySubmission): Result<Unit> {
             if (!submission.isValid) return Result.failure(IllegalArgumentException("문의 입력이 규칙에 맞지 않습니다"))
-            return execute { repository.submit(submission.copy(email = submission.email.trim())) }
+            return execute { repository.submit(submission.copy(email = submission.email.trim(), title = submission.title.trim())) }
         }
     }
