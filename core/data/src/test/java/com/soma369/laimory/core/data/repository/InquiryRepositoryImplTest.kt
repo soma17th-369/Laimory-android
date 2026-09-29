@@ -8,9 +8,15 @@ import com.soma369.laimory.core.data.model.inquiry.request.InquiryAttachmentUplo
 import com.soma369.laimory.core.data.model.inquiry.request.InquiryCreateRequest
 import com.soma369.laimory.core.data.model.inquiry.response.InquiryAttachmentUploadCreateResponse
 import com.soma369.laimory.core.data.model.inquiry.response.InquiryAttachmentUploadResponse
+import com.soma369.laimory.core.data.model.inquiry.response.InquiryDetailResponse
+import com.soma369.laimory.core.data.model.inquiry.response.InquiryListResponse
+import com.soma369.laimory.core.data.model.inquiry.response.InquirySummaryResponse
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.InquiryNotFoundException
+import com.soma369.laimory.core.domain.model.inquiry.InquiryStatus
 import com.soma369.laimory.core.domain.model.inquiry.InquirySubmission
+import com.soma369.laimory.core.domain.model.inquiry.InquirySummary
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,6 +26,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.time.LocalDateTime
 
 class InquiryRepositoryImplTest {
     @get:Rule
@@ -91,6 +98,78 @@ class InquiryRepositoryImplTest {
             preparer.files.forEach { assertFalse(it.name, it.exists()) }
         }
 
+    @Test
+    fun `내 문의 목록을 서버 순서대로 옮기고 상태·시각을 읽는다`() =
+        runTest {
+            remote.list =
+                listOf(
+                    InquirySummaryResponse(2, "사진이 안 올라가요", "RECEIVED", "2026-09-29T10:00:00", null),
+                    InquirySummaryResponse(1, "타임라인이 비어요", "ANSWERED", "2026-09-20T09:00:00.123", "2026-09-21T14:00:00"),
+                )
+
+            assertEquals(
+                listOf(
+                    InquirySummary(2, "사진이 안 올라가요", InquiryStatus.RECEIVED, LocalDateTime.of(2026, 9, 29, 10, 0), null),
+                    InquirySummary(
+                        1,
+                        "타임라인이 비어요",
+                        InquiryStatus.ANSWERED,
+                        LocalDateTime.of(2026, 9, 20, 9, 0, 0, 123_000_000),
+                        LocalDateTime.of(2026, 9, 21, 14, 0),
+                    ),
+                ),
+                repository.getMyInquiries(),
+            )
+        }
+
+    @Test
+    fun `모르는 상태는 확인 중으로, 접수 시각을 읽지 못한 문의는 그 건만 버린다`() =
+        runTest {
+            // 답하지 않은 문의를 답했다고 말하는 쪽이 더 나쁘다.
+            remote.list =
+                listOf(
+                    InquirySummaryResponse(3, "새 상태", "ON_HOLD", "2026-09-29T10:00:00", null),
+                    InquirySummaryResponse(2, "시각 깨짐", "RECEIVED", "2026-09-29T10:00:00+09:00", null),
+                )
+
+            val inquiries = repository.getMyInquiries()
+
+            assertEquals(listOf(3L), inquiries.map { it.id })
+            assertEquals(InquiryStatus.RECEIVED, inquiries.single().status)
+        }
+
+    @Test
+    fun `상세는 보낸 내용과 첨부 주소를 순서대로 옮긴다`() =
+        runTest {
+            remote.detail =
+                InquiryDetailResponse(
+                    inquiryId = 7,
+                    title = "제목",
+                    status = "ANSWERED",
+                    email = "user@example.com",
+                    description = "내용\n두 줄",
+                    attachmentUrls = listOf("https://cdn/b.jpg", "https://cdn/a.jpg"),
+                    createdAt = "2026-09-29T10:00:00",
+                    answeredAt = "2026-09-30T14:00:00",
+                )
+
+            val detail = repository.getInquiry(7)
+
+            assertEquals(listOf("https://cdn/b.jpg", "https://cdn/a.jpg"), detail.attachmentUrls)
+            assertEquals(InquiryStatus.ANSWERED, detail.status)
+            assertEquals("내용\n두 줄", detail.description)
+        }
+
+    @Test
+    fun `없거나 남의 문의인 404 는 찾을 수 없는 문의로 올린다`() =
+        runTest {
+            remote.detailFailure = ApiException.ClientException(errorCode = -404, rawCode = 404)
+
+            val result = runCatching { repository.getInquiry(7) }
+
+            assertTrue(result.exceptionOrNull() is InquiryNotFoundException)
+        }
+
     private fun submission(vararg uris: String) =
         InquirySubmission(
             email = "user@example.com",
@@ -124,6 +203,17 @@ class InquiryRepositoryImplTest {
 
         override suspend fun createInquiry(request: InquiryCreateRequest) {
             created = request
+        }
+
+        var list: List<InquirySummaryResponse> = emptyList()
+        var detail: InquiryDetailResponse? = null
+        var detailFailure: ApiException? = null
+
+        override suspend fun getMyInquiries(): InquiryListResponse = InquiryListResponse(list)
+
+        override suspend fun getInquiry(inquiryId: Long): InquiryDetailResponse {
+            detailFailure?.let { throw it }
+            return checkNotNull(detail)
         }
     }
 

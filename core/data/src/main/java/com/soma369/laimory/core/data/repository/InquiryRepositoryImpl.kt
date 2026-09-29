@@ -6,9 +6,13 @@ import com.soma369.laimory.core.data.inquiry.PreparedInquiryAttachment
 import com.soma369.laimory.core.data.model.inquiry.request.InquiryAttachmentUploadCreateRequest
 import com.soma369.laimory.core.data.model.inquiry.request.InquiryAttachmentUploadItem
 import com.soma369.laimory.core.data.model.inquiry.request.InquiryCreateRequest
+import com.soma369.laimory.core.data.model.inquiry.response.toDomain
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.exception.InquiryNotFoundException
+import com.soma369.laimory.core.domain.model.inquiry.InquiryDetail
 import com.soma369.laimory.core.domain.model.inquiry.InquirySubmission
+import com.soma369.laimory.core.domain.model.inquiry.InquirySummary
 import com.soma369.laimory.core.domain.repository.InquiryRepository
 import javax.inject.Inject
 
@@ -44,6 +48,21 @@ class InquiryRepositoryImpl
             }
         }
 
+        override suspend fun getMyInquiries(): List<InquirySummary> =
+            remoteDataSource.getMyInquiries().inquiries.mapNotNull { it.toDomain() }
+
+        override suspend fun getInquiry(inquiryId: Long): InquiryDetail {
+            val response =
+                try {
+                    remoteDataSource.getInquiry(inquiryId)
+                } catch (e: ApiException) {
+                    // 없는 문의와 남의 문의를 서버가 같은 -404 로 숨긴다. 화면이 직접 안내하도록 따로 세운다.
+                    if (e.errorCode == NOT_FOUND_ERROR_CODE) throw InquiryNotFoundException(e)
+                    throw e
+                }
+            return response.toDomain() ?: throw ApiException.UnknownException("문의 접수 시각을 읽을 수 없습니다")
+        }
+
         /** 발급이 첨부와 같은 순서로 온다는 계약에 기댄다. 개수가 다르면 짝을 지을 수 없어 멈춘다. */
         private suspend fun upload(prepared: List<PreparedInquiryAttachment>): List<String> {
             if (prepared.isEmpty()) return emptyList()
@@ -64,5 +83,9 @@ class InquiryRepositoryImpl
                 )
                 upload.filename
             }
+        }
+
+        private companion object {
+            const val NOT_FOUND_ERROR_CODE = -404
         }
     }

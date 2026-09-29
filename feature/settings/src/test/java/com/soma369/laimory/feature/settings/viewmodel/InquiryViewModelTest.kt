@@ -7,7 +7,9 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.inquiry.InquiryDetail
 import com.soma369.laimory.core.domain.model.inquiry.InquirySubmission
+import com.soma369.laimory.core.domain.model.inquiry.InquirySummary
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.InquiryRepository
 import com.soma369.laimory.core.domain.usecase.inquiry.SubmitInquiryUseCase
@@ -273,6 +275,10 @@ class InquiryViewModelTest {
             gate?.await()
             failure?.let { throw it }
         }
+
+        override suspend fun getMyInquiries(): List<InquirySummary> = emptyList()
+
+        override suspend fun getInquiry(inquiryId: Long): InquiryDetail = error("사용하지 않음")
     }
 
     private class RecordingMessageHelper : MessageHelper {
