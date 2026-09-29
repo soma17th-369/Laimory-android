@@ -25,6 +25,7 @@ import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.model.user.UserProfile
+import com.soma369.laimory.core.domain.navigation.InquiriesPage
 import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
@@ -154,6 +155,18 @@ class SettingsViewModelTest {
             runCurrent()
 
             assertEquals(listOf<Page>(InquiryPage), navigationHelper.navigatedTo)
+        }
+
+    @Test
+    fun `문의 내역을 누르면 내 문의 목록으로 간다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.InquiriesClicked)
+            runCurrent()
+
+            assertEquals(listOf<Page>(InquiriesPage), navigationHelper.navigatedTo)
         }
 
     @Test

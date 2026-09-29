@@ -236,6 +236,31 @@ data object InquiryPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/** 설정 > 지원 > 문의 내역. 내가 보낸 문의와 처리 상태. */
+data object InquiriesPage : Page {
+    const val PATH = "/settings/inquiries"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+/** 문의 내역의 한 건. */
+data class InquiryDetailPage(
+    val inquiryId: Long,
+) : Page {
+    override fun toRoute(): NavRoute =
+        NavRoute(
+            path = PATH,
+            args = mapOf(INQUIRY_ID_ARG to inquiryId.toString()),
+        )
+
+    companion object {
+        const val PATH = "/settings/inquiries/detail"
+        const val INQUIRY_ID_ARG = "inquiryId"
+
+        fun inquiryIdFrom(args: Map<String, String>): Long? = args[INQUIRY_ID_ARG]?.toLongOrNull()
+    }
+}
+
 data object CalendarPage : Page {
     const val PATH = "/calendar"
 

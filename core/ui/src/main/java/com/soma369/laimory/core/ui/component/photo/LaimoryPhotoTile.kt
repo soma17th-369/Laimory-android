@@ -46,12 +46,15 @@ object LaimoryPhotoTileDefaults {
  * 첨부 해제든 저장된 사진 제거든 아이콘은 하나로 둔다 — 무엇이 일어나는지는 호출부의 확인창이 말한다.
  *
  * @param onRemove 없으면 빼기 버튼을 그리지 않는다(보내는 중처럼 손댈 수 없을 때).
+ * @param onClick 칸 자체를 눌렀을 때(예: 크게 보기). 없으면 눌리지 않는다.
  */
 @Composable
 fun LaimoryPhotoTile(
     modifier: Modifier = Modifier,
     removeContentDescription: String? = null,
     onRemove: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
     overlay: @Composable BoxScope.() -> Unit = {},
     image: @Composable BoxScope.() -> Unit,
 ) {
@@ -61,7 +64,14 @@ fun LaimoryPhotoTile(
                 .size(LaimoryPhotoTileDefaults.Size)
                 .clip(MaterialTheme.shapes.medium)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                .photoTileBorder(MaterialTheme.colorScheme.outlineVariant),
+                .photoTileBorder(MaterialTheme.colorScheme.outlineVariant)
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+                    } else {
+                        Modifier
+                    },
+                ),
     ) {
         image()
         overlay()

@@ -27,6 +27,9 @@ sealed interface SettingsUiIntent : UiIntent {
     /** `지원 > 문의하기`. */
     data object InquiryClicked : SettingsUiIntent
 
+    /** `지원 > 문의 내역`. */
+    data object InquiriesClicked : SettingsUiIntent
+
     /**
      * 화면 진입·복귀. 새 공지 표시를 다시 판정한다.
      *
