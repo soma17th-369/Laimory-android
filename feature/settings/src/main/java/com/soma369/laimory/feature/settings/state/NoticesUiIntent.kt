@@ -16,5 +16,10 @@ sealed interface NoticesUiIntent : UiIntent {
         val notice: Notice,
     ) : NoticesUiIntent
 
+    /** 원문이 실제로 열렸다. 이때 읽음으로 남긴다. */
+    data class NoticeOpened(
+        val notice: Notice,
+    ) : NoticesUiIntent
+
     data object NavigateBack : NoticesUiIntent
 }

@@ -78,9 +78,12 @@ private fun NoticesContent(
         sideEffectFlow.collect { effect ->
             when (effect) {
                 is NoticesUiSideEffect.OpenContent ->
-                    if (!contentLauncher.open(effect.url)) {
+                    if (contentLauncher.open(effect.notice.contentUrl)) {
+                        onIntent(NoticesUiIntent.NoticeOpened(effect.notice))
+                    } else {
                         snackbarHostState.showSnackbar("공지를 열 브라우저가 없어요.")
                     }
+                is NoticesUiSideEffect.ShowSnackbar -> snackbarHostState.showSnackbar(effect.message)
             }
         }
     }
