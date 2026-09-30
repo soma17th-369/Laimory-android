@@ -165,7 +165,10 @@ private fun InquiryScreen(
                 onValueChange = { onIntent(InquiryUiIntent.TitleChanged(it)) },
                 label = "제목",
                 placeholder = "무엇에 대한 문의인지 짧게 적어 주세요.",
-                counterText = "${COUNT_FORMAT.format(state.title.length)} / ${COUNT_FORMAT.format(InquiryInputRules.TITLE_MAX_LENGTH)}",
+                // 규칙·서버와 같이 앞뒤 공백을 뺀 길이를 보여 준다.
+                counterText =
+                    "${COUNT_FORMAT.format(state.title.trim().length)} / " +
+                        COUNT_FORMAT.format(InquiryInputRules.TITLE_MAX_LENGTH),
                 enabled = editable,
             )
             LaimoryTextField(

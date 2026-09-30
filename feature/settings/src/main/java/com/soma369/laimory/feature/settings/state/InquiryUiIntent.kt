@@ -15,7 +15,7 @@ sealed interface InquiryUiIntent : UiIntent {
         val email: String,
     ) : InquiryUiIntent
 
-    /** 100자를 넘는 부분은 받지 않는다. 서버는 앞뒤 공백을 뺀 길이로 재지만, 입력 중에는 그대로 센다. */
+    /** 앞뒤 공백을 뺀 100자를 넘는 부분은 받지 않는다(서버와 같은 기준). */
     data class TitleChanged(
         val title: String,
     ) : InquiryUiIntent

@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.domain.model.inquiry
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,6 +30,16 @@ class InquiryInputRulesTest {
         assertFalse(InquiryInputRules.isValidDescription(" \n "))
         assertTrue(InquiryInputRules.isValidDescription("가\n".repeat(1_000)))
         assertFalse(InquiryInputRules.isValidDescription("가\n".repeat(1_000) + "나"))
+    }
+
+    @Test
+    fun `제목 자르기는 앞뒤 공백을 뺀 100자 기준이라 공백 때문에 글자가 잘리지 않는다`() {
+        val padded = "  " + "가".repeat(100) + "  "
+        assertEquals(padded, InquiryInputRules.limitTitle(padded))
+        assertEquals("가".repeat(100), InquiryInputRules.limitTitle(padded).trim())
+
+        assertEquals("  " + "가".repeat(100), InquiryInputRules.limitTitle("  " + "가".repeat(105)))
+        assertEquals("짧은 제목", InquiryInputRules.limitTitle("짧은 제목"))
     }
 
     @Test

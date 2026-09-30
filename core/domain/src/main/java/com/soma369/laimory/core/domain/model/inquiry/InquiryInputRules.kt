@@ -26,6 +26,18 @@ object InquiryInputRules {
         return trimmed.isNotEmpty() && trimmed.length <= TITLE_MAX_LENGTH
     }
 
+    /**
+     * 입력 중인 제목을 [TITLE_MAX_LENGTH] 에 맞춰 자른다. 규칙과 같이 앞뒤 공백을 뺀 길이로 잰다 —
+     * 원문 길이로 자르면 앞에 공백을 붙여 넣은 100자 제목의 끝 글자가 잘린다. 앞 공백은 그대로 두고
+     * 글자 부분만 100자로 자른다(뒤 공백은 보낼 때 빠진다).
+     */
+    fun limitTitle(title: String): String {
+        val leading = title.takeWhile(Char::isWhitespace)
+        val rest = title.drop(leading.length)
+        if (rest.trimEnd().length <= TITLE_MAX_LENGTH) return title
+        return leading + rest.take(TITLE_MAX_LENGTH)
+    }
+
     /** 공백만은 안 되고, 줄바꿈을 포함한 원문 길이로 잰다(서버와 같다). */
     fun isValidDescription(description: String): Boolean = description.isNotBlank() && description.length <= DESCRIPTION_MAX_LENGTH
 }

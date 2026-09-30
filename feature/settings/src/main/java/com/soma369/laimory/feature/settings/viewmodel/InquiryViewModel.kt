@@ -43,7 +43,7 @@ class InquiryViewModel
                 InquiryUiIntent.Opened -> updateState { InquiryUiState() }
                 is InquiryUiIntent.EmailChanged -> updateState { copy(email = intent.email, emailError = null) }
                 is InquiryUiIntent.TitleChanged ->
-                    updateState { copy(title = intent.title.take(InquiryInputRules.TITLE_MAX_LENGTH)) }
+                    updateState { copy(title = InquiryInputRules.limitTitle(intent.title)) }
                 is InquiryUiIntent.DescriptionChanged ->
                     updateState { copy(description = intent.description.take(InquiryInputRules.DESCRIPTION_MAX_LENGTH)) }
                 InquiryUiIntent.AddAttachmentClicked -> requestPhotoPicker()

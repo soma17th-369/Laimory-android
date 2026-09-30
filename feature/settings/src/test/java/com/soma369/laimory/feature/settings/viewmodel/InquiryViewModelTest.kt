@@ -183,6 +183,20 @@ class InquiryViewModelTest {
         }
 
     @Test
+    fun `앞뒤 공백이 붙은 100자 제목은 자르지 않고 그대로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 원문 길이로 자르면 붙여 넣은 제목의 끝 두 글자가 사라져 98자만 간다.
+            val viewModel = createViewModel()
+            val title = "가".repeat(100)
+            viewModel.fill(email = "user@example.com", title = "  $title  ", description = "문의")
+
+            viewModel.sendIntent(InquiryUiIntent.SubmitClicked)
+            advanceUntilIdle()
+
+            assertEquals(title, repository.submissions.single().title)
+        }
+
+    @Test
     fun `사진은 겹치지 않게 3장까지만 받는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 선택기가 상한을 지키지 않는 기기가 있다.
