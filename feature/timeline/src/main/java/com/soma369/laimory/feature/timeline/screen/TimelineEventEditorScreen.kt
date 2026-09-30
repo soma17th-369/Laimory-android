@@ -201,8 +201,12 @@ private fun TimelineEventEditorContent(
                 Text(
                     buildString {
                         append("저장하지 않은 내용과 추가할 사진이 사라집니다.")
-                        // 빼기는 저장 때 반영되므로, 나가면 뺀 사진은 되돌아온다.
-                        if (state.removedPhotoIds.isNotEmpty()) append("\n뺀 사진은 그대로 남아요.")
+                        // 저장이 중간에 실패했으면 이미 반영된 빼기와 아직 저장하지 않은 빼기가 섞여 있다.
+                        if (state.appliedPhotoRemovalCount > 0) {
+                            append("\n먼저 뺀 사진 ${state.appliedPhotoRemovalCount}장은 이미 반영돼 되돌아오지 않아요.")
+                        }
+                        // 빼기는 저장 때 반영되므로, 나가면 아직 저장하지 않고 뺀 사진은 되돌아온다.
+                        if (state.removedPhotoIds.isNotEmpty()) append("\n아직 저장하지 않고 뺀 사진은 그대로 남아요.")
                     },
                 )
             },

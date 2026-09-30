@@ -236,7 +236,7 @@ class TimelineEventEditorViewModelTest {
             }
             assertEquals(
                 TimelineEventEditorUiSideEffect.ShowSnackbar(
-                    "네트워크 상태를 확인한 뒤 다시 저장해 주세요. 먼저 뺀 사진 1장은 반영됐어요.",
+                    "네트워크 상태를 확인한 뒤 다시 저장해 주세요. 먼저 뺀 사진 1장은 이미 반영됐어요.",
                 ),
                 viewModel.sideEffect.first(),
             )
@@ -247,6 +247,89 @@ class TimelineEventEditorViewModelTest {
 
             assertEquals(listOf(EVENT_ID to 1L, EVENT_ID to 2L), recordRepository.deletedPhotoIds)
             assertEquals(1, recordRepository.commands.size)
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `사진 빼기가 서버 오류로 멈춰도 이미 뺀 사진은 따로 알리고 버리기 창이 구분한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버 오류는 공용 안내로 감싸진다. 그래도 되돌릴 수 없는 부분 반영은 따로 알려야 한다.
+            recordRepository.photoDeleteServerErrorFor = 2L
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(2L))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("먼저 뺀 사진 1장은 이미 반영됐어요."),
+                viewModel.sideEffect.first(),
+            )
+            with(viewModel.state.value) {
+                assertEquals(1, appliedPhotoRemovalCount)
+                assertEquals(setOf(2L), removedPhotoIds)
+            }
+        }
+
+    @Test
+    fun `사진을 다 뺀 뒤 수정이 실패해도 이미 뺀 사진을 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정된 출근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
+            assertEquals(1, viewModel.state.value.appliedPhotoRemovalCount)
+            // 수정 실패 자체는 공용 오류 안내가 맡는다. 화면은 되돌릴 수 없는 부분 반영을 따로 알린다.
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("먼저 뺀 사진 1장은 이미 반영됐어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `수정이 실패한 뒤 다시 저장해도 이미 뺀 사진의 편집 흔적과 사진 수정이 남는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 다시 저장할 땐 뺄 사진이 남아 있지 않다. 메모만 보이더라도 사진을 고친 사실을 잃으면 안 된다.
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo("메모"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+            assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.edited)
+
+            recordRepository.failure = null
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.edited)
+            val updated = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineEventUpdated>().single()
+            assertTrue(AnalyticsEventField.PHOTO in updated.changedFields)
+        }
+
+    @Test
+    fun `이미 뺀 사진이 있는 채로 버리고 나가면 사진 수정을 한 번 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.photoDeleteFailureFor = 2L
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(2L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDiscard)
+            advanceUntilIdle()
+
+            val updated = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineEventUpdated>().single()
+            assertEquals(setOf(AnalyticsEventField.PHOTO), updated.changedFields)
             assertEquals(1, navigationHelper.backCount)
         }
 
@@ -1231,6 +1314,9 @@ class TimelineEventEditorViewModelTest {
 
         /** 이 사진을 뺄 때만 실패한다. 여러 장 중 일부만 실패하는 경우를 만든다. */
         var photoDeleteFailureFor: Long? = null
+
+        /** 이 사진을 뺄 때 서버 오류(500)로 실패한다. 공용 오류 안내로 감싸지는 경로를 만든다. */
+        var photoDeleteServerErrorFor: Long? = null
         var dailyRecordFailure: ApiException? = null
         var dailyRecord: DailyTimeline = timeline()
         var requestedRecordDate: LocalDate? = null
@@ -1275,6 +1361,7 @@ class TimelineEventEditorViewModelTest {
         ) {
             photoDeleteFailure?.let { throw it }
             if (photoDeleteFailureFor == timelineItemId) throw ApiException.NetworkException()
+            if (photoDeleteServerErrorFor == timelineItemId) throw ApiException.ServerException(rawCode = 500)
             deletedPhotoIds += timelineEventId to timelineItemId
         }
 

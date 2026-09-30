@@ -321,7 +321,8 @@ class TimelineEventEditorViewModel
             val editingRecordDate = unsavedTimeline()?.recordDate
             val timelineBeforeSave = observeTimelineRecordUseCase().value
             // 뺀 사진은 아래에서 서버에 반영되며 상태에서 빠지므로, 사진을 고쳤는지는 지금 잡아 둔다.
-            val removesPhotos = current.removedPhotoIds.isNotEmpty()
+            // 앞선 저장 시도에서 이미 뺀 사진도 이번 저장의 사진 수정이다.
+            val removesPhotos = current.removedPhotoIds.isNotEmpty() || current.appliedPhotoRemovalCount > 0
             updateState { copy(isSaving = true) }
             if (!uploadPendingPhotos()) {
                 updateState { copy(isSaving = false) }
@@ -329,7 +330,7 @@ class TimelineEventEditorViewModel
             }
             // PATCH 는 새 사진 추가를 실어 두 번 가면 사진이 겹친다. 다시 보내도 안전한 제거를 먼저
             // 끝내고, PATCH 는 다른 것이 모두 성공한 뒤 한 번만 보낸다.
-            if (!removeMarkedPhotos()) return
+            if (!removeMarkedPhotos(editingRecordDate)) return
 
             val readyState = state.value
             val readyForm =
@@ -338,8 +339,8 @@ class TimelineEventEditorViewModel
                     return
                 }
             // 메모만 바꾼 것은 수정으로 세지 않는다 — 메모는 완료 순간의 값으로 따로 센다.
-            val editedEventId =
-                readyState.timelineEventId?.takeIf { removesPhotos || readyState.changesContent(readyForm) }
+            // 사진 빼기의 편집 흔적은 서버에서 뺀 순간 이미 남겼다.
+            val editedEventId = readyState.timelineEventId?.takeIf { readyState.changesContent(readyForm) }
             val changedFields =
                 readyState.changedFields(readyForm).let { if (removesPhotos) it + AnalyticsEventField.PHOTO else it }
             // 신규는 id 가 없다. 같은 화면이지만 서버 경로가 갈린다. 사진만 뺐으면 보낼 수정이 없다.
@@ -414,9 +415,11 @@ class TimelineEventEditorViewModel
                     sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("같은 날짜의 작업이 진행 중이에요. 잠시 후 다시 시도해 주세요."))
                 null -> handleFailure(error)
             }
+            // 사진 빼기는 수정 요청보다 먼저 끝났다. 수정이 실패해도 그 사진은 돌아오지 않는다.
+            if (reason != TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE) notifyAppliedRemovals()
         }
 
-        private fun navigateBack() {
+        private suspend fun navigateBack() {
             if (state.value.isSaving || state.value.isDeleting) return
             // 시간 설정 시트가 열려 있으면 화면을 벗어나기 전에 시트부터 닫는다.
             if (state.value.timeSheet != null) {
@@ -426,11 +429,13 @@ class TimelineEventEditorViewModel
             if (state.value.hasUnsavedChanges) {
                 updateState { copy(isDiscardDialogVisible = true) }
             } else {
+                reportAppliedRemovalsOnLeave()
                 navigationHelper.navigateToBack()
             }
         }
 
-        private fun discardAndNavigateBack() {
+        private suspend fun discardAndNavigateBack() {
+            reportAppliedRemovalsOnLeave()
             clearEditorState()
             navigationHelper.navigateToBack()
         }
@@ -457,21 +462,25 @@ class TimelineEventEditorViewModel
          * 실패하면 그 자리에서 멈춘다. 이미 빠진 사진은 목록에서 없애고, 남은 사진은 뺀 표시를 그대로
          * 둔다 — 다시 `저장`하면 남은 것부터 이어서 뺀다(이미 없는 사진은 서버가 맞춰 준다).
          */
-        private suspend fun removeMarkedPhotos(): Boolean {
+        private suspend fun removeMarkedPhotos(editingRecordDate: LocalDate?): Boolean {
             val timelineEventId = state.value.timelineEventId ?: return true
-            var removedCount = 0
             for (timelineItemId in state.value.removedPhotoIds.toList()) {
                 val result = deleteTimelineEventPhotoUseCase(timelineEventId, timelineItemId)
                 val outcome = result.getOrNull()
                 if (outcome == null) {
-                    onPhotoRemovalFailed(timelineItemId, result.exceptionOrNull(), removedCount)
+                    onPhotoRemovalFailed(timelineItemId, result.exceptionOrNull())
                     return false
                 }
                 if (outcome == DeleteTimelineEventPhotoOutcome.EventUnavailable || !syncExistingPhotosFromSession()) {
                     showUnavailableAfterPhotoDelete()
                     return false
                 }
-                removedCount++
+                updateState { copy(appliedPhotoRemovalCount = appliedPhotoRemovalCount + 1) }
+                // 실제로 뺀 순간 남긴다. 뒤이은 수정이 실패하거나 나가 버려도 사진은 이미 바뀌었다.
+                // 이미 없던 사진을 맞춘 것(Reconciled)은 사용자가 고친 것이 아니다. 기록은 이벤트 단위 집합이라 겹치지 않는다.
+                if (outcome == DeleteTimelineEventPhotoOutcome.Deleted && editingRecordDate != null) {
+                    recordTimelineEditUseCase.edited(editingRecordDate, timelineEventId)
+                }
             }
             return true
         }
@@ -495,23 +504,48 @@ class TimelineEventEditorViewModel
         private fun onPhotoRemovalFailed(
             timelineItemId: Long,
             error: Throwable?,
-            removedCount: Int,
         ) {
             updateState { copy(isSaving = false) }
             // 사진이 아닌 항목은 다시 보내도 뺄 수 없다. 표시를 되돌려 저장이 막히지 않게 한다.
             if (error is TimelineEventPhotoDeleteException) {
                 updateState { copy(removedPhotoIds = removedPhotoIds - timelineItemId) }
             }
-            if (error is HandledException) return
+            // 세션 만료·서버 오류는 공용 안내가 이미 떴다. 그래도 되돌릴 수 없는 부분 반영은 따로 알린다.
+            if (error is HandledException) {
+                notifyAppliedRemovals()
+                return
+            }
             val reason =
                 when (error) {
                     is TimelineEventPhotoDeleteException -> "뺄 수 없는 사진이 있어 되돌렸어요."
                     is ApiException.NetworkException -> "네트워크 상태를 확인한 뒤 다시 저장해 주세요."
                     else -> "사진을 빼지 못했어요. 잠시 후 다시 저장해 주세요."
                 }
-            // 되돌릴 수 없는 부분 반영을 숨기지 않는다 — 저장하지 않고 나가도 이미 뺀 사진은 돌아오지 않는다.
-            val message = if (removedCount > 0) "$reason 먼저 뺀 사진 ${removedCount}장은 반영됐어요." else reason
-            sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar(message))
+            val applied = appliedRemovalNotice()
+            sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar(if (applied != null) "$reason $applied" else reason))
+        }
+
+        /** 저장이 끝나지 않았는데 서버에서 이미 뺀 사진이 있으면 알린다. 저장하지 않고 나가도 돌아오지 않는다. */
+        private fun notifyAppliedRemovals() {
+            appliedRemovalNotice()?.let { sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar(it)) }
+        }
+
+        private fun appliedRemovalNotice(): String? =
+            state.value.appliedPhotoRemovalCount
+                .takeIf { it > 0 }
+                ?.let { "먼저 뺀 사진 ${it}장은 이미 반영됐어요." }
+
+        /**
+         * 저장을 끝내지 않고 나가는데 서버에서 이미 뺀 사진이 있으면, 그 사진 수정을 분석에 남긴다.
+         * 편집 흔적은 뺀 순간 남겼다.
+         */
+        private suspend fun reportAppliedRemovalsOnLeave() {
+            val current = state.value
+            val timelineEventId = current.timelineEventId ?: return
+            if (current.appliedPhotoRemovalCount == 0) return
+            logUpdated(timelineEventId, setOf(AnalyticsEventField.PHOTO))
+            // 한 번만 보낸다. 같은 이벤트를 다시 열면 이 값에서 새로 센다.
+            updateState { copy(appliedPhotoRemovalCount = 0) }
         }
 
         private suspend fun deleteEvent() {

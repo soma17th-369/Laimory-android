@@ -21,6 +21,12 @@ data class TimelineEventEditorUiState(
      * 저장하지 않고 나가면 사진은 그대로다.
      */
     val removedPhotoIds: Set<Long> = emptySet(),
+    /**
+     * 저장 도중 서버에서 이미 뺀 사진 수. 저장이 끝나거나 화면을 나갈 때까지 남긴다 — 저장이 중간에
+     * 실패해도 이 사진들은 돌아오지 않으므로, 실패 안내와 버리기 확인창이 아직 저장하지 않은 빼기와
+     * 구분해 말해야 한다.
+     */
+    val appliedPhotoRemovalCount: Int = 0,
     val pendingPhotos: List<TimelineEventPendingPhoto> = emptyList(),
     val validation: TimelineEventEditorValidation = TimelineEventEditorValidation(),
     val timeSheet: TimelineEventTimeSheetState? = null,
