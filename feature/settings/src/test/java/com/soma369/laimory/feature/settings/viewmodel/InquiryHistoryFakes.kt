@@ -23,7 +23,14 @@ internal class FakeInquiryHistoryRepository : InquiryRepository {
 
     override suspend fun submit(submission: InquirySubmission) = error("사용하지 않음")
 
-    override suspend fun getMyInquiries(): List<InquirySummary> = list.getOrThrow()
+    /** 목록 조회를 끝내지 않고 붙잡아 둔다. 이전 진입의 늦은 응답을 만든다. */
+    var listGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun getMyInquiries(): List<InquirySummary> {
+        val result = list
+        listGate?.await()
+        return result.getOrThrow()
+    }
 
     override suspend fun getInquiry(inquiryId: Long): InquiryDetail {
         requestedIds += inquiryId

@@ -6,8 +6,11 @@ import com.soma369.laimory.core.domain.navigation.InquiryDetailPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.usecase.inquiry.GetMyInquiriesUseCase
 import com.soma369.laimory.feature.settings.state.InquiriesUiIntent
+import com.soma369.laimory.feature.settings.state.InquiriesUiSideEffect
 import com.soma369.laimory.feature.settings.state.InquiryListContent
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -63,6 +66,57 @@ class InquiriesViewModelTest {
             advanceUntilIdle()
 
             assertEquals(InquiryListContent.Items(listOf(inquirySummary(1))), viewModel.state.value.content)
+        }
+
+    @Test
+    fun `새로 들어오면 보관된 목록을 비운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // ViewModel 이 Activity 수명이라 로그아웃 뒤 다른 계정으로 들어와도 이전 목록이 남는다.
+            repository.list = Result.success(listOf(inquirySummary(1)))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(InquiriesUiIntent.Sync)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(InquiriesUiIntent.Opened)
+            advanceUntilIdle()
+
+            assertEquals(InquiryListContent.Loading, viewModel.state.value.content)
+        }
+
+    @Test
+    fun `이전 진입에서 시작한 요청의 결과는 새 화면에 넣지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            repository.listGate = gate
+            repository.list = Result.success(listOf(inquirySummary(1)))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(InquiriesUiIntent.Sync)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(InquiriesUiIntent.Opened)
+            advanceUntilIdle()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(InquiryListContent.Loading, viewModel.state.value.content)
+        }
+
+    @Test
+    fun `목록이 보이는 중 새로 받기에 실패하면 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.list = Result.success(listOf(inquirySummary(1)))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(InquiriesUiIntent.Sync)
+            advanceUntilIdle()
+
+            repository.list = Result.failure(ApiException.NetworkException())
+            viewModel.sendIntent(InquiriesUiIntent.Sync)
+            advanceUntilIdle()
+
+            assertEquals(
+                InquiriesUiSideEffect.ShowSnackbar("문의 내역을 새로 불러오지 못했어요. 잠시 후 다시 시도해 주세요."),
+                viewModel.sideEffect.first(),
+            )
         }
 
     @Test

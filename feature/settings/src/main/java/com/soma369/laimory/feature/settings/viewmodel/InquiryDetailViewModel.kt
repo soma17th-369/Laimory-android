@@ -28,8 +28,17 @@ class InquiryDetailViewModel
     ) : BaseMviViewModel<InquiryDetailUiState, InquiryDetailUiIntent, InquiryDetailUiSideEffect>(InquiryDetailUiState()) {
         private var loadJob: Job? = null
 
+        /** 새 진입([InquiryDetailUiIntent.Opened])이나 다른 문의로 바뀔 때마다 올린다. 이전 요청 결과는 버린다. */
+        private var generation = 0
+
         override suspend fun handleIntent(intent: InquiryDetailUiIntent) {
             when (intent) {
+                is InquiryDetailUiIntent.Opened -> {
+                    generation++
+                    loadJob?.cancel()
+                    updateState { InquiryDetailUiState() }
+                    load(intent.inquiryId)
+                }
                 is InquiryDetailUiIntent.Load -> load(intent.inquiryId)
                 InquiryDetailUiIntent.Retry -> load(state.value.inquiryId)
                 InquiryDetailUiIntent.NavigateBack -> navigationHelper.navigateToBack()
@@ -44,6 +53,7 @@ class InquiryDetailViewModel
             }
             if (state.value.inquiryId != inquiryId) {
                 // 이전 문의를 불러오던 중이면 그 결과가 새 문의 자리에 들어오지 않게 끊는다.
+                generation++
                 loadJob?.cancel()
                 updateState { InquiryDetailUiState(inquiryId = inquiryId, content = InquiryDetailContent.Loading) }
             } else if (loadJob?.isActive == true) {
@@ -51,27 +61,27 @@ class InquiryDetailViewModel
             } else if (state.value.content !is InquiryDetailContent.Loaded) {
                 updateState { copy(content = InquiryDetailContent.Loading) }
             }
+            val requestGeneration = generation
             loadJob =
-                safeLaunch(onError = { markFailure(inquiryId, it) }) {
+                safeLaunch(onError = { markFailure(requestGeneration, it) }) {
                     getInquiryDetailUseCase(inquiryId)
                         .onSuccess { detail ->
-                            updateState {
-                                if (this.inquiryId == inquiryId) copy(content = InquiryDetailContent.Loaded(detail)) else this
+                            if (requestGeneration == generation) {
+                                updateState { copy(content = InquiryDetailContent.Loaded(detail)) }
                             }
-                        }.onFailure { markFailure(inquiryId, it) }
+                        }.onFailure { markFailure(requestGeneration, it) }
                 }
         }
 
         /** 보여 주던 내용이 있으면 갱신 실패로 지우지 않는다. 찾을 수 없게 된 것은 바로 알린다. */
         private fun markFailure(
-            inquiryId: Long,
+            requestGeneration: Int,
             error: Throwable,
         ) {
-            // 다른 문의를 열며 끊은 요청이다. 실패가 아니다.
-            if (error is CancellationException) return
+            // 다른 문의를 열며 끊었거나 이전 진입에서 시작한 요청이다. 지금 화면의 실패가 아니다.
+            if (error is CancellationException || requestGeneration != generation) return
             updateState {
                 when {
-                    this.inquiryId != inquiryId -> this
                     error is InquiryNotFoundException -> copy(content = InquiryDetailContent.NotFound)
                     content is InquiryDetailContent.Loaded -> this
                     else -> copy(content = InquiryDetailContent.LoadFailed)

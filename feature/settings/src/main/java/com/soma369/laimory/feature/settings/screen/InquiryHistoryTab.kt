@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,10 +31,12 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.inquiry.InquiryStatus
 import com.soma369.laimory.core.domain.model.inquiry.InquirySummary
+import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.component.InquiryStatusChip
 import com.soma369.laimory.feature.settings.state.InquiriesUiIntent
+import com.soma369.laimory.feature.settings.state.InquiriesUiSideEffect
 import com.soma369.laimory.feature.settings.state.InquiriesUiState
 import com.soma369.laimory.feature.settings.state.InquiryListContent
 import com.soma369.laimory.feature.settings.viewmodel.InquiriesViewModel
@@ -53,6 +56,14 @@ internal fun InquiryHistoryTab(
 ) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.sendIntent(InquiriesUiIntent.Sync)
+    }
+    val snackbarHostState = LocalSnackbarHostState.current
+    LaunchedEffect(viewModel) {
+        viewModel.sideEffect.collect { effect ->
+            when (effect) {
+                is InquiriesUiSideEffect.ShowSnackbar -> snackbarHostState.showSnackbar(effect.message)
+            }
+        }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     InquiryHistoryContent(

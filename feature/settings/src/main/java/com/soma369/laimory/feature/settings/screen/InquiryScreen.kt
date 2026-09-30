@@ -50,6 +50,7 @@ import com.soma369.laimory.core.ui.component.photo.LaimoryAddPhotoTile
 import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoTile
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.settings.state.InquiriesUiIntent
 import com.soma369.laimory.feature.settings.state.InquiryUiIntent
 import com.soma369.laimory.feature.settings.state.InquiryUiSideEffect
 import com.soma369.laimory.feature.settings.state.InquiryUiState
@@ -72,6 +73,8 @@ fun InquiryRoute(
         if (!opened) {
             opened = true
             viewModel.sendIntent(InquiryUiIntent.Opened)
+            // 로그아웃 뒤 다른 계정으로 들어와도 이전 계정의 문의 목록이 보이지 않게 비운다.
+            historyViewModel.sendIntent(InquiriesUiIntent.Opened)
         }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()

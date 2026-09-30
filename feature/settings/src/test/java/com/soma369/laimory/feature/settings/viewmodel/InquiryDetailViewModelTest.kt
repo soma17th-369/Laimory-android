@@ -73,6 +73,42 @@ class InquiryDetailViewModelTest {
         }
 
     @Test
+    fun `새로 들어오면 같은 문의라도 보관된 내용을 비우고 새로 받는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 로그아웃 뒤 다른 계정으로 들어와도 같은 인스턴스가 온다. 이전 계정의 내용이 보이면 안 된다.
+            repository.details[1] = Result.success(inquiryDetail(1))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(InquiryDetailUiIntent.Opened(1))
+            advanceUntilIdle()
+
+            repository.gates[1] = CompletableDeferred()
+            viewModel.sendIntent(InquiryDetailUiIntent.Opened(1))
+            advanceUntilIdle()
+
+            assertEquals(InquiryDetailContent.Loading, viewModel.state.value.content)
+        }
+
+    @Test
+    fun `이전 진입에서 시작한 요청의 결과는 새 화면에 넣지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.details[1] = Result.success(inquiryDetail(1))
+            val gate = CompletableDeferred<Unit>()
+            repository.gates[1] = gate
+            val viewModel = createViewModel()
+            viewModel.sendIntent(InquiryDetailUiIntent.Opened(1))
+            advanceUntilIdle()
+
+            val second = CompletableDeferred<Unit>()
+            repository.gates[1] = second
+            viewModel.sendIntent(InquiryDetailUiIntent.Opened(1))
+            advanceUntilIdle()
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(InquiryDetailContent.Loading, viewModel.state.value.content)
+        }
+
+    @Test
     fun `없거나 남의 문의면 찾을 수 없다고 보여 준다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             repository.details[9] =

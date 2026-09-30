@@ -52,9 +52,18 @@ fun InquiryDetailRoute(
     inquiryId: Long?,
     viewModel: InquiryDetailViewModel = hiltViewModel(),
 ) {
-    // 다른 문의를 열면 id 가 바뀐다. ViewModel 이 Activity 수명이라 여기서 알려 줘야 이전 내용을 지운다.
+    // ViewModel 이 Activity 수명이라 새로 들어올 때마다 알려 줘야 이전 내용(다른 문의·다른 계정)을 지운다.
+    // 저장 상태에 남기므로 회전으로는 다시 비우지 않는다.
+    var openedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var opened by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(inquiryId) {
-        viewModel.sendIntent(InquiryDetailUiIntent.Load(inquiryId))
+        if (!opened || openedId != inquiryId) {
+            opened = true
+            openedId = inquiryId
+            viewModel.sendIntent(InquiryDetailUiIntent.Opened(inquiryId))
+        } else {
+            viewModel.sendIntent(InquiryDetailUiIntent.Load(inquiryId))
+        }
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     InquiryDetailScreen(
