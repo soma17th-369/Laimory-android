@@ -105,7 +105,7 @@ private fun OnboardingContent(
             .collect { page ->
                 val eligibility =
                     state.pages.getOrNull(page)?.let { currentPermissionState.eligibilityOf(it) }
-                        ?: AnalyticsOnboardingEligibility.NOT_APPLICABLE
+                        ?: AnalyticsOnboardingEligibility.UNKNOWN
                 onIntent(OnboardingUiIntent.PageChanged(page, eligibility))
             }
     }

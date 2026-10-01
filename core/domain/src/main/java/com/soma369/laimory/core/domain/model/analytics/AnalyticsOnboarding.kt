@@ -30,7 +30,7 @@ enum class AnalyticsOnboardingEntryMode {
     NAVIGATION,
 }
 
-/** 장이 보인 순간의 권한 상태. 안내 장(`intro` · `done`)은 [NOT_APPLICABLE] 이다. */
+/** 장이 보인 순간의 권한 상태. 안내 장(`intro` · `done`)은 [NOT_APPLICABLE] 이고, 판정할 수 없으면 [UNKNOWN] 이다. */
 enum class AnalyticsOnboardingEligibility {
     /** 앱 안에서 요청할 수 있다. 위치를 `사용 중에만` 허용해 `항상 허용` 이 남은 경우도 여기다. */
     NEEDS_REQUEST,
@@ -45,6 +45,9 @@ enum class AnalyticsOnboardingEligibility {
     NOT_SUPPORTED,
 
     NOT_APPLICABLE,
+
+    /** 장이나 권한을 찾지 못해 판정할 수 없다. 권한 상태를 읽지 못한 것을 다른 값으로 추정하지 않는다. */
+    UNKNOWN,
 }
 
 /** 장에서 고른 행동. */

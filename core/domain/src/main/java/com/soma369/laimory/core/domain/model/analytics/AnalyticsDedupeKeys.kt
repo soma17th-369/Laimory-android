@@ -18,11 +18,8 @@ object AnalyticsDedupeKeys {
     /** 설치 단위다. 탈퇴하면 지워, 같은 기기에서 다시 가입하면 한 번 더 나간다. */
     val SIGN_UP = AnalyticsDedupeKey("sign_up")
 
-    /** 온보딩 회차 단위다. 계정이 바뀌면 진행 상태와 함께 회차도 새로 시작한다. */
-    fun onboardingStepViewed(
-        flowId: String,
-        step: AnalyticsOnboardingStep,
-    ): AnalyticsDedupeKey = AnalyticsDedupeKey("onboarding_step_viewed:$flowId:${step.name}")
+    /** 설치(기기) 단위다. 같은 기기에서 계정을 바꿔 온보딩을 다시 해도 이미 본 장은 다시 나가지 않는다. */
+    fun onboardingStepViewed(step: AnalyticsOnboardingStep): AnalyticsDedupeKey = AnalyticsDedupeKey("onboarding_step_viewed:${step.name}")
 
     /** 장마다 처음 고른 행동만 남긴다. */
     fun onboardingStepAction(

@@ -617,6 +617,7 @@ class AnalyticsEventMapperTest {
                 AnalyticsOnboardingEligibility.SETTINGS_ONLY to "settings_only",
                 AnalyticsOnboardingEligibility.NOT_SUPPORTED to "not_supported",
                 AnalyticsOnboardingEligibility.NOT_APPLICABLE to "not_applicable",
+                AnalyticsOnboardingEligibility.UNKNOWN to "unknown",
             ),
             AnalyticsOnboardingEligibility.entries,
             "eligibility",

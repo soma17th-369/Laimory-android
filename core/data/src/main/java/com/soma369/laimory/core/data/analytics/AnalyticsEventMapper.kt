@@ -550,6 +550,7 @@ private val AnalyticsOnboardingEligibility.paramValue: String
             AnalyticsOnboardingEligibility.SETTINGS_ONLY -> "settings_only"
             AnalyticsOnboardingEligibility.NOT_SUPPORTED -> "not_supported"
             AnalyticsOnboardingEligibility.NOT_APPLICABLE -> "not_applicable"
+            AnalyticsOnboardingEligibility.UNKNOWN -> "unknown"
         }
 
 private val AnalyticsOnboardingAction.paramValue: String
