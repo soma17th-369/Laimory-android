@@ -795,7 +795,7 @@ class HomeViewModel
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
-                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate, AnalyticsEntryPoint.HOME))
+                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
