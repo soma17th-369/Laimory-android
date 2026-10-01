@@ -45,7 +45,6 @@ import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineEventEditorUiSideEffect
 import com.soma369.laimory.feature.timeline.state.TimelineEventExistingPhoto
-import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventPhotoUploadState
 import com.soma369.laimory.feature.timeline.state.TimelineEventTimeField
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -151,103 +150,218 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
-    fun `기존 사진은 확인 직후 삭제하고 미저장 폼 변경을 유지한다`() =
+    fun `저장된 사진을 빼면 화면에서만 빠지고 서버에는 보내지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 제목·시간·메모처럼 `저장` 때 반영한다. 빼는 순간 서버를 부르면 저장하지 않고 나가도 되돌릴 수 없다.
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.deletedPhotoIds.isEmpty())
+            assertEquals(listOf(2L), viewModel.state.value.visibleExistingPhotos.map { it.timelineItemId })
+            assertEquals(listOf(1L, 2L), sessionRepository.eventItems().map(TimelineItem::timelineItemId))
+            assertTrue(viewModel.state.value.hasUnsavedChanges)
+            assertTrue(viewModel.state.value.isSaveEnabled)
+        }
+
+    @Test
+    fun `사진을 빼고 저장하지 않고 나가면 사진은 그대로다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = initializedViewModel()
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정 중인 제목"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
 
-            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
-            runCurrent()
-            assertTrue(viewModel.state.value.photoDeleteDialogState is TimelineEventPhotoDeleteDialogState.Confirmation)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.isDiscardDialogVisible)
 
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDiscard)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.deletedPhotoIds.isEmpty())
+            assertEquals(listOf(1L, 2L), sessionRepository.eventItems().map(TimelineItem::timelineItemId))
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `저장하면 뺀 사진을 먼저 서버에서 빼고 수정은 한 번만 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정된 출근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(2L))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L, EVENT_ID to 2L), recordRepository.deletedPhotoIds)
+            assertEquals("수정된 출근길", recordRepository.commands.single().title)
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `사진만 뺐으면 수정 요청은 보내지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
             assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
-            assertEquals(listOf(2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
-            assertEquals(listOf(2L), sessionRepository.eventItems().map(TimelineItem::timelineItemId))
-            assertEquals("수정 중인 제목", viewModel.state.value.form?.title)
-            assertTrue(viewModel.state.value.hasUnsavedChanges)
-            assertEquals(TimelineEventPhotoDeleteDialogState.Hidden, viewModel.state.value.photoDeleteDialogState)
+            assertTrue(recordRepository.commands.isEmpty())
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `사진 빼기가 중간에 실패하면 멈추고, 다시 저장하면 남은 것부터 이어서 뺀다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 수정 요청은 새 사진 추가를 실어 두 번 가면 사진이 겹친다. 빼기가 끝나기 전에는 보내지 않는다.
+            recordRepository.photoDeleteFailureFor = 2L
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정 중인 제목"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(2L))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
+            assertTrue(recordRepository.commands.isEmpty())
+            with(viewModel.state.value) {
+                assertFalse(isSaving)
+                assertEquals(listOf(2L), existingPhotos.map { it.timelineItemId })
+                assertEquals(setOf(2L), removedPhotoIds)
+                assertEquals("수정 중인 제목", form?.title)
+            }
             assertEquals(
-                TimelineEventEditorUiSideEffect.ShowSnackbar("사진을 이벤트에서 제거했어요."),
+                TimelineEventEditorUiSideEffect.ShowSnackbar(
+                    "네트워크 상태를 확인한 뒤 다시 저장해 주세요. 먼저 뺀 사진 1장은 이미 반영됐어요.",
+                ),
+                viewModel.sideEffect.first(),
+            )
+
+            recordRepository.photoDeleteFailureFor = null
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L, EVENT_ID to 2L), recordRepository.deletedPhotoIds)
+            assertEquals(1, recordRepository.commands.size)
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `사진 빼기가 서버 오류로 멈춰도 이미 뺀 사진은 따로 알리고 버리기 창이 구분한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버 오류는 공용 안내로 감싸진다. 그래도 되돌릴 수 없는 부분 반영은 따로 알려야 한다.
+            recordRepository.photoDeleteServerErrorFor = 2L
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(2L))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("먼저 뺀 사진 1장은 이미 반영됐어요."),
+                viewModel.sideEffect.first(),
+            )
+            with(viewModel.state.value) {
+                assertEquals(1, appliedPhotoRemovalCount)
+                assertEquals(setOf(2L), removedPhotoIds)
+            }
+        }
+
+    @Test
+    fun `사진을 다 뺀 뒤 수정이 실패해도 이미 뺀 사진을 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정된 출근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
+            assertEquals(1, viewModel.state.value.appliedPhotoRemovalCount)
+            // 수정 실패 자체는 공용 오류 안내가 맡는다. 화면은 되돌릴 수 없는 부분 반영을 따로 알린다.
+            assertEquals(
+                TimelineEventEditorUiSideEffect.ShowSnackbar("먼저 뺀 사진 1장은 이미 반영됐어요."),
                 viewModel.sideEffect.first(),
             )
         }
 
     @Test
-    fun `사진 삭제 404는 DailyRecord를 재조회해 기존 사진 상태를 동기화한다`() =
+    fun `수정이 실패한 뒤 다시 저장해도 이미 뺀 사진의 편집 흔적과 사진 수정이 남는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 다시 저장할 땐 뺄 사진이 남아 있지 않다. 메모만 보이더라도 사진을 고친 사실을 잃으면 안 된다.
+            recordRepository.failure = ApiException.NetworkException()
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo("메모"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+            assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.edited)
+
+            recordRepository.failure = null
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.edited)
+            val updated = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineEventUpdated>().single()
+            assertTrue(AnalyticsEventField.PHOTO in updated.changedFields)
+        }
+
+    @Test
+    fun `이미 뺀 사진이 있는 채로 버리고 나가면 사진 수정을 한 번 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.photoDeleteFailureFor = 2L
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(2L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDiscard)
+            advanceUntilIdle()
+
+            val updated = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineEventUpdated>().single()
+            assertEquals(setOf(AnalyticsEventField.PHOTO), updated.changedFields)
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `이미 없는 사진은 기록을 다시 읽어 맞추고 저장을 이어 간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.photoDeleteFailure = ApiException.ClientException(errorCode = -404, rawCode = 404)
             recordRepository.dailyRecord = timeline().copy(events = listOf(event().copy(items = event().items.drop(1))))
             val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
 
-            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
             assertEquals(LocalDate.of(2026, 5, 8), recordRepository.requestedRecordDate)
-            assertEquals(listOf(2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
-            assertEquals(
-                TimelineEventEditorUiSideEffect.ShowSnackbar("사진 목록을 최신 상태로 갱신했어요."),
-                viewModel.sideEffect.first(),
-            )
+            assertEquals(1, navigationHelper.backCount)
         }
 
     @Test
-    fun `사진 삭제에 SAVED 충돌이 와도 읽기 전용으로 전환하지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.photoDeleteFailure = ApiException.ConflictException(errorCode = -1003, rawCode = 409)
-            val viewModel = initializedViewModel()
-
-            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
-            advanceUntilIdle()
-
-            // 서버가 SAVED 에서도 사진 연결 해제를 허용하므로 -1003 전용 분기를 두지 않는다.
-            assertEquals(listOf(1L, 2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
-            assertTrue(viewModel.state.value.photoDeleteDialogState is TimelineEventPhotoDeleteDialogState.RetryableError)
-        }
-
-    @Test
-    fun `사진 삭제 네트워크 실패는 사진과 폼을 유지하고 재시도할 수 있다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            recordRepository.photoDeleteFailure = ApiException.NetworkException()
-            val viewModel = initializedViewModel()
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("수정 중인 제목"))
-
-            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
-            advanceUntilIdle()
-
-            val failureState = viewModel.state.value.photoDeleteDialogState
-            assertTrue(failureState is TimelineEventPhotoDeleteDialogState.RetryableError)
-            assertEquals(listOf(1L, 2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
-            assertEquals("수정 중인 제목", viewModel.state.value.form?.title)
-
-            recordRepository.photoDeleteFailure = null
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
-            advanceUntilIdle()
-
-            assertEquals(listOf(EVENT_ID to 1L), recordRepository.deletedPhotoIds)
-            assertEquals(listOf(2L), viewModel.state.value.existingPhotos.map { it.timelineItemId })
-            assertEquals("수정 중인 제목", viewModel.state.value.form?.title)
-        }
-
-    @Test
-    fun `사진 삭제 404 재조회에서 Event가 없으면 수정 불가 상태로 전환한다`() =
+    fun `사진을 빼다 이벤트가 없어졌으면 수정 불가 상태로 전환한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.photoDeleteFailure = ApiException.ClientException(errorCode = -404, rawCode = 404)
             recordRepository.dailyRecord = timeline().copy(events = emptyList())
             val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
 
-            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
             assertEquals(TimelineEventEditorUiContent.Unavailable, viewModel.state.value.content)
-            assertEquals(TimelineEventPhotoDeleteDialogState.Hidden, viewModel.state.value.photoDeleteDialogState)
+            assertFalse(viewModel.state.value.isSaving)
+            assertTrue(recordRepository.commands.isEmpty())
             assertEquals(
                 TimelineEventEditorUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요."),
                 viewModel.sideEffect.first(),
@@ -951,12 +1065,12 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
-    fun `사진을 빼면 고친 이벤트로 남긴다`() =
+    fun `사진을 빼고 저장하면 고친 이벤트로 남긴다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = initializedViewModel()
 
-            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
             assertEquals(listOf(RECORD_DATE to EVENT_ID), editLogRepository.edited)
@@ -1067,12 +1181,12 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
-    fun `사진을 빼면 사진 수정 한 건을 바로 보낸다`() =
+    fun `사진을 빼고 저장하면 사진 수정 한 건을 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = initializedViewModel()
 
-            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestExistingPhotoRemoval(1L))
-            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmExistingPhotoRemoval)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RemoveExistingPhoto(1L))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
             val updated = analyticsHelper.logged.single() as AnalyticsEvent.TimelineEventUpdated
@@ -1197,6 +1311,12 @@ class TimelineEventEditorViewModelTest {
         val deletedPhotoIds = mutableListOf<Pair<Long, Long>>()
         var failure: ApiException? = null
         var photoDeleteFailure: ApiException? = null
+
+        /** 이 사진을 뺄 때만 실패한다. 여러 장 중 일부만 실패하는 경우를 만든다. */
+        var photoDeleteFailureFor: Long? = null
+
+        /** 이 사진을 뺄 때 서버 오류(500)로 실패한다. 공용 오류 안내로 감싸지는 경로를 만든다. */
+        var photoDeleteServerErrorFor: Long? = null
         var dailyRecordFailure: ApiException? = null
         var dailyRecord: DailyTimeline = timeline()
         var requestedRecordDate: LocalDate? = null
@@ -1240,6 +1360,8 @@ class TimelineEventEditorViewModelTest {
             timelineItemId: Long,
         ) {
             photoDeleteFailure?.let { throw it }
+            if (photoDeleteFailureFor == timelineItemId) throw ApiException.NetworkException()
+            if (photoDeleteServerErrorFor == timelineItemId) throw ApiException.ServerException(rawCode = 500)
             deletedPhotoIds += timelineEventId to timelineItemId
         }
 

@@ -21,6 +21,19 @@ sealed interface SettingsUiIntent : UiIntent {
     /** `앱 설정 > 테마`. */
     data object ThemeSettingsClicked : SettingsUiIntent
 
+    /** `지원 > 공지사항`. */
+    data object NoticesClicked : SettingsUiIntent
+
+    /** `지원 > 문의하기`. */
+    data object InquiryClicked : SettingsUiIntent
+
+    /**
+     * 화면 진입·복귀. 새 공지 표시를 다시 판정한다.
+     *
+     * 공지 목록에서 읽고 돌아오면 사라지고, 기간이 지나도 사라져야 하므로 한 번 정해 두지 않는다.
+     */
+    data object RefreshNoticeBadge : SettingsUiIntent
+
     /**
      * 위치 자동 수집을 켜거나 끈다.
      *

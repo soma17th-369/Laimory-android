@@ -222,6 +222,38 @@ data object ThemeSettingsPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/** 설정 > 지원 > 공지사항. 목록만 앱이 그리고 원문은 게시된 페이지를 브라우저로 연다. */
+data object NoticesPage : Page {
+    const val PATH = "/settings/notices"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+/** 설정 > 지원 > 문의하기. 접수만 있고 답변은 입력한 이메일로 온다. */
+data object InquiryPage : Page {
+    const val PATH = "/settings/inquiry"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
+/** 문의 화면 `문의 내역` 탭의 한 건. */
+data class InquiryDetailPage(
+    val inquiryId: Long,
+) : Page {
+    override fun toRoute(): NavRoute =
+        NavRoute(
+            path = PATH,
+            args = mapOf(INQUIRY_ID_ARG to inquiryId.toString()),
+        )
+
+    companion object {
+        const val PATH = "/settings/inquiries/detail"
+        const val INQUIRY_ID_ARG = "inquiryId"
+
+        fun inquiryIdFrom(args: Map<String, String>): Long? = args[INQUIRY_ID_ARG]?.toLongOrNull()
+    }
+}
+
 data object CalendarPage : Page {
     const val PATH = "/calendar"
 

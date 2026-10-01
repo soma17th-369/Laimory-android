@@ -28,4 +28,7 @@ sealed interface UserMessage {
      * 재인증이 필요한 종료 상태로만 알린다.
      */
     data object AccountWithdrawalUnverified : UserMessage
+
+    /** 문의 접수 완료. 문의 화면을 닫은 뒤 설정 화면에서 보이도록 앱 전역으로 띄운다. */
+    data object InquirySubmitted : UserMessage
 }

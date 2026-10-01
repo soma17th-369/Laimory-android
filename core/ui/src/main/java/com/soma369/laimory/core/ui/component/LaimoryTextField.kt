@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +52,7 @@ fun LaimoryTextField(
     singleLine: Boolean = true,
     fieldHeight: Dp = TextFieldHeight,
     focusRequester: FocusRequester? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
@@ -68,6 +70,7 @@ fun LaimoryTextField(
         isFocused = isFocused,
         interactionSource = interactionSource,
         focusRequester = focusRequester,
+        keyboardOptions = keyboardOptions,
         modifier = modifier,
     )
 }
@@ -87,6 +90,7 @@ private fun LaimoryTextFieldLayout(
     isFocused: Boolean,
     interactionSource: MutableInteractionSource,
     focusRequester: FocusRequester?,
+    keyboardOptions: KeyboardOptions,
     modifier: Modifier = Modifier,
 ) {
     val isError = error != null
@@ -131,6 +135,7 @@ private fun LaimoryTextFieldLayout(
                     ),
             enabled = enabled,
             singleLine = singleLine,
+            keyboardOptions = keyboardOptions,
             textStyle = MaterialTheme.typography.bodyMedium.merge(TextStyle(color = visuals.contentColor)),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             interactionSource = interactionSource,
@@ -229,6 +234,7 @@ private fun TextFieldPreviewItem(state: PreviewState) {
         isFocused = state == PreviewState.Focused,
         interactionSource = remember { MutableInteractionSource() },
         focusRequester = null,
+        keyboardOptions = KeyboardOptions.Default,
     )
 }
 

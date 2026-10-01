@@ -16,6 +16,8 @@ data class SettingsUiState(
     val termLinks: TermLinks = TermLinks(),
     /** 위치 자동 수집을 사용자가 켜 둔 상태인지. 끈 적이 없으면 참이므로 기본값도 참이다. */
     val isLocationCollectionEnabled: Boolean = true,
+    /** `공지사항` 줄에 새 공지 표시를 띄울지. 모르면 띄우지 않는다. */
+    val hasNewNotice: Boolean = false,
 ) : UiState {
     /** 계정 관련 동작 하나가 진행 중이면 나머지 항목도 잠근다. */
     val isAccountActionInProgress: Boolean get() = isLoggingOut || isWithdrawing

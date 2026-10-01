@@ -12,7 +12,9 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
+import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
+import com.soma369.laimory.core.domain.navigation.NoticesPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
@@ -20,6 +22,7 @@ import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
@@ -51,6 +54,7 @@ class SettingsViewModel
         private val messageHelper: MessageHelper,
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val getPublicTermLinks: GetPublicTermLinksUseCase,
+        private val hasNewNotice: HasNewNoticeUseCase,
         observeLocationTracking: ObserveLocationTrackingUseCase,
         private val setLocationTracking: SetLocationTrackingUseCase,
         private val logPermissionEvent: LogPermissionEventUseCase,
@@ -78,6 +82,14 @@ class SettingsViewModel
                 observeLocationTracking().collect { enabled ->
                     updateState { copy(isLocationCollectionEnabled = enabled) }
                 }
+            }
+        }
+
+        /** 공지를 새로 받아야 해서 다른 화면 동작을 기다리게 하지 않도록 따로 띄운다. */
+        private fun refreshNoticeBadge() {
+            safeLaunch {
+                val hasNew = hasNewNotice()
+                updateState { copy(hasNewNotice = hasNew) }
             }
         }
 
@@ -120,6 +132,9 @@ class SettingsViewModel
                     navigationHelper.navigateTo(NotificationSettingsPage)
                 SettingsUiIntent.ThemeSettingsClicked ->
                     navigationHelper.navigateTo(ThemeSettingsPage)
+                SettingsUiIntent.NoticesClicked -> navigationHelper.navigateTo(NoticesPage)
+                SettingsUiIntent.InquiryClicked -> navigationHelper.navigateTo(InquiryPage)
+                SettingsUiIntent.RefreshNoticeBadge -> refreshNoticeBadge()
                 is SettingsUiIntent.LocationCollectionToggled -> setLocationTracking(intent.enabled)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit

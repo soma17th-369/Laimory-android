@@ -69,13 +69,10 @@ sealed interface TimelineEventEditorUiIntent : UiIntent {
         val rawId: String,
     ) : TimelineEventEditorUiIntent
 
-    data class RequestExistingPhotoRemoval(
+    /** 저장된 사진을 뺀다. 서버에는 `저장` 때 반영된다. */
+    data class RemoveExistingPhoto(
         val timelineItemId: Long,
     ) : TimelineEventEditorUiIntent
-
-    data object ConfirmExistingPhotoRemoval : TimelineEventEditorUiIntent
-
-    data object DismissExistingPhotoRemoval : TimelineEventEditorUiIntent
 
     data object OpenPhotoPicker : TimelineEventEditorUiIntent
 

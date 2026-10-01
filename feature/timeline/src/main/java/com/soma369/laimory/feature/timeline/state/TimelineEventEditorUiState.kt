@@ -16,16 +16,30 @@ data class TimelineEventEditorUiState(
     val originalForm: TimelineEventEditorForm? = null,
     val form: TimelineEventEditorForm? = null,
     val existingPhotos: List<TimelineEventExistingPhoto> = emptyList(),
+    /**
+     * X 로 뺀 저장된 사진. 화면에서만 빠지고 서버에서는 `저장` 때 뺀다 — 제목·시간·메모와 같은 규칙이라
+     * 저장하지 않고 나가면 사진은 그대로다.
+     */
+    val removedPhotoIds: Set<Long> = emptySet(),
+    /**
+     * 저장 도중 서버에서 이미 뺀 사진 수. 저장이 끝나거나 화면을 나갈 때까지 남긴다 — 저장이 중간에
+     * 실패해도 이 사진들은 돌아오지 않으므로, 실패 안내와 버리기 확인창이 아직 저장하지 않은 빼기와
+     * 구분해 말해야 한다.
+     */
+    val appliedPhotoRemovalCount: Int = 0,
     val pendingPhotos: List<TimelineEventPendingPhoto> = emptyList(),
     val validation: TimelineEventEditorValidation = TimelineEventEditorValidation(),
     val timeSheet: TimelineEventTimeSheetState? = null,
     val isSaving: Boolean = false,
     val isDiscardDialogVisible: Boolean = false,
     val deleteDialogState: TimelineDeleteDialogState = TimelineDeleteDialogState.Hidden,
-    val photoDeleteDialogState: TimelineEventPhotoDeleteDialogState = TimelineEventPhotoDeleteDialogState.Hidden,
 ) : UiState {
     val hasUnsavedChanges: Boolean
-        get() = originalForm != null && (form != originalForm || pendingPhotos.isNotEmpty())
+        get() = originalForm != null && (form != originalForm || pendingPhotos.isNotEmpty() || removedPhotoIds.isNotEmpty())
+
+    /** 화면에 보일 저장된 사진. 뺀 사진은 저장 전이라도 보이지 않는다. */
+    val visibleExistingPhotos: List<TimelineEventExistingPhoto>
+        get() = existingPhotos.filterNot { it.timelineItemId in removedPhotoIds }
 
     val isSaveEnabled: Boolean
         get() =
@@ -33,14 +47,10 @@ data class TimelineEventEditorUiState(
                 form?.title?.isNotBlank() == true &&
                 hasUnsavedChanges &&
                 !isSaving &&
-                deleteDialogState == TimelineDeleteDialogState.Hidden &&
-                photoDeleteDialogState == TimelineEventPhotoDeleteDialogState.Hidden
+                deleteDialogState == TimelineDeleteDialogState.Hidden
 
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
-
-    val isDeletingPhoto: Boolean
-        get() = photoDeleteDialogState is TimelineEventPhotoDeleteDialogState.Deleting
 }
 
 @Immutable
@@ -75,24 +85,6 @@ data class TimelineEventExistingPhoto(
     val timelineItemId: Long,
     val photoUrl: String?,
 )
-
-@Immutable
-sealed interface TimelineEventPhotoDeleteDialogState {
-    data object Hidden : TimelineEventPhotoDeleteDialogState
-
-    data class Confirmation(
-        val photo: TimelineEventExistingPhoto,
-    ) : TimelineEventPhotoDeleteDialogState
-
-    data class Deleting(
-        val photo: TimelineEventExistingPhoto,
-    ) : TimelineEventPhotoDeleteDialogState
-
-    data class RetryableError(
-        val photo: TimelineEventExistingPhoto,
-        val message: String,
-    ) : TimelineEventPhotoDeleteDialogState
-}
 
 enum class TimelineEventPhotoUploadState {
     PENDING,

@@ -19,15 +19,20 @@ import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
+import com.soma369.laimory.core.domain.model.notice.NewNoticePolicy
+import com.soma369.laimory.core.domain.model.notice.Notice
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.model.user.UserProfile
+import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
+import com.soma369.laimory.core.domain.navigation.NoticesPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
+import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.UserRepository
@@ -36,6 +41,7 @@ import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
@@ -60,6 +66,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.Clock
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
@@ -74,6 +83,37 @@ class SettingsViewModelTest {
     private val userRepository = FakeUserRepository()
     private val locationTrackingRepository = FakeLocationTrackingRepository()
     private val analyticsHelper = RecordingAnalyticsHelper()
+    private val noticeRepository = FakeNoticeRepository()
+
+    @Test
+    fun `읽지 않은 최근 공지가 있으면 공지사항 줄에 표시를 띄우고, 읽고 돌아오면 지운다`() =
+        runTest {
+            noticeRepository.notices = listOf(recentNotice(1))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshNoticeBadge)
+            runCurrent()
+            assertTrue(viewModel.state.value.hasNewNotice)
+
+            noticeRepository.readIds = setOf(1)
+            viewModel.sendIntent(SettingsUiIntent.RefreshNoticeBadge)
+            runCurrent()
+            assertFalse(viewModel.state.value.hasNewNotice)
+        }
+
+    @Test
+    fun `공지를 받지 못하면 표시를 띄우지 않는다`() =
+        runTest {
+            noticeRepository.failure = IllegalStateException("offline")
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshNoticeBadge)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.hasNewNotice)
+        }
 
     @Test
     fun `약관 주소를 못 받으면 화면이 뜰 때마다 다시 묻는다`() =
@@ -90,6 +130,30 @@ class SettingsViewModelTest {
             runCurrent()
 
             assertEquals(2, EmptyTermsRepository.fetchCount)
+        }
+
+    @Test
+    fun `공지사항을 누르면 공지 목록으로 간다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.NoticesClicked)
+            runCurrent()
+
+            assertEquals(listOf<Page>(NoticesPage), navigationHelper.navigatedTo)
+        }
+
+    @Test
+    fun `문의하기를 누르면 문의 화면으로 간다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.InquiryClicked)
+            runCurrent()
+
+            assertEquals(listOf<Page>(InquiryPage), navigationHelper.navigatedTo)
         }
 
     @Test
@@ -464,6 +528,7 @@ class SettingsViewModelTest {
             messageHelper = messageHelper,
             globalLoadingHelper = globalLoadingHelper,
             getPublicTermLinks = GetPublicTermLinksUseCase(EmptyTermsRepository),
+            hasNewNotice = HasNewNoticeUseCase(noticeRepository, NewNoticePolicy(Clock.systemUTC())),
             observeLocationTracking = ObserveLocationTrackingUseCase(locationTrackingRepository),
             setLocationTracking = SetLocationTrackingUseCase(locationTrackingRepository),
             logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
@@ -527,6 +592,33 @@ class SettingsViewModelTest {
         }
 
         override suspend fun reconcile() = Unit
+    }
+
+    /** 지금 막 올라온 공지. 실제 시계로 판정하므로 기간 안에 들게 현재 시각을 쓴다. */
+    private fun recentNotice(id: Long) =
+        Notice(
+            id = id,
+            title = "공지 $id",
+            contentUrl = "https://www.laimory.app/notices/$id",
+            publishedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul")),
+        )
+
+    private class FakeNoticeRepository : NoticeRepository {
+        var notices: List<Notice> = emptyList()
+        var readIds: Set<Long> = emptySet()
+        var failure: Throwable? = null
+
+        override suspend fun getNotices(): List<Notice> {
+            failure?.let { throw it }
+            return notices
+        }
+
+        override suspend fun getReadNoticeIds(): Set<Long> = readIds
+
+        override suspend fun markRead(
+            noticeId: Long,
+            keepIds: Set<Long>,
+        ) = Unit
     }
 
     /** 약관 주소는 정보 항목이 여는 곁가지라 조회가 비어도 계정 동작이 달라지지 않는다. */
@@ -641,8 +733,11 @@ class SettingsViewModelTest {
 
     private class FakeNavigationHelper : NavigationHelper {
         var replacedRoot: Page? = null
+        val navigatedTo = mutableListOf<Page>()
 
-        override fun navigateTo(page: Page) = Unit
+        override fun navigateTo(page: Page) {
+            navigatedTo += page
+        }
 
         override fun replaceRoot(page: Page) {
             replacedRoot = page
