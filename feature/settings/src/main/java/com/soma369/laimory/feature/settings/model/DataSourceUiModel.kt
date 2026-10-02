@@ -1,11 +1,11 @@
 package com.soma369.laimory.feature.settings.model
 
 import androidx.annotation.DrawableRes
+import com.soma369.laimory.core.ui.permission.DataDisclosure
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataPermissionAction
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.permission.HealthDataSource
-import com.soma369.laimory.core.ui.permission.LocationDisclosure
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.R as CoreUiR
 
@@ -34,7 +34,8 @@ enum class DataSourceUiModel(
         permission = DataPermission.PHOTO,
         label = "사진",
         iconRes = CoreUiR.drawable.ico_setting_datasource_photo,
-        purpose = "촬영 시각과 위치로 그날의 순간을 타임라인에 놓아요. 기기에 저장된 사진을 읽기만 합니다.",
+        // 사진은 촬영 위치까지 읽는다. 위치와 같은 공용 수집 고지를 써서 요청 버튼 바로 위에서 밝힌다.
+        purpose = DataDisclosure.PHOTO.body,
         details =
             listOf(
                 "전체 허용이 부담스러우면 고른 사진만 허용해도 돼요.",
@@ -56,9 +57,9 @@ enum class DataSourceUiModel(
         permission = DataPermission.LOCATION,
         label = "위치",
         iconRes = CoreUiR.drawable.ico_setting_datasource_location,
-        // 위치만 공용 수집 고지를 쓴다. 이 시트가 권한 요청 버튼 바로 위라, 요청 직전 고지(Play 정책)를
-        // 겸한다 — 다른 자리와 문구가 갈리면 한 곳만 고쳐져 다시 걸린다.
-        purpose = LocationDisclosure.BODY,
+        // 공용 수집 고지를 쓴다. 이 시트가 권한 요청 버튼 바로 위라, 요청 직전 고지(Play 정책)를 겸한다 —
+        // 다른 자리와 문구가 갈리면 한 곳만 고쳐져 다시 걸린다.
+        purpose = DataDisclosure.LOCATION.body,
         details =
             listOf(
                 "앱을 보고 있지 않은 동안에도 이으려면 '항상 허용'이 필요해요.",
