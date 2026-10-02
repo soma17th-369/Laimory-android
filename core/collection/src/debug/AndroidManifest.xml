@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        건강 수집(Health Connect)은 debug 에서만 선언한다.
+
+        release 는 건강을 화면에서 숨겨 두었다(`HealthDataSource.isEnabled`). 그런데 권한이 매니페스트에
+        남아 있으면 Play 심사는 "쓰지 않는 기능에 건강 데이터를 요청한다"로 보고 거부한다 — 화면 플래그는
+        심사 대상이 아니고 선언이 대상이다. 수집기·자동 수집 조율자는 권한이 없으면 건너뛰므로 release 의
+        동작은 달라지지 않는다.
+
+        qa 는 이 모듈의 release 변종을 쓰므로(app 의 matchingFallbacks) 함께 빠진다. release 에서 다시 켤
+        때는 Play Console 의 Health Connect 권한 신고와 함께 main 으로 옮긴다. app 모듈 debug 매니페스트의
+        권한 rationale 화면 선언도 같이 옮겨야 한다.
+    -->
+
+    <!-- 초기 범위 걸음수·수면. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <!-- 수면 기록(HC 프로듀서). Sleep API 감지·사용자 입력분을 HC 에 써넣는다(에픽 #142). -->
+    <uses-permission android:name="android.permission.health.WRITE_SLEEP" />
+    <!-- 백그라운드 HC 읽기(HC 1.1+). 자동 감지가 백그라운드 receiver 에서 외부 수면 dedup read 를 하므로 필요. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+
+    <!-- 패키지 visibility(Android 11+). Health Connect 앱. -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
+</manifest>
