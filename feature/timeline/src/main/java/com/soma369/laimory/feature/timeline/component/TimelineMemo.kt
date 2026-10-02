@@ -361,7 +361,7 @@ private fun MemoInputLine(
         BasicTextField(
             value = textFieldValue,
             onValueChange = { value ->
-                val limited = value.limitedToMemoLength(previousLength = textFieldValue.text.length)
+                val limited = value.limitedToMemoLength(previousText = textFieldValue.text)
                 textFieldValue = limited
                 onValueChange(limited.text)
             },
@@ -432,22 +432,21 @@ private fun MemoUnderline(
 }
 
 /**
- * 상한을 넘긴 입력을 잘라 낸다. [previousLength] 는 입력 직전 글자 수다.
+ * 상한을 넘긴 입력을 잘라 낸다. [previousText] 는 입력 직전 글이다.
  *
  * 붙여넣기를 통째로 거절하는 대신 상한까지만 받는다 — 거절하면 무엇이 왜 안 들어갔는지 알 길이
  * 없다. 넘긴 사실은 입력칸 아래 글자 수([MemoCounter])가 알린다.
  *
- * 한도보다 길게 저장된 옛 메모는 지금 길이까지 받는다([TimelineEventMemoPolicy.allowedLength]).
- * 그렇지 않으면 열자마자 한도로 잘려 저장 때 뒷부분이 사라진다.
+ * **새로 들어온 구간만** 줄인다([TimelineEventMemoPolicy.limitInput]). 글 전체를 끝에서 자르면 앞·
+ * 중간에 넣을 때 기존 글의 끝이 사라지고, 포커스가 빠질 때 그대로 저장된다. 한도보다 길게 저장된
+ * 옛 메모도 같은 규칙으로 지금 길이까지 받는다.
  */
-private fun TextFieldValue.limitedToMemoLength(previousLength: Int): TextFieldValue {
-    val allowed = TimelineEventMemoPolicy.allowedLength(previousLength)
-    if (text.length <= allowed) return this
-    val limited = text.take(allowed)
-    return copy(
-        text = limited,
-        selection = TextRange(selection.start.coerceAtMost(limited.length), selection.end.coerceAtMost(limited.length)),
-    )
+private fun TextFieldValue.limitedToMemoLength(previousText: String): TextFieldValue {
+    val limited = TimelineEventMemoPolicy.limitInput(previous = previousText, next = text)
+    if (limited == text) return this
+    // 커서는 붙여넣은 글 끝에 서 있었으니 줄어든 만큼 당긴다.
+    val cursor = (selection.end - (text.length - limited.length)).coerceIn(0, limited.length)
+    return copy(text = limited, selection = TextRange(cursor))
 }
 
 private suspend fun WindowInsets.awaitSettled(density: Density) {
