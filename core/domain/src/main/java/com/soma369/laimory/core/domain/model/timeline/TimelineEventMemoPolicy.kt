@@ -34,12 +34,16 @@ object TimelineEventMemoPolicy {
         val commonLimit = minOf(previous.length, next.length)
         var prefix = 0
         while (prefix < commonLimit && previous[prefix] == next[prefix]) prefix++
+        // 겹침이 서로게이트 쌍 한가운데서 끝나면(앞 절반만 같은 서로 다른 이모지) 쌍 앞으로 물린다.
+        if (prefix > 0 && previous[prefix - 1].isHighSurrogate()) prefix--
         var suffix = 0
         while (suffix < commonLimit - prefix && previous[previous.length - 1 - suffix] == next[next.length - 1 - suffix]) suffix++
+        // 뒤쪽은 반대로, 뒤 절반만 같은 서로 다른 이모지가 겹침으로 남지 않게 쌍 뒤로 물린다.
+        if (suffix > 0 && next[next.length - suffix].isLowSurrogate()) suffix--
         val insertedLength = next.length - prefix - suffix
         // 한도는 이전 길이 이상이라 넘친 양은 늘어난 양보다 클 수 없고, 늘어난 양은 새 구간보다 클 수 없다.
         var kept = insertedLength - overflow
-        // 줄이다 서로게이트 쌍의 앞 절반만 남기면 깨진 글자가 된다.
+        // 새 구간을 줄이다 서로게이트 쌍의 앞 절반만 남기면 깨진 글자가 된다.
         if (kept > 0 && next[prefix + kept - 1].isHighSurrogate()) kept--
         return next.substring(0, prefix + kept) + next.substring(next.length - suffix)
     }

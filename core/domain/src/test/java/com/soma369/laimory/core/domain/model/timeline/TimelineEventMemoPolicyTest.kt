@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.domain.model.timeline
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class TimelineEventMemoPolicyTest {
@@ -75,11 +77,51 @@ class TimelineEventMemoPolicyTest {
     }
 
     @Test
+    fun `뒤 절반만 같은 다른 이모지로 바꿔도 반쪽 이모지가 남지 않는다`() {
+        // 🔔(D83D DD14) 와 🤔(D83E DD14) 는 하위 서로게이트가 같다. 그 반쪽을 공통 접미부로 두면 깨진다.
+        val head = "가".repeat(TimelineEventMemoPolicy.MAX_LENGTH - 2)
+        val previous = "$head🔔"
+
+        val limited = TimelineEventMemoPolicy.limitInput(previous = previous, next = "${head}x🤔")
+
+        assertEquals("${head}x", limited)
+        assertNoLoneSurrogate(limited)
+    }
+
+    @Test
+    fun `앞 절반만 같은 다른 이모지로 바꿔도 반쪽 이모지가 남지 않는다`() {
+        // 🔔(D83D DD14) 와 🔕(D83D DD15) 는 상위 서로게이트가 같다.
+        val head = "가".repeat(TimelineEventMemoPolicy.MAX_LENGTH - 2)
+        val previous = "$head🔔"
+
+        val limited = TimelineEventMemoPolicy.limitInput(previous = previous, next = "$head🔕z")
+
+        assertEquals("$head🔕", limited)
+        assertNoLoneSurrogate(limited)
+    }
+
+    @Test
     fun `줄이다 이모지가 반쪽만 남지 않는다`() {
         val previous = "가".repeat(TimelineEventMemoPolicy.MAX_LENGTH - 1)
 
         val limited = TimelineEventMemoPolicy.limitInput(previous = previous, next = previous + "😀")
 
         assertEquals(previous, limited)
+        assertNoLoneSurrogate(limited)
+    }
+
+    private fun assertNoLoneSurrogate(text: String) {
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            when {
+                c.isHighSurrogate() -> {
+                    assertTrue("짝 잃은 상위 서로게이트(index=$i)", i + 1 < text.length && text[i + 1].isLowSurrogate())
+                    i += 2
+                }
+                c.isLowSurrogate() -> fail("짝 잃은 하위 서로게이트(index=$i)")
+                else -> i++
+            }
+        }
     }
 }
