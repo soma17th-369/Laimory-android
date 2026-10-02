@@ -5,6 +5,7 @@ import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataPermissionAction
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.permission.HealthDataSource
+import com.soma369.laimory.core.ui.permission.LocationDisclosure
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.R as CoreUiR
 
@@ -55,7 +56,9 @@ enum class DataSourceUiModel(
         permission = DataPermission.LOCATION,
         label = "위치",
         iconRes = CoreUiR.drawable.ico_setting_datasource_location,
-        purpose = "오간 길과 머문 장소로 하루의 뼈대를 만들어요. 배경에서도 기록하려면 항상 허용이 필요합니다.",
+        // 위치만 공용 수집 고지를 쓴다. 이 시트가 권한 요청 버튼 바로 위라, 요청 직전 고지(Play 정책)를
+        // 겸한다 — 다른 자리와 문구가 갈리면 한 곳만 고쳐져 다시 걸린다.
+        purpose = LocationDisclosure.BODY,
         details =
             listOf(
                 "앱을 보고 있지 않은 동안에도 이으려면 '항상 허용'이 필요해요.",

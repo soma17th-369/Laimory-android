@@ -69,6 +69,8 @@ import com.soma369.laimory.core.ui.greeting.nicknameGreetingSegments
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataPermissionState
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
+import com.soma369.laimory.core.ui.permission.LocationDisclosure
+import com.soma369.laimory.core.ui.permission.LocationDisclosureDialog
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -156,15 +158,33 @@ fun HomeRoute(
             }
         }
     }
+    // 위치는 요청 직전에 수집 고지를 먼저 띄운다(Play 정책). 카드·보조 버튼 어느 쪽으로 들어와도 여기를
+    // 지난다. 탭마다 띄운다 — 전경과 `항상 허용` 은 다른 탭에서 따로 요청되고, 둘 다 런타임 요청이다.
+    var showsLocationDisclosure by remember { mutableStateOf(false) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeContent(
         innerPadding = innerPadding,
         state = state,
         onIntent = viewModel::sendIntent,
-        onRequestPermission = permissionState::act,
+        onRequestPermission = { permission ->
+            if (permission == DataPermission.LOCATION && LocationDisclosure.isNeededFor(permissionState.locationStep)) {
+                showsLocationDisclosure = true
+            } else {
+                permissionState.act(permission)
+            }
+        },
         snackbarFlow = viewModel.snackbar,
         sideEffectFlow = viewModel.sideEffect,
     )
+    if (showsLocationDisclosure) {
+        LocationDisclosureDialog(
+            onContinue = {
+                showsLocationDisclosure = false
+                permissionState.act(DataPermission.LOCATION)
+            },
+            onDismiss = { showsLocationDisclosure = false },
+        )
+    }
 }
 
 @Composable
