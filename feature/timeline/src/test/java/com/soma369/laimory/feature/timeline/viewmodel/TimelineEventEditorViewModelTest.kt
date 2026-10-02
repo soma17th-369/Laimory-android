@@ -22,6 +22,7 @@ import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
@@ -396,6 +397,58 @@ class TimelineEventEditorViewModelTest {
             assertTrue(recordRepository.commands.isEmpty())
             assertNotNull(viewModel.state.value.validation.titleError)
             assertEquals(TimelineEventEditorUiSideEffect.FocusTitle, viewModel.sideEffect.first())
+        }
+
+    @Test
+    fun `메모가 입력 한도를 넘으면 저장하지 않고 안내한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo("가".repeat(TimelineEventMemoPolicy.MAX_LENGTH + 1)))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("메모는 500자까지 입력할 수 있어요.", viewModel.state.value.validation.memoError)
+            assertTrue(recordRepository.commands.isEmpty())
+        }
+
+    @Test
+    fun `한도를 줄이기 전에 저장된 긴 메모는 다른 칸만 고쳐도 저장된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val longMemo = "가".repeat(TimelineEventMemoPolicy.MAX_LENGTH + 300)
+            sessionRepository.save(timeline().copy(events = listOf(event(memo = longMemo))))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.validation.memoError)
+            assertEquals("퇴근길", recordRepository.commands.single().title)
+            // 손대지 않은 메모는 보내지 않는다.
+            assertEquals(TimelineEventUpdateField.Unchanged, recordRepository.commands.single().memo)
+        }
+
+    @Test
+    fun `한도를 넘겨 저장된 메모는 줄이는 것은 되지만 더 늘리면 막힌다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val longMemo = "가".repeat(TimelineEventMemoPolicy.MAX_LENGTH + 300)
+            sessionRepository.save(timeline().copy(events = listOf(event(memo = longMemo))))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo(longMemo + "더"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertNotNull(viewModel.state.value.validation.memoError)
+            assertTrue(recordRepository.commands.isEmpty())
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeMemo(longMemo.dropLast(1)))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.validation.memoError)
+            assertEquals(1, recordRepository.commands.size)
         }
 
     @Test

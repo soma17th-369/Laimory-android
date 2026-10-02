@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -188,6 +189,10 @@ private fun MemoQuestionBubble(question: String) {
 /**
  * 다 쓴 메모. 편집 모드에서만 눌린다 — 읽기 모드의 메모는 본문의 한 문단이라 누를 곳이 없다.
  *
+ * **줄 수를 자르지 않는다.** 사람이 쓴 글이고, 읽기 모드에서는 눌러도 열리지 않아 잘린 뒷부분을 볼
+ * 길이 없다. 카드를 덮을 만큼 길어지지 않게 하는 건 입력 한도([TimelineEventMemoPolicy.MAX_LENGTH])의
+ * 몫이다.
+ *
  * 위 여백은 모드마다 시안이 다르다. 편집 모드는 입력 줄과 같은 8(MemoAnswer Filled)이라 쓰기 전과 뒤의
  * 자리가 같고, 읽기 모드는 본문 문단에 붙는 2(MemoQuote)다.
  */
@@ -206,8 +211,6 @@ private fun MemoQuote(
                 .memoQuote(MaterialTheme.colorScheme.outline, topPadding),
         style = memoTextStyle(),
         color = MaterialTheme.colorScheme.onSurface,
-        maxLines = MEMO_MAX_LINES,
-        overflow = TextOverflow.Ellipsis,
     )
 }
 
@@ -358,14 +361,14 @@ private fun MemoInputLine(
         BasicTextField(
             value = textFieldValue,
             onValueChange = { value ->
-                val limited = value.limitedToMemoLength()
+                val limited = value.limitedToMemoLength(previousText = textFieldValue.text)
                 textFieldValue = limited
                 onValueChange(limited.text)
             },
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = EDITOR_MIN_HEIGHT, max = EDITOR_MAX_HEIGHT)
+                    .heightIn(min = EDITOR_MIN_HEIGHT)
                     .focusRequester(focusRequester)
                     .onFocusChanged { focusState ->
                         if (focusState.isFocused) {
@@ -377,7 +380,6 @@ private fun MemoInputLine(
             textStyle = memoTextStyle().copy(color = MaterialTheme.colorScheme.onSurface),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            maxLines = EDITOR_MAX_LINES,
             decorationBox = { innerTextField ->
                 Box {
                     if (textFieldValue.text.isEmpty()) {
@@ -388,7 +390,31 @@ private fun MemoInputLine(
             },
         )
         MemoUnderline(color = MaterialTheme.colorScheme.primary, thickness = UNDERLINE_ACTIVE)
+        MemoCounter(length = textFieldValue.text.length, modifier = Modifier.align(Alignment.End))
     }
+}
+
+/**
+ * 입력 중인 글자 수(`123/500`). 한도에 닿으면 오류색이다 — 더 입력해도 들어가지 않는다는 신호다.
+ *
+ * 한도보다 길게 저장된 옛 메모는 한도를 넘긴 채로 보이지만, 늘릴 수 없고 줄일 수만 있다.
+ */
+@Composable
+private fun MemoCounter(
+    length: Int,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = "$length/${TimelineEventMemoPolicy.MAX_LENGTH}",
+        modifier = modifier,
+        style = MaterialTheme.typography.labelMedium,
+        color =
+            if (length >= TimelineEventMemoPolicy.MAX_LENGTH) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+    )
 }
 
 @Composable
@@ -406,18 +432,21 @@ private fun MemoUnderline(
 }
 
 /**
- * 상한을 넘긴 입력을 잘라 낸다.
+ * 상한을 넘긴 입력을 잘라 낸다. [previousText] 는 입력 직전 글이다.
  *
- * 글자수 표시가 없으므로 넘긴 사실을 나중에 알릴 방법이 없다. 붙여넣기를 통째로 거절하는 대신
- * 상한까지만 받는다 — 거절하면 무엇이 왜 안 들어갔는지 알 길이 없다.
+ * 붙여넣기를 통째로 거절하는 대신 상한까지만 받는다 — 거절하면 무엇이 왜 안 들어갔는지 알 길이
+ * 없다. 넘긴 사실은 입력칸 아래 글자 수([MemoCounter])가 알린다.
+ *
+ * **새로 들어온 구간만** 줄인다([TimelineEventMemoPolicy.limitInput]). 글 전체를 끝에서 자르면 앞·
+ * 중간에 넣을 때 기존 글의 끝이 사라지고, 포커스가 빠질 때 그대로 저장된다. 한도보다 길게 저장된
+ * 옛 메모도 같은 규칙으로 지금 길이까지 받는다.
  */
-private fun TextFieldValue.limitedToMemoLength(): TextFieldValue {
-    if (text.length <= TimelineEventMemoPolicy.MAX_LENGTH) return this
-    val limited = text.take(TimelineEventMemoPolicy.MAX_LENGTH)
-    return copy(
-        text = limited,
-        selection = TextRange(selection.start.coerceAtMost(limited.length), selection.end.coerceAtMost(limited.length)),
-    )
+private fun TextFieldValue.limitedToMemoLength(previousText: String): TextFieldValue {
+    val limited = TimelineEventMemoPolicy.limitInput(previous = previousText, next = text)
+    if (limited == text) return this
+    // 커서는 붙여넣은 글 끝에 서 있었으니 줄어든 만큼 당긴다.
+    val cursor = (selection.end - (text.length - limited.length)).coerceIn(0, limited.length)
+    return copy(text = limited, selection = TextRange(cursor))
 }
 
 private suspend fun WindowInsets.awaitSettled(density: Density) {
@@ -473,8 +502,6 @@ private fun memoTextStyle() =
         lineHeight = MEMO_LINE_HEIGHT,
     )
 
-private const val MEMO_MAX_LINES = 3
-
 /** question 은 서버 기준 255자까지 온다. 다 펼치면 말풍선이 카드를 덮는다. */
 private const val QUESTION_MAX_LINES = 5
 
@@ -504,10 +531,11 @@ private val QUOTE_TOP_PADDING = 2.dp
 /** 편집 모드 메모 줄의 위 여백. 시안 MemoAnswer 의 input-line·memo-quote `pt spacing/8`. */
 private val MEMO_LINE_TOP_PADDING = Spacing.small
 
-/** 한 줄 높이. 빈 입력칸이 접히지 않게 잡아 둔다. */
+/**
+ * 한 줄 높이. 빈 입력칸이 접히지 않게 잡아 둔다. 위로는 막지 않는다 — 입력칸이 안에서 스크롤되면
+ * 타임라인 스크롤과 겹치므로, 글이 길면 칸이 그만큼 늘어난다.
+ */
 private val EDITOR_MIN_HEIGHT = 22.dp
-private val EDITOR_MAX_HEIGHT = 160.dp
-private const val EDITOR_MAX_LINES = 8
 
 private const val STABLE_IME_FRAME_COUNT = 2
 private const val MAX_IME_WAIT_FRAME_COUNT = 60
