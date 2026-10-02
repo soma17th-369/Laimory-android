@@ -2,6 +2,7 @@ package com.soma369.laimory.core.data.helper
 
 import com.soma369.laimory.core.data.analytics.AnalyticsBucket
 import com.soma369.laimory.core.data.analytics.AnalyticsDedupeStore
+import com.soma369.laimory.core.data.analytics.InstallIdProvider
 import com.soma369.laimory.core.data.analytics.toPayload
 import com.soma369.laimory.core.data.analytics.toUserProperties
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
@@ -26,6 +27,7 @@ internal class AnalyticsHelperImpl
     constructor(
         private val buckets: Set<@JvmSuppressWildcards AnalyticsBucket>,
         private val dedupeStore: AnalyticsDedupeStore,
+        private val installIdProvider: InstallIdProvider,
     ) : AnalyticsHelper {
         override suspend fun log(event: AnalyticsEvent) {
             dispatch(event)
@@ -40,7 +42,7 @@ internal class AnalyticsHelperImpl
             if (buckets.none { bucket -> bucket.isEnabled }) return
             val first =
                 try {
-                    dedupeStore.markIfFirst(key.value)
+                    dedupeStore.markIfFirst(storedKey(key))
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
@@ -55,7 +57,7 @@ internal class AnalyticsHelperImpl
 
         override suspend fun forgetOnce(key: AnalyticsDedupeKey) {
             try {
-                dedupeStore.forgetFamily(key.value)
+                dedupeStore.forgetFamily(storedKey(key))
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -87,6 +89,13 @@ internal class AnalyticsHelperImpl
                 }
             }
         }
+
+        /**
+         * 판정 저장소에 적는 키. 설치 단위 키는 설치 구분 값을 **뒤에** 붙인다 — 뿌리 키로 갈라진 키를 함께 지우는
+         * 규칙(`<뿌리>:…`)이 그대로 맞고, 이 설치의 판정만 지워진다.
+         */
+        private suspend fun storedKey(key: AnalyticsDedupeKey): String =
+            if (key.installScoped) "${key.value}:${installIdProvider.get()}" else key.value
 
         private suspend fun dispatch(event: AnalyticsEvent) {
             val payload = event.toPayload()

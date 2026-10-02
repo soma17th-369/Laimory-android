@@ -3,6 +3,7 @@ package com.soma369.laimory.core.data.helper
 import com.soma369.laimory.core.data.analytics.AnalyticsBucket
 import com.soma369.laimory.core.data.analytics.AnalyticsDedupeStore
 import com.soma369.laimory.core.data.analytics.AnalyticsPayload
+import com.soma369.laimory.core.data.analytics.InstallIdProvider
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
@@ -123,6 +124,100 @@ class AnalyticsHelperImplTest {
             helper.logOnce(AnalyticsDedupeKey("permission_result:user-1"), event)
 
             assertTrue(bucket.sent.isEmpty())
+        }
+
+    @Test
+    fun `설치 단위 키는 같은 설치에서 한 번만 보낸다`() =
+        runTest {
+            val bucket = RecordingBucket()
+            val helper = helper(buckets = setOf(bucket))
+            val key = AnalyticsDedupeKey("onboarding_step_viewed:INTRO", installScoped = true)
+
+            helper.logOnce(key, event)
+            helper.logOnce(key, event)
+
+            assertEquals(1, bucket.sent.size)
+        }
+
+    @Test
+    fun `백업에서 복원된 옛 설치의 판정이 새 설치의 첫 사건을 막지 않는다`() =
+        runTest {
+            // 판정 저장소는 백업으로 되살아나지만, 설치 구분 값은 백업에서 제외돼 새 설치마다 다르다.
+            val restoredStore = InMemoryDedupeStore()
+            val key = AnalyticsDedupeKey("onboarding_step_viewed:INTRO", installScoped = true)
+            val oldInstall = RecordingBucket()
+            helper(buckets = setOf(oldInstall), dedupeStore = restoredStore, installId = "install-A").logOnce(key, event)
+
+            val newInstall = RecordingBucket()
+            val newHelper = helper(buckets = setOf(newInstall), dedupeStore = restoredStore, installId = "install-B")
+            newHelper.logOnce(key, event)
+            newHelper.logOnce(key, event)
+
+            assertEquals(1, oldInstall.sent.size)
+            assertEquals(1, newInstall.sent.size)
+        }
+
+    @Test
+    fun `설치 단위가 아닌 키는 설치가 달라도 같은 판정을 쓴다`() =
+        runTest {
+            // 회원·기록 단위 키는 설치와 무관하다. 새 설치에서 같은 회원의 같은 완료가 다시 나가면 안 된다.
+            val store = InMemoryDedupeStore()
+            val key = AnalyticsDedupeKey("timeline_completed:2026-09-18:2")
+            val first = RecordingBucket()
+            helper(buckets = setOf(first), dedupeStore = store, installId = "install-A").logOnce(key, event)
+
+            val second = RecordingBucket()
+            helper(buckets = setOf(second), dedupeStore = store, installId = "install-B").logOnce(key, event)
+
+            assertEquals(1, first.sent.size)
+            assertTrue(second.sent.isEmpty())
+        }
+
+    @Test
+    fun `설치 단위 키를 잊으면 이 설치의 판정만 지워 다시 나간다`() =
+        runTest {
+            val store = InMemoryDedupeStore()
+            val key = AnalyticsDedupeKey("sign_up", installScoped = true)
+            val bucket = RecordingBucket()
+            val helper = helper(buckets = setOf(bucket), dedupeStore = store, installId = "install-B")
+            val otherInstall = helper(buckets = setOf(RecordingBucket()), dedupeStore = store, installId = "install-A")
+            otherInstall.logOnce(key, event)
+            helper.logOnce(key, event)
+
+            helper.forgetOnce(key)
+            helper.logOnce(key, event)
+
+            assertEquals(2, bucket.sent.size)
+            // 다른 설치의 판정은 건드리지 않는다.
+            val again = RecordingBucket()
+            helper(buckets = setOf(again), dedupeStore = store, installId = "install-A").logOnce(key, event)
+            assertTrue(again.sent.isEmpty())
+        }
+
+    @Test
+    fun `설치 구분 값을 읽지 못하면 설치 단위 키는 보내지 않는다`() =
+        runTest {
+            val bucket = RecordingBucket()
+            val helper = AnalyticsHelperImpl(setOf(bucket), InMemoryDedupeStore(), FailingInstallId)
+
+            helper.logOnce(AnalyticsDedupeKey("sign_up", installScoped = true), event)
+
+            assertTrue(bucket.sent.isEmpty())
+        }
+
+    @Test
+    fun `설치 구분 값은 버킷으로 보내지 않는다`() =
+        runTest {
+            val bucket = RecordingBucket()
+
+            helper(buckets = setOf(bucket), installId = "install-secret").logOnce(
+                AnalyticsDedupeKey("sign_up", installScoped = true),
+                event,
+            )
+
+            val payload = bucket.sent.single()
+            assertTrue(payload.strings.values.none { it.contains("install-secret") })
+            assertTrue(payload.counts.keys.none { it.contains("install") })
         }
 
     @Test
@@ -249,7 +344,8 @@ class AnalyticsHelperImplTest {
     private fun helper(
         buckets: Set<AnalyticsBucket>,
         dedupeStore: AnalyticsDedupeStore = InMemoryDedupeStore(),
-    ) = AnalyticsHelperImpl(buckets = buckets, dedupeStore = dedupeStore)
+        installId: String = "install-A",
+    ) = AnalyticsHelperImpl(buckets = buckets, dedupeStore = dedupeStore, installIdProvider = FixedInstallId(installId))
 
     private class RecordingBucket(
         private val failing: Boolean = false,
@@ -288,6 +384,16 @@ class AnalyticsHelperImplTest {
         override suspend fun forgetFamily(rootKey: String) {
             marked.removeAll { key -> key == rootKey || key.startsWith("$rootKey:") }
         }
+    }
+
+    private class FixedInstallId(
+        private val installId: String,
+    ) : InstallIdProvider {
+        override suspend fun get(): String = installId
+    }
+
+    private object FailingInstallId : InstallIdProvider {
+        override suspend fun get(): String = throw IllegalStateException("install id down")
     }
 
     private object FailingDedupeStore : AnalyticsDedupeStore {

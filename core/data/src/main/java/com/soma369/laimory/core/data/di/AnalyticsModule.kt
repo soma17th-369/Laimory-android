@@ -1,9 +1,11 @@
 package com.soma369.laimory.core.data.di
 
 import com.soma369.laimory.core.data.analytics.AnalyticsDedupeStore
+import com.soma369.laimory.core.data.analytics.InstallIdProvider
 import com.soma369.laimory.core.data.analytics.PreferencesAnalyticsDedupeStore
 import com.soma369.laimory.core.data.analytics.PreferencesAnalyticsTimelineEditLogRepository
 import com.soma369.laimory.core.data.analytics.PreferencesInstallAttributionRepository
+import com.soma369.laimory.core.data.analytics.PreferencesInstallIdProvider
 import com.soma369.laimory.core.data.helper.AnalyticsHelperImpl
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.repository.AnalyticsTimelineEditLogRepository
@@ -36,6 +38,10 @@ internal abstract class AnalyticsModule {
     abstract fun bindAnalyticsTimelineEditLogRepository(
         impl: PreferencesAnalyticsTimelineEditLogRepository,
     ): AnalyticsTimelineEditLogRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindInstallIdProvider(impl: PreferencesInstallIdProvider): InstallIdProvider
 
     @Binds
     @Singleton

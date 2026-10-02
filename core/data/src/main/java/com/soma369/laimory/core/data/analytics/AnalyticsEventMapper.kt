@@ -109,11 +109,7 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
             payload(
                 name = "timeline_create_started",
                 recordDate = recordDate,
-                strings =
-                    mapOf(
-                        PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
-                        PARAM_ENTRY_POINT to entryPoint.paramValue,
-                    ),
+                strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
             )
         is AnalyticsEvent.TimelineCreateStopped ->
             payload(
@@ -180,7 +176,6 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                     mapOf(
                         PARAM_TIMELINE_STATE to timelineState.paramValue,
                         PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue,
-                        PARAM_ENTRY_POINT to entryPoint.paramValue,
                     ),
             )
         is AnalyticsEvent.TimelinePastRecordOpened ->
@@ -555,6 +550,7 @@ private val AnalyticsOnboardingEligibility.paramValue: String
             AnalyticsOnboardingEligibility.SETTINGS_ONLY -> "settings_only"
             AnalyticsOnboardingEligibility.NOT_SUPPORTED -> "not_supported"
             AnalyticsOnboardingEligibility.NOT_APPLICABLE -> "not_applicable"
+            AnalyticsOnboardingEligibility.UNKNOWN -> "unknown"
         }
 
 private val AnalyticsOnboardingAction.paramValue: String

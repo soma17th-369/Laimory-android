@@ -176,9 +176,9 @@ class OnboardingViewModel
         }
 
         /**
-         * 장이 보인 것을 회차마다 장별로 한 번 남긴다.
+         * 장이 보인 것을 설치(기기)마다 장별로 한 번 남긴다.
          *
-         * 원문을 보러 나갔다 오면 같은 장이 다시 보고되는데, 판정 키가 그것을 거른다.
+         * 원문을 보러 나갔다 오거나 계정을 바꿔 온보딩을 다시 해도 같은 장은 판정 키가 거른다.
          */
         private suspend fun logStepViewed(
             pageIndex: Int,
@@ -194,7 +194,7 @@ class OnboardingViewModel
                 }
             viewedFlowId = flowId
             analyticsHelper.logOnce(
-                AnalyticsDedupeKeys.onboardingStepViewed(flowId, step),
+                AnalyticsDedupeKeys.onboardingStepViewed(step),
                 AnalyticsEvent.OnboardingStepViewed(
                     flowId = flowId,
                     version = ONBOARDING_VERSION,

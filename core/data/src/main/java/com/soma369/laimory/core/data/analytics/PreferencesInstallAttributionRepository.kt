@@ -32,7 +32,7 @@ internal class PreferencesInstallAttributionRepository
             var record: InstallAttributionRecord? = null
             // 설치 구분 값 만들기와 읽기를 한 번의 edit 안에서 한다 — 동시에 불려도 값이 둘로 갈리지 않는다.
             dataStore.edit { preferences ->
-                val installId = preferences[INSTALL_ID] ?: UUID.randomUUID().toString().also { preferences[INSTALL_ID] = it }
+                val installId = preferences[INSTALL_ID_KEY] ?: UUID.randomUUID().toString().also { preferences[INSTALL_ID_KEY] = it }
                 record =
                     InstallAttributionRecord(
                         installId = installId,
@@ -95,7 +95,6 @@ internal class PreferencesInstallAttributionRepository
         }
 
         private companion object {
-            val INSTALL_ID = stringPreferencesKey("install_id")
             val STATUS = stringPreferencesKey("referrer_status")
             val SOURCE = stringPreferencesKey("utm_source")
             val MEDIUM = stringPreferencesKey("utm_medium")

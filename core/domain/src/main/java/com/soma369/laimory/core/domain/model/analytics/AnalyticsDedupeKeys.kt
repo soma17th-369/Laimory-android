@@ -10,19 +10,17 @@ import java.time.LocalDate
  * 날짜 완료가 첫 계정 판정에 막혀 나가지 않는다.
  */
 object AnalyticsDedupeKeys {
-    /** 저장 항목과 사진 권한 두 경로가 같은 키를 써서, 먼저 온 쪽 하나만 나간다. */
-    val DATA_COLLECTION_READY = AnalyticsDedupeKey("data_collection_ready")
+    /** 저장 항목과 사진 권한 두 경로가 같은 키를 써서, 먼저 온 쪽 하나만 나간다. 설치 단위다. */
+    val DATA_COLLECTION_READY = AnalyticsDedupeKey("data_collection_ready", installScoped = true)
 
     fun timelineCreateResult(taskId: String): AnalyticsDedupeKey = AnalyticsDedupeKey("timeline_create_result:$taskId")
 
     /** 설치 단위다. 탈퇴하면 지워, 같은 기기에서 다시 가입하면 한 번 더 나간다. */
-    val SIGN_UP = AnalyticsDedupeKey("sign_up")
+    val SIGN_UP = AnalyticsDedupeKey("sign_up", installScoped = true)
 
-    /** 온보딩 회차 단위다. 계정이 바뀌면 진행 상태와 함께 회차도 새로 시작한다. */
-    fun onboardingStepViewed(
-        flowId: String,
-        step: AnalyticsOnboardingStep,
-    ): AnalyticsDedupeKey = AnalyticsDedupeKey("onboarding_step_viewed:$flowId:${step.name}")
+    /** 설치(기기) 단위다. 같은 기기에서 계정을 바꿔 온보딩을 다시 해도 이미 본 장은 다시 나가지 않는다. */
+    fun onboardingStepViewed(step: AnalyticsOnboardingStep): AnalyticsDedupeKey =
+        AnalyticsDedupeKey("onboarding_step_viewed:${step.name}", installScoped = true)
 
     /** 장마다 처음 고른 행동만 남긴다. */
     fun onboardingStepAction(

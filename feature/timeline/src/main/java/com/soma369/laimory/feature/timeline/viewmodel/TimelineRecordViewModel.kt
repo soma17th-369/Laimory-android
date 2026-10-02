@@ -588,7 +588,6 @@ class TimelineRecordViewModel
                     timelineState = record.analyticsState(),
                     recordDayRelation = dayRelationOf(record.recordDate),
                     recordDate = record.recordDate,
-                    entryPoint = entryPoint,
                 ),
             )
             if (!record.isSaved) return

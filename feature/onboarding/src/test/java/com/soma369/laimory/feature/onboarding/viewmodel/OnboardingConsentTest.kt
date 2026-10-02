@@ -355,6 +355,7 @@ class OnboardingConsentTest {
         displayTerms: TermsRepository = EmptyTermsRepository,
         completion: FakeOnboardingCompletionCoordinator = FakeOnboardingCompletionCoordinator(),
         savedPageKey: String? = null,
+        flowId: String = FLOW_ID,
     ) = OnboardingViewModel(
         observeOnboardingProgressUseCase = ObserveOnboardingProgressUseCase(FakeOnboardingRepository(savedPageKey)),
         observeUserProfileUseCase = ObserveUserProfileUseCase(FakeUserProfileCoordinator),
@@ -364,7 +365,7 @@ class OnboardingConsentTest {
         termsCoordinator = coordinator,
         getDisplayTerms = GetDisplayTermsUseCase(displayTerms),
         logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
-        getOnboardingFlowId = GetOnboardingFlowIdUseCase(FakeOnboardingRepository(savedPageKey)),
+        getOnboardingFlowId = GetOnboardingFlowIdUseCase(FakeOnboardingRepository(savedPageKey, flowId)),
         analyticsHelper = analyticsHelper,
     )
 
@@ -402,6 +403,26 @@ class OnboardingConsentTest {
                 ),
                 analyticsHelper.logged.filterIsInstance<AnalyticsEvent.OnboardingStepViewed>(),
             )
+        }
+
+    @Test
+    fun `같은 기기에서 회차가 바뀌어도 이미 본 장은 다시 남기지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val first = createViewModel(FakeTermsCoordinator(pending = allFour), flowId = "ob_first")
+            runCurrent()
+            first.sendIntent(OnboardingUiIntent.PageChanged(0, AnalyticsOnboardingEligibility.NOT_APPLICABLE))
+            runCurrent()
+
+            // 계정을 바꿔 온보딩을 다시 하면 새 회차 토큰이 생긴다.
+            val second = createViewModel(FakeTermsCoordinator(pending = allFour), flowId = "ob_second")
+            runCurrent()
+            second.sendIntent(OnboardingUiIntent.PageChanged(0, AnalyticsOnboardingEligibility.NOT_APPLICABLE))
+            second.sendIntent(OnboardingUiIntent.PageChanged(1, AnalyticsOnboardingEligibility.NEEDS_REQUEST))
+            runCurrent()
+
+            val viewed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.OnboardingStepViewed>()
+            assertEquals(listOf(AnalyticsOnboardingStep.INTRO, AnalyticsOnboardingStep.PHOTO), viewed.map { it.step })
+            assertEquals(listOf("ob_first", "ob_second"), viewed.map { it.flowId })
         }
 
     @Test
@@ -548,6 +569,7 @@ class OnboardingConsentTest {
 
     private class FakeOnboardingRepository(
         private val savedPageKey: String? = null,
+        private val flowId: String = FLOW_ID,
     ) : OnboardingRepository {
         override suspend fun cachedCompletion(): Boolean? = null
 
@@ -569,7 +591,7 @@ class OnboardingConsentTest {
 
         override suspend fun saveProgress(pageKey: String) = Unit
 
-        override suspend fun flowId(): String = FLOW_ID
+        override suspend fun flowId(): String = flowId
 
         override suspend fun clear() = Unit
     }
