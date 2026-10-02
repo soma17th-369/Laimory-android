@@ -51,7 +51,6 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
-import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 
@@ -303,7 +302,7 @@ class TimelineEventEditorViewModel
             if (current.isSaving || current.deleteDialogState != TimelineDeleteDialogState.Hidden) return
             if (!current.hasUnsavedChanges) return
             val form = current.form ?: return
-            val validation = form.validate()
+            val validation = form.validate(original = current.originalForm)
             updateState { copy(validation = validation) }
             if (!validation.isValid) {
                 if (validation.titleError != null) {
@@ -778,7 +777,11 @@ private fun TimelineEvent.existingPhotos(): List<TimelineEventExistingPhoto> =
         }
         .toList()
 
-private fun TimelineEventEditorForm.validate() =
+/**
+ * 저장 전 검증. 한도를 줄이기 전에 저장된 긴 메모는 그대로 둔 채 다른 칸만 고쳐도 저장돼야 하므로
+ * 메모는 [original] 길이까지 허용한다.
+ */
+private fun TimelineEventEditorForm.validate(original: TimelineEventEditorForm?) =
     TimelineEventEditorValidation(
         titleError =
             when (title.trim().length) {
@@ -799,9 +802,8 @@ private fun TimelineEventEditorForm.validate() =
                 null
             },
         memoError =
-            if (memo.length > TimelineEventMemoPolicy.MAX_LENGTH) {
-                "메모는 ${String.format(Locale.getDefault(), "%,d", TimelineEventMemoPolicy.MAX_LENGTH)}자까지 " +
-                    "입력할 수 있어요."
+            if (memo.length > TimelineEventMemoPolicy.allowedLength(original?.memo?.length ?: 0)) {
+                "메모는 ${TimelineEventMemoPolicy.MAX_LENGTH}자까지 입력할 수 있어요."
             } else {
                 null
             },

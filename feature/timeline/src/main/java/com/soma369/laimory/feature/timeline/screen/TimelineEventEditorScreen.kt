@@ -42,6 +42,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventMemoPolicy
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
@@ -426,7 +427,8 @@ private fun TimelineEventEditorBody(
                     enabled = enabled,
                     error = state.validation.memoError,
                     placeholder = "메모를 입력하세요",
-                    supportingText = "선택 입력",
+                    supportingText = "선택 입력 · 최대 ${TimelineEventMemoPolicy.MAX_LENGTH}자",
+                    counter = "${form.memo.length}/${TimelineEventMemoPolicy.MAX_LENGTH}",
                     singleLine = false,
                 )
             }

@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -188,6 +189,10 @@ private fun MemoQuestionBubble(question: String) {
 /**
  * 다 쓴 메모. 편집 모드에서만 눌린다 — 읽기 모드의 메모는 본문의 한 문단이라 누를 곳이 없다.
  *
+ * **줄 수를 자르지 않는다.** 사람이 쓴 글이고, 읽기 모드에서는 눌러도 열리지 않아 잘린 뒷부분을 볼
+ * 길이 없다. 카드를 덮을 만큼 길어지지 않게 하는 건 입력 한도([TimelineEventMemoPolicy.MAX_LENGTH])의
+ * 몫이다.
+ *
  * 위 여백은 모드마다 시안이 다르다. 편집 모드는 입력 줄과 같은 8(MemoAnswer Filled)이라 쓰기 전과 뒤의
  * 자리가 같고, 읽기 모드는 본문 문단에 붙는 2(MemoQuote)다.
  */
@@ -206,8 +211,6 @@ private fun MemoQuote(
                 .memoQuote(MaterialTheme.colorScheme.outline, topPadding),
         style = memoTextStyle(),
         color = MaterialTheme.colorScheme.onSurface,
-        maxLines = MEMO_MAX_LINES,
-        overflow = TextOverflow.Ellipsis,
     )
 }
 
@@ -358,7 +361,7 @@ private fun MemoInputLine(
         BasicTextField(
             value = textFieldValue,
             onValueChange = { value ->
-                val limited = value.limitedToMemoLength()
+                val limited = value.limitedToMemoLength(previousLength = textFieldValue.text.length)
                 textFieldValue = limited
                 onValueChange(limited.text)
             },
@@ -388,7 +391,31 @@ private fun MemoInputLine(
             },
         )
         MemoUnderline(color = MaterialTheme.colorScheme.primary, thickness = UNDERLINE_ACTIVE)
+        MemoCounter(length = textFieldValue.text.length, modifier = Modifier.align(Alignment.End))
     }
+}
+
+/**
+ * 입력 중인 글자 수(`123/500`). 한도에 닿으면 오류색이다 — 더 입력해도 들어가지 않는다는 신호다.
+ *
+ * 한도보다 길게 저장된 옛 메모는 한도를 넘긴 채로 보이지만, 늘릴 수 없고 줄일 수만 있다.
+ */
+@Composable
+private fun MemoCounter(
+    length: Int,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = "$length/${TimelineEventMemoPolicy.MAX_LENGTH}",
+        modifier = modifier,
+        style = MaterialTheme.typography.labelMedium,
+        color =
+            if (length >= TimelineEventMemoPolicy.MAX_LENGTH) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+    )
 }
 
 @Composable
@@ -406,14 +433,18 @@ private fun MemoUnderline(
 }
 
 /**
- * 상한을 넘긴 입력을 잘라 낸다.
+ * 상한을 넘긴 입력을 잘라 낸다. [previousLength] 는 입력 직전 글자 수다.
  *
- * 글자수 표시가 없으므로 넘긴 사실을 나중에 알릴 방법이 없다. 붙여넣기를 통째로 거절하는 대신
- * 상한까지만 받는다 — 거절하면 무엇이 왜 안 들어갔는지 알 길이 없다.
+ * 붙여넣기를 통째로 거절하는 대신 상한까지만 받는다 — 거절하면 무엇이 왜 안 들어갔는지 알 길이
+ * 없다. 넘긴 사실은 입력칸 아래 글자 수([MemoCounter])가 알린다.
+ *
+ * 한도보다 길게 저장된 옛 메모는 지금 길이까지 받는다([TimelineEventMemoPolicy.allowedLength]).
+ * 그렇지 않으면 열자마자 한도로 잘려 저장 때 뒷부분이 사라진다.
  */
-private fun TextFieldValue.limitedToMemoLength(): TextFieldValue {
-    if (text.length <= TimelineEventMemoPolicy.MAX_LENGTH) return this
-    val limited = text.take(TimelineEventMemoPolicy.MAX_LENGTH)
+private fun TextFieldValue.limitedToMemoLength(previousLength: Int): TextFieldValue {
+    val allowed = TimelineEventMemoPolicy.allowedLength(previousLength)
+    if (text.length <= allowed) return this
+    val limited = text.take(allowed)
     return copy(
         text = limited,
         selection = TextRange(selection.start.coerceAtMost(limited.length), selection.end.coerceAtMost(limited.length)),
@@ -472,8 +503,6 @@ private fun memoTextStyle() =
         fontSize = MEMO_FONT_SIZE,
         lineHeight = MEMO_LINE_HEIGHT,
     )
-
-private const val MEMO_MAX_LINES = 3
 
 /** question 은 서버 기준 255자까지 온다. 다 펼치면 말풍선이 카드를 덮는다. */
 private const val QUESTION_MAX_LINES = 5

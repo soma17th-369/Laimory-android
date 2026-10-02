@@ -372,7 +372,7 @@ class TimelineRecordViewModelTest {
     fun `메모 최대 길이까지는 그대로 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 상한을 넘긴 값은 입력칸이 잘라 내므로 여기까지 오지 않는다.
-            val maxLengthMemo = "가".repeat(10_000)
+            val maxLengthMemo = "가".repeat(500)
             val viewModel = createLoadedViewModel()
 
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 1L))
