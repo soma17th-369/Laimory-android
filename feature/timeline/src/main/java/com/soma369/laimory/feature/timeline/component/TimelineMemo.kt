@@ -368,7 +368,7 @@ private fun MemoInputLine(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = EDITOR_MIN_HEIGHT, max = EDITOR_MAX_HEIGHT)
+                    .heightIn(min = EDITOR_MIN_HEIGHT)
                     .focusRequester(focusRequester)
                     .onFocusChanged { focusState ->
                         if (focusState.isFocused) {
@@ -380,7 +380,6 @@ private fun MemoInputLine(
             textStyle = memoTextStyle().copy(color = MaterialTheme.colorScheme.onSurface),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            maxLines = EDITOR_MAX_LINES,
             decorationBox = { innerTextField ->
                 Box {
                     if (textFieldValue.text.isEmpty()) {
@@ -533,10 +532,11 @@ private val QUOTE_TOP_PADDING = 2.dp
 /** 편집 모드 메모 줄의 위 여백. 시안 MemoAnswer 의 input-line·memo-quote `pt spacing/8`. */
 private val MEMO_LINE_TOP_PADDING = Spacing.small
 
-/** 한 줄 높이. 빈 입력칸이 접히지 않게 잡아 둔다. */
+/**
+ * 한 줄 높이. 빈 입력칸이 접히지 않게 잡아 둔다. 위로는 막지 않는다 — 입력칸이 안에서 스크롤되면
+ * 타임라인 스크롤과 겹치므로, 글이 길면 칸이 그만큼 늘어난다.
+ */
 private val EDITOR_MIN_HEIGHT = 22.dp
-private val EDITOR_MAX_HEIGHT = 160.dp
-private const val EDITOR_MAX_LINES = 8
 
 private const val STABLE_IME_FRAME_COUNT = 2
 private const val MAX_IME_WAIT_FRAME_COUNT = 60
