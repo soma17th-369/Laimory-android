@@ -16,13 +16,7 @@
     <!-- 일정 수집(CalendarContract). 개인(owner-access) 캘린더 일정을 읽는다. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
 
-    <!-- 건강 수집(Health Connect). 초기 범위 걸음수·수면. -->
-    <uses-permission android:name="android.permission.health.READ_STEPS" />
-    <uses-permission android:name="android.permission.health.READ_SLEEP" />
-    <!-- 수면 기록(HC 프로듀서). Sleep API 감지·사용자 입력분을 HC 에 써넣는다(에픽 #142). -->
-    <uses-permission android:name="android.permission.health.WRITE_SLEEP" />
-    <!-- 백그라운드 HC 읽기(HC 1.1+). 자동 감지가 백그라운드 receiver 에서 외부 수면 dedup read 를 하므로 필요. -->
-    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+    <!-- 건강 수집(Health Connect) 권한은 debug 소스셋에만 둔다 — `src/debug/AndroidManifest.xml` 참고. -->
 
     <!-- 위치 수집(LocationManager). Phase 2 는 Foreground Service 로 백그라운드에서도 지속한다. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -39,9 +33,8 @@
     <!-- 이동수단 인식(Activity Recognition). 정식 transport 판정용(없으면 속도 추론 fallback). -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
-    <!-- 패키지 visibility(Android 11+). Health Connect 앱 + 알림 필터 앱 선택용 런처 앱 목록. -->
+    <!-- 패키지 visibility(Android 11+). 알림 필터 앱 선택용 런처 앱 목록. -->
     <queries>
-        <package android:name="com.google.android.apps.healthdata" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

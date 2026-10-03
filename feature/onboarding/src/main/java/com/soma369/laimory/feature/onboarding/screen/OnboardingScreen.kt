@@ -28,6 +28,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -39,6 +41,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
+import com.soma369.laimory.core.ui.permission.DataDisclosure
+import com.soma369.laimory.core.ui.permission.DataDisclosureDialog
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
@@ -128,6 +132,31 @@ private fun OnboardingContent(
     // 띄우는 것과, 허용이 끝나면 다음 장으로 넘기는 것. 누르지 않은 장에는 둘 다 하지 않는다.
     var requestedPermissions by remember { mutableStateOf(emptySet<DataPermission>()) }
     val goNext: () -> Unit = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }
+    val requestPermission: (DataPermission) -> Unit = { permission ->
+        requestedPermissions = requestedPermissions + permission
+        permissionState.act(permission)
+    }
+
+    // 위치·사진은 요청 직전에 수집 고지를 먼저 띄운다(Play 정책). 장 설명으로 갈음하지 않는다 — 그림이
+    // 설명 위에 있어 작은 화면에서는 설명이 스크롤 아래로 밀리고, 읽지 않은 채 CTA 를 누를 수 있다.
+    //
+    // 고지마다 이 화면에서 한 번만 띄운다. 위치의 전경 다음 `항상 허용` 은 같은 장에서 안내를 따라 곧바로
+    // 이어지는 요청이고, 고지가 이미 배경 수집까지 말했다. 두 번 띄우면 같은 글을 연달아 읽게 된다.
+    var pendingDisclosure by remember { mutableStateOf<DataDisclosure?>(null) }
+    var shownDisclosures by rememberSaveable(stateSaver = DataDisclosureSetSaver) {
+        mutableStateOf(emptySet<DataDisclosure>())
+    }
+    pendingDisclosure?.let { disclosure ->
+        DataDisclosureDialog(
+            disclosure = disclosure,
+            onContinue = {
+                pendingDisclosure = null
+                shownDisclosures = shownDisclosures + disclosure
+                requestPermission(disclosure.permission)
+            },
+            onDismiss = { pendingDisclosure = null },
+        )
+    }
 
     // 허용이 끝나면 버튼을 한 번 더 누르지 않아도 넘어간다. 넘기면서 표시를 지워 **한 번의 허용에
     // 한 장만** 넘긴다 — 결과 콜백과 복귀 재조회가 잇따라 와도 두 장을 건너뛰지 않는다.
@@ -180,8 +209,9 @@ private fun OnboardingContent(
                 // 장에서 눌러도 아무 일이 없는 버튼이 된다.
                 needsRequest ->
                     currentPage?.permission?.let { permission ->
-                        requestedPermissions = requestedPermissions + permission
-                        permissionState.act(permission)
+                        val disclosure =
+                            permissionState.disclosureBeforeRequest(permission)?.takeIf { it !in shownDisclosures }
+                        if (disclosure != null) pendingDisclosure = disclosure else requestPermission(permission)
                     }
                 // 불러오지 못한 채로 끝낼 수 없다. 같은 자리에서 다시 시도한다.
                 isLastPage && state.hasConsentLoadFailed -> onIntent(OnboardingUiIntent.RetryConsentLoad)
@@ -448,3 +478,10 @@ private fun previewTerm(
     title = title,
     contentUrl = "https://laimory.app/terms/preview/1.0",
 )
+
+/** 이 화면에서 이미 보여 준 고지. 이름으로 저장해 화면 회전·프로세스 복원 뒤에도 다시 띄우지 않는다. */
+private val DataDisclosureSetSaver =
+    Saver<Set<DataDisclosure>, ArrayList<String>>(
+        save = { disclosures -> ArrayList(disclosures.map(DataDisclosure::name)) },
+        restore = { names -> names.map(DataDisclosure::valueOf).toSet() },
+    )
