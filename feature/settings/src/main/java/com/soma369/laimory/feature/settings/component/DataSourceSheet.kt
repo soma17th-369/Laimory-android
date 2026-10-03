@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -102,7 +104,16 @@ private fun DataSourceSheetContent(
         verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2),
     ) {
         LaimorySheetHeader(title = source.label, onClose = onDismiss)
-        Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
+        // 본문만 스크롤하고 헤더·스위치·버튼은 늘 남긴다. 위치·사진 본문은 요청 직전 수집 고지라 여러 줄이고,
+        // 시트는 넘치는 내용을 잘라 낼 뿐 스스로 스크롤하지 않는다 — 작은 화면이나 가로 화면에서 버튼이
+        // 밀려나면 권한을 요청할 길이 사라진다. weight(fill = false) 라 내용이 짧으면 기존 높이 그대로다.
+        Column(
+            modifier =
+                Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.medium),
+        ) {
             Text(
                 text = source.statusLabel(status, locationStep),
                 style = MaterialTheme.typography.titleMedium,
@@ -309,6 +320,24 @@ private fun DataSourceSheetLocationTogglePreview() {
             source = DataSourceUiModel.LOCATION,
             status = DataSourceStatus.GRANTED,
             action = DataPermissionAction.APP_SETTINGS,
+            collectionEnabled = true,
+        )
+    }
+}
+
+/**
+ * 가장 긴 조합 — 위치 고지 본문에 자동 수집 스위치와 다음 권한 버튼이 함께 놓인다(신체 활동만 남은 상태).
+ * 높이를 줄여 본문이 넘칠 때 본문만 스크롤되고 스위치·버튼은 남는지 본다.
+ */
+@Preview(name = "DataSourceSheet / 위치 고지 · 작은 화면", apiLevel = 36, showBackground = true, widthDp = 320, heightDp = 400)
+@Composable
+private fun DataSourceSheetLocationCompactPreview() {
+    LaimoryTheme {
+        DataSourceSheetPreviewBody(
+            source = DataSourceUiModel.LOCATION,
+            status = DataSourceStatus.LIMITED,
+            action = DataPermissionAction.REQUEST,
+            locationStep = LocationPermissionStep.ACTIVITY,
             collectionEnabled = true,
         )
     }
