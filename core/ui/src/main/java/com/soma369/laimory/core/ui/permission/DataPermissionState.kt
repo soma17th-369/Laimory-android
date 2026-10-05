@@ -119,6 +119,18 @@ class DataPermissionState(
         }
 
     /**
+     * [act] 를 부르기 전에 띄울 수집 고지. 없으면 곧바로 [act] 해도 된다.
+     *
+     * 판정을 여기 한 곳에 둔다 — 홈과 온보딩이 따로 판정하면 한쪽에서만 고지 없이 요청하게 된다.
+     */
+    fun disclosureBeforeRequest(permission: DataPermission): DataDisclosure? =
+        dataDisclosureBeforeRequest(
+            permission = permission,
+            locationStep = locationStep,
+            photoStatus = statusOf(DataPermission.PHOTO),
+        )
+
+    /**
      * 지금 누를 수 있는 행동 하나. 버튼 문구를 고르는 근거이며 실행은 [act] 가 맡는다.
      *
      * 이미 허용된 소스도 막다른 길로 두지 않는다 — 사용자가 설정 화면에 들어오는 이유의 절반은

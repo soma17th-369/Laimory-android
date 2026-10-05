@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +63,8 @@ import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerDateOption
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
 import com.soma369.laimory.core.ui.component.timepicker.TimePickerMinuteStep
+import com.soma369.laimory.core.ui.permission.DataDisclosure
+import com.soma369.laimory.core.ui.permission.DataDisclosureDialog
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataPermissionState
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
@@ -150,15 +153,31 @@ fun HomeRoute(
             }
         }
     }
+    // 위치·사진은 요청 직전에 수집 고지를 먼저 띄운다(Play 정책). 카드·보조 버튼 어느 쪽으로 들어와도
+    // 여기를 지난다. 탭마다 띄운다 — 위치의 전경과 `항상 허용` 은 다른 탭에서 따로 나가는 런타임 요청이다.
+    var pendingDisclosure by remember { mutableStateOf<DataDisclosure?>(null) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeContent(
         innerPadding = innerPadding,
         state = state,
         onIntent = viewModel::sendIntent,
-        onRequestPermission = permissionState::act,
+        onRequestPermission = { permission ->
+            val disclosure = permissionState.disclosureBeforeRequest(permission)
+            if (disclosure != null) pendingDisclosure = disclosure else permissionState.act(permission)
+        },
         snackbarFlow = viewModel.snackbar,
         sideEffectFlow = viewModel.sideEffect,
     )
+    pendingDisclosure?.let { disclosure ->
+        DataDisclosureDialog(
+            disclosure = disclosure,
+            onContinue = {
+                pendingDisclosure = null
+                permissionState.act(disclosure.permission)
+            },
+            onDismiss = { pendingDisclosure = null },
+        )
+    }
 }
 
 @Composable
@@ -182,6 +201,15 @@ private fun HomeContent(
             )
         }
 
+    // 사진 시트를 열며 처음 요청할 때도 카드와 같은 고지를 먼저 띄운다. 사진 창은 촬영 위치를 읽는다는
+    // 말을 하지 않는다. 이미 읽을 수 있는데 사진을 더 고르는 재요청(`force`)은 새로 알릴 것이 없다.
+    //
+    // 이 경로는 한 번만 띄운다. 카드와 달리 사용자가 누른 것은 `만들기` 라, 사진을 일부러 거부한
+    // 사용자에게 만들 때마다 같은 창이 끼어든다. 두 번째부터는 요청을 그대로 보낸다(막혔으면 시스템이
+    // 삼키고 거부로 돌아온다).
+    var showsPhotoDisclosure by remember { mutableStateOf(false) }
+    var hasShownPhotoDisclosure by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         snackbarFlow.collect(snackbarHostState::showSnackbar)
     }
@@ -189,20 +217,38 @@ private fun HomeContent(
         sideEffectFlow.collect { effect ->
             when (effect) {
                 is HomeUiSideEffect.RequestPhotoAccess ->
-                    if (!effect.force && PhotoPermission.canRead(context)) {
-                        onIntent(
-                            HomeUiIntent.ResolvePhotoAccess(
-                                granted = true,
-                                limited = PhotoPermission.isLimited(context),
-                            ),
-                        )
-                    } else {
-                        photoPermissionLauncher.launch(PhotoPermission.required())
+                    when {
+                        !effect.force && PhotoPermission.canRead(context) ->
+                            onIntent(
+                                HomeUiIntent.ResolvePhotoAccess(
+                                    granted = true,
+                                    limited = PhotoPermission.isLimited(context),
+                                ),
+                            )
+                        !PhotoPermission.canRead(context) && !hasShownPhotoDisclosure -> showsPhotoDisclosure = true
+                        else -> photoPermissionLauncher.launch(PhotoPermission.required())
                     }
 
                 is HomeUiSideEffect.ShowSnackbar -> snackbarHostState.showSnackbar(effect.message)
             }
         }
+    }
+    if (showsPhotoDisclosure) {
+        DataDisclosureDialog(
+            disclosure = DataDisclosure.PHOTO,
+            onContinue = {
+                showsPhotoDisclosure = false
+                hasShownPhotoDisclosure = true
+                photoPermissionLauncher.launch(PhotoPermission.required())
+            },
+            // 닫으면 거부와 같게 끝낸다. 결과를 보내지 않으면 `만들기` 를 눌렀는데 아무 일도 없고,
+            // 거부로 보내면 시트가 열려 사진 없이 이어 가거나 설정으로 나갈 길을 알린다.
+            onDismiss = {
+                showsPhotoDisclosure = false
+                hasShownPhotoDisclosure = true
+                onIntent(HomeUiIntent.ResolvePhotoAccess(granted = false, limited = false))
+            },
+        )
     }
 
     HomeScreen(
