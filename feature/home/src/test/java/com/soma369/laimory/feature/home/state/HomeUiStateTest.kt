@@ -25,14 +25,14 @@ class HomeUiStateTest {
     private val zone = ZoneId.of("Asia/Seoul")
 
     @Test
-    fun `기본 선택은 오늘 자정부터 익일 자정까지다`() {
+    fun `기본 선택은 그날 06시부터 익일 06시까지다`() {
         val state = HomeUiState(selectedDate = date)
 
         val window = state.recordDateWindow(zone)
 
         assertNotNull(window)
-        assertEquals(date.atStartOfDay(zone).toInstant(), window!!.start)
-        assertEquals(date.plusDays(1).atStartOfDay(zone).toInstant(), window.end)
+        assertEquals(date.atTime(6, 0).atZone(zone).toInstant(), window!!.start)
+        assertEquals(date.plusDays(1).atTime(6, 0).atZone(zone).toInstant(), window.end)
     }
 
     @Test
@@ -151,7 +151,7 @@ class HomeUiStateTest {
             listOf(
                 candidate(id = 1L, dateTime = date.atTime(8, 0)),
                 candidate(id = 2L, dateTime = date.atTime(20, 0)),
-                candidate(id = 3L, dateTime = date.plusDays(1).atTime(1, 0)),
+                candidate(id = 3L, dateTime = date.plusDays(1).atTime(7, 0)),
             )
 
         val state = HomeUiState(selectedDate = date).refreshSourceSummary(items, candidates, zone)

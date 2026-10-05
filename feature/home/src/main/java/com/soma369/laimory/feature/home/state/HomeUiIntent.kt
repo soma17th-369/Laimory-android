@@ -75,6 +75,9 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object ConfirmDatePicker : HomeUiIntent
 
+    /** 피커의 `기본값으로 지정` 을 눌렀다. 세션만 바꾸고, 저장은 피커의 확인이 한다. */
+    data object ToggleSaveRangeAsDefault : HomeUiIntent
+
     /**
      * 날짜 피커가 보여 주는 달의 기록 상태를 받아 온다.
      *

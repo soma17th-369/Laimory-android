@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.StayPayload
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
@@ -27,9 +28,15 @@ data class HomeUiState(
      * 화면이 직접 계산하면 재구성될 때만 바뀌어, 날짜 줄은 그대로인데 부제만 먼저 넘어가는 순간이 생긴다.
      */
     val today: LocalDate = LocalDate.now(),
-    val startTime: LocalTime = LocalTime.MIDNIGHT,
-    val endDay: DraftEndDay = DraftEndDay.NEXT_DAY,
-    val endTime: LocalTime = LocalTime.MIDNIGHT,
+    val startTime: LocalTime = DefaultRecordRange.INITIAL.startTime,
+    val endDay: DraftEndDay = DefaultRecordRange.INITIAL.endDay(),
+    val endTime: LocalTime = DefaultRecordRange.INITIAL.endTime,
+    /**
+     * 기기에 저장된 기본 기록 범위. 날짜 피커의 `기본값으로 지정` 이 처음에 체크될지 정한다.
+     *
+     * 읽기 전에는 처음 값이다 — 저장한 적이 없는 사람에게는 그것이 곧 기본값이다.
+     */
+    val defaultRange: DefaultRecordRange = DefaultRecordRange.INITIAL,
     val summary: HomeSourceSummary = HomeSourceSummary(),
     /** 원천별 권한 도트. 화면이 복귀마다 다시 보고 넣어 준다. */
     val permissions: HomeSourcePermissions = HomeSourcePermissions(),

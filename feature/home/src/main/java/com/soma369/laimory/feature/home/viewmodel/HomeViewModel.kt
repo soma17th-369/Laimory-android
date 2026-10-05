@@ -21,6 +21,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
@@ -48,6 +49,8 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
+import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -59,6 +62,7 @@ import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
+import com.soma369.laimory.feature.home.state.DraftWindowPolicy
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
@@ -70,12 +74,14 @@ import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.endDay
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
 import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
+import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import com.soma369.laimory.feature.home.state.toCreateConfirm
@@ -117,6 +123,8 @@ class HomeViewModel
         private val resolveStayAddress: ResolveStayAddressUseCase,
         private val analyticsHelper: AnalyticsHelper,
         private val logPermissionEvent: LogPermissionEventUseCase,
+        private val observeDefaultRecordRange: ObserveDefaultRecordRangeUseCase,
+        private val setDefaultRecordRange: SetDefaultRecordRangeUseCase,
         /** UTC 기준이다. 현지 날짜는 [zone] 으로 옮겨서 얻는다. */
         private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
@@ -162,12 +170,54 @@ class HomeViewModel
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
         private var recordStateJob: Job? = null
 
+        /**
+         * 저장된 기본 범위를 홈에 이미 얹었는지. 첫 값에만 얹는다 — 그 뒤의 방출은 사용자가 방금 저장한 값이라
+         * 홈은 이미 그 범위다.
+         */
+        private var hasAppliedDefaultRange = false
+
+        /** 이 화면에서 사용자가 범위를 확정한 적이 있는지. 있으면 늦게 읽힌 기본값이 그 범위를 덮지 않는다. */
+        private var hasUserRange = false
+
         init {
             observeSummary()
             observeDraftTask()
             observeAccountSession()
             observeSubmissionExclusions()
             observeSelectionLock()
+            observeDefaultRange()
+        }
+
+        /**
+         * 기기에 저장된 기본 범위를 받는다.
+         *
+         * 홈은 처음 값(06:00~익일 06:00)으로 먼저 그리고, 저장값이 다르면 첫 값을 받을 때 한 번 옮긴다. 제약에
+         * 맞지 않는 저장값(정책이 바뀐 뒤 남은 것)은 처음 값으로 대신한다.
+         */
+        private fun observeDefaultRange() =
+            safeLaunch {
+                observeDefaultRecordRange().collect { saved ->
+                    val range = saved.takeIf(DraftWindowPolicy::accepts) ?: DefaultRecordRange.INITIAL
+                    updateState { copy(defaultRange = range) }
+                    if (hasAppliedDefaultRange) return@collect
+                    hasAppliedDefaultRange = true
+                    applyDefaultRange(range)
+                }
+            }
+
+        /**
+         * 저장된 기본 범위로 홈을 옮긴다.
+         *
+         * 사용자가 이미 범위를 확정했거나 피커를 열어 고르는 중이면 옮기지 않는다 — 고른 것을 늦게 읽힌 값이 덮는다.
+         */
+        private fun applyDefaultRange(range: DefaultRecordRange) {
+            val current = state.value
+            if (hasUserRange || current.datePicker != null || current.recordRange == range) return
+            updateState {
+                copy(startTime = range.startTime, endDay = range.endDay(), endTime = range.endTime)
+                    .withSourceSummary(sourceItems, photoCandidates)
+            }
+            onRecordWindowChanged()
         }
 
         /** 전송 선택을 바꿀 수 없는 구간을 상세에 알린다. 상세는 이 값으로 토글을 막는다. */
@@ -244,6 +294,7 @@ class HomeViewModel
                 HomeUiIntent.DismissDatePicker -> dismissDatePicker()
                 is HomeUiIntent.PickDate -> pickDate(intent.date)
                 HomeUiIntent.ConfirmDatePicker -> confirmDatePicker()
+                HomeUiIntent.ToggleSaveRangeAsDefault -> toggleSaveRangeAsDefault()
                 is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
                 HomeUiIntent.RefreshRecordState -> refreshSelectedRecord()
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
@@ -494,11 +545,13 @@ class HomeViewModel
             startAutoCollectionAhead()
             val isDateChanged = session.date != state.value.selectedDate
             val isRangeChanged = !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
+            saveRangeAsDefaultIfChecked(session)
+            if (isRangeChanged) hasUserRange = true
             updateState {
                 val closed = copy(datePicker = null, timeSheet = null)
                 if (!isDateChanged && !isRangeChanged) return@updateState closed
-                // 시간 범위는 날짜를 옮겨도 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
-                // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                // 시간 범위는 날짜를 옮겨도 그대로 둔다. 범위를 맞춰 둔 사람이 날짜만 옮길 때마다 기본값으로
+                // 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
                 val next =
                     closed.copy(
                         selectedDate = session.date,
@@ -517,6 +570,30 @@ class HomeViewModel
             if (!isDateChanged && !isRangeChanged) return
             onRecordWindowChanged()
             if (isDateChanged) refreshSelectedRecord()
+        }
+
+        /** 체크박스는 지금 보이는 값을 뒤집는다. 누른 뒤로는 범위를 바꿔도 이 선택을 따른다. */
+        private fun toggleSaveRangeAsDefault() {
+            updateState {
+                val session = datePicker ?: return@updateState this
+                copy(datePicker = session.copy(saveAsDefault = !session.isSavingAsDefault(defaultRange)))
+            }
+        }
+
+        /**
+         * 체크된 채 확인하면 피커의 범위를 기본값으로 저장한다. 이미 기본값이면 쓰지 않는다.
+         *
+         * 체크를 풀고 확인해도 저장된 기본값은 지우지 않는다 — 이번 범위만 다르게 쓰는 것이다. 저장은 날짜·범위
+         * 확정과 따로 돈다. 실패해도 이번 범위는 이미 홈에 들어갔으니, 다음 실행에 돌아가지 않는다는 것만 알린다.
+         */
+        private fun saveRangeAsDefaultIfChecked(session: HomeDatePickerSession) {
+            val defaultRange = state.value.defaultRange
+            if (!session.isSavingAsDefault(defaultRange) || session.range == defaultRange) return
+            safeLaunch {
+                setDefaultRecordRange(session.range).onFailure {
+                    sendEffect(HomeUiSideEffect.ShowSnackbar("기본값으로 저장하지 못했어요. 다시 시도해 주세요."))
+                }
+            }
         }
 
         /**
@@ -653,8 +730,8 @@ class HomeViewModel
         private fun moveToDate(date: LocalDate) {
             updateState {
                 if (date == selectedDate) return@updateState this
-                // 시간 범위는 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
-                // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                // 시간 범위는 그대로 둔다. 범위를 맞춰 둔 사람이 날짜만 옮길 때마다 기본값으로
+                // 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
                 val next =
                     copy(
                         selectedDate = date,

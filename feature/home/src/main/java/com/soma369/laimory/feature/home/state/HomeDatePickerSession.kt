@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.state
 
 import androidx.compose.runtime.Immutable
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -20,7 +21,21 @@ data class HomeDatePickerSession(
     val startTime: LocalTime,
     val endDay: DraftEndDay,
     val endTime: LocalTime,
+    /**
+     * `기본값으로 지정` 을 사용자가 직접 누른 값. null 이면 아직 누르지 않았다.
+     *
+     * 누르기 전에는 **지금 범위가 저장된 기본값과 같은지**를 그대로 보여 준다([isSavingAsDefault]). 처음에
+     * 체크돼 있던 것을 고정해 두면, 기본값 그대로 열어 이번만 범위를 바꾼 사람이 확인하는 순간 기본값까지
+     * 덮어쓴다. 직접 누른 뒤로는 범위를 바꿔도 그 선택을 따른다.
+     */
+    val saveAsDefault: Boolean? = null,
 ) {
+    val range: DefaultRecordRange
+        get() = defaultRecordRangeOf(startTime, endDay, endTime)
+
+    /** 확인할 때 이 범위를 기본값으로 저장할지. 체크박스가 보여 주는 값이기도 하다. */
+    fun isSavingAsDefault(defaultRange: DefaultRecordRange): Boolean = saveAsDefault ?: (range == defaultRange)
+
     fun hasRangeOf(
         startTime: LocalTime,
         endDay: DraftEndDay,
