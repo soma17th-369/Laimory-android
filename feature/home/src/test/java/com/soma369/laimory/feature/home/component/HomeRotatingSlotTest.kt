@@ -11,7 +11,7 @@ class HomeRotatingSlotTest {
 
         assertEquals("나", slot?.value)
         assertEquals(1, slot?.index)
-        assertEquals("2 / 3", slot?.positionLabel)
+        assertEquals(3, slot?.count)
     }
 
     @Test
@@ -22,7 +22,7 @@ class HomeRotatingSlotTest {
 
         assertEquals("하나", slot?.value)
         assertEquals(0, slot?.index)
-        assertEquals("1 / 1", slot?.positionLabel)
+        assertEquals(1, slot?.count)
     }
 
     @Test

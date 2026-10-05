@@ -615,7 +615,7 @@ private fun HomeHeaderRow(
 /** 날짜를 바꿀 수 없을 때의 캐럿. 다른 비활성 요소와 같은 비율이다. */
 private const val DISABLED_CARET_ALPHA = 0.38f
 
-/** 일정 카드 내용. 3초마다 한 건씩 넘기고 우측에 순번을 적는다. */
+/** 일정 카드 내용. 3초마다 한 건씩 넘긴다. 순번은 적지 않는다 — 몇 건인지는 본문 `N / M` 이 말한다(Figma 홈 시안). */
 @Composable
 private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
     if (items.isEmpty()) {
@@ -627,7 +627,6 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
         Row(
             // 시안 높이는 최소값이다. 큰 글꼴에서는 시간·제목 두 줄이 다 들어가도록 늘어난다.
             modifier = Modifier.fillMaxWidth().heightIn(min = CALENDAR_SLOT_HEIGHT),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // 시간과 제목 사이 4. 붙이면 두 줄이 한 덩어리로 읽혀 어느 쪽이 제목인지 흐려진다.
@@ -648,11 +647,6 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = slot.positionLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
