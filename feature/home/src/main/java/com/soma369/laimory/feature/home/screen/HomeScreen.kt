@@ -285,6 +285,8 @@ private fun HomeContent(
             retentionDays = state.retentionDays,
             onPickDate = { onIntent(HomeUiIntent.PickDate(it)) },
             onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
+            isSavingRangeAsDefault = session.isSavingAsDefault(state.defaultRange),
+            onToggleRangeDefault = { onIntent(HomeUiIntent.ToggleSaveRangeAsDefault) },
             onConfirm = { onIntent(HomeUiIntent.ConfirmDatePicker) },
             onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },

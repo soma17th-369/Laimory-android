@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -76,6 +79,7 @@ import com.soma369.laimory.core.ui.R as UiR
  * @param savedDates 저장이 끝난 기록의 날짜. 아직 받지 못한 달은 비어 있다.
  * @param draftDates 아직 저장하지 않은 초안의 날짜. 받는 범위는 [savedDates] 와 같다.
  * @param retentionDays 수집 보존 일수. 오늘을 포함해 이만큼만 고를 수 있다. null 이면 제한하지 않는다.
+ * @param isSavingRangeAsDefault `기본값으로 지정` 체크 상태. 확인하면 이 범위가 다음 실행의 기본값이 된다.
  */
 @Composable
 internal fun HomeDatePickerDialog(
@@ -85,6 +89,8 @@ internal fun HomeDatePickerDialog(
     retentionDays: Int?,
     onPickDate: (LocalDate) -> Unit,
     onRangeClick: () -> Unit,
+    isSavingRangeAsDefault: Boolean,
+    onToggleRangeDefault: () -> Unit,
     onConfirm: () -> Unit,
     onDisplayedMonthChange: (YearMonth) -> Unit,
     onDismiss: () -> Unit,
@@ -166,7 +172,12 @@ internal fun HomeDatePickerDialog(
                             )
                         },
                     )
-                    RecordRangeSection(session = session, onRangeClick = onRangeClick)
+                    RecordRangeSection(
+                        session = session,
+                        onRangeClick = onRangeClick,
+                        isSavingAsDefault = isSavingRangeAsDefault,
+                        onToggleDefault = onToggleRangeDefault,
+                    )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = Spacing.large),
@@ -193,7 +204,7 @@ internal fun HomeDatePickerDialog(
 }
 
 /**
- * 격자 아래 기록 범위 한 줄(Figma 2806:1062).
+ * 격자 아래 기록 범위 한 줄(Figma 2806:1062)과 `기본값으로 지정`.
  *
  * 범위는 홈 카드의 데이터를 거르는 필터라 어느 날이든 바꿀 수 있다.
  */
@@ -201,6 +212,8 @@ internal fun HomeDatePickerDialog(
 private fun RecordRangeSection(
     session: HomeDatePickerSession,
     onRangeClick: () -> Unit,
+    isSavingAsDefault: Boolean,
+    onToggleDefault: () -> Unit,
 ) {
     Column(modifier = Modifier.padding(top = Spacing.large)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -221,6 +234,37 @@ private fun RecordRangeSection(
             modifier = Modifier.padding(top = Spacing.small),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SaveAsDefaultRow(checked = isSavingAsDefault, onToggle = onToggleDefault)
+    }
+}
+
+/**
+ * 범위를 다음 실행에도 쓸지. 앱을 다시 켜거나 기기를 재부팅해도 이 범위로 시작한다.
+ *
+ * 행 전체를 하나의 토글로 둔다 — 체크박스만 누를 수 있으면 표적이 작고, 라벨과 체크박스가 따로 읽히면
+ * 스크린 리더가 같은 내용을 두 번 말한다(`LaimoryDialog` 동의 행과 같은 방식).
+ */
+@Composable
+private fun SaveAsDefaultRow(
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .padding(top = Spacing.small)
+                .clip(MaterialTheme.shapes.medium)
+                .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
+                .padding(vertical = Spacing.extraSmall, horizontal = Spacing.extraSmall),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Text(
+            text = "기본값으로 지정",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
@@ -420,15 +464,17 @@ private fun HomeDatePickerDialogPreview() {
                 session =
                     HomeDatePickerSession(
                         date = today.minusDays(1),
-                        startTime = LocalTime.MIDNIGHT,
+                        startTime = LocalTime.of(6, 0),
                         endDay = DraftEndDay.NEXT_DAY,
-                        endTime = LocalTime.MIDNIGHT,
+                        endTime = LocalTime.of(6, 0),
                     ),
                 savedDates = setOf(today.minusDays(3)),
                 draftDates = setOf(today.minusDays(1)),
                 retentionDays = 30,
                 onPickDate = {},
                 onRangeClick = {},
+                isSavingRangeAsDefault = true,
+                onToggleRangeDefault = {},
                 onConfirm = {},
                 onDisplayedMonthChange = {},
                 onDismiss = {},
