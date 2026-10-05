@@ -516,17 +516,17 @@ class HomeViewModel
         }
 
         /**
-         * 피커 안에서 날짜를 고른다.
+         * 피커 안에서 날짜를 고른다. 범위도 그 날짜에 맞춘다.
          *
-         * 범위를 아직 고치지 않았으면 범위도 그 날짜에 맞춘다. 다른 날짜는 저장된 기본값으로 돌아가고 — `기본값으로
-         * 지정` 을 하지 않고 바꾼 범위는 그 날짜에만 쓴 것이다 — 지금 홈 날짜로 되돌아오면 지금 범위를 다시 보여 준다.
-         * 범위가 바뀌면 체크박스는 다시 "기본값과 같은지"를 따라간다.
+         * 다른 날짜는 저장된 기본값으로 돌아간다 — `기본값으로 지정` 을 하지 않고 바꾼 범위는 그 날짜에만 쓴 것이다.
+         * 피커 안에서 범위를 고친 뒤 날짜를 바꿔도 마찬가지다. 지금 홈 날짜로 되돌아오면 지금 범위를 다시 보여 준다.
+         * 체크박스는 다시 "기본값과 같은지"를 따라가, 기본값으로 돌아가면 체크된다. 같은 날짜를 다시 누르면 그대로 둔다.
          */
         private fun pickDate(date: LocalDate) {
             val session = state.value.datePicker ?: return
+            if (date == session.date) return
             if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
             updateState {
-                if (session.isRangeEdited) return@updateState copy(datePicker = session.copy(date = date))
                 val range = if (date == selectedDate) recordRange else defaultRange
                 copy(
                     datePicker =
@@ -535,7 +535,7 @@ class HomeViewModel
                             startTime = range.startTime,
                             endDay = range.endDay(),
                             endTime = range.endTime,
-                            saveAsDefault = if (range == session.range) session.saveAsDefault else null,
+                            saveAsDefault = null,
                         ),
                 )
             }
@@ -570,7 +570,7 @@ class HomeViewModel
             updateState {
                 val closed = copy(datePicker = null, timeSheet = null)
                 if (!isDateChanged && !isRangeChanged) return@updateState closed
-                // 범위는 세션이 이미 날짜에 맞춰 두었다(다른 날짜는 기본값, 범위를 고쳤으면 고친 값).
+                // 범위는 세션이 이미 날짜에 맞춰 두었다(다른 날짜는 기본값, 그 뒤에 고쳤으면 고친 값).
                 val next =
                     closed.copy(
                         selectedDate = session.date,
@@ -857,7 +857,6 @@ class HomeViewModel
                             startTime = sheet.startTime,
                             endDay = sheet.endDay,
                             endTime = sheet.endTime,
-                            isRangeEdited = true,
                         ),
                     timeSheet = null,
                 )

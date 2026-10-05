@@ -29,14 +29,6 @@ data class HomeDatePickerSession(
      * 덮어쓴다. 직접 누른 뒤로는 범위를 바꿔도 그 선택을 따른다.
      */
     val saveAsDefault: Boolean? = null,
-    /**
-     * 이 세션에서 시간 시트로 범위를 직접 고쳤는지.
-     *
-     * 고치기 전에는 날짜를 고를 때마다 범위가 그 날짜에 맞춰 바뀐다 — 다른 날짜는 저장된 기본값, 지금 홈 날짜는
-     * 지금 범위. 고친 뒤로는 날짜를 바꿔도 고친 범위를 둔다. 범위를 먼저 고르고 날짜를 누른 사람의 범위가 그 순간
-     * 사라지면 안 된다.
-     */
-    val isRangeEdited: Boolean = false,
 ) {
     val range: DefaultRecordRange
         get() = defaultRecordRangeOf(startTime, endDay, endTime)

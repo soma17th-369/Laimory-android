@@ -1225,10 +1225,11 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.openTimeSheet(HomeTimeField.START)
-            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
-            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
             viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today.minusDays(2), LocalTime.of(9, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
@@ -1236,6 +1237,26 @@ class HomeViewModelTest {
             val state = viewModel.state.value
             assertEquals(today.minusDays(2), state.selectedDate)
             assertEquals(LocalTime.of(9, 0), state.startTime)
+        }
+
+    @Test
+    fun `피커에서 범위를 고친 뒤 다른 날짜를 고르면 기본값으로 돌아가고 체크된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+            assertFalse(viewModel.isSavingRangeAsDefault())
+
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            runCurrent()
+
+            assertEquals(DefaultRecordRange.INITIAL, viewModel.state.value.datePicker?.range)
+            assertTrue(viewModel.isSavingRangeAsDefault())
         }
 
     @Test
