@@ -94,6 +94,7 @@ import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
+import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -1238,10 +1239,9 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `날짜를 바꿔도 맞춰 둔 기록 범위는 그대로다`() =
+    fun `기본값으로 지정하지 않은 범위는 다른 날짜를 고르면 기본값으로 돌아가고 체크된다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 범위를 09:00~익일 03:00 으로 맞춰 둔 사람이 날짜만 옮길 때마다 기본값으로 되돌아가면,
-            // 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+            // 체크하지 않고 바꾼 범위는 그 날짜에만 쓴 것이다.
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
             runCurrent()
@@ -1251,15 +1251,57 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.startTime)
 
-            viewModel.selectDate(today.minusDays(2))
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            runCurrent()
+            assertEquals(DefaultRecordRange.INITIAL, viewModel.state.value.datePicker?.range)
+            assertTrue(viewModel.isSavingRangeAsDefault())
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
 
             val state = viewModel.state.value
             assertEquals(today.minusDays(2), state.selectedDate)
-            assertEquals(LocalTime.of(9, 0), state.startTime)
-            assertEquals(DraftEndDay.NEXT_DAY, state.endDay)
-            assertEquals(LocalTime.of(3, 0), state.endTime)
+            assertEquals(DefaultRecordRange.INITIAL, state.recordRange)
+            assertEquals(0, defaultRangeRepository.saveCount)
+        }
+
+    @Test
+    fun `피커에서 지금 날짜로 되돌아오면 지금 범위를 다시 보여 준다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(9, 0))
+            runCurrent()
+            val current = viewModel.state.value.selectedDate
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.PickDate(current))
+            runCurrent()
+
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.datePicker?.startTime)
+            assertFalse(viewModel.isSavingRangeAsDefault())
+        }
+
+    @Test
+    fun `저장된 기본값으로 돌아가는 범위는 기기에 저장한 값이다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val saved = DefaultRecordRange(LocalTime.of(7, 0), endsNextDay = true, endTime = LocalTime.of(2, 0))
+            defaultRangeRepository.saved.value = saved
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(10, 0))
+            runCurrent()
+
+            viewModel.selectDate(today.minusDays(2))
+            runCurrent()
+
+            assertEquals(saved, viewModel.state.value.recordRange)
         }
 
     @Test

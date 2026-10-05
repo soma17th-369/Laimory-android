@@ -515,10 +515,30 @@ class HomeViewModel
             updateState { copy(datePicker = null, timeSheet = null) }
         }
 
+        /**
+         * 피커 안에서 날짜를 고른다.
+         *
+         * 범위를 아직 고치지 않았으면 범위도 그 날짜에 맞춘다. 다른 날짜는 저장된 기본값으로 돌아가고 — `기본값으로
+         * 지정` 을 하지 않고 바꾼 범위는 그 날짜에만 쓴 것이다 — 지금 홈 날짜로 되돌아오면 지금 범위를 다시 보여 준다.
+         * 범위가 바뀌면 체크박스는 다시 "기본값과 같은지"를 따라간다.
+         */
         private fun pickDate(date: LocalDate) {
             val session = state.value.datePicker ?: return
             if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
-            updateState { copy(datePicker = session.copy(date = date)) }
+            updateState {
+                if (session.isRangeEdited) return@updateState copy(datePicker = session.copy(date = date))
+                val range = if (date == selectedDate) recordRange else defaultRange
+                copy(
+                    datePicker =
+                        session.copy(
+                            date = date,
+                            startTime = range.startTime,
+                            endDay = range.endDay(),
+                            endTime = range.endTime,
+                            saveAsDefault = if (range == session.range) session.saveAsDefault else null,
+                        ),
+                )
+            }
         }
 
         /** 피커의 확인. 날짜와 범위를 한 번에 확정한다. */
@@ -550,8 +570,7 @@ class HomeViewModel
             updateState {
                 val closed = copy(datePicker = null, timeSheet = null)
                 if (!isDateChanged && !isRangeChanged) return@updateState closed
-                // 시간 범위는 날짜를 옮겨도 그대로 둔다. 범위를 맞춰 둔 사람이 날짜만 옮길 때마다 기본값으로
-                // 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                // 범위는 세션이 이미 날짜에 맞춰 두었다(다른 날짜는 기본값, 범위를 고쳤으면 고친 값).
                 val next =
                     closed.copy(
                         selectedDate = session.date,
@@ -730,8 +749,8 @@ class HomeViewModel
         private fun moveToDate(date: LocalDate) {
             updateState {
                 if (date == selectedDate) return@updateState this
-                // 시간 범위는 그대로 둔다. 범위를 맞춰 둔 사람이 날짜만 옮길 때마다 기본값으로
-                // 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                // 범위는 건드리지 않는다. 기본 날짜로 옮기는 것은 피커로 확정한 적이 없을 때뿐이라 범위는 이미
+                // 기본값이다(범위를 바꾸는 길은 피커의 확인 하나이고, 그것이 날짜 출처를 USER 로 바꾼다).
                 val next =
                     copy(
                         selectedDate = date,
@@ -838,6 +857,7 @@ class HomeViewModel
                             startTime = sheet.startTime,
                             endDay = sheet.endDay,
                             endTime = sheet.endTime,
+                            isRangeEdited = true,
                         ),
                     timeSheet = null,
                 )
