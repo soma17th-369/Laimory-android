@@ -9,6 +9,7 @@ import com.soma369.laimory.feature.home.state.HomeSourceTapTarget
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.homeSourceTapTarget
+import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.showsPermissionAction
 
 /** 카드가 그 원천의 상태를 어디서 읽는지. */
@@ -85,6 +86,19 @@ internal fun HomeUiState.photoEmptyMessage(): String? =
     }
 
 private const val PHOTO_EMPTY_MESSAGE = "갤러리에 이 기간 사진이 없어요"
+
+/**
+ * 분류 행 오른쪽, `>` 앞에 적을 지금 할 일. 사진 카드에서 고를 사진이 있는데 하나도 고르지 않았을 때 `사진 고르기`.
+ *
+ * 사진은 미리 골라 두지 않으면 빠진 채 만들어지는데, 카드만 보고는 고를 수 있다는 것을 놓친다. 바꿀 수 없는 날
+ * (생성 중·완성된 날)에는 적지 않는다 — 눌러도 고를 수 없다.
+ */
+internal fun HomeUiState.cardHint(kind: HomeSourceKind): String? =
+    PHOTO_PICK_HINT.takeIf {
+        kind == HomeSourceKind.PHOTO && summary.photo.candidate > 0 && selectedPhotoIds.isEmpty() && !isInputLocked
+    }
+
+private const val PHOTO_PICK_HINT = "사진 고르기"
 
 /** 카드 본체 탭. 갈 곳이 없으면 null 이라 눌리지 않는다. */
 internal fun HomeUiState.cardClick(

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +31,7 @@ import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.home.state.HomeSourceKind
+import com.soma369.laimory.core.ui.R as UiR
 
 /**
  * 홈 원천 카드(Figma `Home / SourceCard` 2512:1136).
@@ -38,6 +40,9 @@ import com.soma369.laimory.feature.home.state.HomeSourceKind
  *
  * 카드 **전체가 탭 대상**이되 어디로 가는지는 데이터가 정한다 — 도트가 꺼져도 볼 것이 있으면
  * 상세를 연다. 권한을 더 받는 일은 본문 오른쪽 [permissionAction] 이 따로 맡는다.
+ *
+ * 눌리는 카드는 분류 행 오른쪽 끝에 `>` 를 둔다 — 카드 전체가 눌린다는 것이 보이지 않으면 홈을 그냥 읽고
+ * 지나간다. 그 왼쪽의 [hint] 는 지금 해야 할 일을 짧게 적는다(사진 0장일 때 `사진 고르기`).
  */
 @Composable
 internal fun HomeSourceCard(
@@ -47,6 +52,7 @@ internal fun HomeSourceCard(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     permissionAction: (() -> Unit)? = null,
+    hint: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
@@ -61,7 +67,7 @@ internal fun HomeSourceCard(
             modifier = Modifier.padding(horizontal = Spacing.large, vertical = Spacing.medium),
             verticalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
-            CategoryRow(kind = kind, status = status)
+            CategoryRow(kind = kind, status = status, hint = hint, showsChevron = onClick != null)
             content()
             BodyRow(body = body, permissionAction = permissionAction)
         }
@@ -72,6 +78,8 @@ internal fun HomeSourceCard(
 private fun CategoryRow(
     kind: HomeSourceKind,
     status: DataSourceStatus,
+    hint: String?,
+    showsChevron: Boolean,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -91,6 +99,28 @@ private fun CategoryRow(
             color = MaterialTheme.colorScheme.onSurface,
         )
         StatusDot(status = status)
+        Spacer(modifier = Modifier.weight(1f))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (hint != null) {
+                Text(
+                    text = hint,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.laimoryColors.primaryText,
+                )
+            }
+            if (showsChevron) {
+                Icon(
+                    painter = painterResource(UiR.drawable.ico_default_caret_right),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    // 분류 이름과 같은 진하기. 흐린 색이면 눌린다는 표시로 읽히지 않는다.
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
     }
 }
 
@@ -144,9 +174,10 @@ private fun BodyRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (permissionAction != null) {
-            // 카드 본체는 상세를 열고, 권한을 더 받는 일은 여기서 따로 맡는다.
+            // 카드 본체는 상세를 열고, 권한을 더 받는 일은 여기서 따로 맡는다. 화살표는 붙이지 않는다 —
+            // 분류 행의 `>` 와 뜻이 다른 화살표가 한 카드에 둘이 된다.
             Text(
-                text = "허용 →",
+                text = "허용하기",
                 modifier =
                     Modifier
                         .clip(RoundedCornerShape(Spacing.small))

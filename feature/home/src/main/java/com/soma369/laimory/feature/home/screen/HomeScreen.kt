@@ -82,6 +82,7 @@ import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
 import com.soma369.laimory.feature.home.component.RecordRangeInfo
 import com.soma369.laimory.feature.home.component.cardBody
 import com.soma369.laimory.feature.home.component.cardClick
+import com.soma369.laimory.feature.home.component.cardHint
 import com.soma369.laimory.feature.home.component.permissionAction
 import com.soma369.laimory.feature.home.component.photoEmptyMessage
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
@@ -419,6 +420,7 @@ private fun HomeScreen(
                 body = state.cardBody(HomeSourceKind.PHOTO),
                 onClick = state.cardClick(HomeSourceKind.PHOTO, onIntent, onRequestPermission),
                 permissionAction = state.permissionAction(HomeSourceKind.PHOTO, onRequestPermission),
+                hint = state.cardHint(HomeSourceKind.PHOTO),
             ) {
                 HomePhotoGrid(cells = state.summary.photoCells, emptyMessage = state.photoEmptyMessage())
             }
