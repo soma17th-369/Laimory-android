@@ -1290,6 +1290,57 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `기본값으로 지정을 체크한 범위는 확인 전에 다른 날짜를 골라도 그대로 남고 확인하면 저장된다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 체크한 순간부터 사용자는 그 범위를 기본값으로 여긴다. 저장 전의 옛 기본값으로 돌리면 지정한 것이 사라져 보인다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(5, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ToggleSaveRangeAsDefault)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            runCurrent()
+
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.datePicker?.startTime)
+            assertTrue(viewModel.isSavingRangeAsDefault())
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.startTime)
+            assertEquals(LocalTime.of(5, 0), defaultRangeRepository.saved.value.startTime)
+
+            // 저장된 뒤에는 또 다른 날짜도 새 기본값으로 시작한다.
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(3)))
+            runCurrent()
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.datePicker?.startTime)
+            assertTrue(viewModel.isSavingRangeAsDefault())
+        }
+
+    @Test
+    fun `체크한 범위를 취소하면 저장하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(5, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ToggleSaveRangeAsDefault)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+
+            assertEquals(0, defaultRangeRepository.saveCount)
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.startTime)
+        }
+
+    @Test
     fun `피커에서 지금 날짜로 되돌아오면 지금 범위를 다시 보여 준다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val today = LocalDate.now(ZoneId.systemDefault())

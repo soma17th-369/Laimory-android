@@ -518,15 +518,21 @@ class HomeViewModel
         /**
          * 피커 안에서 날짜를 고른다. 범위도 그 날짜에 맞춘다.
          *
-         * 다른 날짜는 저장된 기본값으로 돌아간다 — `기본값으로 지정` 을 하지 않고 바꾼 범위는 그 날짜에만 쓴 것이다.
-         * 피커 안에서 범위를 고친 뒤 날짜를 바꿔도 마찬가지다. 지금 홈 날짜로 되돌아오면 지금 범위를 다시 보여 준다.
-         * 체크박스는 다시 "기본값과 같은지"를 따라가, 기본값으로 돌아가면 체크된다. 같은 날짜를 다시 누르면 그대로 둔다.
+         * 다른 날짜는 기본값으로 돌아간다 — `기본값으로 지정` 을 하지 않고 바꾼 범위는 그 날짜에만 쓴 것이다. 피커 안에서
+         * 범위를 고친 뒤 날짜를 바꿔도 마찬가지다. 지금 홈 날짜로 되돌아오면 지금 범위를 다시 보여 준다. 체크박스는 다시
+         * "기본값과 같은지"를 따라가, 기본값으로 돌아가면 체크된다. 같은 날짜를 다시 누르면 그대로 둔다.
+         *
+         * **직접 체크해 둔 범위는 이 피커 안에서는 곧 기본값이다.** 저장은 확인 때 하지만, 체크한 사람은 그 순간부터 그 범위를
+         * 기본값으로 여긴다. 그래서 날짜를 바꿔도 체크한 범위와 체크를 그대로 둔다 — 저장 전의 옛 기본값으로 돌리면
+         * 방금 지정한 것이 사라진 것처럼 보인다. 확인하면 저장되고, 취소하면 함께 버려진다.
          */
         private fun pickDate(date: LocalDate) {
             val session = state.value.datePicker ?: return
             if (date == session.date) return
             if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
             updateState {
+                // 직접 체크한 것만이다. 범위가 기본값과 같아 저절로 체크돼 보이는 것은 지정한 것이 아니다.
+                if (session.saveAsDefault == true) return@updateState copy(datePicker = session.copy(date = date))
                 val range = if (date == selectedDate) recordRange else defaultRange
                 copy(
                     datePicker =
