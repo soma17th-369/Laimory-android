@@ -26,6 +26,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -48,7 +53,7 @@ import com.soma369.laimory.core.ui.R as UiR
 internal fun HomeSourceCard(
     kind: HomeSourceKind,
     status: DataSourceStatus,
-    body: String,
+    body: HomeCardBody,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     permissionAction: (() -> Unit)? = null,
@@ -160,7 +165,7 @@ private fun DataSourceStatus.dotLabel(): String =
 
 @Composable
 private fun BodyRow(
-    body: String,
+    body: HomeCardBody,
     permissionAction: (() -> Unit)?,
 ) {
     Row(
@@ -168,11 +173,21 @@ private fun BodyRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = body,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        when (body) {
+            is HomeCardBody.Count ->
+                Text(
+                    text = body.annotated(highlight = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.semantics { contentDescription = body.spoken },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            is HomeCardBody.Message ->
+                Text(
+                    text = body.text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+        }
         if (permissionAction != null) {
             // 카드 본체는 상세를 열고, 권한을 더 받는 일은 여기서 따로 맡는다. 화살표는 붙이지 않는다 —
             // 분류 행의 `>` 와 뜻이 다른 화살표가 한 카드에 둘이 된다.
@@ -189,3 +204,10 @@ private fun BodyRow(
         }
     }
 }
+
+/** `N / M` — 보낼 수 N 만 [highlight] 로 칠한다. 나머지는 본문 색을 따른다. */
+private fun HomeCardBody.Count.annotated(highlight: Color): AnnotatedString =
+    buildAnnotatedString {
+        withStyle(SpanStyle(color = highlight)) { append(sending.toString()) }
+        append(" / $candidate")
+    }

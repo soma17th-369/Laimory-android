@@ -50,21 +50,27 @@ private fun HomeSourceKind.permission(): DataPermission =
 /**
  * 카드 본문 한 줄.
  *
- * 규칙은 `후보 M개 중 N개` 이고, 단위는 확인 다이얼로그와 같다(사진 장·일정 개·위치 건·알림 건). 다만 **볼 것도 권한도 없을 때만** 문구를 바꾼다 — 도트가 꺼졌어도
+ * 규칙은 `N / M`(보낼 수 / 후보 수, Figma `Home / SourceCard`)이고, 낭독은 `후보 M장 중 N장` 처럼 단위를 붙인다
+ * (단위는 확인 다이얼로그와 같다 — 사진 장·일정 개·위치 건·알림 건). 다만 **볼 것도 권한도 없을 때만** 문구를 바꾼다 — 도트가 꺼졌어도
  * 모인 것이 있으면 건수를 보여 주는 편이 사용자가 아는 것에 가깝다. 지원하지 않는 기기에는
  * 허용하라고 하지 않는다.
  *
  * 빈 문구는 유형을 말하지 않는다 — 내용 슬롯이 이미 `일정이 없어요` 라 적고 있어, 본문까지
  * 유형을 되풀이하면 카드에 같은 말이 두 줄로 선다.
  */
-internal fun HomeUiState.cardBody(kind: HomeSourceKind): String {
+internal fun HomeUiState.cardBody(kind: HomeSourceKind): HomeCardBody {
     val count = countOf(kind)
     val status = statusOf(kind)
     return when {
-        status == DataSourceStatus.UNSUPPORTED -> "이 기기에서는 지원하지 않아요"
-        count.candidate > 0 -> kind.countUnit.let { "${count.candidate}$it 중 ${count.sending}$it" }
-        status != DataSourceStatus.GRANTED -> "탭하여 허용"
-        else -> "아직 모인 것이 없어요"
+        status == DataSourceStatus.UNSUPPORTED -> HomeCardBody.Message("이 기기에서는 지원하지 않아요")
+        count.candidate > 0 ->
+            HomeCardBody.Count(
+                sending = count.sending,
+                candidate = count.candidate,
+                spoken = kind.countUnit.let { "${count.candidate}$it 중 ${count.sending}$it" },
+            )
+        status != DataSourceStatus.GRANTED -> HomeCardBody.Message("탭하여 허용")
+        else -> HomeCardBody.Message("아직 모인 것이 없어요")
     }
 }
 
