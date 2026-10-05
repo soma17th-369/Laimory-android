@@ -2161,9 +2161,9 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `생성 중에는 원천 상세를 열지 않는다`() =
+    fun `생성 중에도 원천 상세를 열고 상세는 읽기 전용으로 받는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 확정한 스냅샷으로 요청이 진행되는 동안 바뀐 수집을 보여 주면 보낸 것과 어긋난다.
+            // 무엇을 보냈는지는 만드는 중에도 볼 수 있어야 한다. 바꾸는 것만 막는다.
             sourceRepository.items.value = listOf(todayItem("cal-1"))
             val viewModel = createViewModel()
             runCurrent()
@@ -2173,7 +2173,34 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.CALENDAR))
             runCurrent()
 
-            assertTrue(navigationHelper.destinations.isEmpty())
+            assertEquals(listOf<Page>(DraftConsentDetailPage("CALENDAR")), navigationHelper.destinations)
+            assertTrue(sessionStore.isSelectionReadOnly.value)
+        }
+
+    @Test
+    fun `생성 중에도 사진 시트는 열리지만 선택을 바꾸지 않고 날짜도 그대로다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(today)
+            runCurrent()
+            val date = viewModel.state.value.selectedDate
+
+            viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.PHOTO))
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            runCurrent()
+            assertEquals(emptySet<Long>(), viewModel.state.value.pendingPhotoIds)
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+            assertNull(viewModel.state.value.datePicker)
+            assertEquals(date, viewModel.state.value.selectedDate)
         }
 
     @Test

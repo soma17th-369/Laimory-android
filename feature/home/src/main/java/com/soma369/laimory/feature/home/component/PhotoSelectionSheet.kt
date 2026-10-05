@@ -98,7 +98,9 @@ internal fun PhotoSelectionSheet(
                         if (state.isPhotoAccessDenied) {
                             "사진 접근을 허용하지 않아 사진을 불러올 수 없어요."
                         } else if (isReadOnly) {
-                            "${state.timeRangeLabel()} 사이에 모은 사진이에요. 이미 만든 기록이라 선택은 바꿀 수 없고, 누르면 크게 볼 수 있어요."
+                            // 만드는 중이거나 이미 만든 날이다. 보여 주는 것은 지금 기기의 사진이라 보낸 것과 다를 수 있다.
+                            "보낸 내용과 다를 수 있어요. ${state.timeRangeLabel()} 사이에 지금 기기에 있는 사진이고, " +
+                                "선택은 바꿀 수 없어요. 누르면 크게 볼 수 있어요."
                         } else {
                             // 꾹 누르기는 보이지 않는 조작이라 여기서 한 번 알린다.
                             "${state.timeRangeLabel()} 사이에 모은 사진만 표시해요. 길게 누르면 크게 볼 수 있어요."

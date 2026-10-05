@@ -79,7 +79,6 @@ import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
-import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
 import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
@@ -390,8 +389,7 @@ class HomeViewModel
          * 사진을 고르는 동안 수집이 돌아, 확인 화면에서 기다리는 시간이 짧아진다.
          */
         private fun startPhotoSelection() {
-            // 완성된 날도 연다. 시트가 읽기 전용으로 그려지고 선택 변경은 아래 토글들이 막는다.
-            if (state.value.isSourceViewLocked) return
+            // 생성 중·완성된 날도 연다. 시트가 읽기 전용으로 그려지고 선택 변경은 아래 토글들이 막는다.
             startAutoCollectionAhead()
             sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
@@ -1273,10 +1271,10 @@ class HomeViewModel
          * 사진만 시트로 간다 — 고른 사진이 정본이라 목록에서 빼는 것이 아니라 다시 고르는 일이다.
          * 나머지는 유형 상세로 가고, 상세는 홈이 상시로 유지하는 스냅샷을 읽는다.
          *
-         * 완성된 날도 연다. 그날 무엇이 모였는지는 볼 수 있어야 한다 — 상세와 시트가 읽기 전용으로 뜬다.
+         * 제출·생성 중과 완성된 날도 연다. 무엇이 모였는지는 언제든 볼 수 있어야 한다 — 상세와 시트가 읽기 전용으로
+         * 뜨고, 지금 기기에 모인 것이라 보낸 내용과 다를 수 있다고 알린다.
          */
         private fun openSourceDetail(kind: HomeSourceKind) {
-            if (state.value.isSourceViewLocked) return
             if (kind == HomeSourceKind.PHOTO) {
                 startPhotoSelection()
                 return

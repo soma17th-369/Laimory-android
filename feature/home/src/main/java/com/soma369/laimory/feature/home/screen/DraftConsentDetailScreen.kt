@@ -205,11 +205,13 @@ private fun DraftConsentDetailScreen(
                 Text(
                     text =
                         when {
+                            // 만드는 중이거나 이미 만든 날이다. 지금 기기에 모인 것을 보여 주므로 보낸 것과 다를 수 있다.
+                            isReadOnly ->
+                                "보낸 내용과 다를 수 있어요. $label · 지금 기기에 모인 항목이고, 전송 선택은 바꿀 수 없어요. " +
+                                    "흐리게 표시된 항목은 전송에서 뺀 항목이에요."
+
                             summary.group == DraftConsentTypeGroup.PHOTO ->
                                 "$label · 아래 사진이 그대로 서버로 전송돼요. 사진은 홈 사진 선택에서 변경할 수 있어요."
-
-                            isReadOnly ->
-                                "$label · 이미 만든 기록이라 전송 선택은 바꿀 수 없어요. 흐리게 표시된 항목은 전송에서 뺀 항목이에요."
 
                             summary.group == DraftConsentTypeGroup.LOCATION ->
                                 "$label · 지도 핀을 누르면 장소와 포함 여부가 보이고, 말풍선을 한 번 더 누르면 바뀌어요. 핀 번호는 아래 목록과 같아요."
