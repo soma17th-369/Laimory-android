@@ -19,18 +19,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +63,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -204,7 +211,13 @@ internal fun HomeDatePickerDialog(
 }
 
 /**
- * 격자 아래 기록 범위 한 줄(Figma 2806:1062)과 `기본값으로 지정`.
+ * 격자 아래 기록 범위 영역(Figma 2806:1062).
+ *
+ * - 1행: `기록 범위` ⓘ · 범위 칩
+ * - 2행: `기본값으로 지정`
+ *
+ * 범위 제약(최소 6시간·종료 상한)은 늘 펼쳐 두지 않고 ⓘ 를 눌러 본다. 롤러가 범위 밖 값을 아예 내놓지
+ * 않으므로 고르는 데 꼭 읽어야 하는 글이 아니다.
  *
  * 범위는 홈 카드의 데이터를 거르는 필터라 어느 날이든 바꿀 수 있다.
  */
@@ -218,47 +231,74 @@ private fun RecordRangeSection(
     Column(modifier = Modifier.padding(top = Spacing.large)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = Spacing.medium),
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.small),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "기록 범위",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "기록 범위",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                RangeRuleInfo()
+            }
             RangeChip(label = session.timeRangeLabel(), onClick = onRangeClick)
         }
-        Text(
-            text = "6시간 이상 · 종료는 익일 06:00까지",
-            modifier = Modifier.padding(top = Spacing.small),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         SaveAsDefaultRow(checked = isSavingAsDefault, onToggle = onToggleDefault)
     }
 }
 
 /**
+ * 범위 제약 안내. 누르면 툴팁으로 보여 주고, 화면 밖을 누르면 닫힌다.
+ *
+ * 낭독 문구에 제약을 그대로 담는다 — 스크린 리더 사용자는 툴팁을 열지 않아도 듣는다.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RangeRuleInfo() {
+    val tooltipState = rememberTooltipState(isPersistent = true)
+    val scope = rememberCoroutineScope()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(RANGE_RULE) } },
+        state = tooltipState,
+    ) {
+        IconButton(onClick = { scope.launch { tooltipState.show() } }) {
+            Icon(
+                painter = painterResource(UiR.drawable.ico_setting_info),
+                contentDescription = "기록 범위 안내: $RANGE_RULE",
+                modifier = Modifier.size(RangeInfoIconSize),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private const val RANGE_RULE = "6시간 이상 · 종료는 익일 06:00까지"
+
+/**
  * 범위를 다음 실행에도 쓸지. 앱을 다시 켜거나 기기를 재부팅해도 이 범위로 시작한다.
  *
  * 행 전체를 하나의 토글로 둔다 — 체크박스만 누를 수 있으면 표적이 작고, 라벨과 체크박스가 따로 읽히면
- * 스크린 리더가 같은 내용을 두 번 말한다(`LaimoryDialog` 동의 행과 같은 방식).
+ * 스크린 리더가 같은 내용을 두 번 말한다(`LaimoryDialog` 동의 행과 같은 방식). 좌우 여백은 두지 않는다 —
+ * 체크박스가 윗줄 `기록 범위` 와 같은 선에서 시작해야 한 덩어리로 읽힌다.
  */
 @Composable
 private fun SaveAsDefaultRow(
     checked: Boolean,
     onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
         modifier =
-            Modifier
-                .padding(top = Spacing.small)
+            modifier
+                .padding(top = Spacing.extraSmall)
                 .clip(MaterialTheme.shapes.medium)
                 .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
-                .padding(vertical = Spacing.extraSmall, horizontal = Spacing.extraSmall),
+                .padding(vertical = Spacing.extraSmall),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
     ) {
         Checkbox(checked = checked, onCheckedChange = null)
         Text(
@@ -446,6 +486,7 @@ private val RecordDotSize = 6.dp
 private const val DISABLED_DOT_ALPHA = 0.38f
 private val StepperTouchTarget = 44.dp
 private val RangeCaretSize = 16.dp
+private val RangeInfoIconSize = 16.dp
 private val StepperIconSize = 20.dp
 private const val CHIP_CORNER_PERCENT = 50
 
