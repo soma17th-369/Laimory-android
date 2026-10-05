@@ -174,11 +174,13 @@ private fun BodyRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         when (body) {
+            // 건수는 시안대로 bodyLarge(Figma `Home / SourceCard` 본문 Body/Large). 상태 문구는 bodyMedium 으로 둔다 —
+            // 반쪽 카드에서 `이 기기에서는 지원하지 않아요` 같은 긴 문구가 16 이면 두 줄로 넘친다.
             is HomeCardBody.Count ->
                 Text(
                     text = body.annotated(highlight = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.semantics { contentDescription = body.spoken },
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             is HomeCardBody.Message ->
