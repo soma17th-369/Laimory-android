@@ -83,6 +83,7 @@ import com.soma369.laimory.feature.home.component.cardBody
 import com.soma369.laimory.feature.home.component.cardClick
 import com.soma369.laimory.feature.home.component.permissionAction
 import com.soma369.laimory.feature.home.component.photoEmptyMessage
+import com.soma369.laimory.feature.home.component.timeRangeLabel
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeCalendarItem
@@ -287,6 +288,7 @@ private fun HomeContent(
             onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
             isSavingRangeAsDefault = session.isSavingAsDefault(state.defaultRange),
             onToggleRangeDefault = { onIntent(HomeUiIntent.ToggleSaveRangeAsDefault) },
+            defaultRangeLabel = state.defaultRange.timeRangeLabel(),
             onConfirm = { onIntent(HomeUiIntent.ConfirmDatePicker) },
             onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },
