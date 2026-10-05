@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -213,11 +214,12 @@ internal fun HomeDatePickerDialog(
 /**
  * 격자 아래 기록 범위 영역(Figma 2806:1062).
  *
- * - 1행: `기록 범위` ⓘ · 범위 칩
- * - 2행: `기본값으로 지정`
+ * - 1행: `기록 범위` ⓘ
+ * - 2행: `기본값으로 지정` · 범위 칩(양 끝)
  *
- * 범위 제약(최소 6시간·종료 상한)은 늘 펼쳐 두지 않고 ⓘ 를 눌러 본다. 롤러가 범위 밖 값을 아예 내놓지
- * 않으므로 고르는 데 꼭 읽어야 하는 글이 아니다.
+ * 체크박스를 범위 칩과 한 줄에 둔다 — 무엇을 기본값으로 지정하는지가 바로 옆에 보인다. 범위 제약(최소 6시간·
+ * 종료 상한)은 늘 펼쳐 두지 않고 ⓘ 를 눌러 본다. 롤러가 범위 밖 값을 아예 내놓지 않으므로 고르는 데 꼭 읽어야
+ * 하는 글이 아니다.
  *
  * 범위는 홈 카드의 데이터를 거르는 필터라 어느 날이든 바꿀 수 있다.
  */
@@ -231,28 +233,37 @@ private fun RecordRangeSection(
     Column(modifier = Modifier.padding(top = Spacing.large)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
+            modifier = Modifier.padding(top = Spacing.medium),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "기록 범위",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            RangeRuleInfo()
+        }
+        Row(
             modifier = Modifier.fillMaxWidth().padding(top = Spacing.small),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "기록 범위",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                RangeRuleInfo()
-            }
+            SaveAsDefaultRow(
+                checked = isSavingAsDefault,
+                onToggle = onToggleDefault,
+                modifier = Modifier.weight(1f, fill = false).padding(end = Spacing.small),
+            )
             RangeChip(label = session.timeRangeLabel(), onClick = onRangeClick)
         }
-        SaveAsDefaultRow(checked = isSavingAsDefault, onToggle = onToggleDefault)
     }
 }
 
 /**
- * 범위 제약 안내. 누르면 툴팁으로 보여 주고, 화면 밖을 누르면 닫힌다.
+ * 범위 제약 안내. 누르면 툴팁으로 보여 주고, 바깥을 누르면 닫힌다.
  *
- * 낭독 문구에 제약을 그대로 담는다 — 스크린 리더 사용자는 툴팁을 열지 않아도 듣는다.
+ * 시안대로 아이콘 둘레 4 만 둔다(누르는 영역 24). 낭독 문구에 제약을 그대로 담는다 — 스크린 리더 사용자는
+ * 툴팁을 열지 않아도 듣는다.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -264,14 +275,17 @@ private fun RangeRuleInfo() {
         tooltip = { PlainTooltip { Text(RANGE_RULE) } },
         state = tooltipState,
     ) {
-        IconButton(onClick = { scope.launch { tooltipState.show() } }) {
-            Icon(
-                painter = painterResource(UiR.drawable.ico_setting_info),
-                contentDescription = "기록 범위 안내: $RANGE_RULE",
-                modifier = Modifier.size(RangeInfoIconSize),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Icon(
+            painter = painterResource(UiR.drawable.ico_setting_info),
+            contentDescription = "기록 범위 안내: $RANGE_RULE",
+            modifier =
+                Modifier
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button) { scope.launch { tooltipState.show() } }
+                    .padding(Spacing.extraSmall)
+                    .size(RangeInfoIconSize),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -293,7 +307,6 @@ private fun SaveAsDefaultRow(
     Row(
         modifier =
             modifier
-                .padding(top = Spacing.extraSmall)
                 .clip(MaterialTheme.shapes.medium)
                 .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
                 .padding(vertical = Spacing.extraSmall),
@@ -303,7 +316,7 @@ private fun SaveAsDefaultRow(
         Checkbox(checked = checked, onCheckedChange = null)
         Text(
             text = "기본값으로 지정",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
@@ -331,7 +344,7 @@ private fun RangeChip(
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Icon(
