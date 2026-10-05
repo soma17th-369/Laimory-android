@@ -298,6 +298,7 @@ private fun HomeContent(
             confirm = confirm,
             onConfirm = { onIntent(HomeUiIntent.ConfirmCreateDraft) },
             onDismiss = { onIntent(HomeUiIntent.DismissCreateConfirm) },
+            onPickPhotos = { onIntent(HomeUiIntent.PickPhotosForCreate) },
         )
     }
 

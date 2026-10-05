@@ -844,6 +844,160 @@ class HomeViewModelTest {
             assertEquals(listOf(2L), viewModel.state.value.availablePhotos.map { it.mediaStoreId })
         }
 
+    // --- 확인 다이얼로그에서 사진 고르기 ---
+
+    @Test
+    fun `확인 다이얼로그에서 사진 고르기를 누르면 다이얼로그를 거두고 사진 시트를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertNotNull(viewModel.state.value.createConfirm)
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(HomeUiSideEffect.RequestPhotoAccess(), effect.await())
+            // 취소가 아니라 같은 만들기의 한 걸음이다.
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.TimelineCreateStopped })
+        }
+
+    @Test
+    fun `시트에서 사진을 고르면 확인 다이얼로그가 새 사진으로 다시 뜨고 만들기는 그 사진까지 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertTrue(viewModel.state.value.createConfirm!!.photoUris.isEmpty())
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            assertEquals(1, viewModel.state.value.createConfirm?.photoUris?.size)
+            // 이어진 만들기라 시작·검토 시작을 다시 세지 않는다.
+            assertEquals(1, analyticsHelper.logged.count { it is AnalyticsEvent.TimelineCreateStarted })
+            assertEquals(1, analyticsHelper.logged.count { it is AnalyticsEvent.TimelineEventReviewStarted })
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(
+                setOf("calendar", "prepared-photo-1"),
+                draftRepository.createdItems.mapTo(mutableSetOf(), SourceItem::rawId),
+            )
+        }
+
+    @Test
+    fun `시트를 고르지 않고 닫아도 확인 다이얼로그로 돌아온다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            assertNotNull(viewModel.state.value.createConfirm)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `사진 없이 계속을 눌러도 확인 다이얼로그로 돌아오고 고른 사진은 비운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            createDraft(viewModel)
+            assertEquals(1, viewModel.state.value.createConfirm?.photoUris?.size)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ContinueWithoutPhotos)
+            runCurrent()
+
+            assertEquals(0, viewModel.state.value.createConfirm?.photoUris?.size)
+        }
+
+    @Test
+    fun `다이얼로그를 다시 띄워도 상세에서 뺀 항목은 빠진 채로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 다시 만들 때 옛 제출 목록을 재사용하거나 제외를 걷어 내면 사용자가 뺀 항목이 되살아난다(#431 회귀).
+            sourceRepository.items.value = listOf(todayItem("cal-1"), todayItem("cal-2"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            sessionStore.toggleExcluded("cal-2")
+            runCurrent()
+            createDraft(viewModel)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            val calendar = viewModel.state.value.createConfirm?.counts?.single { it.group == DraftConsentTypeGroup.CALENDAR }
+            assertEquals(1, calendar?.count)
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(
+                setOf("cal-1", "prepared-photo-1"),
+                draftRepository.createdItems.mapTo(mutableSetOf(), SourceItem::rawId),
+            )
+        }
+
+    @Test
+    fun `다이얼로그 없이 연 사진 시트는 닫아도 다이얼로그를 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenPhotoSheet)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertTrue(confirmDialog.shown.isEmpty())
+        }
+
     @Test
     fun `선택한 MediaStore 사진만 Room 저장 없이 전송 스냅샷에 합친다`() =
         runTest(mainDispatcherRule.testDispatcher) {

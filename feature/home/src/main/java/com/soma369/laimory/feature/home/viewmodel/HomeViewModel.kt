@@ -164,6 +164,14 @@ class HomeViewModel
          * 항목을 걷어 내는데, 준비 스냅샷에는 그 항목이 남아 있어 사용자가 뺐던 것이 확인창에 없던 채로 나간다.
          */
         private var confirmedSubmission: DraftSourceItemSelection? = null
+
+        /**
+         * 확인 다이얼로그에서 사진을 고르러 시트로 갔는지. 시트가 닫히면 다이얼로그를 다시 띄운다.
+         *
+         * 다이얼로그는 새로 만든다 — 떠나기 전 제출 스냅샷을 다시 쓰지 않고, 사진을 바꾼 지금 상태로 준비부터 다시
+         * 한다. 다이얼로그가 보여 주는 것과 `만들기` 가 보내는 것이 언제나 같은 스냅샷이다.
+         */
+        private var resumesCreateAfterPhotoSheet = false
         private var locationConsentJob: Job? = null
 
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
@@ -262,6 +270,7 @@ class HomeViewModel
                     // 확인창·고른 사진은 이전 계정의 시도다. 스토어는 이미 비었으므로 남겨 두면 새 계정 홈에
                     // 이전 계정의 썸네일이 다시 뜨고, `만들기` 는 준비 스냅샷이 없어 무반응이다.
                     confirmedSubmission = null
+                    resumesCreateAfterPhotoSheet = false
                     updateState {
                         copy(
                             isLocationConsentGranted = false,
@@ -285,10 +294,7 @@ class HomeViewModel
                     sendEffect(HomeUiSideEffect.RequestPhotoAccess(force = true))
                 is HomeUiIntent.ResolvePhotoAccess -> resolvePhotoAccess(intent.granted, intent.limited)
                 is HomeUiIntent.RefreshPhotos -> refreshPhotos(intent.hasAccess, intent.limited)
-                HomeUiIntent.DismissPhotoSheet ->
-                    updateState {
-                        copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet())
-                    }
+                HomeUiIntent.DismissPhotoSheet -> dismissPhotoSheet()
                 is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
@@ -308,6 +314,7 @@ class HomeViewModel
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
                 HomeUiIntent.ConfirmCreateDraft -> confirmCreateDraft()
                 HomeUiIntent.DismissCreateConfirm -> dismissCreateConfirm()
+                HomeUiIntent.PickPhotosForCreate -> pickPhotosForCreate()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
@@ -459,6 +466,12 @@ class HomeViewModel
             }
         }
 
+        /** 고르던 것을 버리고 닫는다. 확정해 둔 선택은 그대로다. */
+        private fun dismissPhotoSheet() {
+            updateState { copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet()) }
+            resumeCreateAfterPhotoSheet()
+        }
+
         /** 고른 사진을 홈에 돌려주고 닫는다. */
         private fun confirmPhotoSelection() = closePhotoSheet { pendingPhotoIds }
 
@@ -486,6 +499,31 @@ class HomeViewModel
                     draftMessage = null,
                 ).withSourceSummary(sourceItems, photoCandidates)
             }
+            resumeCreateAfterPhotoSheet()
+        }
+
+        /**
+         * 확인 다이얼로그에서 사진을 고르러 간다. 다이얼로그와 제출용 스냅샷을 거두고 사진 시트를 연다.
+         *
+         * 취소가 아니라 만들기 흐름 안의 한 걸음이라 중단으로 기록하지 않는다. 시트가 닫히면
+         * [resumeCreateAfterPhotoSheet] 가 이어 간다.
+         */
+        private fun pickPhotosForCreate() {
+            if (confirmedSubmission == null) return
+            closeCreateConfirm()
+            draftConsentSessionStore.clearPreparation()
+            resumesCreateAfterPhotoSheet = true
+            startPhotoSelection()
+        }
+
+        /**
+         * 다이얼로그에서 사진을 고르러 왔다면, 시트가 어떻게 닫혔든(선택 완료·사진 없이 계속·닫기) 다이얼로그를
+         * 새로 만들어 다시 띄운다. 그만두려면 다이얼로그의 `취소` 를 누른다.
+         */
+        private fun resumeCreateAfterPhotoSheet() {
+            if (!resumesCreateAfterPhotoSheet) return
+            resumesCreateAfterPhotoSheet = false
+            prepareDraftConsent(isResume = true)
         }
 
         /**
@@ -861,7 +899,7 @@ class HomeViewModel
          * 완료하고 CTA 를 선택한 경우에만 시작된다. 사진 상한 초과·접근 불가 사진 같은 입력
          * 오류는 동의 화면으로 이동하지 않고 홈에서 바로 수정하도록 안내한다.
          */
-        private fun prepareDraftConsent() {
+        private fun prepareDraftConsent(isResume: Boolean = false) {
             if (state.value.isInputLocked) return
             if (consentPreparationJob?.isActive == true) return
             // 제출이 이미 시작됐으면 중복 진입하지 않는다. **상시 스냅샷이 아니라 제출용
@@ -882,7 +920,8 @@ class HomeViewModel
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
-                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
+                    // 다이얼로그에서 사진을 고르고 돌아온 것은 같은 만들기의 이어짐이다. 시작을 두 번 세지 않는다.
+                    if (!isResume) analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
@@ -909,7 +948,7 @@ class HomeViewModel
                         selection = selection,
                         discardActiveTask = shouldDiscardPreviousTask,
                     )
-                    showCreateConfirm()
+                    showCreateConfirm(isResume)
                 }
         }
 
@@ -919,7 +958,7 @@ class HomeViewModel
          * 화면을 한 장 더 두지 않는다 — 보낼 데이터를 보여 주고 유형 상세로 들어가는 일은 이미
          * 홈 카드가 하므로, 남는 것은 "이 건수로 만들겠습니까" 라는 마지막 확인뿐이다.
          */
-        private suspend fun showCreateConfirm() {
+        private suspend fun showCreateConfirm(isResume: Boolean = false) {
             val preparation = draftConsentSessionStore.preparation.value ?: return
             val submission = submissionOf(preparation)
             val recordDate = preparation.recordDate
@@ -932,9 +971,11 @@ class HomeViewModel
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
-            analyticsHelper.log(
-                AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, preparation.selection.analyticsCounts().total),
-            )
+            if (!isResume) {
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, preparation.selection.analyticsCounts().total),
+                )
+            }
             confirmedSubmission = submission
             updateState { copy(createConfirm = submission.toCreateConfirm()) }
         }

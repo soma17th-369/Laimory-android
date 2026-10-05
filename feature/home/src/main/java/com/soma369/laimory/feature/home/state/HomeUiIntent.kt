@@ -136,6 +136,12 @@ sealed interface HomeUiIntent : UiIntent {
     data object DismissCreateConfirm : HomeUiIntent
 
     /**
+     * 확인 다이얼로그의 `사진 고르기`·`사진 바꾸기`. 다이얼로그를 닫고 사진 시트를 연다.
+     * 시트가 닫히면(선택 완료·사진 없이 계속·닫기 모두) 확인 다이얼로그를 새로 만들어 다시 띄운다.
+     */
+    data object PickPhotosForCreate : HomeUiIntent
+
+    /**
      * 원천별 권한 도트를 다시 본다. 판정은 화면이 하고 결과만 싣는다.
      *
      * 권한은 사용자가 언제든 바꾸므로 캐시하지 않고 홈 재진입(ON_RESUME)마다 다시 본다.
