@@ -288,7 +288,7 @@ private fun HomeContent(
             onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
             isSavingRangeAsDefault = session.isSavingAsDefault(state.defaultRange),
             onToggleRangeDefault = { onIntent(HomeUiIntent.ToggleSaveRangeAsDefault) },
-            defaultRangeLabel = state.defaultRange.timeRangeLabel(),
+            defaultRangeLabel = session.defaultAfterConfirm(state.defaultRange).timeRangeLabel(),
             onConfirm = { onIntent(HomeUiIntent.ConfirmDatePicker) },
             onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },

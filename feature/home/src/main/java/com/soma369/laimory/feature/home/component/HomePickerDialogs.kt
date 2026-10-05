@@ -88,7 +88,7 @@ import com.soma369.laimory.core.ui.R as UiR
  * @param draftDates 아직 저장하지 않은 초안의 날짜. 받는 범위는 [savedDates] 와 같다.
  * @param retentionDays 수집 보존 일수. 오늘을 포함해 이만큼만 고를 수 있다. null 이면 제한하지 않는다.
  * @param isSavingRangeAsDefault `기본값으로 지정` 체크 상태. 확인하면 이 범위가 다음 실행의 기본값이 된다.
- * @param defaultRangeLabel 기기에 저장된 기본 범위(`06:00 ~ 익일 06:00`).
+ * @param defaultRangeLabel 확인하면 기본값이 될 범위(`06:00 ~ 익일 06:00`). [HomeDatePickerSession.defaultAfterConfirm].
  */
 @Composable
 internal fun HomeDatePickerDialog(
@@ -219,8 +219,8 @@ internal fun HomeDatePickerDialog(
  *
  * - 1행: `기록 범위` ⓘ
  * - 2행: `기본값으로 지정` · 범위 칩(양 끝)
- * - 3행: 저장된 기본 범위(`06:00 ~ 익일 06:00`) — 체크박스 문구 시작점에 맞춘 보조 글. 체크하기 전에 지금 기본값이
- *   무엇인지 알 수 있다
+ * - 3행: 확인하면 기본값이 될 범위(`06:00 ~ 익일 06:00`) — 체크박스 문구 시작점에 맞춘 보조 글. 체크돼 있으면 지금
+ *   고른 범위, 아니면 저장된 기본값이라 체크하는 순간 함께 바뀐다
  *
  * 체크박스를 범위 칩과 한 줄에 둔다 — 무엇을 기본값으로 지정하는지가 바로 옆에 보인다. 범위 제약(최소 6시간·
  * 종료 상한)은 늘 펼쳐 두지 않고 ⓘ 를 눌러 본다. 롤러가 범위 밖 값을 아예 내놓지 않으므로 고르는 데 꼭 읽어야
