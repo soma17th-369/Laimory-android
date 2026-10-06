@@ -815,33 +815,26 @@ class HomeViewModel
         }
 
         /**
-         * 시트의 확인. **피커 세션의 범위만** 바꾼다.
+         * 시트의 확인(`확인` · `이 날만`). **피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트·피커를 함께 닫는다.**
          *
-         * 여기서 홈 범위를 바꾸면 피커를 취소해도 범위가 남는다. 확정과 기록 창 갱신은 피커의 확인이 한다.
+         * 시트에서 고른 범위를 피커의 확인까지 한 번 더 눌러야 반영하면, 피커를 취소·바깥 탭으로 닫는 순간 고른 범위가
+         * 말없이 버려져 다시 열면 옛 범위가 나온다(실기기 제보: 06:00 으로 바꿨는데 다시 열면 05:45). 범위를 고르는
+         * 일은 시트에서 끝낸다. 날짜만 바꿀 때는 지금처럼 피커의 확인을 쓴다.
          */
         private fun confirmTimeSheet() {
             val current = state.value
             val sheet = current.timeSheet ?: return
             val session = current.datePicker ?: return
             if (!sheet.isConfirmEnabled) return
-            updateState {
-                copy(
-                    datePicker =
-                        session.copy(
-                            startTime = sheet.startTime,
-                            endDay = sheet.endDay,
-                            endTime = sheet.endTime,
-                        ),
-                    timeSheet = null,
-                )
-            }
+            val confirmed = session.copy(startTime = sheet.startTime, endDay = sheet.endDay, endTime = sheet.endTime)
+            // 피커를 연 뒤 생성이 시작됐으면 날짜를 옮기지 않는다(피커 확인과 같은 규칙).
+            if (current.isDateLocked) return dismissDatePicker()
+            commitDatePicker(confirmed)
         }
 
         /**
-         * 시트의 `항상 이 시간으로`. 세션에 넣는 것은 `이 날만` 과 같고, 더해서 곧바로 기본값으로 저장한다.
-         *
-         * 피커의 확인을 기다리지 않는다 — 기다리면 그 사이 다른 날짜를 눌렀을 때 저장 전의 옛 기본값이 나와, 방금
-         * 정한 것이 사라진 것처럼 보인다. 저장에 실패해도 세션에는 들어가 이번 범위로는 쓰이고, 실패만 알린다.
+         * 시트의 `항상 이 시간으로`. `이 날만` 처럼 곧바로 확정하고, 더해서 기본값으로 저장한다. 저장에 실패해도 이번
+         * 범위로는 쓰이고 실패만 알린다.
          */
         private fun saveSheetRangeAsDefault() {
             val sheet = state.value.timeSheet ?: return

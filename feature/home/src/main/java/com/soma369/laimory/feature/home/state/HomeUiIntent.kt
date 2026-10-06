@@ -76,8 +76,8 @@ sealed interface HomeUiIntent : UiIntent {
     data object ConfirmDatePicker : HomeUiIntent
 
     /**
-     * 시간 시트의 `항상 이 시간으로`. 고른 범위를 피커 세션에 넣고 **곧바로** 기본값으로 저장한다.
-     * `이 날만` 은 [ConfirmTimeSheet] 다 — 세션만 바꾼다.
+     * 시간 시트의 `항상 이 시간으로`. [ConfirmTimeSheet] 처럼 곧바로 확정하고, 더해서 기본값으로 저장한다.
+     * `이 날만` 은 [ConfirmTimeSheet] 다 — 저장하지 않는다.
      */
     data object SaveSheetRangeAsDefault : HomeUiIntent
 
@@ -120,7 +120,7 @@ sealed interface HomeUiIntent : UiIntent {
         val time: LocalTime,
     ) : HomeUiIntent
 
-    /** 시트의 확인 — 날짜 피커 세션의 범위만 바꾼다. 확정은 피커의 확인이 한다. */
+    /** 시트의 확인(`확인` · `이 날만`) — 피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트·피커를 함께 닫는다. */
     data object ConfirmTimeSheet : HomeUiIntent
 
     /** 시트만 닫는다. 시트에서 바꾸던 값은 버리고 날짜 피커 세션은 그대로 둔다. */
