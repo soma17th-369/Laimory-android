@@ -14,12 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,10 +39,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -61,6 +62,7 @@ import com.soma369.laimory.core.ui.component.calendar.LaimoryCalendarGrid
 import com.soma369.laimory.core.ui.component.calendar.toCalendarMonthGrid
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
@@ -87,8 +89,8 @@ import com.soma369.laimory.core.ui.R as UiR
  * @param savedDates 저장이 끝난 기록의 날짜. 아직 받지 못한 달은 비어 있다.
  * @param draftDates 아직 저장하지 않은 초안의 날짜. 받는 범위는 [savedDates] 와 같다.
  * @param retentionDays 수집 보존 일수. 오늘을 포함해 이만큼만 고를 수 있다. null 이면 제한하지 않는다.
- * @param isSavingRangeAsDefault `기본값으로 지정` 체크 상태. 확인하면 이 범위가 다음 실행의 기본값이 된다.
- * @param defaultRangeLabel 확인하면 기본값이 될 범위(`06:00 ~ 익일 06:00`). [HomeDatePickerSession.defaultAfterConfirm].
+ * @param defaultRangeLabel 기기에 저장된 기본 범위(`06:00 ~ 익일 06:00`). 지금 범위가 이와 다르면 칩 아래에
+ *   `이 날만 · 기본 …` 으로 알린다.
  */
 @Composable
 internal fun HomeDatePickerDialog(
@@ -98,8 +100,7 @@ internal fun HomeDatePickerDialog(
     retentionDays: Int?,
     onPickDate: (LocalDate) -> Unit,
     onRangeClick: () -> Unit,
-    isSavingRangeAsDefault: Boolean,
-    onToggleRangeDefault: () -> Unit,
+    isOneDayRange: Boolean,
     defaultRangeLabel: String,
     onConfirm: () -> Unit,
     onDisplayedMonthChange: (YearMonth) -> Unit,
@@ -185,8 +186,7 @@ internal fun HomeDatePickerDialog(
                     RecordRangeSection(
                         session = session,
                         onRangeClick = onRangeClick,
-                        isSavingAsDefault = isSavingRangeAsDefault,
-                        onToggleDefault = onToggleRangeDefault,
+                        isOneDayRange = isOneDayRange,
                         defaultRangeLabel = defaultRangeLabel,
                     )
                 }
@@ -215,16 +215,14 @@ internal fun HomeDatePickerDialog(
 }
 
 /**
- * 격자 아래 기록 범위 영역(Figma 2806:1062).
+ * 격자 아래 기록 범위 영역(Figma 3119:12942).
  *
- * - 1행: `기록 범위` ⓘ
- * - 2행: `기본값으로 지정` · 범위 칩(양 끝)
- * - 3행: 확인하면 기본값이 될 범위(`06:00 ~ 익일 06:00`) — 체크박스 문구 시작점에 맞춘 보조 글. 체크돼 있으면 지금
- *   고른 범위, 아니면 저장된 기본값이라 체크하는 순간 함께 바뀐다
+ * - 1행: `기록 범위` ⓘ · 범위 칩(양 끝)
+ * - 2행: 범위가 저장된 기본값과 다를 때만 `이 날만 · 기본 06:00 ~ 익일 06:00`(오른쪽 정렬)
  *
- * 체크박스를 범위 칩과 한 줄에 둔다 — 무엇을 기본값으로 지정하는지가 바로 옆에 보인다. 범위 제약(최소 6시간·
- * 종료 상한)은 늘 펼쳐 두지 않고 ⓘ 를 눌러 본다. 롤러가 범위 밖 값을 아예 내놓지 않으므로 고르는 데 꼭 읽어야
- * 하는 글이 아니다.
+ * 기본값으로 쓸지는 칩을 눌러 연 시간 시트에서 고른다(`항상 이 시간으로` / `이 날만`). 여기서는 지금 범위가
+ * 어느 쪽인지만 보여 준다 — 저장된 기본값이 적용되는 자리에 보이지 않으면 왜 다른 날짜에서 범위가 바뀌는지
+ * 알 수 없다. 2행은 비어 있어도 자리를 지킨다. 범위가 바뀔 때마다 높이가 달라지면 확인 버튼이 움직인다.
  *
  * 범위는 홈 카드의 데이터를 거르는 필터라 어느 날이든 바꿀 수 있다.
  */
@@ -232,65 +230,75 @@ internal fun HomeDatePickerDialog(
 private fun RecordRangeSection(
     session: HomeDatePickerSession,
     onRangeClick: () -> Unit,
-    isSavingAsDefault: Boolean,
-    onToggleDefault: () -> Unit,
+    isOneDayRange: Boolean,
     defaultRangeLabel: String,
 ) {
     Column(modifier = Modifier.padding(top = Spacing.large)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
-            modifier = Modifier.padding(top = Spacing.medium),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "기록 범위",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            RangeRuleInfo()
-        }
-        Row(
             modifier = Modifier.fillMaxWidth().padding(top = Spacing.small),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SaveAsDefaultRow(
-                checked = isSavingAsDefault,
-                onToggle = onToggleDefault,
-                modifier = Modifier.weight(1f, fill = false).padding(end = Spacing.small),
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "기록 범위",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                RecordRangeInfo()
+            }
             RangeChip(label = session.timeRangeLabel(), onClick = onRangeClick)
         }
-        // 늘 보인다. 범위가 기본값과 다를 때만 띄우면 체크할 때마다 다이얼로그 높이가 바뀌어 확인 버튼이 움직인다.
-        Text(
-            text = defaultRangeLabel,
-            modifier = Modifier.padding(start = CheckboxLabelInset),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.extraSmall)
+                    .alpha(if (isOneDayRange) 1f else 0f)
+                    .clearAndSetSemantics {
+                        if (isOneDayRange) contentDescription = "이 날만 쓰는 범위. 기본 $defaultRangeLabel"
+                    },
+            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "이 날만",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.laimoryColors.primaryText,
+            )
+            Text(
+                text = "· 기본 $defaultRangeLabel",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
 /**
- * 범위 제약 안내. 누르면 툴팁으로 보여 주고, 바깥을 누르면 닫힌다.
+ * 기록 범위 안내. 누르면 툴팁으로 보여 주고, 바깥을 누르면 닫힌다. 날짜 피커와 시간 시트가 같은 설명을 쓴다 —
+ * 어디서 눌러도 같은 답이 나와야 한다.
  *
- * 시안대로 아이콘 둘레 4 만 둔다(누르는 영역 24). 낭독 문구에 제약을 그대로 담는다 — 스크린 리더 사용자는
+ * 시안대로 아이콘 둘레 4 만 둔다(누르는 영역 24). 낭독 문구에 설명을 그대로 담는다 — 스크린 리더 사용자는
  * 툴팁을 열지 않아도 듣는다.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RangeRuleInfo() {
+internal fun RecordRangeInfo() {
     val tooltipState = rememberTooltipState(isPersistent = true)
     val scope = rememberCoroutineScope()
     TooltipBox(
         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-        tooltip = { PlainTooltip { Text(RANGE_RULE) } },
+        tooltip = { PlainTooltip { Text(RECORD_RANGE_GUIDE) } },
         state = tooltipState,
     ) {
         Icon(
             painter = painterResource(UiR.drawable.ico_setting_info),
-            contentDescription = "기록 범위 안내: $RANGE_RULE",
+            contentDescription = "기록 범위 안내: $RECORD_RANGE_GUIDE",
             modifier =
                 Modifier
                     .clip(CircleShape)
@@ -302,38 +310,7 @@ private fun RangeRuleInfo() {
     }
 }
 
-private const val RANGE_RULE = "6시간 이상 · 종료는 익일 06:00까지"
-
-/**
- * 범위를 다음 실행에도 쓸지. 앱을 다시 켜거나 기기를 재부팅해도 이 범위로 시작한다.
- *
- * 행 전체를 하나의 토글로 둔다 — 체크박스만 누를 수 있으면 표적이 작고, 라벨과 체크박스가 따로 읽히면
- * 스크린 리더가 같은 내용을 두 번 말한다(`LaimoryDialog` 동의 행과 같은 방식). 좌우 여백은 두지 않는다 —
- * 체크박스가 윗줄 `기록 범위` 와 같은 선에서 시작해야 한 덩어리로 읽힌다.
- */
-@Composable
-private fun SaveAsDefaultRow(
-    checked: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier =
-            modifier
-                .clip(MaterialTheme.shapes.medium)
-                .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle() })
-                .padding(vertical = Spacing.extraSmall),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
-    ) {
-        Checkbox(checked = checked, onCheckedChange = null)
-        Text(
-            text = "기본값으로 지정",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
+private const val RECORD_RANGE_GUIDE = "이 시간 안에 모인 사진·일정·위치·알림으로 타임라인을 만들어요.\n6시간 이상 · 종료는 익일 06:00까지"
 
 /** 지금 범위 + 캐럿. 누르면 시간 시트가 다이얼로그 위에 뜬다. */
 @Composable
@@ -514,8 +491,6 @@ private val StepperTouchTarget = 44.dp
 private val RangeCaretSize = 16.dp
 private val RangeInfoIconSize = 16.dp
 
-/** Material3 Checkbox 칸(24) + 문구까지의 간격(4). 기본 범위 줄이 체크박스 문구와 같은 선에서 시작한다. */
-private val CheckboxLabelInset = 28.dp
 private val StepperIconSize = 20.dp
 private const val CHIP_CORNER_PERCENT = 50
 
@@ -534,7 +509,7 @@ private fun HomeDatePickerDialogPreview() {
                 session =
                     HomeDatePickerSession(
                         date = today.minusDays(1),
-                        startTime = LocalTime.of(6, 0),
+                        startTime = LocalTime.of(5, 0),
                         endDay = DraftEndDay.NEXT_DAY,
                         endTime = LocalTime.of(6, 0),
                     ),
@@ -543,8 +518,7 @@ private fun HomeDatePickerDialogPreview() {
                 retentionDays = 30,
                 onPickDate = {},
                 onRangeClick = {},
-                isSavingRangeAsDefault = true,
-                onToggleRangeDefault = {},
+                isOneDayRange = true,
                 defaultRangeLabel = "06:00 ~ 익일 06:00",
                 onConfirm = {},
                 onDisplayedMonthChange = {},

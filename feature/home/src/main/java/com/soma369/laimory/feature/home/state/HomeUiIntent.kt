@@ -75,8 +75,11 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object ConfirmDatePicker : HomeUiIntent
 
-    /** 피커의 `기본값으로 지정` 을 눌렀다. 세션만 바꾸고, 저장은 피커의 확인이 한다. */
-    data object ToggleSaveRangeAsDefault : HomeUiIntent
+    /**
+     * 시간 시트의 `항상 이 시간으로`. 고른 범위를 피커 세션에 넣고 **곧바로** 기본값으로 저장한다.
+     * `이 날만` 은 [ConfirmTimeSheet] 다 — 세션만 바꾼다.
+     */
+    data object SaveSheetRangeAsDefault : HomeUiIntent
 
     /**
      * 날짜 피커가 보여 주는 달의 기록 상태를 받아 온다.

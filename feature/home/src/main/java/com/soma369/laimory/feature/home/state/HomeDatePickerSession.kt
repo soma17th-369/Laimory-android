@@ -21,29 +21,9 @@ data class HomeDatePickerSession(
     val startTime: LocalTime,
     val endDay: DraftEndDay,
     val endTime: LocalTime,
-    /**
-     * `기본값으로 지정` 을 사용자가 직접 누른 값. null 이면 아직 누르지 않았다.
-     *
-     * 누르기 전에는 **지금 범위가 저장된 기본값과 같은지**를 그대로 보여 준다([isSavingAsDefault]). 처음에
-     * 체크돼 있던 것을 고정해 두면, 기본값 그대로 열어 이번만 범위를 바꾼 사람이 확인하는 순간 기본값까지
-     * 덮어쓴다. 직접 누른 뒤로는 범위를 바꿔도 그 선택을 따른다.
-     */
-    val saveAsDefault: Boolean? = null,
 ) {
     val range: DefaultRecordRange
         get() = defaultRecordRangeOf(startTime, endDay, endTime)
-
-    /** 확인할 때 이 범위를 기본값으로 저장할지. 체크박스가 보여 주는 값이기도 하다. */
-    fun isSavingAsDefault(defaultRange: DefaultRecordRange): Boolean = saveAsDefault ?: (range == defaultRange)
-
-    /**
-     * 확인하면 기본값이 될 범위. `기본값으로 지정` 아래 줄이 보여 준다.
-     *
-     * 체크돼 있으면 지금 고른 범위가 곧 새 기본값이라 그것을, 아니면 저장된 기본값을 그대로 보여 준다. 그래야
-     * 스피너로 범위를 바꾸고 체크하는 순간 아래 줄이 함께 바뀌어, 무엇이 기본값이 될지 확인 전에 보인다.
-     */
-    fun defaultAfterConfirm(defaultRange: DefaultRecordRange): DefaultRecordRange =
-        if (isSavingAsDefault(defaultRange)) range else defaultRange
 
     fun hasRangeOf(
         startTime: LocalTime,

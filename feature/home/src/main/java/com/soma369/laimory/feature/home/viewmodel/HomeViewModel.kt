@@ -294,7 +294,7 @@ class HomeViewModel
                 HomeUiIntent.DismissDatePicker -> dismissDatePicker()
                 is HomeUiIntent.PickDate -> pickDate(intent.date)
                 HomeUiIntent.ConfirmDatePicker -> confirmDatePicker()
-                HomeUiIntent.ToggleSaveRangeAsDefault -> toggleSaveRangeAsDefault()
+                HomeUiIntent.SaveSheetRangeAsDefault -> saveSheetRangeAsDefault()
                 is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
                 HomeUiIntent.RefreshRecordState -> refreshSelectedRecord()
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
@@ -518,21 +518,15 @@ class HomeViewModel
         /**
          * 피커 안에서 날짜를 고른다. 범위도 그 날짜에 맞춘다.
          *
-         * 다른 날짜는 기본값으로 돌아간다 — `기본값으로 지정` 을 하지 않고 바꾼 범위는 그 날짜에만 쓴 것이다. 피커 안에서
-         * 범위를 고친 뒤 날짜를 바꿔도 마찬가지다. 지금 홈 날짜로 되돌아오면 지금 범위를 다시 보여 준다. 체크박스는 다시
-         * "기본값과 같은지"를 따라가, 기본값으로 돌아가면 체크된다. 같은 날짜를 다시 누르면 그대로 둔다.
-         *
-         * **직접 체크해 둔 범위는 이 피커 안에서는 곧 기본값이다.** 저장은 확인 때 하지만, 체크한 사람은 그 순간부터 그 범위를
-         * 기본값으로 여긴다. 그래서 날짜를 바꿔도 체크한 범위와 체크를 그대로 둔다 — 저장 전의 옛 기본값으로 돌리면
-         * 방금 지정한 것이 사라진 것처럼 보인다. 확인하면 저장되고, 취소하면 함께 버려진다.
+         * 다른 날짜는 저장된 기본값으로 돌아간다 — `이 날만` 으로 바꾼 범위는 그 날짜에만 쓴 것이다. 지금 홈 날짜로
+         * 되돌아오면 지금 범위를 다시 보여 준다. 같은 날짜를 다시 누르면 그대로 둔다. 기본값으로 쓰려면 시간 시트의
+         * `항상 이 시간으로` 가 곧바로 저장하므로, 피커 안에 저장을 기다리는 임시 기본값은 없다.
          */
         private fun pickDate(date: LocalDate) {
             val session = state.value.datePicker ?: return
             if (date == session.date) return
             if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
             updateState {
-                // 직접 체크한 것만이다. 범위가 기본값과 같아 저절로 체크돼 보이는 것은 지정한 것이 아니다.
-                if (session.saveAsDefault == true) return@updateState copy(datePicker = session.copy(date = date))
                 val range = if (date == selectedDate) recordRange else defaultRange
                 copy(
                     datePicker =
@@ -541,7 +535,6 @@ class HomeViewModel
                             startTime = range.startTime,
                             endDay = range.endDay(),
                             endTime = range.endTime,
-                            saveAsDefault = null,
                         ),
                 )
             }
@@ -571,7 +564,6 @@ class HomeViewModel
             startAutoCollectionAhead()
             val isDateChanged = session.date != state.value.selectedDate
             val isRangeChanged = !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
-            saveRangeAsDefaultIfChecked(session)
             if (isRangeChanged) hasUserRange = true
             updateState {
                 val closed = copy(datePicker = null, timeSheet = null)
@@ -595,30 +587,6 @@ class HomeViewModel
             if (!isDateChanged && !isRangeChanged) return
             onRecordWindowChanged()
             if (isDateChanged) refreshSelectedRecord()
-        }
-
-        /** 체크박스는 지금 보이는 값을 뒤집는다. 누른 뒤로는 범위를 바꿔도 이 선택을 따른다. */
-        private fun toggleSaveRangeAsDefault() {
-            updateState {
-                val session = datePicker ?: return@updateState this
-                copy(datePicker = session.copy(saveAsDefault = !session.isSavingAsDefault(defaultRange)))
-            }
-        }
-
-        /**
-         * 체크된 채 확인하면 피커의 범위를 기본값으로 저장한다. 이미 기본값이면 쓰지 않는다.
-         *
-         * 체크를 풀고 확인해도 저장된 기본값은 지우지 않는다 — 이번 범위만 다르게 쓰는 것이다. 저장은 날짜·범위
-         * 확정과 따로 돈다. 실패해도 이번 범위는 이미 홈에 들어갔으니, 다음 실행에 돌아가지 않는다는 것만 알린다.
-         */
-        private fun saveRangeAsDefaultIfChecked(session: HomeDatePickerSession) {
-            val defaultRange = state.value.defaultRange
-            if (!session.isSavingAsDefault(defaultRange) || session.range == defaultRange) return
-            safeLaunch {
-                setDefaultRecordRange(session.range).onFailure {
-                    sendEffect(HomeUiSideEffect.ShowSnackbar("기본값으로 저장하지 못했어요. 다시 시도해 주세요."))
-                }
-            }
         }
 
         /**
@@ -866,6 +834,23 @@ class HomeViewModel
                         ),
                     timeSheet = null,
                 )
+            }
+        }
+
+        /**
+         * 시트의 `항상 이 시간으로`. 세션에 넣는 것은 `이 날만` 과 같고, 더해서 곧바로 기본값으로 저장한다.
+         *
+         * 피커의 확인을 기다리지 않는다 — 기다리면 그 사이 다른 날짜를 눌렀을 때 저장 전의 옛 기본값이 나와, 방금
+         * 정한 것이 사라진 것처럼 보인다. 저장에 실패해도 세션에는 들어가 이번 범위로는 쓰이고, 실패만 알린다.
+         */
+        private fun saveSheetRangeAsDefault() {
+            val sheet = state.value.timeSheet ?: return
+            if (!sheet.isConfirmEnabled) return
+            confirmTimeSheet()
+            safeLaunch {
+                setDefaultRecordRange(sheet.range).onFailure {
+                    sendEffect(HomeUiSideEffect.ShowSnackbar("기본값으로 저장하지 못했어요. 다시 시도해 주세요."))
+                }
             }
         }
 

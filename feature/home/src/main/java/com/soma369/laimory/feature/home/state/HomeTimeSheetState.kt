@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.state
 
 import androidx.compose.runtime.Immutable
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -34,6 +35,10 @@ data class HomeTimeSheetState(
 
     val isConfirmEnabled: Boolean
         get() = DraftWindowPolicy.isValid(recordDate, startTime, endDateTime)
+
+    /** 고르고 있는 범위. 저장된 기본값과 다르면 시트가 `항상 이 시간으로`·`이 날만` 을 함께 묻는다. */
+    val range: DefaultRecordRange
+        get() = defaultRecordRangeOf(startTime, endDay, endTime)
 
     /** 시작을 옮겨 종료가 범위 밖으로 밀리면 가까운 경계로 붙인다. */
     fun withStartTime(startTime: LocalTime): HomeTimeSheetState = copy(startTime = startTime).withEndCoercedIntoRange()

@@ -79,6 +79,7 @@ import com.soma369.laimory.feature.home.component.HomeRotatingContent
 import com.soma369.laimory.feature.home.component.HomeSourceCard
 import com.soma369.laimory.feature.home.component.HomeTimelineButton
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
+import com.soma369.laimory.feature.home.component.RecordRangeInfo
 import com.soma369.laimory.feature.home.component.cardBody
 import com.soma369.laimory.feature.home.component.cardClick
 import com.soma369.laimory.feature.home.component.permissionAction
@@ -286,9 +287,8 @@ private fun HomeContent(
             retentionDays = state.retentionDays,
             onPickDate = { onIntent(HomeUiIntent.PickDate(it)) },
             onRangeClick = { onIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START)) },
-            isSavingRangeAsDefault = session.isSavingAsDefault(state.defaultRange),
-            onToggleRangeDefault = { onIntent(HomeUiIntent.ToggleSaveRangeAsDefault) },
-            defaultRangeLabel = session.defaultAfterConfirm(state.defaultRange).timeRangeLabel(),
+            isOneDayRange = session.range != state.defaultRange,
+            defaultRangeLabel = state.defaultRange.timeRangeLabel(),
             onConfirm = { onIntent(HomeUiIntent.ConfirmDatePicker) },
             onDisplayedMonthChange = { onIntent(HomeUiIntent.LoadMonthlyRecords(it)) },
             onDismiss = { onIntent(HomeUiIntent.DismissDatePicker) },
@@ -304,7 +304,12 @@ private fun HomeContent(
     }
 
     // 날짜 피커 위에 겹쳐 뜬다. 뒤에 그려야 창이 위로 올라가, 뒤로가기·바깥 탭이 이 시트만 닫고 피커로 돌아간다.
+    //
+    // 기본값과 다른 범위를 고르면 그 자리에서 `항상 이 시간으로` / `이 날만` 을 묻는다(Figma 3119:1564). 되돌리기
+    // 쉬운 `이 날만` 을 주 버튼에 둔다. 같으면 묻을 것이 없어 `확인` 하나다. 제약 안내는 제목 옆 ⓘ 가 맡고, 시트
+    // 본문에는 확정할 수 없을 때만 이유로 적는다.
     state.timeSheet?.let { sheet ->
+        val isOneDayRange = sheet.range != state.defaultRange
         LaimoryTimePickerSheet(
             fields = draftTimePickerFields(sheet),
             expandedFieldId = sheet.expandedField?.name,
@@ -316,9 +321,13 @@ private fun HomeContent(
             },
             onConfirm = { onIntent(HomeUiIntent.ConfirmTimeSheet) },
             onDismiss = { onIntent(HomeUiIntent.DismissTimePicker) },
-            title = "시간 설정",
+            title = "기록 범위 설정",
+            confirmLabel = if (isOneDayRange) "이 날만" else "확인",
             confirmEnabled = sheet.isConfirmEnabled,
-            supportingText = DRAFT_WINDOW_GUIDE,
+            supportingText = DRAFT_WINDOW_GUIDE.takeUnless { sheet.isConfirmEnabled },
+            titleAccessory = { RecordRangeInfo() },
+            secondaryLabel = "항상 이 시간으로".takeIf { isOneDayRange },
+            onSecondaryClick = { onIntent(HomeUiIntent.SaveSheetRangeAsDefault) },
         )
     }
 }
