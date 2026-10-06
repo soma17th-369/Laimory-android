@@ -297,7 +297,7 @@ private fun RangeChip(
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Icon(
