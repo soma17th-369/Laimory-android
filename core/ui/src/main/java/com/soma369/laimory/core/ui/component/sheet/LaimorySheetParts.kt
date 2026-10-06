@@ -58,17 +58,25 @@ fun LaimorySheetHeader(
     modifier: Modifier = Modifier,
     verticalPadding: Dp = Spacing.small,
     closeEnabled: Boolean = true,
+    titleAccessory: (@Composable () -> Unit)? = null,
 ) {
     Row(
         modifier = modifier.fillMaxWidth().padding(vertical = verticalPadding),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        // 제목 바로 옆 보조 요소(안내 ⓘ 등). 없으면 제목만 그린다.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            titleAccessory?.invoke()
+        }
         // 아이콘은 24dp지만 누를 수 있는 영역은 최소 터치 크기를 지켜야 한다.
         IconButton(
             onClick = onClose,
