@@ -44,7 +44,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -62,7 +61,6 @@ import com.soma369.laimory.core.ui.component.calendar.LaimoryCalendarGrid
 import com.soma369.laimory.core.ui.component.calendar.toCalendarMonthGrid
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
-import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
@@ -89,8 +87,6 @@ import com.soma369.laimory.core.ui.R as UiR
  * @param savedDates 저장이 끝난 기록의 날짜. 아직 받지 못한 달은 비어 있다.
  * @param draftDates 아직 저장하지 않은 초안의 날짜. 받는 범위는 [savedDates] 와 같다.
  * @param retentionDays 수집 보존 일수. 오늘을 포함해 이만큼만 고를 수 있다. null 이면 제한하지 않는다.
- * @param defaultRangeLabel 기기에 저장된 기본 범위(`06:00 ~ 익일 06:00`). 지금 범위가 이와 다르면 칩 아래에
- *   `이 날만 · 기본 …` 으로 알린다.
  */
 @Composable
 internal fun HomeDatePickerDialog(
@@ -100,8 +96,6 @@ internal fun HomeDatePickerDialog(
     retentionDays: Int?,
     onPickDate: (LocalDate) -> Unit,
     onRangeClick: () -> Unit,
-    isOneDayRange: Boolean,
-    defaultRangeLabel: String,
     onConfirm: () -> Unit,
     onDisplayedMonthChange: (YearMonth) -> Unit,
     onDismiss: () -> Unit,
@@ -186,8 +180,6 @@ internal fun HomeDatePickerDialog(
                     RecordRangeSection(
                         session = session,
                         onRangeClick = onRangeClick,
-                        isOneDayRange = isOneDayRange,
-                        defaultRangeLabel = defaultRangeLabel,
                     )
                 }
                 Row(
@@ -215,14 +207,10 @@ internal fun HomeDatePickerDialog(
 }
 
 /**
- * 격자 아래 기록 범위 영역(Figma 3119:12942).
+ * 격자 아래 기록 범위 한 줄(Figma 3119:12942) — `기록 범위` ⓘ · 범위 칩.
  *
- * - 1행: `기록 범위` ⓘ · 범위 칩(양 끝)
- * - 2행: 범위가 저장된 기본값과 다를 때만 `이 날만 · 기본 06:00 ~ 익일 06:00`(오른쪽 정렬)
- *
- * 기본값으로 쓸지는 칩을 눌러 연 시간 시트에서 고른다(`항상 이 시간으로` / `이 날만`). 여기서는 지금 범위가
- * 어느 쪽인지만 보여 준다 — 저장된 기본값이 적용되는 자리에 보이지 않으면 왜 다른 날짜에서 범위가 바뀌는지
- * 알 수 없다. 2행은 비어 있어도 자리를 지킨다. 범위가 바뀔 때마다 높이가 달라지면 확인 버튼이 움직인다.
+ * 기본값으로 쓸지는 칩을 눌러 연 시간 시트에서 고른다(`항상 이 시간으로` / `이 날만`). `이 날만` 은 저장하지 않는
+ * 그 날짜의 범위라 따로 표시하지 않는다 — 칩이 지금 범위를 이미 보여 준다.
  *
  * 범위는 홈 카드의 데이터를 거르는 필터라 어느 날이든 바꿀 수 있다.
  */
@@ -230,8 +218,6 @@ internal fun HomeDatePickerDialog(
 private fun RecordRangeSection(
     session: HomeDatePickerSession,
     onRangeClick: () -> Unit,
-    isOneDayRange: Boolean,
-    defaultRangeLabel: String,
 ) {
     Column(modifier = Modifier.padding(top = Spacing.large)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -252,29 +238,6 @@ private fun RecordRangeSection(
                 RecordRangeInfo()
             }
             RangeChip(label = session.timeRangeLabel(), onClick = onRangeClick)
-        }
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = Spacing.extraSmall)
-                    .alpha(if (isOneDayRange) 1f else 0f)
-                    .clearAndSetSemantics {
-                        if (isOneDayRange) contentDescription = "이 날만 쓰는 범위. 기본 $defaultRangeLabel"
-                    },
-            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "이 날만",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.laimoryColors.primaryText,
-            )
-            Text(
-                text = "· 기본 $defaultRangeLabel",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -518,8 +481,6 @@ private fun HomeDatePickerDialogPreview() {
                 retentionDays = 30,
                 onPickDate = {},
                 onRangeClick = {},
-                isOneDayRange = true,
-                defaultRangeLabel = "06:00 ~ 익일 06:00",
                 onConfirm = {},
                 onDisplayedMonthChange = {},
                 onDismiss = {},
