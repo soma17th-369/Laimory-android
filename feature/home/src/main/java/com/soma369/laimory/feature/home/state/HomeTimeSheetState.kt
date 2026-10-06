@@ -22,6 +22,14 @@ data class HomeTimeSheetState(
     val endDay: DraftEndDay,
     val endTime: LocalTime,
     val expandedField: HomeTimeField?,
+    /**
+     * 사용자가 고른 종료. null 이면 아직 종료를 건드리지 않아 시트를 연 때의 종료가 기준이다.
+     *
+     * 시작이 늦어지면 최소 길이 때문에 종료가 밀리는데, 밀린 값을 그대로 다음 기준으로 쓰면 시작을 되돌려도 종료가
+     * 돌아오지 않는다. 롤러는 굴리는 도중에도 값을 내서, 시(時)가 순환하며 늦은 시각을 한 번 지나기만 해도 고른 적
+     * 없는 종료(예: 익일 05:45)가 남는다. 그래서 밀기는 늘 이 값에서 다시 계산한다.
+     */
+    val pickedEnd: LocalDateTime? = null,
 ) {
     val startDateTime: LocalDateTime
         get() = recordDate.atTime(startTime)
@@ -40,14 +48,22 @@ data class HomeTimeSheetState(
     val range: DefaultRecordRange
         get() = defaultRecordRangeOf(startTime, endDay, endTime)
 
-    /** 시작을 옮겨 종료가 범위 밖으로 밀리면 가까운 경계로 붙인다. */
-    fun withStartTime(startTime: LocalTime): HomeTimeSheetState = copy(startTime = startTime).withEndCoercedIntoRange()
+    /**
+     * 시작을 옮긴다. 고른 종료([pickedEnd])가 새 범위 밖이면 가까운 경계로 붙이고, 범위 안으로 돌아오면 고른 종료로
+     * 되돌린다.
+     */
+    fun withStartTime(startTime: LocalTime): HomeTimeSheetState {
+        val picked = pickedEnd ?: endDateTime
+        return copy(startTime = startTime, pickedEnd = picked)
+            .placeEnd(DraftWindowPolicy.coerceEnd(recordDate, startTime, picked))
+    }
 
-    fun withEnd(endDateTime: LocalDateTime): HomeTimeSheetState =
+    /** 사용자가 종료를 고른다. 이 값이 이후 시작이 바뀔 때 돌아올 기준이 된다. */
+    fun withEnd(endDateTime: LocalDateTime): HomeTimeSheetState = copy(pickedEnd = endDateTime).placeEnd(endDateTime)
+
+    private fun placeEnd(endDateTime: LocalDateTime): HomeTimeSheetState =
         copy(
             endDay = if (endDateTime.toLocalDate() == recordDate) DraftEndDay.SAME_DAY else DraftEndDay.NEXT_DAY,
             endTime = endDateTime.toLocalTime(),
         )
-
-    private fun withEndCoercedIntoRange(): HomeTimeSheetState = withEnd(DraftWindowPolicy.coerceEnd(recordDate, startTime, endDateTime))
 }
