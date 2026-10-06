@@ -556,7 +556,10 @@ class HomeViewModel
          * 날짜와 범위를 **한 번의 상태 갱신**으로 옮긴다. 따로 옮기면 그 사이 한 번은 새 날짜 + 옛 범위의 창으로
          * 카드를 센다. 기록 창이 바뀐 경우에만 창 갱신을 한 번 부른다.
          */
-        private fun commitDatePicker(session: HomeDatePickerSession) {
+        private fun commitDatePicker(
+            session: HomeDatePickerSession,
+            keepsPickerOpen: Boolean = false,
+        ) {
             // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
             // 지금 날짜를 그대로 다시 골라도 마찬가지다.
             dateSource = DateSource.USER
@@ -566,7 +569,8 @@ class HomeViewModel
             val isRangeChanged = !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
             if (isRangeChanged) hasUserRange = true
             updateState {
-                val closed = copy(datePicker = null, timeSheet = null)
+                // 시간 시트에서 확정하면 시트만 닫고 피커는 확정한 값으로 열어 둔다.
+                val closed = copy(datePicker = session.takeIf { keepsPickerOpen }, timeSheet = null)
                 if (!isDateChanged && !isRangeChanged) return@updateState closed
                 // 범위는 세션이 이미 날짜에 맞춰 두었다(다른 날짜는 기본값, 그 뒤에 고쳤으면 고친 값).
                 val next =
@@ -815,11 +819,12 @@ class HomeViewModel
         }
 
         /**
-         * 시트의 확인(`확인` · `이 날만`). **피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트·피커를 함께 닫는다.**
+         * 시트의 확인(`확인` · `이 날만`). **피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트만 닫는다.** 피커는 확정한
+         * 값으로 열어 둔다(사용자 결정).
          *
          * 시트에서 고른 범위를 피커의 확인까지 한 번 더 눌러야 반영하면, 피커를 취소·바깥 탭으로 닫는 순간 고른 범위가
-         * 말없이 버려져 다시 열면 옛 범위가 나온다(실기기 제보: 06:00 으로 바꿨는데 다시 열면 05:45). 범위를 고르는
-         * 일은 시트에서 끝낸다. 날짜만 바꿀 때는 지금처럼 피커의 확인을 쓴다.
+         * 말없이 버려져 다시 열면 옛 범위가 나온다(실기기 제보: 06:00 으로 바꿨는데 다시 열면 05:45). 그래서 시트 버튼이
+         * 곧 확정이고, 그 뒤 피커를 취소해도 되돌리지 않는다. 날짜만 바꿀 때는 지금처럼 피커의 확인을 쓴다.
          */
         private fun confirmTimeSheet() {
             val current = state.value
@@ -829,7 +834,7 @@ class HomeViewModel
             val confirmed = session.copy(startTime = sheet.startTime, endDay = sheet.endDay, endTime = sheet.endTime)
             // 피커를 연 뒤 생성이 시작됐으면 날짜를 옮기지 않는다(피커 확인과 같은 규칙).
             if (current.isDateLocked) return dismissDatePicker()
-            commitDatePicker(confirmed)
+            commitDatePicker(confirmed, keepsPickerOpen = true)
         }
 
         /**

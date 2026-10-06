@@ -120,7 +120,7 @@ sealed interface HomeUiIntent : UiIntent {
         val time: LocalTime,
     ) : HomeUiIntent
 
-    /** 시트의 확인(`확인` · `이 날만`) — 피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트·피커를 함께 닫는다. */
+    /** 시트의 확인(`확인` · `이 날만`) — 피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트만 닫는다. 피커는 열어 둔다. */
     data object ConfirmTimeSheet : HomeUiIntent
 
     /** 시트만 닫는다. 시트에서 바꾸던 값은 버리고 날짜 피커 세션은 그대로 둔다. */

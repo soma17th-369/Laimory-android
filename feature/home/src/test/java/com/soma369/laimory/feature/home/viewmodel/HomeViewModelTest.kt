@@ -1165,7 +1165,7 @@ class HomeViewModelTest {
     // --- 날짜 피커 세션 · 기록 범위 ---
 
     @Test
-    fun `시트 확인은 피커에서 고른 날짜와 범위를 곧바로 확정하고 피커까지 닫는다`() =
+    fun `시트 확인은 피커에서 고른 날짜와 범위를 곧바로 확정하고 시트만 닫는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 피커의 확인을 한 번 더 누르게 하면, 피커를 바깥 탭으로 닫는 순간 고른 범위가 말없이 버려진다.
             val today = LocalDate.now(ZoneId.systemDefault())
@@ -1181,9 +1181,29 @@ class HomeViewModelTest {
 
             val state = viewModel.state.value
             assertNull(state.timeSheet)
-            assertNull(state.datePicker)
+            // 피커는 확정한 값으로 열어 둔다.
+            assertEquals(today.minusDays(2), state.datePicker?.date)
+            assertEquals(LocalTime.of(9, 0), state.datePicker?.startTime)
             assertEquals(today.minusDays(2), state.selectedDate)
             assertEquals(LocalTime.of(9, 0), state.startTime)
+        }
+
+    @Test
+    fun `시트에서 확정한 뒤 피커를 취소해도 되돌리지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+
+            assertNull(viewModel.state.value.datePicker)
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.startTime)
         }
 
     @Test
@@ -1531,7 +1551,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `시트에서 항상 이 시간으로를 누르면 곧바로 확정·저장하고 다른 날짜도 그 범위로 시작한다`() =
+    fun `시트에서 항상 이 시간으로를 누르면 곧바로 확정·저장하고 피커의 다른 날짜도 그 범위로 시작한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
@@ -1543,12 +1563,11 @@ class HomeViewModelTest {
             runCurrent()
 
             assertNull(viewModel.state.value.timeSheet)
-            assertNull(viewModel.state.value.datePicker)
             assertEquals(LocalTime.of(5, 0), viewModel.state.value.startTime)
             assertEquals(LocalTime.of(5, 0), defaultRangeRepository.saved.value.startTime)
             assertEquals(LocalTime.of(5, 0), viewModel.state.value.defaultRange.startTime)
 
-            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            // 피커는 열려 있다. 거기서 다른 날짜를 골라도 새 기본값이다.
             viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
             runCurrent()
             assertEquals(LocalTime.of(5, 0), viewModel.state.value.datePicker?.startTime)
