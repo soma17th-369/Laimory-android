@@ -215,6 +215,11 @@ private fun HomeContent(
     LaunchedEffect(Unit) {
         snackbarFlow.collect(snackbarHostState::showSnackbar)
     }
+    // 요청 실패는 홈이 보일 때 처리한다. 이 화면은 로딩 화면이 떠 있는 동안 그려지지 않으므로, 여기서 부르면 곧
+    // "돌아온 뒤" 다 — 로딩에서 `홈으로` 를 눌렀거나, 요청 중에 뒤로 나와 이미 홈에 있던 경우다.
+    LaunchedEffect(state.hasPendingSubmitFailure) {
+        if (state.hasPendingSubmitFailure) onIntent(HomeUiIntent.ConsumeSubmitFailure)
+    }
     LaunchedEffect(Unit) {
         sideEffectFlow.collect { effect ->
             when (effect) {
@@ -483,8 +488,6 @@ private fun HomeScreen(
             status = state.timelineButtonStatus,
             selectedDate = state.selectedDate,
             today = state.today,
-            // 제출을 기다리는 동안에는 다시 눌러도 아무 일이 없어야 한다.
-            enabled = !state.isSubmitting,
             onClick = {
                 onIntent(
                     when (state.timelineButtonStatus) {

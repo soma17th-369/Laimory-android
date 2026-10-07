@@ -3,8 +3,6 @@ package com.soma369.laimory.feature.home.viewmodel
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
-import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
@@ -58,6 +56,10 @@ import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmission
+import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureMessages
 import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
@@ -118,6 +120,7 @@ class HomeViewModel
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val loadingSessionStore: DraftLoadingSessionStore,
+        private val submissionStore: DraftSubmissionStore,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
         private val analyticsHelper: AnalyticsHelper,
@@ -196,6 +199,7 @@ class HomeViewModel
             observeSubmissionExclusions()
             observeSelectionLock()
             observeDefaultRange()
+            observeSubmission()
         }
 
         /**
@@ -271,6 +275,9 @@ class HomeViewModel
                     // 이전 계정의 썸네일이 다시 뜨고, `만들기` 는 준비 스냅샷이 없어 무반응이다.
                     confirmedSubmission = null
                     resumesCreateAfterPhotoSheet = false
+                    // 이전 계정이 보내던 요청의 실패를 새 계정 홈에서 처리하면 안 된다.
+                    submissionStore.reset()
+                    loadingSessionStore.clearUnattached()
                     updateState {
                         copy(
                             isLocationConsentGranted = false,
@@ -321,6 +328,7 @@ class HomeViewModel
                 HomeUiIntent.StartNewDraft -> startNewDraft()
                 HomeUiIntent.ViewDraft -> viewDraft()
                 HomeUiIntent.OpenDraftLoading -> navigationHelper.navigateTo(DraftLoadingPage)
+                HomeUiIntent.ConsumeSubmitFailure -> consumeSubmitFailure()
                 is HomeUiIntent.RefreshSourcePermissions -> refreshSourcePermissions(intent)
                 HomeUiIntent.RefreshLocationConsent -> refreshLocationConsent()
                 HomeUiIntent.OpenPastRecords -> navigationHelper.navigateTo(PastRecordsPage)
@@ -993,7 +1001,29 @@ class HomeViewModel
                     finalCounts = submission.analyticsCounts(),
                 ),
             )
-            safeLaunch(onError = ::handleDraftCreationFailure) { submitDraft(preparation, submission) }
+            startSubmission(preparation, submission)
+        }
+
+        /**
+         * 요청을 보내기 전에 곧바로 로딩 화면으로 넘어간다. 사진 업로드 · 초안 생성 요청은 그 뒤에 이어서 한다.
+         *
+         * 서버가 작업 번호를 줄 때까지 홈에 머물면 사진이 많을수록 멈춘 듯이 보인다. 로딩 화면이 쓸 사진 · 건수는
+         * 제출 목록만으로 만들 수 있으므로 먼저 넣는다. 요청은 이 ViewModel(Activity 수명)의 코루틴이 계속 보내고,
+         * 진행 · 실패는 [DraftSubmissionStore] 로 로딩 화면과 함께 본다.
+         */
+        private fun startSubmission(
+            preparation: DraftConsentPreparation,
+            submission: DraftSourceItemSelection,
+        ) {
+            val startedAt = clock.instant()
+            loadingSessionStore.start(
+                submission.toLoadingSession(taskId = null, recordDate = preparation.recordDate, submittedAt = startedAt),
+            )
+            submissionStore.begin(preparation.recordDate, startedAt)
+            // 여기부터 응답까지 입력을 잠근다. 그동안 날짜를 바꾸면 요청은 이전 스냅샷으로 진행된다.
+            updateState { copy(isSubmitting = true) }
+            navigationHelper.navigateTo(DraftLoadingPage)
+            safeLaunch(onError = { onSubmitFailed(preparation, it) }) { submitDraft(preparation, submission) }
         }
 
         /**
@@ -1044,29 +1074,44 @@ class HomeViewModel
                 "초안 생성 요청: 항목 ${submission.items.size}건(사진 ${photoCount}건), 기존 작업 폐기=${preparation.discardActiveTask}",
             )
             if (preparation.discardActiveTask) draftTaskCoordinator.discard()
-            // 여기부터 응답까지 입력을 잠근다. `draftStatus` 는 서버가 작업을 받아야 움직이므로
-            // 이 구간에는 아직 IDLE 이고, 그동안 날짜를 바꾸면 요청은 이전 스냅샷으로 진행된다.
-            updateState { copy(isSubmitting = true) }
-            createTimelineDraftUseCase(
-                preparation.recordDate,
-                preparation.zone,
-                preparation.window,
-                submission,
-            ).onSuccess { handle ->
-                analyticsHelper.log(
-                    AnalyticsEvent.TimelineCreateRequested(
-                        recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
-                        recordDate = preparation.recordDate,
-                        itemCount = submission.items.size,
-                    ),
-                )
-                draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
-                // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
-                loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
-                draftConsentSessionStore.clearAfterSubmission()
-                updateState { copy(isSubmitting = false) }
-                navigationHelper.navigateTo(DraftLoadingPage)
-            }.onFailure { error ->
+            // 무응답(SocketTimeoutException)은 유스케이스가 Result 로 바꾸지 않고 던진다. 같은 실패 경로로 모은다.
+            val result =
+                try {
+                    createTimelineDraftUseCase(preparation.recordDate, preparation.zone, preparation.window, submission)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            result
+                .onSuccess { handle ->
+                    analyticsHelper.log(
+                        AnalyticsEvent.TimelineCreateRequested(
+                            recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                            recordDate = preparation.recordDate,
+                            itemCount = submission.items.size,
+                        ),
+                    )
+                    // 추적을 먼저 시작하고 요청 상태를 비운다. 반대로 하면 그 사이 로딩 화면이 아무 작업도 없는 화면을 본다.
+                    draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
+                    loadingSessionStore.attachTask(handle.taskId)
+                    submissionStore.succeed()
+                    draftConsentSessionStore.clearAfterSubmission()
+                    updateState { copy(isSubmitting = false) }
+                }.onFailure { error -> onSubmitFailed(preparation, error) }
+        }
+
+        /**
+         * 작업 번호를 받지 못했다. 잠금을 풀고 실패를 [DraftSubmissionStore] 에 남긴다.
+         *
+         * 돌아간 뒤의 처리(사진 시트 · 약관 화면 · 실패 카드)는 지금 하지 않는다 — 로딩 화면이 떠 있으면 홈은 보이지
+         * 않는다. 홈이 다시 보일 때 [consumeSubmitFailure] 가 한다. 로딩 화면에서 뒤로 나와 홈에 있었다면 곧바로 한다.
+         */
+        private fun onSubmitFailed(
+            preparation: DraftConsentPreparation,
+            error: Throwable,
+        ) {
+            safeLaunch {
                 analyticsHelper.log(
                     AnalyticsEvent.TimelineCreateRequestFailed(
                         recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
@@ -1074,9 +1119,36 @@ class HomeViewModel
                         failureCode = AnalyticsFailureCode.from(error),
                     ),
                 )
-                handleDraftSubmitFailure(error)
+            }
+            draftConsentSessionStore.clearPreparation()
+            // 실패하면 잠금을 푼다. 남겨 두면 다시 시도할 수도, 날짜를 바꿀 수도 없다.
+            updateState { copy(isSubmitting = false) }
+            submissionStore.fail(preparation.recordDate, error)
+        }
+
+        /**
+         * 홈이 보일 때 남은 요청 실패를 꺼내 돌아간 뒤의 처리를 한다. 화면이 [HomeUiState.hasPendingSubmitFailure] 를
+         * 보고 부른다.
+         *
+         * 무응답이나 알 수 없는 실패는 서버가 요청을 받았을 수 있다(초안 생성 POST 에 멱등 키가 없다). 홈 CTA 는 서버
+         * 판정이므로 기록 상태를 한 번 다시 읽어, 실제로 만들어지고 있으면 그것을 보여 준다.
+         */
+        private fun consumeSubmitFailure() {
+            val failed = submissionStore.consume() ?: return
+            loadingSessionStore.clearUnattached()
+            handleDraftSubmitFailure(failed.error, failed.kind, announced = failed.shownOnLoading)
+            if (failed.kind == DraftSubmitFailureKind.TIMEOUT || failed.kind == DraftSubmitFailureKind.OTHER) {
+                refreshSelectedRecord()
             }
         }
+
+        private fun observeSubmission() =
+            safeLaunch {
+                submissionStore.submission
+                    .map { it is DraftSubmission.Failed }
+                    .distinctUntilChanged()
+                    .collect { pending -> updateState { copy(hasPendingSubmitFailure = pending) } }
+            }
 
         /** 홈 카드에서 연 권한 요청. 온보딩·설정과 같은 규칙으로 기록한다. */
         private suspend fun logPermission(event: DataPermissionEvent) {
@@ -1090,35 +1162,36 @@ class HomeViewModel
         private fun DraftSourceItemSelection.analyticsCounts(): AnalyticsItemCounts = AnalyticsItemCounts.of(items.map { it.itemType })
 
         /**
-         * 확인 화면이 받던 제출 실패를 홈이 받는다.
+         * 제출 실패의 돌아간 뒤 처리. 어느 경우든 **제출용 스냅샷만 버리고**([onSubmitFailed]) 홈 선택 상태는 남긴다.
          *
-         * 어느 경우든 **제출용 스냅샷만 버리고** 홈 선택 상태는 남긴다. 복귀가 홈이라 사진을 다시
-         * 고를 필요도 없다.
+         * [announced] 면 로딩 화면이 이미 같은 문구를 보여 줬으므로 스낵바 · 공통 오류 안내로 되풀이하지 않는다.
          */
-        private fun handleDraftSubmitFailure(error: Throwable) {
-            draftConsentSessionStore.clearPreparation()
-            // 실패하면 잠금을 푼다. 남겨 두면 다시 시도할 수도, 날짜를 바꿀 수도 없다.
-            updateState { copy(isSubmitting = false) }
-            when {
+        private fun handleDraftSubmitFailure(
+            error: Throwable,
+            kind: DraftSubmitFailureKind,
+            announced: Boolean,
+        ) {
+            when (kind) {
                 // 서버가 단계 동의를 다시 요구한다 — 약관이 개정됐거나 구버전으로 온보딩을 마친
                 // 계정이다. 받는 자리로 보내되 **자동으로 재개하지 않는다.**
-                error is ApiException && error.errorCode == TERMS_AGREEMENT_REQUIRED -> {
+                DraftSubmitFailureKind.TERMS_REQUIRED ->
                     navigationHelper.navigateTo(StageTermsPage(DRAFT_CONSENT_STAGES.map(TermStage::name)))
-                }
 
                 // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 실패로만 보이면 이유를 알 수 없다.
-                error is ApiException && error.errorCode == APPEND_NO_NEW_ITEMS -> {
-                    sendEffect(HomeUiSideEffect.ShowSnackbar("이미 기록에 들어간 것뿐이라 새로 더할 게 없어요."))
-                }
+                DraftSubmitFailureKind.NO_NEW_ITEMS ->
+                    if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(NO_NEW_ITEMS_MESSAGE))
 
                 // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 사진으로는 복구되지
                 // 않으므로 고르는 자리를 다시 연다.
-                error is DraftPhotoAccessException -> {
+                DraftSubmitFailureKind.PHOTO_ACCESS -> {
                     handleUnavailablePhotos(emptySet())
                     startPhotoSelection()
                 }
 
-                else -> handleDraftCreationFailure(error)
+                DraftSubmitFailureKind.PHOTO_LIMIT,
+                DraftSubmitFailureKind.TIMEOUT,
+                DraftSubmitFailureKind.OTHER,
+                -> handleDraftCreationFailure(error, announced)
             }
         }
 
@@ -1185,11 +1258,14 @@ class HomeViewModel
             sendEffect(HomeUiSideEffect.ShowSnackbar(message))
         }
 
-        private fun handleDraftCreationFailure(error: Throwable) {
+        private fun handleDraftCreationFailure(
+            error: Throwable,
+            announced: Boolean = false,
+        ) {
             // 준비·제출 어느 쪽에서 튀어나왔든 잠금을 푼다. 남겨 두면 다시 시도할 길이 없다.
             updateState { copy(isSubmitting = false) }
             if (error is DraftPhotoLimitExceededException) {
-                val message = "${error.message}\n사진 선택에서 개수를 줄여주세요."
+                val message = "${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}"
                 updateState {
                     copy(
                         draftStatus = DraftCreationStatus.FAILED,
@@ -1199,7 +1275,7 @@ class HomeViewModel
                         pendingPhotoIds = selectedPhotoIds,
                     )
                 }
-                sendEffect(HomeUiSideEffect.ShowSnackbar(message))
+                if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(message))
                 return
             }
 
@@ -1207,10 +1283,11 @@ class HomeViewModel
                 copy(
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                    draftMessage = "초안 생성 요청을 보내지 못했어요.",
+                    draftMessage = DraftSubmitFailureMessages.OTHER,
                 )
             }
-            handleFailure(error)
+            // 로딩 화면이 이미 알렸으면 공통 오류 안내를 또 띄우지 않는다.
+            if (!announced) handleFailure(error)
         }
 
         private fun loadPhotoCandidates(force: Boolean) {
@@ -1503,11 +1580,8 @@ class HomeViewModel
         }
 
         private companion object {
-            /** 서버가 단계 동의를 요구할 때 주는 코드. */
-            const val TERMS_AGREEMENT_REQUIRED = -3001
-
-            /** 이어 붙일 새 항목이 없을 때 서버가 주는 코드. */
-            const val APPEND_NO_NEW_ITEMS = -1013
+            /** 이어 붙일 새 항목이 없을 때(-1013) 안내. 로딩 화면도 같은 문구를 쓴다. */
+            const val NO_NEW_ITEMS_MESSAGE = DraftSubmitFailureMessages.NO_NEW_ITEMS
 
             /**
              * `-3001` 을 받았을 때 다시 받아야 할 후보 단계.

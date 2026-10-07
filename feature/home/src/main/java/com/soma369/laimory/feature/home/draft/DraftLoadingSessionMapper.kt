@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.home.draft
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
+import java.time.Instant
 import java.time.LocalDate
 
 /**
@@ -12,11 +13,13 @@ import java.time.LocalDate
  * 사진 URI는 전송 순서를 유지해, 콜라주가 앞에서부터 채워도 타임라인 순서와 어긋나지 않는다.
  */
 internal fun DraftSourceItemSelection.toLoadingSession(
-    taskId: String,
+    taskId: String?,
     recordDate: LocalDate,
+    submittedAt: Instant? = null,
 ): DraftLoadingSession =
     DraftLoadingSession(
         taskId = taskId,
+        submittedAt = submittedAt,
         recordDate = recordDate,
         photoUris = items.mapNotNull { (it.payload as? PhotoPayload)?.clientPhotoUri },
         photoCount = report.selectedCounts.getOrDefault(ItemType.PHOTO, 0),

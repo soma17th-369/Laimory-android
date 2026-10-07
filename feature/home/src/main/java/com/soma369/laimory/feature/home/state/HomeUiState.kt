@@ -82,6 +82,11 @@ data class HomeUiState(
      * 입력이 열려 있으면, 화면에서는 새 날짜를 고르는데 요청은 이미 확정한 스냅샷으로 진행된다.
      */
     val isSubmitting: Boolean = false,
+    /**
+     * 작업 번호를 받지 못하고 끝난 요청의 실패가 남아 있다. 화면은 홈이 보일 때 이것을 보고 돌아간 뒤의 처리를
+     * 요청한다(`ConsumeSubmitFailure`). 로딩 화면이 떠 있는 동안은 홈이 그려지지 않아 처리를 미룬다.
+     */
+    val hasPendingSubmitFailure: Boolean = false,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
     /**
@@ -223,6 +228,9 @@ internal val HomeUiState.isInputLocked: Boolean
 internal val HomeUiState.timelineButtonStatus: DraftCreationStatus
     get() =
         when {
+            // 요청을 보내는 동안은 아직 작업이 없지만 이미 로딩 화면이 그 요청을 보여 주고 있다. 제작중으로 두어 다시
+            // 들어갈 수 있게 한다.
+            isSubmitting -> DraftCreationStatus.PROCESSING
             draftStatus.isDateLocked -> draftStatus
             draftStatus == DraftCreationStatus.SUCCESS || selectedRecord.isViewable -> DraftCreationStatus.SUCCESS
             else -> draftStatus

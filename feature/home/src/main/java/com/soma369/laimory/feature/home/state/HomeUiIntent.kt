@@ -172,6 +172,9 @@ sealed interface HomeUiIntent : UiIntent {
     /** 생성 중인 초안의 로딩 화면으로 들어간다. */
     data object OpenDraftLoading : HomeUiIntent
 
+    /** 홈이 보일 때 남은 초안 요청 실패를 꺼내 돌아간 뒤의 처리를 한다(사진 시트 · 약관 화면 · 실패 카드). */
+    data object ConsumeSubmitFailure : HomeUiIntent
+
     /** 지난 기록 전용 화면을 연다. 목록·동기화는 그 화면이 소유한다. */
     data object OpenPastRecords : HomeUiIntent
 

@@ -60,6 +60,7 @@ import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.PastRecordsPage
+import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
 import com.soma369.laimory.core.domain.repository.DefaultRecordRangeRepository
@@ -85,6 +86,9 @@ import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmission
+import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreateConfirm
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
@@ -116,6 +120,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -139,6 +144,7 @@ class HomeViewModelTest {
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val loadingSessionStore = DraftLoadingSessionStore()
+    private val submissionStore = DraftSubmissionStore()
     private val confirmDialog = ConfirmDialogRecorder()
     private val draftRepository = FakeDraftRepository()
     private val termsCoordinator = FakeHomeTermsCoordinator()
@@ -1939,6 +1945,7 @@ class HomeViewModelTest {
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
             createTimelineDraftUseCase = CreateTimelineDraftUseCase(draftRepository, NoOpMessageHelper),
             loadingSessionStore = loadingSessionStore,
+            submissionStore = submissionStore,
             termsCoordinator = termsCoordinator,
             resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
             analyticsHelper = analyticsHelper,
@@ -2432,6 +2439,113 @@ class HomeViewModelTest {
             assertEquals(0, viewModel.state.value.summary.location.sending)
             // 다른 유형은 그대로다.
             assertEquals(1, viewModel.state.value.summary.calendar.sending)
+        }
+
+    // --- 만들기 즉시 로딩 이동 ---
+
+    @Test
+    fun `만들기를 누르면 서버 응답을 기다리지 않고 로딩 화면으로 가고 사진·건수를 먼저 넣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val gate = CompletableDeferred<Unit>()
+            draftRepository.createGate = gate
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
+            val session = loadingSessionStore.session.value
+            assertNull(session?.taskId)
+            assertEquals(1, session?.calendarCount)
+            assertNotNull(session?.submittedAt)
+            assertTrue(submissionStore.submission.value is DraftSubmission.Submitting)
+            assertTrue(viewModel.state.value.isSubmitting)
+            // 로딩에서 뒤로 나오면 제작중으로 보여 다시 들어갈 수 있다.
+            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.timelineButtonStatus)
+
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals("task-1", loadingSessionStore.session.value?.taskId)
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertFalse(viewModel.state.value.isSubmitting)
+            assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `요청이 실패하면 실패를 남기고 돌아간 뒤의 처리는 홈이 보일 때 한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftRepository.createFailure = ApiException.NetworkException()
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            // 로딩 화면이 떠 있는 동안 홈은 그려지지 않는다. 실패 카드는 아직이다.
+            assertTrue(submissionStore.submission.value is DraftSubmission.Failed)
+            assertTrue(viewModel.state.value.hasPendingSubmitFailure)
+            assertFalse(viewModel.state.value.isSubmitting)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
+            assertEquals("초안 생성 요청을 보내지 못했어요.", viewModel.state.value.draftMessage)
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertFalse(viewModel.state.value.hasPendingSubmitFailure)
+            assertNull(loadingSessionStore.session.value)
+        }
+
+    @Test
+    fun `무응답으로 끊기면 무응답으로 기록하고 돌아간 뒤 서버 기록 상태를 다시 읽는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 초안 생성 POST 에 멱등 키가 없어 서버는 받았을 수 있다. 홈 CTA 는 서버 판정이라 다시 읽어야 맞다.
+            draftRepository.createFailure = SocketTimeoutException()
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            val failed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().single()
+            assertEquals(AnalyticsFailureCode.TIMEOUT, failed.failureCode)
+            assertEquals(DraftSubmitFailureKind.TIMEOUT, (submissionStore.submission.value as DraftSubmission.Failed).kind)
+            val before = recordRepository.dailyRecordCallCount
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertTrue(recordRepository.dailyRecordCallCount > before)
+        }
+
+    @Test
+    fun `약관 동의가 필요하면 돌아간 뒤 약관 화면으로 간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftRepository.createFailure = ApiException.ClientException(rawCode = 403, errorCode = -3001, message = "약관")
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertTrue(navigationHelper.destinations.last() is StageTermsPage)
+        }
+
+    @Test
+    fun `남은 실패가 없으면 꺼내도 아무 일이 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+            assertTrue(navigationHelper.destinations.isEmpty())
         }
 
     @Test
