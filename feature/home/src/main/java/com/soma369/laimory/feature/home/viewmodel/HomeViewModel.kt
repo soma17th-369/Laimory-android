@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.helper.NetworkConnectionChecker
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
@@ -115,6 +116,7 @@ class HomeViewModel
         private val draftConsentSessionStore: DraftConsentSessionStore,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
+        private val networkConnectionChecker: NetworkConnectionChecker,
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
@@ -919,6 +921,11 @@ class HomeViewModel
                 sendEffect(HomeUiSideEffect.ShowSnackbar("종료 시각은 시작 시각보다 뒤로 설정해주세요."))
                 return
             }
+            // 연결이 없으면 확인 다이얼로그 · 로딩 화면으로 가지 않고 여기서 알린다. 보낸 뒤 끊기는 경우는 로딩 화면이 알린다.
+            if (!networkConnectionChecker.isConnected()) {
+                sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
+                return
+            }
             // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤로 미룬다. 여기서 끊으면 아직 한 번도
             // 수집하지 않은 사용자가 수집 기회를 갖기 전에 생성이 막힌다.
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
@@ -1134,6 +1141,8 @@ class HomeViewModel
          * 판정이므로 기록 상태를 한 번 다시 읽어, 실제로 만들어지고 있으면 그것을 보여 준다.
          */
         private fun consumeSubmitFailure() {
+            // 로딩 화면이 떠 있으면 그 화면이 안내한다. 전환 중 홈이 먼저 꺼내 가면 로딩 화면은 안내할 것을 잃는다.
+            if (submissionStore.isLoadingShown.value) return
             val failed = submissionStore.consume() ?: return
             loadingSessionStore.clearUnattached()
             handleDraftSubmitFailure(failed.error, failed.kind, announced = failed.shownOnLoading)
@@ -1144,9 +1153,9 @@ class HomeViewModel
 
         private fun observeSubmission() =
             safeLaunch {
-                submissionStore.submission
-                    .map { it is DraftSubmission.Failed }
-                    .distinctUntilChanged()
+                combine(submissionStore.submission, submissionStore.isLoadingShown) { submission, loadingShown ->
+                    submission is DraftSubmission.Failed && !loadingShown
+                }.distinctUntilChanged()
                     .collect { pending -> updateState { copy(hasPendingSubmitFailure = pending) } }
             }
 
@@ -1190,6 +1199,7 @@ class HomeViewModel
 
                 DraftSubmitFailureKind.PHOTO_LIMIT,
                 DraftSubmitFailureKind.TIMEOUT,
+                DraftSubmitFailureKind.NETWORK,
                 DraftSubmitFailureKind.OTHER,
                 -> handleDraftCreationFailure(error, announced)
             }
@@ -1283,7 +1293,12 @@ class HomeViewModel
                 copy(
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                    draftMessage = DraftSubmitFailureMessages.OTHER,
+                    draftMessage =
+                        if (DraftSubmitFailureKind.of(error) == DraftSubmitFailureKind.NETWORK) {
+                            DraftSubmitFailureMessages.NETWORK
+                        } else {
+                            DraftSubmitFailureMessages.OTHER
+                        },
                 )
             }
             // 로딩 화면이 이미 알렸으면 공통 오류 안내를 또 띄우지 않는다.

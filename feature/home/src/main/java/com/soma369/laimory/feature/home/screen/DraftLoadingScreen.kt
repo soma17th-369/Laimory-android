@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +65,11 @@ private fun DraftLoadingContent(
 ) {
     // 뒤로가기는 작업을 취소하지 않는다. 추적은 그대로 두고 홈으로만 돌아간다.
     BackHandler { onIntent(DraftLoadingUiIntent.NavigateBack) }
+    // 떠 있는 동안 요청 실패는 이 화면이 안내한다. 전환 중에는 홈도 그려져 있어 홈이 먼저 꺼내 가지 않게 알린다.
+    DisposableEffect(Unit) {
+        onIntent(DraftLoadingUiIntent.ChangeVisibility(shown = true))
+        onDispose { onIntent(DraftLoadingUiIntent.ChangeVisibility(shown = false)) }
+    }
 
     DraftLoadingScreen(
         innerPadding = innerPadding,

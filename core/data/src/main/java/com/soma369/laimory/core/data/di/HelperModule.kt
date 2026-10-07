@@ -3,10 +3,12 @@ package com.soma369.laimory.core.data.di
 import com.soma369.laimory.core.data.helper.GlobalLoadingHelperImpl
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
+import com.soma369.laimory.core.data.helper.NetworkConnectionCheckerImpl
 import com.soma369.laimory.core.data.helper.SocialLoginCallbackHandlerImpl
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.helper.NetworkConnectionChecker
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import dagger.Binds
 import dagger.Module
@@ -32,4 +34,8 @@ abstract class HelperModule {
     @Binds
     @Singleton
     abstract fun bindSocialLoginCallbackHandler(impl: SocialLoginCallbackHandlerImpl): SocialLoginCallbackHandler
+
+    @Binds
+    @Singleton
+    abstract fun bindNetworkConnectionChecker(impl: NetworkConnectionCheckerImpl): NetworkConnectionChecker
 }

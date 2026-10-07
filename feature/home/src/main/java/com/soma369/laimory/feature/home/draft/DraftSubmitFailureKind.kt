@@ -27,7 +27,10 @@ enum class DraftSubmitFailureKind {
     /** 30초 동안 진행되지 않아 끊었다. 서버는 받았을 수 있다. */
     TIMEOUT,
 
-    /** 그 밖(네트워크 · 서버 오류 등). */
+    /** 연결이 없어 요청을 보내지 못했다. 서버는 받지 않았다. */
+    NETWORK,
+
+    /** 그 밖(서버 오류 등). */
     OTHER,
     ;
 
@@ -43,6 +46,7 @@ enum class DraftSubmitFailureKind {
                 cause is DraftPhotoAccessException -> PHOTO_ACCESS
                 cause is DraftPhotoLimitExceededException -> PHOTO_LIMIT
                 cause is SocketTimeoutException -> TIMEOUT
+                cause is ApiException.NetworkException -> NETWORK
                 else -> OTHER
             }
         }

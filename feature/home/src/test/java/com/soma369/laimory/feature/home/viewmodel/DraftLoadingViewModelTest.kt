@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -237,6 +238,33 @@ class DraftLoadingViewModelTest {
             runCurrent()
 
             assertEquals("약관 확인하기", viewModel.state.value.notice?.primaryAction?.label)
+        }
+
+    @Test
+    fun `연결이 없어 요청을 못 보냈으면 인터넷 연결 안내를 보여 준다`() =
+        loadingTest {
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            submissionStore.fail(date, ApiException.NetworkException())
+            runCurrent()
+
+            assertEquals("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.", viewModel.state.value.notice?.message)
+            assertEquals("홈으로", viewModel.state.value.notice?.primaryAction?.label)
+        }
+
+    @Test
+    fun `화면에 들어오고 나가는 것을 저장소에 알린다`() =
+        loadingTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftLoadingUiIntent.ChangeVisibility(shown = true))
+            runCurrent()
+            assertTrue(submissionStore.isLoadingShown.value)
+
+            viewModel.sendIntent(DraftLoadingUiIntent.ChangeVisibility(shown = false))
+            runCurrent()
+            assertFalse(submissionStore.isLoadingShown.value)
         }
 
     private fun createViewModel() =

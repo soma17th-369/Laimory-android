@@ -3,6 +3,11 @@ package com.soma369.laimory.feature.home.loading
 import com.soma369.laimory.core.ui.base.UiIntent
 
 sealed interface DraftLoadingUiIntent : UiIntent {
+    /** 로딩 화면이 화면에 들어왔다([shown] = true) · 나갔다. 떠 있는 동안 요청 실패는 홈이 아니라 이 화면이 안내한다. */
+    data class ChangeVisibility(
+        val shown: Boolean,
+    ) : DraftLoadingUiIntent
+
     /** 뒤로가기. 작업은 취소하지 않고 홈으로만 돌아간다. */
     data object NavigateBack : DraftLoadingUiIntent
 

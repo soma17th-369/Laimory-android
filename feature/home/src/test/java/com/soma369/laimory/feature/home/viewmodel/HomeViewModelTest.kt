@@ -138,6 +138,7 @@ class HomeViewModelTest {
     private val sourceRepository = FakeSourceItemRepository()
     private val autoCollectionCoordinator = FakeAutoCollectionCoordinator()
     private var isCollectionLabAccessible = true
+    private var isNetworkConnected = true
     private val recordRepository = FakeTimelineRecordRepository()
     private val photoSource = FakePhotoSource()
     private val sessionStore = DraftConsentSessionStore()
@@ -1940,6 +1941,7 @@ class HomeViewModelTest {
             draftConsentSessionStore = sessionStore,
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
+            networkConnectionChecker = { isNetworkConnected },
             globalLoadingHelper = NoOpGlobalLoadingHelper,
             autoCollectionCoordinator = autoCollectionCoordinator,
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
@@ -2048,6 +2050,12 @@ class HomeViewModelTest {
     }
 
     private enum class ConfirmAnswer { CREATE, CANCEL, HOLD }
+
+    /** 로딩 화면에서 홈으로 돌아왔다. 로딩 화면이 사라지며 알리는 것과 같다. */
+    private fun TestScope.leaveLoading() {
+        submissionStore.setLoadingShown(false)
+        runCurrent()
+    }
 
     /** 뜬 확인 다이얼로그를 기록하고 무엇으로 답할지 정해 둔다. */
     private class ConfirmDialogRecorder {
@@ -2483,17 +2491,19 @@ class HomeViewModelTest {
 
             createDraft(viewModel)
 
-            // 로딩 화면이 떠 있는 동안 홈은 그려지지 않는다. 실패 카드는 아직이다.
+            // 로딩 화면이 떠 있는 동안은 그 화면이 안내한다. 홈은 꺼내 갈 실패가 없다고 본다.
             assertTrue(submissionStore.submission.value is DraftSubmission.Failed)
-            assertTrue(viewModel.state.value.hasPendingSubmitFailure)
+            assertFalse(viewModel.state.value.hasPendingSubmitFailure)
             assertFalse(viewModel.state.value.isSubmitting)
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
 
+            leaveLoading()
+            assertTrue(viewModel.state.value.hasPendingSubmitFailure)
             viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
             runCurrent()
 
             assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
-            assertEquals("초안 생성 요청을 보내지 못했어요.", viewModel.state.value.draftMessage)
+            assertEquals("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.", viewModel.state.value.draftMessage)
             assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
             assertFalse(viewModel.state.value.hasPendingSubmitFailure)
             assertNull(loadingSessionStore.session.value)
@@ -2513,6 +2523,7 @@ class HomeViewModelTest {
             assertEquals(DraftSubmitFailureKind.TIMEOUT, (submissionStore.submission.value as DraftSubmission.Failed).kind)
             val before = recordRepository.dailyRecordCallCount
 
+            leaveLoading()
             viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
             runCurrent()
 
@@ -2529,10 +2540,50 @@ class HomeViewModelTest {
             createDraft(viewModel)
             assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
 
+            leaveLoading()
             viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
             runCurrent()
 
             assertTrue(navigationHelper.destinations.last() is StageTermsPage)
+        }
+
+    @Test
+    fun `로딩 화면이 떠 있는 동안에는 홈이 실패를 꺼내 가지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 오프라인이면 실패가 로딩으로 넘어가는 전환 중에 온다. 그때는 홈도 그려져 있어 홈이 먼저 꺼내 가면
+            // 로딩 화면은 안내할 실패를 잃고 연출에 멈춘다.
+            draftRepository.createFailure = ApiException.NetworkException()
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            val failed = submissionStore.submission.value as DraftSubmission.Failed
+            assertEquals(DraftSubmitFailureKind.NETWORK, failed.kind)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+        }
+
+    @Test
+    fun `인터넷 연결이 없으면 확인 다이얼로그 없이 홈에서 바로 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            isNetworkConnected = false
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertTrue(navigationHelper.destinations.isEmpty())
+            assertEquals(0, draftRepository.createCount)
+            assertEquals(
+                HomeUiSideEffect.ShowSnackbar("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요."),
+                effect.await(),
+            )
         }
 
     @Test

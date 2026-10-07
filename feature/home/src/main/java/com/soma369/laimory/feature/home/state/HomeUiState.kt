@@ -84,7 +84,8 @@ data class HomeUiState(
     val isSubmitting: Boolean = false,
     /**
      * 작업 번호를 받지 못하고 끝난 요청의 실패가 남아 있다. 화면은 홈이 보일 때 이것을 보고 돌아간 뒤의 처리를
-     * 요청한다(`ConsumeSubmitFailure`). 로딩 화면이 떠 있는 동안은 홈이 그려지지 않아 처리를 미룬다.
+     * 요청한다(`ConsumeSubmitFailure`). 로딩 화면이 떠 있는 동안은 그 화면이 안내하므로 false 다 — 로딩으로 넘어가는
+     * 전환 중에는 홈도 그려져 있어, 이것으로 막지 않으면 홈이 실패를 먼저 꺼내 간다.
      */
     val hasPendingSubmitFailure: Boolean = false,
     val draftRetryMode: DraftRetryMode? = null,

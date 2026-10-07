@@ -7,5 +7,6 @@ internal object DraftSubmitFailureMessages {
     const val PHOTO_ACCESS = "고른 사진 중 열 수 없는 사진이 있어요. 사진을 다시 골라 주세요."
     const val PHOTO_LIMIT_SUFFIX = "사진 선택에서 개수를 줄여주세요."
     const val TIMEOUT = "응답이 없어 요청을 멈췄어요. 잠시 후 다시 시도해 주세요."
+    const val NETWORK = "인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요."
     const val OTHER = "초안 생성 요청을 보내지 못했어요."
 }

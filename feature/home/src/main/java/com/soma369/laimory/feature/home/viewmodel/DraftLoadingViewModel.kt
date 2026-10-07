@@ -60,6 +60,7 @@ class DraftLoadingViewModel
 
         override suspend fun handleIntent(intent: DraftLoadingUiIntent) {
             when (intent) {
+                is DraftLoadingUiIntent.ChangeVisibility -> submissionStore.setLoadingShown(intent.shown)
                 // 실패 안내를 띄운 채 뒤로 나가는 것도 안내를 본 것이다.
                 DraftLoadingUiIntent.NavigateBack -> {
                     submissionStore.markShownOnLoading()
@@ -156,6 +157,7 @@ class DraftLoadingViewModel
                 DraftSubmitFailureKind.PHOTO_LIMIT ->
                     DraftLoadingNotice("${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}", repick, null)
                 DraftSubmitFailureKind.TIMEOUT -> DraftLoadingNotice(DraftSubmitFailureMessages.TIMEOUT, home, null)
+                DraftSubmitFailureKind.NETWORK -> DraftLoadingNotice(DraftSubmitFailureMessages.NETWORK, home, null)
                 DraftSubmitFailureKind.OTHER -> DraftLoadingNotice(DraftSubmitFailureMessages.OTHER, home, null)
             }
         }
