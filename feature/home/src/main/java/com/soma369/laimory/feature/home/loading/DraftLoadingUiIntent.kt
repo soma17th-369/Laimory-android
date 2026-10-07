@@ -14,4 +14,7 @@ sealed interface DraftLoadingUiIntent : UiIntent {
 
     /** 추적을 접고 홈으로 돌아간다. */
     data object Discard : DraftLoadingUiIntent
+
+    /** 초안 요청 실패 안내를 확인하고 홈으로 돌아간다. 돌아간 뒤의 처리(사진 시트 · 약관 화면)는 홈이 한다. */
+    data object LeaveAfterSubmitFailure : DraftLoadingUiIntent
 }

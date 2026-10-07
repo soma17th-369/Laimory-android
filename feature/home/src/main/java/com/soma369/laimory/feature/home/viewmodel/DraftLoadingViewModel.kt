@@ -7,7 +7,12 @@ import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.base.UiSideEffect
+import com.soma369.laimory.feature.home.draft.DraftLoadingSession
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmission
+import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureMessages
 import com.soma369.laimory.feature.home.loading.DraftLoadingAction
 import com.soma369.laimory.feature.home.loading.DraftLoadingNotice
 import com.soma369.laimory.feature.home.loading.DraftLoadingStage
@@ -41,6 +46,7 @@ class DraftLoadingViewModel
     constructor(
         private val coordinator: DraftTaskCoordinator,
         private val loadingSessionStore: DraftLoadingSessionStore,
+        private val submissionStore: DraftSubmissionStore,
         private val navigationHelper: NavigationHelper,
         private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
@@ -54,7 +60,15 @@ class DraftLoadingViewModel
 
         override suspend fun handleIntent(intent: DraftLoadingUiIntent) {
             when (intent) {
-                DraftLoadingUiIntent.NavigateBack -> navigationHelper.navigateToBack()
+                // 실패 안내를 띄운 채 뒤로 나가는 것도 안내를 본 것이다.
+                DraftLoadingUiIntent.NavigateBack -> {
+                    submissionStore.markShownOnLoading()
+                    navigationHelper.navigateToBack()
+                }
+                DraftLoadingUiIntent.LeaveAfterSubmitFailure -> {
+                    submissionStore.markShownOnLoading()
+                    navigationHelper.navigateToBack()
+                }
                 DraftLoadingUiIntent.Retry -> coordinator.retry()
                 DraftLoadingUiIntent.ContinueWaiting -> coordinator.continueWaiting()
                 DraftLoadingUiIntent.Discard -> {
@@ -66,9 +80,15 @@ class DraftLoadingViewModel
 
         private fun observeTask() {
             safeLaunch {
-                combine(coordinator.state, loadingSessionStore.session) { tracking, session ->
-                    tracking to session
-                }.collect { (tracking, session) ->
+                combine(coordinator.state, loadingSessionStore.session, submissionStore.submission) { tracking, session, submission ->
+                    Triple(tracking, session, submission)
+                }.collect { (tracking, session, submission) ->
+                    // 작업 번호를 받기 전에는 요청 상태가 화면을 정한다. 그동안 coordinator 에는 이전 작업이 남아 있을 수
+                    // 있어(다른 날짜의 완료 등) 그것을 보면 엉뚱한 완료 · 안내가 뜬다.
+                    if (submission !is DraftSubmission.Idle) {
+                        showSubmission(submission, session)
+                        return@collect
+                    }
                     val task = (tracking as? DraftTaskTrackingState.WithTask)?.task
                     val matched = task?.taskId?.let { loadingSessionStore.sessionFor(it) } ?: session
                     val isCompleted = tracking is DraftTaskTrackingState.Success
@@ -95,6 +115,51 @@ class DraftLoadingViewModel
             }
         }
 
+        private fun showSubmission(
+            submission: DraftSubmission,
+            session: DraftLoadingSession?,
+        ) {
+            val recordDate =
+                when (submission) {
+                    is DraftSubmission.Submitting -> submission.recordDate
+                    is DraftSubmission.Failed -> submission.recordDate
+                    DraftSubmission.Idle -> null
+                }
+            updateState {
+                copy(
+                    recordDate = recordDate ?: this.recordDate,
+                    photoUris = session?.photoUris ?: photoUris,
+                    photoCount = session?.photoCount ?: photoCount,
+                    calendarCount = session?.calendarCount ?: calendarCount,
+                    stayCount = session?.stayCount ?: stayCount,
+                    notice = (submission as? DraftSubmission.Failed)?.toNotice(),
+                )
+            }
+        }
+
+        /**
+         * 요청 실패 안내. 자동으로 돌아가지 않는다 — 사유를 읽기 전에 화면이 바뀌면 왜 실패했는지 모른다. 버튼 문구는
+         * 돌아간 뒤 홈이 할 일을 말한다(사진 시트를 다시 연다 · 약관 화면으로 간다).
+         */
+        private fun DraftSubmission.Failed.toNotice(): DraftLoadingNotice {
+            val home = DraftLoadingAction("홈으로", DraftLoadingUiIntent.LeaveAfterSubmitFailure)
+            val repick = DraftLoadingAction("사진 다시 고르기", DraftLoadingUiIntent.LeaveAfterSubmitFailure)
+            return when (kind) {
+                DraftSubmitFailureKind.TERMS_REQUIRED ->
+                    DraftLoadingNotice(
+                        message = DraftSubmitFailureMessages.TERMS_REQUIRED,
+                        primaryAction = DraftLoadingAction("약관 확인하기", DraftLoadingUiIntent.LeaveAfterSubmitFailure),
+                        secondaryAction = null,
+                    )
+                DraftSubmitFailureKind.NO_NEW_ITEMS -> DraftLoadingNotice(DraftSubmitFailureMessages.NO_NEW_ITEMS, home, null)
+                DraftSubmitFailureKind.PHOTO_ACCESS -> DraftLoadingNotice(DraftSubmitFailureMessages.PHOTO_ACCESS, repick, null)
+                DraftSubmitFailureKind.PHOTO_LIMIT ->
+                    DraftLoadingNotice("${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}", repick, null)
+                DraftSubmitFailureKind.TIMEOUT -> DraftLoadingNotice(DraftSubmitFailureMessages.TIMEOUT, home, null)
+                DraftSubmitFailureKind.OTHER -> DraftLoadingNotice(DraftSubmitFailureMessages.OTHER, home, null)
+            }
+        }
+
         /**
          * 경과 시간에 따라 앞 세 줄을 차례로 완료로 바꾼다. **추적하는 작업이 바뀌면 다시 돈다.**
          *
@@ -108,15 +173,26 @@ class DraftLoadingViewModel
          */
         private fun tickStages() {
             safeLaunch {
-                coordinator.state
-                    .map { (it as? DraftTaskTrackingState.WithTask)?.task?.taskId }
+                combine(
+                    coordinator.state.map { (it as? DraftTaskTrackingState.WithTask)?.task?.taskId },
+                    submissionStore.submission.map { (it as? DraftSubmission.Submitting)?.startedAt },
+                ) { taskId, submittedAt -> taskId to submittedAt }
                     .distinctUntilChanged()
-                    .collectLatest { taskId ->
+                    .collectLatest { (taskId, _) ->
                         while (true) {
+                            val submission = submissionStore.submission.value
                             val tracking = coordinator.state.value
                             val task = (tracking as? DraftTaskTrackingState.WithTask)?.task
-                            val elapsed = elapsedOf(tracking, task)
-                            val isCompleted = tracking is DraftTaskTrackingState.Success
+                            // 요청을 보내는 동안은 아직 작업이 없다. `만들기` 를 누른 시각부터 센다 — 사진 업로드가 실제로
+                            // 도는 구간이라 첫 줄(사진)과 맞는다.
+                            val submitting = submission as? DraftSubmission.Submitting
+                            val elapsed =
+                                if (submitting != null) {
+                                    Duration.between(submitting.startedAt, clock.instant()).toKotlinDuration()
+                                } else {
+                                    elapsedOf(tracking, task)
+                                }
+                            val isCompleted = submission is DraftSubmission.Idle && tracking is DraftTaskTrackingState.Success
                             updateState {
                                 copy(
                                     stageStates =
@@ -125,8 +201,9 @@ class DraftLoadingViewModel
                                         },
                                 )
                             }
-                            // 끝난 작업이나 추적할 작업이 없으면 더 움직일 연출이 없다. 다음 작업이 오면 다시 돈다.
-                            if (taskId == null || tracking.isTerminal()) break
+                            // 요청이 실패했거나, 끝난 작업이나 추적할 작업이 없으면 더 움직일 연출이 없다. 다음이 오면 다시 돈다.
+                            if (submission is DraftSubmission.Failed) break
+                            if (submitting == null && (taskId == null || tracking.isTerminal())) break
                             delay(STAGE_TICK)
                         }
                     }
@@ -153,13 +230,19 @@ class DraftLoadingViewModel
                     ?.let { Duration.between(it.requestedAt, clock.instant()) }
                     ?.toKotlinDuration()
                     ?: kotlin.time.Duration.ZERO
+            // 요청 중에 이미 흐른 연출이 작업 번호를 받은 뒤 되돌아가지 않게, `만들기` 를 누른 시각도 하한으로 둔다.
+            val sinceSubmit =
+                task
+                    ?.let { loadingSessionStore.sessionFor(it.taskId)?.submittedAt }
+                    ?.let { Duration.between(it, clock.instant()).toKotlinDuration() }
+                    ?: kotlin.time.Duration.ZERO
             val server =
                 when (tracking) {
                     is DraftTaskTrackingState.Processing -> tracking.elapsedSeconds
                     is DraftTaskTrackingState.LongRunning -> tracking.elapsedSeconds
                     else -> null
                 }?.seconds ?: kotlin.time.Duration.ZERO
-            return maxOf(local, server).coerceAtLeast(kotlin.time.Duration.ZERO)
+            return maxOf(local, server, sinceSubmit).coerceAtLeast(kotlin.time.Duration.ZERO)
         }
 
         private fun DraftTaskTrackingState.toNotice(): DraftLoadingNotice? =
