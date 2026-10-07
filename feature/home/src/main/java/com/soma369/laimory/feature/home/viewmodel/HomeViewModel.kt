@@ -1169,7 +1169,7 @@ class HomeViewModel
          * 홈이 보일 때 남은 요청 실패를 꺼내 돌아간 뒤의 처리를 한다. 화면이 [HomeUiState.hasPendingSubmitFailure] 를
          * 보고 부른다.
          *
-         * 무응답이나 알 수 없는 실패는 서버가 요청을 받았을 수 있다(초안 생성 POST 에 멱등 키가 없다). 홈 CTA 는 서버
+         * 무응답 · 연결 끊김 · 알 수 없는 실패는 서버가 요청을 받았을 수 있다(초안 생성 POST 에 멱등 키가 없다). 홈 CTA 는 서버
          * 판정이므로 기록 상태를 한 번 다시 읽어, 실제로 만들어지고 있으면 그것을 보여 준다.
          */
         private fun consumeSubmitFailure() {
@@ -1178,9 +1178,7 @@ class HomeViewModel
             val failed = submissionStore.consume() ?: return
             loadingSessionStore.clearUnattached()
             handleDraftSubmitFailure(failed.error, failed.kind, announced = failed.shownOnLoading)
-            if (failed.kind == DraftSubmitFailureKind.TIMEOUT || failed.kind == DraftSubmitFailureKind.OTHER) {
-                refreshSelectedRecord()
-            }
+            if (failed.kind in KINDS_SERVER_MAY_HAVE_RECEIVED) refreshSelectedRecord()
         }
 
         private fun observeSubmission() =
@@ -1229,8 +1227,8 @@ class HomeViewModel
                     startPhotoSelection()
                 }
 
-                // 서버는 받지 않았다. 실패 카드 없이 연결만 알린다 — 만들기 전에 막을 때와 같은 모습이다. 로딩 화면은 이
-                // 실패를 안내하지 않고 곧바로 돌아오므로 늘 여기서 알린다.
+                // 실패 카드 없이 연결만 알린다 — 만들기 전에 막을 때와 같은 모습이다. 로딩 화면은 이 실패를 안내하지 않고
+                // 곧바로 돌아오므로 늘 여기서 알린다. 서버가 받았을 수 있어 기록은 [consumeSubmitFailure] 가 다시 읽는다.
                 DraftSubmitFailureKind.NETWORK -> sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
 
                 DraftSubmitFailureKind.PHOTO_LIMIT,
@@ -1627,6 +1625,14 @@ class HomeViewModel
         private companion object {
             /** 이어 붙일 새 항목이 없을 때(-1013) 안내. 로딩 화면도 같은 문구를 쓴다. */
             const val NO_NEW_ITEMS_MESSAGE = DraftSubmitFailureMessages.NO_NEW_ITEMS
+
+            /**
+             * 서버가 초안 생성 요청을 받았을 수 있는 실패. 돌아간 뒤 기록 상태를 다시 읽는다 — 홈 CTA 는 서버 판정이라, 실제로
+             * 만들어지고 있으면 그것을 보여 줘야 같은 날을 두 번 만들지 않는다. 연결 실패도 응답을 읽다 끊긴 경우가 같은
+             * 예외라 여기에 든다.
+             */
+            val KINDS_SERVER_MAY_HAVE_RECEIVED =
+                setOf(DraftSubmitFailureKind.TIMEOUT, DraftSubmitFailureKind.NETWORK, DraftSubmitFailureKind.OTHER)
 
             /**
              * `-3001` 을 받았을 때 다시 받아야 할 후보 단계.

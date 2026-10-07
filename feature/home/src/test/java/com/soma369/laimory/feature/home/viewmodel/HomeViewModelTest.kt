@@ -2568,7 +2568,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `보내는 중에 연결이 끊겨 실패하면 돌아온 홈에서 실패 카드 없이 스낵바로 알린다`() =
+    fun `보내는 중에 연결이 끊겨 실패하면 돌아온 홈에서 실패 카드 없이 스낵바로 알리고 서버 기록을 다시 읽는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             draftRepository.createFailure = ApiException.NetworkException()
             sourceRepository.items.value = listOf(todayItem("calendar"))
@@ -2577,11 +2577,14 @@ class HomeViewModelTest {
             backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
             runCurrent()
             createDraft(viewModel)
+            // 응답을 읽다 끊겨도 같은 예외다. 서버가 받아 만들고 있을 수 있어 CTA 를 서버 판정으로 되돌려야 한다.
+            val before = recordRepository.dailyRecordCallCount
 
             leaveLoading()
             viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
             runCurrent()
 
+            assertTrue(recordRepository.dailyRecordCallCount > before)
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
             assertEquals(
                 listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.")),
