@@ -15,15 +15,19 @@ import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionRe
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.SocketTimeoutException
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 class TimelineDraftRepositoryImplTest {
     private val metaByUri =
@@ -54,17 +58,21 @@ class TimelineDraftRepositoryImplTest {
     private class FakeRemote(
         private val uploadsResponse: PhotoUploadCreateResponse,
         private val statusResponse: DraftTaskStatusResponse = DraftTaskStatusResponse(status = "PROCESSING"),
+        /** 채우면 응답 전에 그만큼 멈춘다. 무응답을 만든다. */
+        private val responseDelay: Duration = Duration.ZERO,
     ) : TimelineDraftRemoteDataSource {
         var lastPhotoUploadRequest: PhotoUploadCreateRequest? = null
         var lastDraftRequest: CreateDraftTaskRequest? = null
 
         override suspend fun requestPhotoUploads(request: PhotoUploadCreateRequest): PhotoUploadCreateResponse {
             lastPhotoUploadRequest = request
+            delay(responseDelay)
             return uploadsResponse
         }
 
         override suspend fun createDraft(request: CreateDraftTaskRequest): CreateDraftTaskResponse {
             lastDraftRequest = request
+            delay(responseDelay)
             return CreateDraftTaskResponse("t")
         }
 
@@ -245,4 +253,66 @@ class TimelineDraftRepositoryImplTest {
             assertEquals(0, reporter.reportedSourceItemCount)
             assertEquals(encoded.encodeToByteArray().size, reporter.reportedUtf8ByteCount)
         }
+
+    @Test
+    fun `uploadPhotos - 업로드 URL 발급이 30초 안에 끝나지 않으면 무응답으로 끊는다`() =
+        runTest {
+            val remote =
+                FakeRemote(
+                    PhotoUploadCreateResponse(uploads = listOf(PhotoUploadEntry(filename = "f", uploadUrl = "u"))),
+                    responseDelay = 31.seconds,
+                )
+            val repository = TimelineDraftRepositoryImpl(resolver, remote, RecordingS3Uploader(), Json)
+
+            val error = runCatching { repository.uploadPhotos(listOf("content://a")) }.exceptionOrNull()
+
+            assertTrue(error is SocketTimeoutException)
+        }
+
+    @Test
+    fun `createDraft - 초안 생성 요청이 30초 안에 끝나지 않으면 무응답으로 끊는다`() =
+        runTest {
+            val remote = FakeRemote(PhotoUploadCreateResponse(uploads = emptyList()), responseDelay = 31.seconds)
+            val repository = TimelineDraftRepositoryImpl(resolver, remote, RecordingS3Uploader(), Json)
+
+            val error =
+                runCatching {
+                    repository.createDraft(
+                        recordDate = LocalDate.of(2026, 10, 7),
+                        zone = ZoneId.of("Asia/Seoul"),
+                        window = window(LocalDate.of(2026, 10, 7), ZoneId.of("Asia/Seoul")),
+                        items = emptyList(),
+                        uploadedPhotoFilenames = emptyMap(),
+                    )
+                }.exceptionOrNull()
+
+            assertTrue(error is SocketTimeoutException)
+        }
+
+    @Test
+    fun `createDraft - 30초 안에 오면 그대로 받는다`() =
+        runTest {
+            val remote = FakeRemote(PhotoUploadCreateResponse(uploads = emptyList()), responseDelay = 29.seconds)
+            val repository = TimelineDraftRepositoryImpl(resolver, remote, RecordingS3Uploader(), Json)
+
+            val handle =
+                repository.createDraft(
+                    recordDate = LocalDate.of(2026, 10, 7),
+                    zone = ZoneId.of("Asia/Seoul"),
+                    window = window(LocalDate.of(2026, 10, 7), ZoneId.of("Asia/Seoul")),
+                    items = emptyList(),
+                    uploadedPhotoFilenames = emptyMap(),
+                )
+
+            assertEquals("t", handle.taskId)
+        }
+
+    private fun window(
+        date: LocalDate,
+        zone: ZoneId,
+    ): RecordDateWindow =
+        RecordDateWindow(
+            start = date.atTime(6, 0).atZone(zone).toInstant(),
+            end = date.plusDays(1).atTime(6, 0).atZone(zone).toInstant(),
+        )
 }

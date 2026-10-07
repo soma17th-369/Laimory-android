@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.net.SocketTimeoutException
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -46,6 +47,9 @@ class S3PhotoUploaderImpl
                 try {
                     client.newCall(request).execute()
                 } catch (e: CancellationException) {
+                    throw e
+                } catch (e: SocketTimeoutException) {
+                    // 진행이 멈춘 것이다. 일반 네트워크 오류로 덮으면 분석에서 무응답(TIMEOUT)을 가를 수 없다.
                     throw e
                 } catch (e: IOException) {
                     throw ApiException.NetworkException()

@@ -174,17 +174,23 @@ object NetworkModule {
      * S3 presigned 업로드 전용 OkHttpClient.
      *
      * 공용 클라이언트의 debug MockInterceptor 가 S3 요청을 가로채면 안 되고, 우리 서버 인터셉터/인증도
-     * 태우면 안 되므로 별도로 둔다. 큰 사진 업로드를 고려해 write/read 타임아웃을 넉넉히 잡는다.
+     * 태우면 안 되므로 별도로 둔다.
+     *
+     * write/read 타임아웃은 **요청 전체가 아니라 한 번의 읽기·쓰기**에 걸린다 — 30초 동안 바이트가 한 번도 오가지
+     * 않을 때만 끊는다. 사진은 원본(수 MB)을 올리므로 느린 망에서는 한 장에 30초를 넘길 수 있는데, 전송이
+     * 진행되는 동안은 기다리고 실제로 멈췄을 때만 포기한다(초안 생성 "진행 정지 30초").
      */
     @Provides
     @Singleton
     @S3Client
     fun provideS3OkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
+            .connectTimeout(S3_STALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(S3_STALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(S3_STALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .build()
+
+    private const val S3_STALL_TIMEOUT_SECONDS = 30L
 
     private fun buildRetrofit(
         baseUrl: String,

@@ -16,12 +16,16 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.net.SocketTimeoutException
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.seconds
 
 class TimelineDraftRepositoryImpl
     @Inject
@@ -38,11 +42,13 @@ class TimelineDraftRepositoryImpl
             // presign 요청과 실제 PUT 이 정확히 같은 contentType/size 를 쓰도록 한 번만 산출한다.
             val metas = clientPhotoUris.map { photoMetaResolver.resolve(it) }
             val response =
-                remote.requestPhotoUploads(
-                    PhotoUploadCreateRequest(
-                        photos = metas.map { PhotoUploadItem(contentType = it.contentType, size = it.size) },
-                    ),
-                )
+                withinStepTimeout {
+                    remote.requestPhotoUploads(
+                        PhotoUploadCreateRequest(
+                            photos = metas.map { PhotoUploadItem(contentType = it.contentType, size = it.size) },
+                        ),
+                    )
+                }
             val uploads = response.uploads
             if (uploads.size != clientPhotoUris.size) {
                 throw ApiException.UnknownException("발급된 업로드 URL 수가 사진 수와 다릅니다")
@@ -90,8 +96,26 @@ class TimelineDraftRepositoryImpl
                     utf8ByteCount = utf8ByteCount,
                 )
             }
-            return remote.createDraft(request).toDomain()
+            return withinStepTimeout { remote.createDraft(request) }.toDomain()
         }
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = remote.getDraftStatus(taskId).toDomain()
+
+        /**
+         * 초안 요청 한 단계(업로드 URL 발급 · 초안 생성 POST)에 상한을 건다. 둘 다 오가는 데이터가 작아 요청 전체가
+         * 곧 진행 여부다. 사진 업로드는 큰 본문이라 여기 대신 S3 클라이언트의 읽기·쓰기 타임아웃(바이트 진행 기준)이 맡는다.
+         *
+         * 넘기면 [SocketTimeoutException] 으로 바꿔 던진다 — 코루틴 타임아웃은 취소로 읽혀 호출부의 실패 처리에 닿지
+         * 않고, 분석은 이 예외로 무응답(TIMEOUT)을 가른다.
+         */
+        private suspend fun <T> withinStepTimeout(block: suspend () -> T): T =
+            try {
+                withTimeout(DRAFT_STEP_TIMEOUT) { block() }
+            } catch (e: TimeoutCancellationException) {
+                throw SocketTimeoutException("초안 요청이 ${DRAFT_STEP_TIMEOUT.inWholeSeconds}초 안에 끝나지 않았어요.")
+            }
+
+        private companion object {
+            val DRAFT_STEP_TIMEOUT = 30.seconds
+        }
     }
