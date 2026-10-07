@@ -162,6 +162,9 @@ class HomeViewModel
         private var dateSource = DateSource.DEFAULT
         private var consentPreparationJob: Job? = null
 
+        /** 작업 번호를 받으려고 보내는 중인 요청. 계정이 바뀌면 취소한다 — 결과가 새 계정 홈에 닿으면 안 된다. */
+        private var submissionJob: Job? = null
+
         /**
          * 확인창이 보여 준 제출 목록. `만들기` 는 이것을 그대로 보낸다.
          *
@@ -277,7 +280,9 @@ class HomeViewModel
                     // 이전 계정의 썸네일이 다시 뜨고, `만들기` 는 준비 스냅샷이 없어 무반응이다.
                     confirmedSubmission = null
                     resumesCreateAfterPhotoSheet = false
-                    // 이전 계정이 보내던 요청의 실패를 새 계정 홈에서 처리하면 안 된다.
+                    // 이전 계정이 보내던 요청의 결과를 새 계정 홈에서 처리하면 안 된다. 요청을 먼저 끊고 남은 실패를 비운다.
+                    submissionJob?.cancel()
+                    submissionJob = null
                     submissionStore.reset()
                     loadingSessionStore.clearUnattached()
                     updateState {
@@ -287,6 +292,7 @@ class HomeViewModel
                             selectedPhotoIds = emptySet(),
                             pendingPhotoIds = emptySet(),
                             isPhotoSheetVisible = false,
+                            isSubmitting = false,
                         )
                     }
                 }
@@ -1044,8 +1050,18 @@ class HomeViewModel
             // 여기부터 응답까지 입력을 잠근다. 그동안 날짜를 바꾸면 요청은 이전 스냅샷으로 진행된다.
             updateState { copy(isSubmitting = true) }
             navigationHelper.navigateTo(DraftLoadingPage)
-            safeLaunch(onError = { onSubmitFailed(preparation, it) }) { submitDraft(preparation, submission) }
+            val accountSession = draftConsentSessionStore.accountSession.value
+            submissionJob =
+                safeLaunch(
+                    onError = { error ->
+                        // 계정 전환으로 끊은 것은 실패가 아니다. 다시 기록하면 비운 저장소에 이전 계정의 실패가 돌아온다.
+                        if (error !is CancellationException && isSameAccount(accountSession)) onSubmitFailed(preparation, error)
+                    },
+                ) { submitDraft(preparation, submission, accountSession) }
         }
+
+        /** 요청을 보낸 계정이 아직 그대로인지. 취소가 응답보다 늦게 닿아도 이전 계정의 결과를 버린다. */
+        private fun isSameAccount(accountSession: Long): Boolean = draftConsentSessionStore.accountSession.value == accountSession
 
         /**
          * 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은 남긴다 —
@@ -1088,6 +1104,7 @@ class HomeViewModel
         private suspend fun submitDraft(
             preparation: DraftConsentPreparation,
             submission: DraftSourceItemSelection,
+            accountSession: Long,
         ) {
             val photoCount = submission.items.count { it.itemType == ItemType.PHOTO }
             Logger.i(
@@ -1104,6 +1121,7 @@ class HomeViewModel
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
+            if (!isSameAccount(accountSession)) return
             result
                 .onSuccess { handle ->
                     analyticsHelper.log(

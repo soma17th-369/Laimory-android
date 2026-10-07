@@ -2639,6 +2639,29 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `계정이 바뀌면 보내던 요청을 끊고 그 뒤에 온 이전 계정의 결과를 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 이전 계정의 약관 실패가 새 계정 홈에 남으면 새 계정을 약관 화면으로 보낸다.
+            draftRepository.createFailure = ApiException.ClientException(rawCode = 403, errorCode = -3001, message = "약관")
+            val gate = CompletableDeferred<Unit>()
+            draftRepository.createGate = gate
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertTrue(viewModel.state.value.isSubmitting)
+
+            sessionStore.clearAll()
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertFalse(viewModel.state.value.isSubmitting)
+            assertTrue(analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().isEmpty())
+        }
+
+    @Test
     fun `남은 실패가 없으면 꺼내도 아무 일이 없다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
