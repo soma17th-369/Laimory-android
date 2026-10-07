@@ -1551,6 +1551,25 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `보이던 범위를 그대로 확정해도 늦게 읽힌 기본값이 덮지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 바뀐 게 없다고 확정이 아닌 것은 아니다. 사용자는 보이는 06:00 을 골랐다.
+            val gate = CompletableDeferred<Unit>()
+            defaultRangeRepository.readGate = gate
+            defaultRangeRepository.saved.value = DefaultRecordRange(LocalTime.of(9, 0), endsNextDay = true, endTime = LocalTime.of(3, 0))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(6, 0))
+            runCurrent()
+
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.startTime)
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.endTime)
+        }
+
+    @Test
     fun `시트에서 항상 이 시간으로를 누르면 곧바로 확정·저장하고 피커의 다른 날짜도 그 범위로 시작한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val today = LocalDate.now(ZoneId.systemDefault())

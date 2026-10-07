@@ -176,7 +176,10 @@ class HomeViewModel
          */
         private var hasAppliedDefaultRange = false
 
-        /** 이 화면에서 사용자가 범위를 확정한 적이 있는지. 있으면 늦게 읽힌 기본값이 그 범위를 덮지 않는다. */
+        /**
+         * 이 화면에서 사용자가 피커 · 시간 시트로 범위를 확정한 적이 있는지. 범위가 바뀌지 않았어도 확정이면 켠다. 켜져
+         * 있으면 늦게 읽힌 기본값이 그 범위를 덮지 않는다.
+         */
         private var hasUserRange = false
 
         init {
@@ -567,7 +570,8 @@ class HomeViewModel
             startAutoCollectionAhead()
             val isDateChanged = session.date != state.value.selectedDate
             val isRangeChanged = !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
-            if (isRangeChanged) hasUserRange = true
+            // 바뀌었는지와 따로 본다. 보이던 범위를 그대로 확인해도 사용자가 고른 것이라 늦게 읽힌 기본값이 덮으면 안 된다.
+            hasUserRange = true
             updateState {
                 // 시간 시트에서 확정하면 시트만 닫고 피커는 확정한 값으로 열어 둔다.
                 val closed = copy(datePicker = session.takeIf { keepsPickerOpen }, timeSheet = null)
