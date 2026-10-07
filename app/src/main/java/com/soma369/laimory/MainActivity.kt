@@ -44,6 +44,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
+import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.navigation.LaimoryNavGraph
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
@@ -92,6 +93,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var draftConsentSessionStore: DraftConsentSessionStore
+
+    @Inject
+    lateinit var draftLoadingSessionStore: DraftLoadingSessionStore
 
     @Inject
     lateinit var observeAppThemeMode: ObserveAppThemeModeUseCase
@@ -218,6 +222,7 @@ class MainActivity : ComponentActivity() {
                                     onDraftCompletionConsumed = draftTaskCoordinator::consumeCompletion,
                                     // 홈이 상시로 유지하는 선택 스냅샷의 날짜가 곧 홈이 보고 있는 날짜다.
                                     homeRecordDate = { draftConsentSessionStore.selection.value?.recordDate },
+                                    loadingShowsOtherAttempt = draftLoadingSessionStore::showsOtherAttemptThan,
                                     onAuthRootReplaced = {
                                         // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
                                         messageHelper.clearDialogs()

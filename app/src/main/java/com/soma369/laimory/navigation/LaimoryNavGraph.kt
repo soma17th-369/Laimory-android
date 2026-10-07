@@ -72,6 +72,7 @@ fun LaimoryNavGraph(
     pendingDraftCompletions: StateFlow<DraftTaskCompletion?> = MutableStateFlow(null),
     onDraftCompletionConsumed: suspend (String) -> Boolean = { false },
     homeRecordDate: () -> LocalDate? = { null },
+    loadingShowsOtherAttempt: (taskId: String) -> Boolean = { false },
     onAuthRootReplaced: () -> Unit = {},
 ) {
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
@@ -121,6 +122,7 @@ fun LaimoryNavGraph(
     // 메서드 참조는 리컴포지션마다 새 객체라 키로 쓰면 수집이 계속 재시작한다. 최신 람다만 따라간다.
     val currentOnConsumed by rememberUpdatedState(onDraftCompletionConsumed)
     val currentHomeRecordDate by rememberUpdatedState(homeRecordDate)
+    val currentLoadingShowsOtherAttempt by rememberUpdatedState(loadingShowsOtherAttempt)
     LaunchedEffect(pendingDraftCompletions) {
         combine(
             pendingDraftCompletions,
@@ -132,7 +134,9 @@ fun LaimoryNavGraph(
             val timelineRoute = TimelinePage(completion.recordDate, AnalyticsEntryPoint.DRAFT_COMPLETE).toRoute()
             // 결과를 확인했으므로 백그라운드에서 온 알림은 더 알릴 것이 없다.
             DraftCompletionNotificationChannel.dismissAll(context)
-            if (isShowingLoading) {
+            // 로딩 화면이 다른 시도(작업 번호를 받기 전의 새 요청 등)를 보여 주는 중이면 그 화면의 완료가 아니다. 옮기지
+            // 않고 아래 스낵바로 알린다 — 옮기면 새 요청 도중 이전 날짜의 타임라인으로 간다.
+            if (isShowingLoading && !currentLoadingShowsOtherAttempt(completion.taskId)) {
                 // 마지막 줄이 완료로 바뀌는 것을 잠깐 보여주고 넘어간다. 바로 바꾸면 `분석 중...`을
                 // 보다가 예고 없이 화면이 튄다.
                 delay(COMPLETION_REVEAL_MILLIS)

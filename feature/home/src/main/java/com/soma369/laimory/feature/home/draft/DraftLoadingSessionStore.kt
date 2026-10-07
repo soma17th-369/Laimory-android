@@ -39,6 +39,14 @@ class DraftLoadingSessionStore
             if (mutableSession.value?.taskId == null) mutableSession.value = null
         }
 
+        /**
+         * 로딩 화면이 [taskId] 가 아닌 다른 시도를 보여 주고 있는지. 작업 번호를 받기 전의 새 요청도 다른 시도다.
+         *
+         * 이전 작업의 완료 신호가 남은 채 새 요청의 로딩 화면이 뜨면, 그 완료로 화면을 옮기면 안 된다. 스냅샷이 없으면
+         * (프로세스 재시작 뒤 복원 등) 판단할 근거가 없어 false 다.
+         */
+        fun showsOtherAttemptThan(taskId: String): Boolean = mutableSession.value?.let { it.taskId != taskId } ?: false
+
         /** [taskId]의 스냅샷을 꺼낸다. 다른 작업이거나 없으면 null. */
         fun sessionFor(taskId: String): DraftLoadingSession? = mutableSession.value?.takeIf { it.taskId == taskId }
 
