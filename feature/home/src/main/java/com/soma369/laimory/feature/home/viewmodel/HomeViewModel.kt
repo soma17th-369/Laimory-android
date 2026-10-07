@@ -1008,6 +1008,20 @@ class HomeViewModel
                     finalCounts = submission.analyticsCounts(),
                 ),
             )
+            // 다이얼로그가 떠 있는 동안 끊겼을 수 있다. 시작도 못 할 요청으로 로딩 화면에 보내지 않고 홈에서 알린다.
+            // 다이얼로그는 닫는다 — 열어 두면 스낵바가 그 뒤에 가린다. 고른 사진 · 범위는 홈에 남아 다시 누르면 된다.
+            if (!networkConnectionChecker.isConnected()) {
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineCreateRequestFailed(
+                        recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        recordDate = preparation.recordDate,
+                        failureCode = AnalyticsFailureCode.NETWORK,
+                    ),
+                )
+                draftConsentSessionStore.clearPreparation()
+                sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
+                return
+            }
             startSubmission(preparation, submission)
         }
 
@@ -1197,9 +1211,12 @@ class HomeViewModel
                     startPhotoSelection()
                 }
 
+                // 서버는 받지 않았다. 실패 카드 없이 연결만 알린다 — 만들기 전에 막을 때와 같은 모습이다. 로딩 화면은 이
+                // 실패를 안내하지 않고 곧바로 돌아오므로 늘 여기서 알린다.
+                DraftSubmitFailureKind.NETWORK -> sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
+
                 DraftSubmitFailureKind.PHOTO_LIMIT,
                 DraftSubmitFailureKind.TIMEOUT,
-                DraftSubmitFailureKind.NETWORK,
                 DraftSubmitFailureKind.OTHER,
                 -> handleDraftCreationFailure(error, announced)
             }
@@ -1293,12 +1310,7 @@ class HomeViewModel
                 copy(
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                    draftMessage =
-                        if (DraftSubmitFailureKind.of(error) == DraftSubmitFailureKind.NETWORK) {
-                            DraftSubmitFailureMessages.NETWORK
-                        } else {
-                            DraftSubmitFailureMessages.OTHER
-                        },
+                    draftMessage = DraftSubmitFailureMessages.OTHER,
                 )
             }
             // 로딩 화면이 이미 알렸으면 공통 오류 안내를 또 띄우지 않는다.

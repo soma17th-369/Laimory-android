@@ -109,6 +109,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -2484,7 +2485,7 @@ class HomeViewModelTest {
     @Test
     fun `요청이 실패하면 실패를 남기고 돌아간 뒤의 처리는 홈이 보일 때 한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            draftRepository.createFailure = ApiException.NetworkException()
+            draftRepository.createFailure = ApiException.ServerException(rawCode = 500)
             sourceRepository.items.value = listOf(todayItem("calendar"))
             val viewModel = createViewModel()
             runCurrent()
@@ -2503,7 +2504,7 @@ class HomeViewModelTest {
             runCurrent()
 
             assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
-            assertEquals("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.", viewModel.state.value.draftMessage)
+            assertEquals("초안 생성 요청을 보내지 못했어요.", viewModel.state.value.draftMessage)
             assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
             assertFalse(viewModel.state.value.hasPendingSubmitFailure)
             assertNull(loadingSessionStore.session.value)
@@ -2564,6 +2565,57 @@ class HomeViewModelTest {
             val failed = submissionStore.submission.value as DraftSubmission.Failed
             assertEquals(DraftSubmitFailureKind.NETWORK, failed.kind)
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+        }
+
+    @Test
+    fun `보내는 중에 연결이 끊겨 실패하면 돌아온 홈에서 실패 카드 없이 스낵바로 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftRepository.createFailure = ApiException.NetworkException()
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+            runCurrent()
+            createDraft(viewModel)
+
+            leaveLoading()
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+            assertEquals(
+                listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.")),
+                effects,
+            )
+        }
+
+    @Test
+    fun `확인 다이얼로그가 떠 있는 동안 연결이 끊기면 만들기에서 로딩으로 가지 않고 홈에서 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+            runCurrent()
+            createDraft(viewModel)
+            assertNotNull(viewModel.state.value.createConfirm)
+
+            isNetworkConnected = false
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertTrue(navigationHelper.destinations.isEmpty())
+            assertEquals(0, draftRepository.createCount)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertEquals(
+                listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.")),
+                effects,
+            )
+            val failed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().single()
+            assertEquals(AnalyticsFailureCode.NETWORK, failed.failureCode)
         }
 
     @Test

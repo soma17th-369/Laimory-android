@@ -25,6 +25,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -241,15 +242,38 @@ class DraftLoadingViewModelTest {
         }
 
     @Test
-    fun `연결이 없어 요청을 못 보냈으면 인터넷 연결 안내를 보여 준다`() =
+    fun `연결이 없어 요청을 못 보냈으면 안내 없이 곧바로 홈으로 돌아간다`() =
         loadingTest {
             submissionStore.begin(date, requestedAt)
             val viewModel = createViewModel()
             submissionStore.fail(date, ApiException.NetworkException())
             runCurrent()
 
-            assertEquals("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.", viewModel.state.value.notice?.message)
-            assertEquals("홈으로", viewModel.state.value.notice?.primaryAction?.label)
+            assertNull(viewModel.state.value.notice)
+            assertEquals(1, navigationHelper.backCount)
+            // 알림은 돌아간 홈이 한다. 로딩이 안내했다고 표시하지 않는다.
+            assertFalse((submissionStore.submission.value as DraftSubmission.Failed).shownOnLoading)
+
+            // 다른 상태가 바뀌어 같은 실패가 다시 흘러와도 두 번 돌아가지 않는다.
+            coordinator.emit(DraftTaskTrackingState.Success(task.copy(taskId = "old"), eventCount = 3))
+            runCurrent()
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `로딩 화면을 떠난 뒤 연결 실패가 오면 뒤로 가지 않는다`() =
+        loadingTest {
+            // 이 ViewModel 은 Activity 범위라 화면을 떠난 뒤에도 실패를 받는다. 그때 뒤로 가면 홈을 닫는다.
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftLoadingUiIntent.ChangeVisibility(shown = false))
+            runCurrent()
+
+            submissionStore.fail(date, ApiException.NetworkException())
+            runCurrent()
+
+            assertEquals(0, navigationHelper.backCount)
         }
 
     @Test

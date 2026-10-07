@@ -53,6 +53,9 @@ class DraftLoadingViewModel
     ) : BaseMviViewModel<DraftLoadingUiState, DraftLoadingUiIntent, UiSideEffect>(
             DraftLoadingUiState(retentionDays = retentionConfig.retentionDays),
         ) {
+        /** 이미 돌아간 실패. 같은 실패가 다시 흘러와도 두 번 돌아가지 않는다. */
+        private var leftOnFailure: DraftSubmission.Failed? = null
+
         init {
             observeTask()
             tickStages()
@@ -88,6 +91,7 @@ class DraftLoadingViewModel
                     // 있어(다른 날짜의 완료 등) 그것을 보면 엉뚱한 완료 · 안내가 뜬다.
                     if (submission !is DraftSubmission.Idle) {
                         showSubmission(submission, session)
+                        if (submission is DraftSubmission.Failed) leaveOnNetworkFailure(submission)
                         return@collect
                     }
                     val task = (tracking as? DraftTaskTrackingState.WithTask)?.task
@@ -139,10 +143,24 @@ class DraftLoadingViewModel
         }
 
         /**
-         * 요청 실패 안내. 자동으로 돌아가지 않는다 — 사유를 읽기 전에 화면이 바뀌면 왜 실패했는지 모른다. 버튼 문구는
+         * 연결이 없어 요청을 못 보냈으면 안내 없이 곧바로 홈으로 돌아간다. 알림은 홈이 스낵바로 한다 — 만들기 전에 막을
+         * 때와 같은 모습이고, 고칠 것은 연결뿐이라 이 화면에서 읽을 사유가 없다.
+         *
+         * 로딩 화면이 떠 있을 때만 돌아간다. 이 ViewModel 은 Activity 범위라 화면을 떠난 뒤에도 실패를 받는데, 그때
+         * 뒤로 가면 홈을 닫는다.
+         */
+        private fun leaveOnNetworkFailure(failed: DraftSubmission.Failed) {
+            if (failed.kind != DraftSubmitFailureKind.NETWORK) return
+            if (failed === leftOnFailure || !submissionStore.isLoadingShown.value) return
+            leftOnFailure = failed
+            navigationHelper.navigateToBack()
+        }
+
+        /**
+         * 요청 실패 안내. 연결 없음은 안내하지 않는다([leaveOnNetworkFailure]). 자동으로 돌아가지 않는다 — 사유를 읽기 전에 화면이 바뀌면 왜 실패했는지 모른다. 버튼 문구는
          * 돌아간 뒤 홈이 할 일을 말한다(사진 시트를 다시 연다 · 약관 화면으로 간다).
          */
-        private fun DraftSubmission.Failed.toNotice(): DraftLoadingNotice {
+        private fun DraftSubmission.Failed.toNotice(): DraftLoadingNotice? {
             val home = DraftLoadingAction("홈으로", DraftLoadingUiIntent.LeaveAfterSubmitFailure)
             val repick = DraftLoadingAction("사진 다시 고르기", DraftLoadingUiIntent.LeaveAfterSubmitFailure)
             return when (kind) {
@@ -157,7 +175,7 @@ class DraftLoadingViewModel
                 DraftSubmitFailureKind.PHOTO_LIMIT ->
                     DraftLoadingNotice("${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}", repick, null)
                 DraftSubmitFailureKind.TIMEOUT -> DraftLoadingNotice(DraftSubmitFailureMessages.TIMEOUT, home, null)
-                DraftSubmitFailureKind.NETWORK -> DraftLoadingNotice(DraftSubmitFailureMessages.NETWORK, home, null)
+                DraftSubmitFailureKind.NETWORK -> null
                 DraftSubmitFailureKind.OTHER -> DraftLoadingNotice(DraftSubmitFailureMessages.OTHER, home, null)
             }
         }
