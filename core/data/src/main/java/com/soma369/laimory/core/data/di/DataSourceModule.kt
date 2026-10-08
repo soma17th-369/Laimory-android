@@ -1,5 +1,7 @@
 package com.soma369.laimory.core.data.di
 
+import com.soma369.laimory.core.data.datasource.remote.AppInitializerRemoteDataSource
+import com.soma369.laimory.core.data.datasource.remote.AppInitializerRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.AuthRemoteDataSource
 import com.soma369.laimory.core.data.datasource.remote.AuthRemoteDataSourceImpl
 import com.soma369.laimory.core.data.datasource.remote.CreditRemoteDataSource
@@ -112,6 +114,10 @@ abstract class DataSourceModule {
     @Binds
     @Singleton
     abstract fun bindCreditRemoteDataSource(impl: CreditRemoteDataSourceImpl): CreditRemoteDataSource
+
+    @Binds
+    @Singleton
+    abstract fun bindAppInitializerRemoteDataSource(impl: AppInitializerRemoteDataSourceImpl): AppInitializerRemoteDataSource
 
     @Binds
     @Singleton

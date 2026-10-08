@@ -11,6 +11,7 @@ import com.soma369.laimory.core.data.repository.InquiryRepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
 import com.soma369.laimory.core.data.repository.NoticeRepositoryImpl
 import com.soma369.laimory.core.data.repository.OnboardingRepositoryImpl
+import com.soma369.laimory.core.data.repository.PopupNoticeRepositoryImpl
 import com.soma369.laimory.core.data.repository.PushRegistrationRepositoryImpl
 import com.soma369.laimory.core.data.repository.PushSettingsRepositoryImpl
 import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
@@ -30,6 +31,7 @@ import com.soma369.laimory.core.domain.repository.InquiryRepository
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
+import com.soma369.laimory.core.domain.repository.PopupNoticeRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.PushSettingsRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
@@ -122,4 +124,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindCreditRepository(impl: CreditRepositoryImpl): CreditRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindPopupNoticeRepository(impl: PopupNoticeRepositoryImpl): PopupNoticeRepository
 }
