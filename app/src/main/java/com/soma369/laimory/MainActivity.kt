@@ -206,7 +206,7 @@ class MainActivity : ComponentActivity() {
             val gateState by appUpdateGate.state.collectAsStateWithLifecycle()
             val recommendation by appUpdateGate.recommendation.collectAsStateWithLifecycle()
             val activeDialog by messageHelper.activeDialog.collectAsStateWithLifecycle()
-            val popupNotice by popupNoticeQueue.current.collectAsStateWithLifecycle()
+            val popupNotices by popupNoticeQueue.notices.collectAsStateWithLifecycle()
             var currentPath by remember { mutableStateOf<String?>(null) }
 
             // 강제 화면 동안 발행된 이동 신호는 버린다. NavGraph 가 컴포즈되지 않는 사이 신호가
@@ -267,18 +267,18 @@ class MainActivity : ComponentActivity() {
                         // 팝업 공지는 맨 뒤에 둔다 — 강제 · 권장 업데이트 안내와 다른 전역 Dialog 가 먼저다. 그것들이 떠 있거나
                         // 홈이 아니면 기다렸다가 띄운다.
                         PopupNoticeHost(
-                            notice = popupNotice,
+                            notices = popupNotices,
                             isVisible =
                                 currentPath == HomePage.PATH &&
                                     gateState != AppUpdateGateState.BLOCKED &&
                                     recommendation == null &&
                                     activeDialog == null,
-                            onClose = { notice -> lifecycleScope.launch { popupNoticeQueue.close(notice, opened = false) } },
                             onOpen = { notice ->
-                                // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열지 못했으면(브라우저 없음) 띄운 것으로만 남긴다.
-                                val opened = openInCustomTab(notice.contentUrl)
-                                lifecycleScope.launch { popupNoticeQueue.close(notice, opened = opened) }
+                                // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열지 못했으면(브라우저 없음) 아무것도 남기지 않고,
+                                // 시트를 닫을 때 본 것으로만 남는다.
+                                if (openInCustomTab(notice.contentUrl)) lifecycleScope.launch { popupNoticeQueue.open(notice) }
                             },
+                            onClose = { lifecycleScope.launch { popupNoticeQueue.closeAll() } },
                         )
                     }
                 }

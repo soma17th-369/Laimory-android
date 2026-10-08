@@ -13,9 +13,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * 앱 시작 팝업 공지의 차례. 프로세스마다 한 번 받아, 최신 순으로 하나씩 내놓는다.
+ * 앱 시작 팝업 공지 목록. 프로세스마다 한 번 받아, 시트 하나에 모아 보여 줄 목록으로 들고 있는다.
  *
- * 차례는 메모리에만 둔다 — 다음 콜드 스타트에 다시 받는다. 기기에 남는 것은 "이미 띄웠다"는 기록뿐이다.
+ * 목록은 메모리에만 둔다 — 다음 콜드 스타트에 다시 받는다. 기기에 남는 것은 "이미 띄웠다"는 기록뿐이다.
  */
 @Singleton
 class PopupNoticeQueue
@@ -24,12 +24,11 @@ class PopupNoticeQueue
         private val getPopupNotices: GetPopupNoticesUseCase,
         private val markPopupNoticeSeen: MarkPopupNoticeSeenUseCase,
     ) {
-        private val _current = MutableStateFlow<Notice?>(null)
+        private val _notices = MutableStateFlow<List<Notice>>(emptyList())
 
-        /** 지금 띄울 팝업. 없으면 `null`. */
-        val current: StateFlow<Notice?> = _current.asStateFlow()
+        /** 지금 띄울 팝업 공지, 서버 순서(최신 순). 비면 띄우지 않는다. */
+        val notices: StateFlow<List<Notice>> = _notices.asStateFlow()
 
-        private val pending = ArrayDeque<Notice>()
         private val mutex = Mutex()
         private var isLoaded = false
 
@@ -41,7 +40,7 @@ class PopupNoticeQueue
             mutex.withLock {
                 if (isLoaded) return
                 isLoaded = true
-                val notices =
+                val loaded =
                     try {
                         getPopupNotices()
                     } catch (e: CancellationException) {
@@ -49,24 +48,24 @@ class PopupNoticeQueue
                         isLoaded = false
                         throw e
                     }
-                pending.addAll(notices)
-                if (_current.value == null) _current.value = pending.removeFirstOrNull()
+                _notices.value = loaded
             }
         }
 
         /**
-         * [notice] 를 닫았다. `닫기` · `자세히 보기` · 뒤로가기 모두 같다 — 띄운 기록을 남기고 다음 차례로 넘어간다.
-         *
-         * @param opened 원문을 실제로 열었는지. 열었으면 설정 공지사항의 읽음에도 남긴다.
+         * 목록의 [notice] 원문을 열었다. 시트는 그대로 두고, 그 공지는 곧바로 본 것 · 읽은 것으로 남긴다 — 원문을 보는 사이
+         * 프로세스가 죽어도 다시 뜨지 않게.
          */
-        suspend fun close(
-            notice: Notice,
-            opened: Boolean,
-        ) {
-            mutex.withLock {
-                if (_current.value?.id != notice.id) return
-                _current.value = pending.removeFirstOrNull()
-            }
-            markPopupNoticeSeen(notice, opened)
+        suspend fun open(notice: Notice) {
+            markPopupNoticeSeen(notice, opened = true)
+        }
+
+        /** 시트를 닫았다. `확인` · X · 쓸어내리기 · 뒤로가기 · 바깥 누름 모두 같다 — 보여 준 목록 전부 본 것으로 남긴다. */
+        suspend fun closeAll() {
+            val shown =
+                mutex.withLock {
+                    _notices.value.also { _notices.value = emptyList() }
+                }
+            shown.forEach { markPopupNoticeSeen(it, opened = false) }
         }
     }

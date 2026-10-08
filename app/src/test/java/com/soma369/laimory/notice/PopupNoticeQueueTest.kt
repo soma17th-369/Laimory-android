@@ -7,7 +7,7 @@ import com.soma369.laimory.core.domain.usecase.notice.GetPopupNoticesUseCase
 import com.soma369.laimory.core.domain.usecase.notice.MarkPopupNoticeSeenUseCase
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDateTime
 
@@ -21,20 +21,41 @@ class PopupNoticeQueueTest {
         )
 
     @Test
-    fun `최신 것부터 하나씩 띄우고 닫으면 다음으로 넘어간다`() =
+    fun `안 본 팝업을 최신 순 목록으로 한 번에 내놓는다`() =
         runTest {
-            popupRepository.ids = listOf(12, 9)
+            popupRepository.ids = listOf(12, 9, 5)
+            popupRepository.seen += 9
 
             queue.loadOnce()
-            assertEquals(12L, queue.current.value?.id)
 
-            queue.close(queue.current.value!!, opened = false)
-            assertEquals(9L, queue.current.value?.id)
+            assertEquals(listOf(12L, 5L), queue.notices.value.map(Notice::id))
+        }
 
-            queue.close(queue.current.value!!, opened = true)
-            assertNull(queue.current.value)
+    @Test
+    fun `원문을 열면 시트는 그대로 두고 그 공지만 본 것 · 읽은 것으로 남긴다`() =
+        runTest {
+            popupRepository.ids = listOf(12, 9)
+            queue.loadOnce()
+
+            queue.open(queue.notices.value.first())
+
+            assertEquals(2, queue.notices.value.size)
+            assertEquals(setOf(12L), popupRepository.seen)
+            assertEquals(setOf(12L), noticeRepository.read)
+        }
+
+    @Test
+    fun `시트를 닫으면 목록 전부 본 것으로 남기고 읽음은 연 것만이다`() =
+        runTest {
+            popupRepository.ids = listOf(12, 9)
+            queue.loadOnce()
+            queue.open(queue.notices.value.first())
+
+            queue.closeAll()
+
+            assertTrue(queue.notices.value.isEmpty())
             assertEquals(setOf(12L, 9L), popupRepository.seen)
-            assertEquals(setOf(9L), noticeRepository.read)
+            assertEquals(setOf(12L), noticeRepository.read)
         }
 
     @Test
@@ -43,23 +64,11 @@ class PopupNoticeQueueTest {
             popupRepository.ids = listOf(12)
 
             queue.loadOnce()
+            queue.closeAll()
             queue.loadOnce()
 
             assertEquals(1, popupRepository.idsCallCount)
-        }
-
-    @Test
-    fun `지금 띄운 것이 아닌 팝업을 닫으라는 요청은 무시한다`() =
-        runTest {
-            // 닫기를 두 번 누르면 두 번째 요청은 이미 넘어간 다음 팝업을 닫으면 안 된다.
-            popupRepository.ids = listOf(12, 9)
-            queue.loadOnce()
-            val first = queue.current.value!!
-            queue.close(first, opened = false)
-
-            queue.close(first, opened = false)
-
-            assertEquals(9L, queue.current.value?.id)
+            assertTrue(queue.notices.value.isEmpty())
         }
 
     private class FakePopupNoticeRepository : PopupNoticeRepository {
