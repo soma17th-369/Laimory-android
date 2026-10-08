@@ -3,11 +3,10 @@ package com.soma369.laimory.feature.home.viewmodel
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
-import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.exception.DraftPhotoAccessException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.helper.NetworkConnectionChecker
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
@@ -21,6 +20,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
@@ -48,6 +48,8 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
+import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -55,10 +57,15 @@ import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmission
+import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureMessages
 import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
+import com.soma369.laimory.feature.home.state.DraftWindowPolicy
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
@@ -70,12 +77,13 @@ import com.soma369.laimory.feature.home.state.HomeTimeSheetState
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
+import com.soma369.laimory.feature.home.state.endDay
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
-import com.soma369.laimory.feature.home.state.isSourceViewLocked
 import com.soma369.laimory.feature.home.state.locationRawIds
+import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import com.soma369.laimory.feature.home.state.toCreateConfirm
@@ -108,15 +116,19 @@ class HomeViewModel
         private val draftConsentSessionStore: DraftConsentSessionStore,
         private val draftTaskCoordinator: DraftTaskCoordinator,
         private val navigationHelper: NavigationHelper,
+        private val networkConnectionChecker: NetworkConnectionChecker,
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val loadingSessionStore: DraftLoadingSessionStore,
+        private val submissionStore: DraftSubmissionStore,
         private val termsCoordinator: TermsAgreementCoordinator,
         private val resolveStayAddress: ResolveStayAddressUseCase,
         private val analyticsHelper: AnalyticsHelper,
         private val logPermissionEvent: LogPermissionEventUseCase,
+        private val observeDefaultRecordRange: ObserveDefaultRecordRangeUseCase,
+        private val setDefaultRecordRange: SetDefaultRecordRangeUseCase,
         /** UTC 기준이다. 현지 날짜는 [zone] 으로 옮겨서 얻는다. */
         private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
@@ -150,6 +162,9 @@ class HomeViewModel
         private var dateSource = DateSource.DEFAULT
         private var consentPreparationJob: Job? = null
 
+        /** 작업 번호를 받으려고 보내는 중인 요청. 계정이 바뀌면 취소한다 — 결과가 새 계정 홈에 닿으면 안 된다. */
+        private var submissionJob: Job? = null
+
         /**
          * 확인창이 보여 준 제출 목록. `만들기` 는 이것을 그대로 보낸다.
          *
@@ -157,10 +172,30 @@ class HomeViewModel
          * 항목을 걷어 내는데, 준비 스냅샷에는 그 항목이 남아 있어 사용자가 뺐던 것이 확인창에 없던 채로 나간다.
          */
         private var confirmedSubmission: DraftSourceItemSelection? = null
+
+        /**
+         * 확인 다이얼로그에서 사진을 고르러 시트로 갔는지. 시트가 닫히면 다이얼로그를 다시 띄운다.
+         *
+         * 다이얼로그는 새로 만든다 — 떠나기 전 제출 스냅샷을 다시 쓰지 않고, 사진을 바꾼 지금 상태로 준비부터 다시
+         * 한다. 다이얼로그가 보여 주는 것과 `만들기` 가 보내는 것이 언제나 같은 스냅샷이다.
+         */
+        private var resumesCreateAfterPhotoSheet = false
         private var locationConsentJob: Job? = null
 
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
         private var recordStateJob: Job? = null
+
+        /**
+         * 저장된 기본 범위를 홈에 이미 얹었는지. 첫 값에만 얹는다 — 그 뒤의 방출은 사용자가 방금 저장한 값이라
+         * 홈은 이미 그 범위다.
+         */
+        private var hasAppliedDefaultRange = false
+
+        /**
+         * 이 화면에서 사용자가 피커 · 시간 시트로 범위를 확정한 적이 있는지. 범위가 바뀌지 않았어도 확정이면 켠다. 켜져
+         * 있으면 늦게 읽힌 기본값이 그 범위를 덮지 않는다.
+         */
+        private var hasUserRange = false
 
         init {
             observeSummary()
@@ -168,6 +203,40 @@ class HomeViewModel
             observeAccountSession()
             observeSubmissionExclusions()
             observeSelectionLock()
+            observeDefaultRange()
+            observeSubmission()
+        }
+
+        /**
+         * 기기에 저장된 기본 범위를 받는다.
+         *
+         * 홈은 처음 값(06:00~익일 06:00)으로 먼저 그리고, 저장값이 다르면 첫 값을 받을 때 한 번 옮긴다. 제약에
+         * 맞지 않는 저장값(정책이 바뀐 뒤 남은 것)은 처음 값으로 대신한다.
+         */
+        private fun observeDefaultRange() =
+            safeLaunch {
+                observeDefaultRecordRange().collect { saved ->
+                    val range = saved.takeIf(DraftWindowPolicy::accepts) ?: DefaultRecordRange.INITIAL
+                    updateState { copy(defaultRange = range) }
+                    if (hasAppliedDefaultRange) return@collect
+                    hasAppliedDefaultRange = true
+                    applyDefaultRange(range)
+                }
+            }
+
+        /**
+         * 저장된 기본 범위로 홈을 옮긴다.
+         *
+         * 사용자가 이미 범위를 확정했거나 피커를 열어 고르는 중이면 옮기지 않는다 — 고른 것을 늦게 읽힌 값이 덮는다.
+         */
+        private fun applyDefaultRange(range: DefaultRecordRange) {
+            val current = state.value
+            if (hasUserRange || current.datePicker != null || current.recordRange == range) return
+            updateState {
+                copy(startTime = range.startTime, endDay = range.endDay(), endTime = range.endTime)
+                    .withSourceSummary(sourceItems, photoCandidates)
+            }
+            onRecordWindowChanged()
         }
 
         /** 전송 선택을 바꿀 수 없는 구간을 상세에 알린다. 상세는 이 값으로 토글을 막는다. */
@@ -210,6 +279,12 @@ class HomeViewModel
                     // 확인창·고른 사진은 이전 계정의 시도다. 스토어는 이미 비었으므로 남겨 두면 새 계정 홈에
                     // 이전 계정의 썸네일이 다시 뜨고, `만들기` 는 준비 스냅샷이 없어 무반응이다.
                     confirmedSubmission = null
+                    resumesCreateAfterPhotoSheet = false
+                    // 이전 계정이 보내던 요청의 결과를 새 계정 홈에서 처리하면 안 된다. 요청을 먼저 끊고 남은 실패를 비운다.
+                    submissionJob?.cancel()
+                    submissionJob = null
+                    submissionStore.reset()
+                    loadingSessionStore.clearUnattached()
                     updateState {
                         copy(
                             isLocationConsentGranted = false,
@@ -217,6 +292,7 @@ class HomeViewModel
                             selectedPhotoIds = emptySet(),
                             pendingPhotoIds = emptySet(),
                             isPhotoSheetVisible = false,
+                            isSubmitting = false,
                         )
                     }
                 }
@@ -233,10 +309,7 @@ class HomeViewModel
                     sendEffect(HomeUiSideEffect.RequestPhotoAccess(force = true))
                 is HomeUiIntent.ResolvePhotoAccess -> resolvePhotoAccess(intent.granted, intent.limited)
                 is HomeUiIntent.RefreshPhotos -> refreshPhotos(intent.hasAccess, intent.limited)
-                HomeUiIntent.DismissPhotoSheet ->
-                    updateState {
-                        copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet())
-                    }
+                HomeUiIntent.DismissPhotoSheet -> dismissPhotoSheet()
                 is HomeUiIntent.TogglePhoto -> togglePhoto(intent.mediaStoreId)
                 HomeUiIntent.ConfirmPhotoSelection -> confirmPhotoSelection()
                 HomeUiIntent.ContinueWithoutPhotos -> continueWithoutPhotos()
@@ -244,6 +317,7 @@ class HomeViewModel
                 HomeUiIntent.DismissDatePicker -> dismissDatePicker()
                 is HomeUiIntent.PickDate -> pickDate(intent.date)
                 HomeUiIntent.ConfirmDatePicker -> confirmDatePicker()
+                HomeUiIntent.SaveSheetRangeAsDefault -> saveSheetRangeAsDefault()
                 is HomeUiIntent.LoadMonthlyRecords -> loadMonthlyRecords(intent.month)
                 HomeUiIntent.RefreshRecordState -> refreshSelectedRecord()
                 is HomeUiIntent.ShowTimePicker -> showTimeSheet(intent.field)
@@ -255,12 +329,14 @@ class HomeViewModel
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
                 HomeUiIntent.ConfirmCreateDraft -> confirmCreateDraft()
                 HomeUiIntent.DismissCreateConfirm -> dismissCreateConfirm()
+                HomeUiIntent.PickPhotosForCreate -> pickPhotosForCreate()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
                 HomeUiIntent.ViewDraft -> viewDraft()
                 HomeUiIntent.OpenDraftLoading -> navigationHelper.navigateTo(DraftLoadingPage)
+                HomeUiIntent.ConsumeSubmitFailure -> consumeSubmitFailure()
                 is HomeUiIntent.RefreshSourcePermissions -> refreshSourcePermissions(intent)
                 HomeUiIntent.RefreshLocationConsent -> refreshLocationConsent()
                 HomeUiIntent.OpenPastRecords -> navigationHelper.navigateTo(PastRecordsPage)
@@ -336,8 +412,7 @@ class HomeViewModel
          * 사진을 고르는 동안 수집이 돌아, 확인 화면에서 기다리는 시간이 짧아진다.
          */
         private fun startPhotoSelection() {
-            // 완성된 날도 연다. 시트가 읽기 전용으로 그려지고 선택 변경은 아래 토글들이 막는다.
-            if (state.value.isSourceViewLocked) return
+            // 생성 중·완성된 날도 연다. 시트가 읽기 전용으로 그려지고 선택 변경은 아래 토글들이 막는다.
             startAutoCollectionAhead()
             sendEffect(HomeUiSideEffect.RequestPhotoAccess())
         }
@@ -407,6 +482,12 @@ class HomeViewModel
             }
         }
 
+        /** 고르던 것을 버리고 닫는다. 확정해 둔 선택은 그대로다. */
+        private fun dismissPhotoSheet() {
+            updateState { copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet()) }
+            resumeCreateAfterPhotoSheet()
+        }
+
         /** 고른 사진을 홈에 돌려주고 닫는다. */
         private fun confirmPhotoSelection() = closePhotoSheet { pendingPhotoIds }
 
@@ -434,6 +515,31 @@ class HomeViewModel
                     draftMessage = null,
                 ).withSourceSummary(sourceItems, photoCandidates)
             }
+            resumeCreateAfterPhotoSheet()
+        }
+
+        /**
+         * 확인 다이얼로그에서 사진을 고르러 간다. 다이얼로그와 제출용 스냅샷을 거두고 사진 시트를 연다.
+         *
+         * 취소가 아니라 만들기 흐름 안의 한 걸음이라 중단으로 기록하지 않는다. 시트가 닫히면
+         * [resumeCreateAfterPhotoSheet] 가 이어 간다.
+         */
+        private fun pickPhotosForCreate() {
+            if (confirmedSubmission == null) return
+            closeCreateConfirm()
+            draftConsentSessionStore.clearPreparation()
+            resumesCreateAfterPhotoSheet = true
+            startPhotoSelection()
+        }
+
+        /**
+         * 다이얼로그에서 사진을 고르러 왔다면, 시트가 어떻게 닫혔든(선택 완료·사진 없이 계속·닫기) 다이얼로그를
+         * 새로 만들어 다시 띄운다. 그만두려면 다이얼로그의 `취소` 를 누른다.
+         */
+        private fun resumeCreateAfterPhotoSheet() {
+            if (!resumesCreateAfterPhotoSheet) return
+            resumesCreateAfterPhotoSheet = false
+            prepareDraftConsent(isResume = true)
         }
 
         /**
@@ -464,10 +570,29 @@ class HomeViewModel
             updateState { copy(datePicker = null, timeSheet = null) }
         }
 
+        /**
+         * 피커 안에서 날짜를 고른다. 범위도 그 날짜에 맞춘다.
+         *
+         * 다른 날짜는 저장된 기본값으로 돌아간다 — `이 날만` 으로 바꾼 범위는 그 날짜에만 쓴 것이다. 지금 홈 날짜로
+         * 되돌아오면 지금 범위를 다시 보여 준다. 같은 날짜를 다시 누르면 그대로 둔다. 기본값으로 쓰려면 시간 시트의
+         * `항상 이 시간으로` 가 곧바로 저장하므로, 피커 안에 저장을 기다리는 임시 기본값은 없다.
+         */
         private fun pickDate(date: LocalDate) {
             val session = state.value.datePicker ?: return
+            if (date == session.date) return
             if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), state.value.retentionDays)) return
-            updateState { copy(datePicker = session.copy(date = date)) }
+            updateState {
+                val range = if (date == selectedDate) recordRange else defaultRange
+                copy(
+                    datePicker =
+                        session.copy(
+                            date = date,
+                            startTime = range.startTime,
+                            endDay = range.endDay(),
+                            endTime = range.endTime,
+                        ),
+                )
+            }
         }
 
         /** 피커의 확인. 날짜와 범위를 한 번에 확정한다. */
@@ -486,7 +611,10 @@ class HomeViewModel
          * 날짜와 범위를 **한 번의 상태 갱신**으로 옮긴다. 따로 옮기면 그 사이 한 번은 새 날짜 + 옛 범위의 창으로
          * 카드를 센다. 기록 창이 바뀐 경우에만 창 갱신을 한 번 부른다.
          */
-        private fun commitDatePicker(session: HomeDatePickerSession) {
+        private fun commitDatePicker(
+            session: HomeDatePickerSession,
+            keepsPickerOpen: Boolean = false,
+        ) {
             // 피커로 고른 날짜는 사용자가 범위를 지정한 것이라 기본 날짜가 바뀌어도 옮기지 않는다.
             // 지금 날짜를 그대로 다시 골라도 마찬가지다.
             dateSource = DateSource.USER
@@ -494,11 +622,13 @@ class HomeViewModel
             startAutoCollectionAhead()
             val isDateChanged = session.date != state.value.selectedDate
             val isRangeChanged = !session.hasRangeOf(state.value.startTime, state.value.endDay, state.value.endTime)
+            // 바뀌었는지와 따로 본다. 보이던 범위를 그대로 확인해도 사용자가 고른 것이라 늦게 읽힌 기본값이 덮으면 안 된다.
+            hasUserRange = true
             updateState {
-                val closed = copy(datePicker = null, timeSheet = null)
+                // 시간 시트에서 확정하면 시트만 닫고 피커는 확정한 값으로 열어 둔다.
+                val closed = copy(datePicker = session.takeIf { keepsPickerOpen }, timeSheet = null)
                 if (!isDateChanged && !isRangeChanged) return@updateState closed
-                // 시간 범위는 날짜를 옮겨도 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
-                // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                // 범위는 세션이 이미 날짜에 맞춰 두었다(다른 날짜는 기본값, 그 뒤에 고쳤으면 고친 값).
                 val next =
                     closed.copy(
                         selectedDate = session.date,
@@ -653,8 +783,8 @@ class HomeViewModel
         private fun moveToDate(date: LocalDate) {
             updateState {
                 if (date == selectedDate) return@updateState this
-                // 시간 범위는 그대로 둔다. 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길
-                // 때마다 자정으로 되돌아가면, 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+                // 범위는 건드리지 않는다. 기본 날짜로 옮기는 것은 피커로 확정한 적이 없을 때뿐이라 범위는 이미
+                // 기본값이다(범위를 바꾸는 길은 피커의 확인 하나이고, 그것이 날짜 출처를 USER 로 바꾼다).
                 val next =
                     copy(
                         selectedDate = date,
@@ -745,25 +875,36 @@ class HomeViewModel
         }
 
         /**
-         * 시트의 확인. **피커 세션의 범위만** 바꾼다.
+         * 시트의 확인(`확인` · `이 날만`). **피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트만 닫는다.** 피커는 확정한
+         * 값으로 열어 둔다(사용자 결정).
          *
-         * 여기서 홈 범위를 바꾸면 피커를 취소해도 범위가 남는다. 확정과 기록 창 갱신은 피커의 확인이 한다.
+         * 시트에서 고른 범위를 피커의 확인까지 한 번 더 눌러야 반영하면, 피커를 취소·바깥 탭으로 닫는 순간 고른 범위가
+         * 말없이 버려져 다시 열면 옛 범위가 나온다(실기기 제보: 06:00 으로 바꿨는데 다시 열면 05:45). 그래서 시트 버튼이
+         * 곧 확정이고, 그 뒤 피커를 취소해도 되돌리지 않는다. 날짜만 바꿀 때는 지금처럼 피커의 확인을 쓴다.
          */
         private fun confirmTimeSheet() {
             val current = state.value
             val sheet = current.timeSheet ?: return
             val session = current.datePicker ?: return
             if (!sheet.isConfirmEnabled) return
-            updateState {
-                copy(
-                    datePicker =
-                        session.copy(
-                            startTime = sheet.startTime,
-                            endDay = sheet.endDay,
-                            endTime = sheet.endTime,
-                        ),
-                    timeSheet = null,
-                )
+            val confirmed = session.copy(startTime = sheet.startTime, endDay = sheet.endDay, endTime = sheet.endTime)
+            // 피커를 연 뒤 생성이 시작됐으면 날짜를 옮기지 않는다(피커 확인과 같은 규칙).
+            if (current.isDateLocked) return dismissDatePicker()
+            commitDatePicker(confirmed, keepsPickerOpen = true)
+        }
+
+        /**
+         * 시트의 `항상 이 시간으로`. `이 날만` 처럼 곧바로 확정하고, 더해서 기본값으로 저장한다. 저장에 실패해도 이번
+         * 범위로는 쓰이고 실패만 알린다.
+         */
+        private fun saveSheetRangeAsDefault() {
+            val sheet = state.value.timeSheet ?: return
+            if (!sheet.isConfirmEnabled) return
+            confirmTimeSheet()
+            safeLaunch {
+                setDefaultRecordRange(sheet.range).onFailure {
+                    sendEffect(HomeUiSideEffect.ShowSnackbar("기본값으로 저장하지 못했어요. 다시 시도해 주세요."))
+                }
             }
         }
 
@@ -774,7 +915,7 @@ class HomeViewModel
          * 완료하고 CTA 를 선택한 경우에만 시작된다. 사진 상한 초과·접근 불가 사진 같은 입력
          * 오류는 동의 화면으로 이동하지 않고 홈에서 바로 수정하도록 안내한다.
          */
-        private fun prepareDraftConsent() {
+        private fun prepareDraftConsent(isResume: Boolean = false) {
             if (state.value.isInputLocked) return
             if (consentPreparationJob?.isActive == true) return
             // 제출이 이미 시작됐으면 중복 진입하지 않는다. **상시 스냅샷이 아니라 제출용
@@ -786,6 +927,11 @@ class HomeViewModel
                 sendEffect(HomeUiSideEffect.ShowSnackbar("종료 시각은 시작 시각보다 뒤로 설정해주세요."))
                 return
             }
+            // 연결이 없으면 확인 다이얼로그 · 로딩 화면으로 가지 않고 여기서 알린다. 보낸 뒤 끊기는 경우는 로딩 화면이 알린다.
+            if (!networkConnectionChecker.isConnected()) {
+                sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
+                return
+            }
             // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤로 미룬다. 여기서 끊으면 아직 한 번도
             // 수집하지 않은 사용자가 수집 기회를 갖기 전에 생성이 막힌다.
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
@@ -795,7 +941,8 @@ class HomeViewModel
                 safeLaunch(
                     onError = ::handleDraftCreationFailure,
                 ) {
-                    analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
+                    // 다이얼로그에서 사진을 고르고 돌아온 것은 같은 만들기의 이어짐이다. 시작을 두 번 세지 않는다.
+                    if (!isResume) analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
@@ -822,7 +969,7 @@ class HomeViewModel
                         selection = selection,
                         discardActiveTask = shouldDiscardPreviousTask,
                     )
-                    showCreateConfirm()
+                    showCreateConfirm(isResume)
                 }
         }
 
@@ -832,7 +979,7 @@ class HomeViewModel
          * 화면을 한 장 더 두지 않는다 — 보낼 데이터를 보여 주고 유형 상세로 들어가는 일은 이미
          * 홈 카드가 하므로, 남는 것은 "이 건수로 만들겠습니까" 라는 마지막 확인뿐이다.
          */
-        private suspend fun showCreateConfirm() {
+        private suspend fun showCreateConfirm(isResume: Boolean = false) {
             val preparation = draftConsentSessionStore.preparation.value ?: return
             val submission = submissionOf(preparation)
             val recordDate = preparation.recordDate
@@ -845,9 +992,11 @@ class HomeViewModel
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
-            analyticsHelper.log(
-                AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, preparation.selection.analyticsCounts().total),
-            )
+            if (!isResume) {
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, preparation.selection.analyticsCounts().total),
+                )
+            }
             confirmedSubmission = submission
             updateState { copy(createConfirm = submission.toCreateConfirm()) }
         }
@@ -865,8 +1014,54 @@ class HomeViewModel
                     finalCounts = submission.analyticsCounts(),
                 ),
             )
-            safeLaunch(onError = ::handleDraftCreationFailure) { submitDraft(preparation, submission) }
+            // 다이얼로그가 떠 있는 동안 끊겼을 수 있다. 시작도 못 할 요청으로 로딩 화면에 보내지 않고 홈에서 알린다.
+            // 다이얼로그는 닫는다 — 열어 두면 스낵바가 그 뒤에 가린다. 고른 사진 · 범위는 홈에 남아 다시 누르면 된다.
+            if (!networkConnectionChecker.isConnected()) {
+                analyticsHelper.log(
+                    AnalyticsEvent.TimelineCreateRequestFailed(
+                        recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                        recordDate = preparation.recordDate,
+                        failureCode = AnalyticsFailureCode.NETWORK,
+                    ),
+                )
+                draftConsentSessionStore.clearPreparation()
+                sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
+                return
+            }
+            startSubmission(preparation, submission)
         }
+
+        /**
+         * 요청을 보내기 전에 곧바로 로딩 화면으로 넘어간다. 사진 업로드 · 초안 생성 요청은 그 뒤에 이어서 한다.
+         *
+         * 서버가 작업 번호를 줄 때까지 홈에 머물면 사진이 많을수록 멈춘 듯이 보인다. 로딩 화면이 쓸 사진 · 건수는
+         * 제출 목록만으로 만들 수 있으므로 먼저 넣는다. 요청은 이 ViewModel(Activity 수명)의 코루틴이 계속 보내고,
+         * 진행 · 실패는 [DraftSubmissionStore] 로 로딩 화면과 함께 본다.
+         */
+        private fun startSubmission(
+            preparation: DraftConsentPreparation,
+            submission: DraftSourceItemSelection,
+        ) {
+            val startedAt = clock.instant()
+            loadingSessionStore.start(
+                submission.toLoadingSession(taskId = null, recordDate = preparation.recordDate, submittedAt = startedAt),
+            )
+            submissionStore.begin(preparation.recordDate, startedAt)
+            // 여기부터 응답까지 입력을 잠근다. 그동안 날짜를 바꾸면 요청은 이전 스냅샷으로 진행된다.
+            updateState { copy(isSubmitting = true) }
+            navigationHelper.navigateTo(DraftLoadingPage)
+            val accountSession = draftConsentSessionStore.accountSession.value
+            submissionJob =
+                safeLaunch(
+                    onError = { error ->
+                        // 계정 전환으로 끊은 것은 실패가 아니다. 다시 기록하면 비운 저장소에 이전 계정의 실패가 돌아온다.
+                        if (error !is CancellationException && isSameAccount(accountSession)) onSubmitFailed(preparation, error)
+                    },
+                ) { submitDraft(preparation, submission, accountSession) }
+        }
+
+        /** 요청을 보낸 계정이 아직 그대로인지. 취소가 응답보다 늦게 닿아도 이전 계정의 결과를 버린다. */
+        private fun isSameAccount(accountSession: Long): Boolean = draftConsentSessionStore.accountSession.value == accountSession
 
         /**
          * 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은 남긴다 —
@@ -909,6 +1104,7 @@ class HomeViewModel
         private suspend fun submitDraft(
             preparation: DraftConsentPreparation,
             submission: DraftSourceItemSelection,
+            accountSession: Long,
         ) {
             val photoCount = submission.items.count { it.itemType == ItemType.PHOTO }
             Logger.i(
@@ -916,29 +1112,45 @@ class HomeViewModel
                 "초안 생성 요청: 항목 ${submission.items.size}건(사진 ${photoCount}건), 기존 작업 폐기=${preparation.discardActiveTask}",
             )
             if (preparation.discardActiveTask) draftTaskCoordinator.discard()
-            // 여기부터 응답까지 입력을 잠근다. `draftStatus` 는 서버가 작업을 받아야 움직이므로
-            // 이 구간에는 아직 IDLE 이고, 그동안 날짜를 바꾸면 요청은 이전 스냅샷으로 진행된다.
-            updateState { copy(isSubmitting = true) }
-            createTimelineDraftUseCase(
-                preparation.recordDate,
-                preparation.zone,
-                preparation.window,
-                submission,
-            ).onSuccess { handle ->
-                analyticsHelper.log(
-                    AnalyticsEvent.TimelineCreateRequested(
-                        recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
-                        recordDate = preparation.recordDate,
-                        itemCount = submission.items.size,
-                    ),
-                )
-                draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
-                // 준비 상태는 여기서 폐기되므로, 로딩 화면이 쓸 것만 먼저 옮겨 담는다.
-                loadingSessionStore.start(submission.toLoadingSession(handle.taskId, preparation.recordDate))
-                draftConsentSessionStore.clearAfterSubmission()
-                updateState { copy(isSubmitting = false) }
-                navigationHelper.navigateTo(DraftLoadingPage)
-            }.onFailure { error ->
+            // 무응답(SocketTimeoutException)은 유스케이스가 Result 로 바꾸지 않고 던진다. 같은 실패 경로로 모은다.
+            val result =
+                try {
+                    createTimelineDraftUseCase(preparation.recordDate, preparation.zone, preparation.window, submission)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            if (!isSameAccount(accountSession)) return
+            result
+                .onSuccess { handle ->
+                    analyticsHelper.log(
+                        AnalyticsEvent.TimelineCreateRequested(
+                            recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
+                            recordDate = preparation.recordDate,
+                            itemCount = submission.items.size,
+                        ),
+                    )
+                    // 추적을 먼저 시작하고 요청 상태를 비운다. 반대로 하면 그 사이 로딩 화면이 아무 작업도 없는 화면을 본다.
+                    draftTaskCoordinator.start(handle.taskId, preparation.recordDate)
+                    loadingSessionStore.attachTask(handle.taskId)
+                    submissionStore.succeed()
+                    draftConsentSessionStore.clearAfterSubmission()
+                    updateState { copy(isSubmitting = false) }
+                }.onFailure { error -> onSubmitFailed(preparation, error) }
+        }
+
+        /**
+         * 작업 번호를 받지 못했다. 잠금을 풀고 실패를 [DraftSubmissionStore] 에 남긴다.
+         *
+         * 돌아간 뒤의 처리(사진 시트 · 약관 화면 · 실패 카드)는 지금 하지 않는다 — 로딩 화면이 떠 있으면 홈은 보이지
+         * 않는다. 홈이 다시 보일 때 [consumeSubmitFailure] 가 한다. 로딩 화면에서 뒤로 나와 홈에 있었다면 곧바로 한다.
+         */
+        private fun onSubmitFailed(
+            preparation: DraftConsentPreparation,
+            error: Throwable,
+        ) {
+            safeLaunch {
                 analyticsHelper.log(
                     AnalyticsEvent.TimelineCreateRequestFailed(
                         recordDayRelation = AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
@@ -946,9 +1158,36 @@ class HomeViewModel
                         failureCode = AnalyticsFailureCode.from(error),
                     ),
                 )
-                handleDraftSubmitFailure(error)
             }
+            draftConsentSessionStore.clearPreparation()
+            // 실패하면 잠금을 푼다. 남겨 두면 다시 시도할 수도, 날짜를 바꿀 수도 없다.
+            updateState { copy(isSubmitting = false) }
+            submissionStore.fail(preparation.recordDate, error)
         }
+
+        /**
+         * 홈이 보일 때 남은 요청 실패를 꺼내 돌아간 뒤의 처리를 한다. 화면이 [HomeUiState.hasPendingSubmitFailure] 를
+         * 보고 부른다.
+         *
+         * 무응답 · 연결 끊김 · 알 수 없는 실패는 서버가 요청을 받았을 수 있다(초안 생성 POST 에 멱등 키가 없다). 홈 CTA 는 서버
+         * 판정이므로 기록 상태를 한 번 다시 읽어, 실제로 만들어지고 있으면 그것을 보여 준다.
+         */
+        private fun consumeSubmitFailure() {
+            // 로딩 화면이 떠 있으면 그 화면이 안내한다. 전환 중 홈이 먼저 꺼내 가면 로딩 화면은 안내할 것을 잃는다.
+            if (submissionStore.isLoadingShown.value) return
+            val failed = submissionStore.consume() ?: return
+            loadingSessionStore.clearUnattached()
+            handleDraftSubmitFailure(failed.error, failed.kind, announced = failed.shownOnLoading)
+            if (failed.kind in KINDS_SERVER_MAY_HAVE_RECEIVED) refreshSelectedRecord()
+        }
+
+        private fun observeSubmission() =
+            safeLaunch {
+                combine(submissionStore.submission, submissionStore.isLoadingShown) { submission, loadingShown ->
+                    submission is DraftSubmission.Failed && !loadingShown
+                }.distinctUntilChanged()
+                    .collect { pending -> updateState { copy(hasPendingSubmitFailure = pending) } }
+            }
 
         /** 홈 카드에서 연 권한 요청. 온보딩·설정과 같은 규칙으로 기록한다. */
         private suspend fun logPermission(event: DataPermissionEvent) {
@@ -962,35 +1201,40 @@ class HomeViewModel
         private fun DraftSourceItemSelection.analyticsCounts(): AnalyticsItemCounts = AnalyticsItemCounts.of(items.map { it.itemType })
 
         /**
-         * 확인 화면이 받던 제출 실패를 홈이 받는다.
+         * 제출 실패의 돌아간 뒤 처리. 어느 경우든 **제출용 스냅샷만 버리고**([onSubmitFailed]) 홈 선택 상태는 남긴다.
          *
-         * 어느 경우든 **제출용 스냅샷만 버리고** 홈 선택 상태는 남긴다. 복귀가 홈이라 사진을 다시
-         * 고를 필요도 없다.
+         * [announced] 면 로딩 화면이 이미 같은 문구를 보여 줬으므로 스낵바 · 공통 오류 안내로 되풀이하지 않는다.
          */
-        private fun handleDraftSubmitFailure(error: Throwable) {
-            draftConsentSessionStore.clearPreparation()
-            // 실패하면 잠금을 푼다. 남겨 두면 다시 시도할 수도, 날짜를 바꿀 수도 없다.
-            updateState { copy(isSubmitting = false) }
-            when {
+        private fun handleDraftSubmitFailure(
+            error: Throwable,
+            kind: DraftSubmitFailureKind,
+            announced: Boolean,
+        ) {
+            when (kind) {
                 // 서버가 단계 동의를 다시 요구한다 — 약관이 개정됐거나 구버전으로 온보딩을 마친
                 // 계정이다. 받는 자리로 보내되 **자동으로 재개하지 않는다.**
-                error is ApiException && error.errorCode == TERMS_AGREEMENT_REQUIRED -> {
+                DraftSubmitFailureKind.TERMS_REQUIRED ->
                     navigationHelper.navigateTo(StageTermsPage(DRAFT_CONSENT_STAGES.map(TermStage::name)))
-                }
 
                 // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 실패로만 보이면 이유를 알 수 없다.
-                error is ApiException && error.errorCode == APPEND_NO_NEW_ITEMS -> {
-                    sendEffect(HomeUiSideEffect.ShowSnackbar("이미 기록에 들어간 것뿐이라 새로 더할 게 없어요."))
-                }
+                DraftSubmitFailureKind.NO_NEW_ITEMS ->
+                    if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(NO_NEW_ITEMS_MESSAGE))
 
                 // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 사진으로는 복구되지
                 // 않으므로 고르는 자리를 다시 연다.
-                error is DraftPhotoAccessException -> {
+                DraftSubmitFailureKind.PHOTO_ACCESS -> {
                     handleUnavailablePhotos(emptySet())
                     startPhotoSelection()
                 }
 
-                else -> handleDraftCreationFailure(error)
+                // 실패 카드 없이 연결만 알린다 — 만들기 전에 막을 때와 같은 모습이다. 로딩 화면은 이 실패를 안내하지 않고
+                // 곧바로 돌아오므로 늘 여기서 알린다. 서버가 받았을 수 있어 기록은 [consumeSubmitFailure] 가 다시 읽는다.
+                DraftSubmitFailureKind.NETWORK -> sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
+
+                DraftSubmitFailureKind.PHOTO_LIMIT,
+                DraftSubmitFailureKind.TIMEOUT,
+                DraftSubmitFailureKind.OTHER,
+                -> handleDraftCreationFailure(error, announced)
             }
         }
 
@@ -1057,11 +1301,14 @@ class HomeViewModel
             sendEffect(HomeUiSideEffect.ShowSnackbar(message))
         }
 
-        private fun handleDraftCreationFailure(error: Throwable) {
+        private fun handleDraftCreationFailure(
+            error: Throwable,
+            announced: Boolean = false,
+        ) {
             // 준비·제출 어느 쪽에서 튀어나왔든 잠금을 푼다. 남겨 두면 다시 시도할 길이 없다.
             updateState { copy(isSubmitting = false) }
             if (error is DraftPhotoLimitExceededException) {
-                val message = "${error.message}\n사진 선택에서 개수를 줄여주세요."
+                val message = "${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}"
                 updateState {
                     copy(
                         draftStatus = DraftCreationStatus.FAILED,
@@ -1071,7 +1318,7 @@ class HomeViewModel
                         pendingPhotoIds = selectedPhotoIds,
                     )
                 }
-                sendEffect(HomeUiSideEffect.ShowSnackbar(message))
+                if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(message))
                 return
             }
 
@@ -1079,10 +1326,11 @@ class HomeViewModel
                 copy(
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                    draftMessage = "초안 생성 요청을 보내지 못했어요.",
+                    draftMessage = DraftSubmitFailureMessages.OTHER,
                 )
             }
-            handleFailure(error)
+            // 로딩 화면이 이미 알렸으면 공통 오류 안내를 또 띄우지 않는다.
+            if (!announced) handleFailure(error)
         }
 
         private fun loadPhotoCandidates(force: Boolean) {
@@ -1184,10 +1432,10 @@ class HomeViewModel
          * 사진만 시트로 간다 — 고른 사진이 정본이라 목록에서 빼는 것이 아니라 다시 고르는 일이다.
          * 나머지는 유형 상세로 가고, 상세는 홈이 상시로 유지하는 스냅샷을 읽는다.
          *
-         * 완성된 날도 연다. 그날 무엇이 모였는지는 볼 수 있어야 한다 — 상세와 시트가 읽기 전용으로 뜬다.
+         * 제출·생성 중과 완성된 날도 연다. 무엇이 모였는지는 언제든 볼 수 있어야 한다 — 상세와 시트가 읽기 전용으로
+         * 뜨고, 지금 기기에 모인 것이라 보낸 내용과 다를 수 있다고 알린다.
          */
         private fun openSourceDetail(kind: HomeSourceKind) {
-            if (state.value.isSourceViewLocked) return
             if (kind == HomeSourceKind.PHOTO) {
                 startPhotoSelection()
                 return
@@ -1375,11 +1623,16 @@ class HomeViewModel
         }
 
         private companion object {
-            /** 서버가 단계 동의를 요구할 때 주는 코드. */
-            const val TERMS_AGREEMENT_REQUIRED = -3001
+            /** 이어 붙일 새 항목이 없을 때(-1013) 안내. 로딩 화면도 같은 문구를 쓴다. */
+            const val NO_NEW_ITEMS_MESSAGE = DraftSubmitFailureMessages.NO_NEW_ITEMS
 
-            /** 이어 붙일 새 항목이 없을 때 서버가 주는 코드. */
-            const val APPEND_NO_NEW_ITEMS = -1013
+            /**
+             * 서버가 초안 생성 요청을 받았을 수 있는 실패. 돌아간 뒤 기록 상태를 다시 읽는다 — 홈 CTA 는 서버 판정이라, 실제로
+             * 만들어지고 있으면 그것을 보여 줘야 같은 날을 두 번 만들지 않는다. 연결 실패도 응답을 읽다 끊긴 경우가 같은
+             * 예외라 여기에 든다.
+             */
+            val KINDS_SERVER_MAY_HAVE_RECEIVED =
+                setOf(DraftSubmitFailureKind.TIMEOUT, DraftSubmitFailureKind.NETWORK, DraftSubmitFailureKind.OTHER)
 
             /**
              * `-3001` 을 받았을 때 다시 받아야 할 후보 단계.

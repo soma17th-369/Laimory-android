@@ -25,14 +25,14 @@ class HomeUiStateTest {
     private val zone = ZoneId.of("Asia/Seoul")
 
     @Test
-    fun `기본 선택은 오늘 자정부터 익일 자정까지다`() {
+    fun `기본 선택은 그날 06시부터 익일 06시까지다`() {
         val state = HomeUiState(selectedDate = date)
 
         val window = state.recordDateWindow(zone)
 
         assertNotNull(window)
-        assertEquals(date.atStartOfDay(zone).toInstant(), window!!.start)
-        assertEquals(date.plusDays(1).atStartOfDay(zone).toInstant(), window.end)
+        assertEquals(date.atTime(6, 0).atZone(zone).toInstant(), window!!.start)
+        assertEquals(date.plusDays(1).atTime(6, 0).atZone(zone).toInstant(), window.end)
     }
 
     @Test
@@ -141,6 +141,42 @@ class HomeUiStateTest {
     }
 
     @Test
+    fun `시작을 굴리다 늦은 시각을 지나도 시작이 돌아오면 종료도 고른 값으로 돌아온다`() {
+        // 롤러는 굴리는 도중에도 값을 낸다. 시(時)가 순환하며 23:45 를 지나면 종료가 최소 6시간에 밀려 익일 05:45 가
+        // 되는데, 시작이 돌아와도 05:45 로 남으면 고른 적 없는 범위가 된다(실기기 제보).
+        val sheet =
+            HomeTimeSheetState(
+                recordDate = date,
+                startTime = LocalTime.of(6, 0),
+                endDay = DraftEndDay.NEXT_DAY,
+                endTime = LocalTime.of(3, 0),
+                expandedField = null,
+            )
+
+        val passed = sheet.withStartTime(LocalTime.of(23, 45))
+        assertEquals(date.plusDays(1).atTime(5, 45), passed.endDateTime)
+
+        val back = passed.withStartTime(LocalTime.of(6, 0))
+        assertEquals(date.plusDays(1).atTime(3, 0), back.endDateTime)
+    }
+
+    @Test
+    fun `종료를 직접 고른 뒤에는 그 값이 시작을 따라 돌아올 기준이 된다`() {
+        val sheet =
+            HomeTimeSheetState(
+                recordDate = date,
+                startTime = LocalTime.of(6, 0),
+                endDay = DraftEndDay.NEXT_DAY,
+                endTime = LocalTime.of(6, 0),
+                expandedField = null,
+            ).withEnd(date.atTime(20, 0))
+
+        val back = sheet.withStartTime(LocalTime.of(18, 0)).withStartTime(LocalTime.of(9, 0))
+
+        assertEquals(date.atTime(20, 0), back.endDateTime)
+    }
+
+    @Test
     fun `MediaStore 후보는 최신순으로 표시하되 사용자가 확정하기 전에는 선택하지 않는다`() {
         val items =
             listOf(
@@ -151,7 +187,7 @@ class HomeUiStateTest {
             listOf(
                 candidate(id = 1L, dateTime = date.atTime(8, 0)),
                 candidate(id = 2L, dateTime = date.atTime(20, 0)),
-                candidate(id = 3L, dateTime = date.plusDays(1).atTime(1, 0)),
+                candidate(id = 3L, dateTime = date.plusDays(1).atTime(7, 0)),
             )
 
         val state = HomeUiState(selectedDate = date).refreshSourceSummary(items, candidates, zone)

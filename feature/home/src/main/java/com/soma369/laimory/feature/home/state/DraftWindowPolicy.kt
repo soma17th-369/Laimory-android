@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.home.state
 
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -47,6 +48,16 @@ object DraftWindowPolicy {
         startTime: LocalTime,
         endDateTime: LocalDateTime,
     ): Boolean = endDateTime in endRange(recordDate, startTime)
+
+    /**
+     * 저장된 기본 범위가 지금 제약에 맞는지. 제약은 시각에만 달려 있어 어느 날짜에 얹어 봐도 같다.
+     *
+     * 예전에 저장한 값이 정책이 바뀐 뒤에도 남아 있을 수 있어 읽을 때마다 본다.
+     */
+    fun accepts(range: DefaultRecordRange): Boolean {
+        val anyDate = LocalDate.of(2000, 1, 1)
+        return isValid(anyDate, range.startTime, anyDate.plusDays(range.endDay().dayOffset.toLong()).atTime(range.endTime))
+    }
 
     /** 범위를 벗어난 종료를 가까운 경계로 붙인다. 시작을 옮겨 종료가 밀려날 때 쓴다. */
     fun coerceEnd(

@@ -30,6 +30,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermRequirement
 import com.soma369.laimory.core.domain.model.terms.TermStage
@@ -59,8 +60,10 @@ import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.PastRecordsPage
+import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
+import com.soma369.laimory.core.domain.repository.DefaultRecordRangeRepository
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
@@ -77,10 +80,15 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
+import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmission
+import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreateConfirm
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
@@ -90,6 +98,7 @@ import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
+import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -97,7 +106,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -108,6 +120,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.io.IOException
+import java.net.SocketTimeoutException
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -125,18 +139,21 @@ class HomeViewModelTest {
     private val sourceRepository = FakeSourceItemRepository()
     private val autoCollectionCoordinator = FakeAutoCollectionCoordinator()
     private var isCollectionLabAccessible = true
+    private var isNetworkConnected = true
     private val recordRepository = FakeTimelineRecordRepository()
     private val photoSource = FakePhotoSource()
     private val sessionStore = DraftConsentSessionStore()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val loadingSessionStore = DraftLoadingSessionStore()
+    private val submissionStore = DraftSubmissionStore()
     private val confirmDialog = ConfirmDialogRecorder()
     private val draftRepository = FakeDraftRepository()
     private val termsCoordinator = FakeHomeTermsCoordinator()
     private val addressResolver = FakeHomeAddressResolver()
     private val analyticsHelper = RecordingAnalyticsHelper()
     private val retentionDays = 30
+    private val defaultRangeRepository = FakeDefaultRecordRangeRepository()
 
     /** 기본은 오늘 정오다. 06:00 기본 날짜 규칙이 기존 테스트의 '오늘'을 흔들지 않게 한다. */
     private val clock = MutableClock(LocalDate.now(ZoneId.systemDefault()).atTime(12, 0))
@@ -807,7 +824,7 @@ class HomeViewModelTest {
 
             assertEquals(3, photoSource.requestedWindows.size)
             assertEquals(today.atTime(9, 0).atZone(zone).toInstant(), photoSource.requestedWindows[1].start)
-            assertEquals(today.plusDays(1).atStartOfDay(zone).toInstant(), photoSource.requestedWindows[1].end)
+            assertEquals(today.plusDays(1).atTime(6, 0).atZone(zone).toInstant(), photoSource.requestedWindows[1].end)
             assertTrue(viewModel.state.value.isPhotoAccessLimited)
         }
 
@@ -833,6 +850,160 @@ class HomeViewModelTest {
 
             assertEquals(2, photoSource.requestedWindows.size)
             assertEquals(listOf(2L), viewModel.state.value.availablePhotos.map { it.mediaStoreId })
+        }
+
+    // --- 확인 다이얼로그에서 사진 고르기 ---
+
+    @Test
+    fun `확인 다이얼로그에서 사진 고르기를 누르면 다이얼로그를 거두고 사진 시트를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertNotNull(viewModel.state.value.createConfirm)
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(HomeUiSideEffect.RequestPhotoAccess(), effect.await())
+            // 취소가 아니라 같은 만들기의 한 걸음이다.
+            assertTrue(analyticsHelper.logged.none { it is AnalyticsEvent.TimelineCreateStopped })
+        }
+
+    @Test
+    fun `시트에서 사진을 고르면 확인 다이얼로그가 새 사진으로 다시 뜨고 만들기는 그 사진까지 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertTrue(viewModel.state.value.createConfirm!!.photoUris.isEmpty())
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            assertEquals(1, viewModel.state.value.createConfirm?.photoUris?.size)
+            // 이어진 만들기라 시작·검토 시작을 다시 세지 않는다.
+            assertEquals(1, analyticsHelper.logged.count { it is AnalyticsEvent.TimelineCreateStarted })
+            assertEquals(1, analyticsHelper.logged.count { it is AnalyticsEvent.TimelineEventReviewStarted })
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(
+                setOf("calendar", "prepared-photo-1"),
+                draftRepository.createdItems.mapTo(mutableSetOf(), SourceItem::rawId),
+            )
+        }
+
+    @Test
+    fun `시트를 고르지 않고 닫아도 확인 다이얼로그로 돌아온다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            assertNotNull(viewModel.state.value.createConfirm)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `사진 없이 계속을 눌러도 확인 다이얼로그로 돌아오고 고른 사진은 비운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            createDraft(viewModel)
+            assertEquals(1, viewModel.state.value.createConfirm?.photoUris?.size)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ContinueWithoutPhotos)
+            runCurrent()
+
+            assertEquals(0, viewModel.state.value.createConfirm?.photoUris?.size)
+        }
+
+    @Test
+    fun `다이얼로그를 다시 띄워도 상세에서 뺀 항목은 빠진 채로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 다시 만들 때 옛 제출 목록을 재사용하거나 제외를 걷어 내면 사용자가 뺀 항목이 되살아난다(#431 회귀).
+            sourceRepository.items.value = listOf(todayItem("cal-1"), todayItem("cal-2"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            sessionStore.toggleExcluded("cal-2")
+            runCurrent()
+            createDraft(viewModel)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+            val calendar = viewModel.state.value.createConfirm?.counts?.single { it.group == DraftConsentTypeGroup.CALENDAR }
+            assertEquals(1, calendar?.count)
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(
+                setOf("cal-1", "prepared-photo-1"),
+                draftRepository.createdItems.mapTo(mutableSetOf(), SourceItem::rawId),
+            )
+        }
+
+    @Test
+    fun `다이얼로그 없이 연 사진 시트는 닫아도 다이얼로그를 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.OpenPhotoSheet)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertTrue(confirmDialog.shown.isEmpty())
         }
 
     @Test
@@ -1156,25 +1327,41 @@ class HomeViewModelTest {
     // --- 날짜 피커 세션 · 기록 범위 ---
 
     @Test
-    fun `시트 확인은 피커 세션만 바꾸고 피커 확인에서 범위가 확정된다`() =
+    fun `시트 확인은 피커에서 고른 날짜와 범위를 곧바로 확정하고 시트만 닫는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 피커의 확인을 한 번 더 누르게 하면, 피커를 바깥 탭으로 닫는 순간 고른 범위가 말없이 버려진다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today.minusDays(2), LocalTime.of(9, 0)))
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.timeSheet)
+            // 피커는 확정한 값으로 열어 둔다.
+            assertEquals(today.minusDays(2), state.datePicker?.date)
+            assertEquals(LocalTime.of(9, 0), state.datePicker?.startTime)
+            assertEquals(today.minusDays(2), state.selectedDate)
+            assertEquals(LocalTime.of(9, 0), state.startTime)
+        }
+
+    @Test
+    fun `시트에서 확정한 뒤 피커를 취소해도 되돌리지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
             runCurrent()
-
             viewModel.openTimeSheet(HomeTimeField.START)
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
-            runCurrent()
-            assertEquals(LocalTime.of(9, 0), viewModel.state.value.timeSheet?.startTime)
-
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             runCurrent()
-            // 시트는 닫히고 세션만 바뀐다. 홈 범위는 아직 그대로다.
-            assertNull(viewModel.state.value.timeSheet)
-            assertEquals(LocalTime.of(9, 0), viewModel.state.value.datePicker?.startTime)
-            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
 
-            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
             runCurrent()
 
             assertNull(viewModel.state.value.datePicker)
@@ -1182,7 +1369,27 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `시트에서 확인한 뒤 피커를 취소하면 날짜와 범위가 모두 그대로이고 기록 창도 다시 읽지 않는다`() =
+    fun `이 날만 바꿔 둔 날의 범위를 시트에서 고치면 다시 열어도 고친 범위다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 실기기 제보: 05:45 로 둔 날을 06:00 으로 고쳤는데 다시 열면 05:45 가 나왔다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(5, 45))
+            runCurrent()
+
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.datePicker?.startTime)
+        }
+
+    @Test
+    fun `시트를 확인 없이 닫고 피커를 취소하면 날짜와 범위가 모두 그대로이고 기록 창도 다시 읽지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
@@ -1194,7 +1401,7 @@ class HomeViewModelTest {
 
             viewModel.openTimeSheet(HomeTimeField.START)
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
-            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.DismissTimePicker)
             viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
@@ -1204,7 +1411,7 @@ class HomeViewModelTest {
             assertNull(state.datePicker)
             assertNull(state.timeSheet)
             assertEquals(before, state.selectedDate)
-            assertEquals(LocalTime.MIDNIGHT, state.startTime)
+            assertEquals(LocalTime.of(6, 0), state.startTime)
             // 기록 창이 바뀌지 않았으니 사진 후보를 다시 받으러 가지 않는다.
             assertTrue(state.hasLoadedPhotoCandidates)
         }
@@ -1216,42 +1423,82 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.openTimeSheet(HomeTimeField.START)
-            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
-            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
             viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.ShowTimePicker(HomeTimeField.START))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today.minusDays(2), LocalTime.of(9, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
 
             val state = viewModel.state.value
             assertEquals(today.minusDays(2), state.selectedDate)
-            assertEquals(LocalTime.of(6, 0), state.startTime)
+            assertEquals(LocalTime.of(9, 0), state.startTime)
         }
 
     @Test
-    fun `날짜를 바꿔도 맞춰 둔 기록 범위는 그대로다`() =
+    fun `이 날만 바꾼 범위는 다른 날짜를 고르면 기본값으로 돌아간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 범위를 06:00~익일 06:00 으로 맞춰 둔 사람이 날짜만 옮길 때마다 자정으로 되돌아가면,
-            // 고쳐 둔 것이 날짜를 고른 대가로 사라진다.
+            // `이 날만` 으로 바꾼 범위는 그 날짜에만 쓴 것이다.
             val today = LocalDate.now(ZoneId.systemDefault())
             val viewModel = createViewModel()
             runCurrent()
             viewModel.openTimeSheet(HomeTimeField.START)
-            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(6, 0)))
-            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(9, 0)))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(3, 0)))
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.startTime)
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            runCurrent()
+            assertEquals(DefaultRecordRange.INITIAL, viewModel.state.value.datePicker?.range)
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(today.minusDays(2), state.selectedDate)
+            assertEquals(DefaultRecordRange.INITIAL, state.recordRange)
+            assertEquals(0, defaultRangeRepository.saveCount)
+        }
+
+    @Test
+    fun `피커에서 지금 날짜로 되돌아오면 지금 범위를 다시 보여 준다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(9, 0))
+            runCurrent()
+            val current = viewModel.state.value.selectedDate
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.PickDate(current))
+            runCurrent()
+
+            assertEquals(LocalTime.of(9, 0), viewModel.state.value.datePicker?.startTime)
+        }
+
+    @Test
+    fun `저장된 기본값으로 돌아가는 범위는 기기에 저장한 값이다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val saved = DefaultRecordRange(LocalTime.of(7, 0), endsNextDay = true, endTime = LocalTime.of(2, 0))
+            defaultRangeRepository.saved.value = saved
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(10, 0))
             runCurrent()
 
             viewModel.selectDate(today.minusDays(2))
             runCurrent()
 
-            val state = viewModel.state.value
-            assertEquals(today.minusDays(2), state.selectedDate)
-            assertEquals(LocalTime.of(6, 0), state.startTime)
-            assertEquals(DraftEndDay.NEXT_DAY, state.endDay)
-            assertEquals(LocalTime.of(6, 0), state.endTime)
+            assertEquals(saved, viewModel.state.value.recordRange)
         }
 
     @Test
@@ -1272,8 +1519,8 @@ class HomeViewModelTest {
             // 뒤로가기 한 번이 피커까지 닫으면 고른 날짜가 함께 사라진다.
             assertNotNull(session)
             assertEquals(today.minusDays(1), session?.date)
-            assertEquals(LocalTime.MIDNIGHT, session?.startTime)
-            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.startTime)
+            assertEquals(LocalTime.of(6, 0), session?.startTime)
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.startTime)
         }
 
     @Test
@@ -1325,10 +1572,11 @@ class HomeViewModelTest {
             runCurrent()
 
             viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today.plusDays(1), LocalTime.of(0, 0)))
             viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(23, 55)))
             runCurrent()
 
-            // 기본 종료(익일 00:00)는 최소 길이를 못 채우므로 하한인 익일 05:55 로 붙는다.
+            // 고른 종료(익일 00:00)는 최소 길이를 못 채우므로 하한인 익일 05:55 로 붙는다.
             val sheet = viewModel.state.value.timeSheet
             assertEquals(DraftEndDay.NEXT_DAY, sheet?.endDay)
             assertEquals(LocalTime.of(5, 55), sheet?.endTime)
@@ -1351,9 +1599,9 @@ class HomeViewModelTest {
 
             // 확인이 막히므로 시트는 열린 채 남고 세션·기록 범위도 그대로다.
             assertEquals(false, viewModel.state.value.timeSheet?.isConfirmEnabled)
-            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.datePicker?.endTime)
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.datePicker?.endTime)
             assertEquals(DraftEndDay.NEXT_DAY, viewModel.state.value.endDay)
-            assertEquals(LocalTime.MIDNIGHT, viewModel.state.value.endTime)
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.endTime)
         }
 
     @Test
@@ -1371,14 +1619,14 @@ class HomeViewModelTest {
             assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
 
             viewModel.openTimeSheet(HomeTimeField.START)
-            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, saved, LocalTime.of(6, 0)))
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, saved, LocalTime.of(9, 0)))
             viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
             viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
             runCurrent()
 
             val state = viewModel.state.value
             assertEquals(saved, state.selectedDate)
-            assertEquals(LocalTime.of(6, 0), state.startTime)
+            assertEquals(LocalTime.of(9, 0), state.startTime)
             assertEquals(DraftCreationStatus.SUCCESS, state.timelineButtonStatus)
         }
 
@@ -1396,6 +1644,170 @@ class HomeViewModelTest {
 
             assertNull(viewModel.state.value.datePicker)
             assertTrue(viewModel.state.value.hasLoadedPhotoCandidates)
+        }
+
+    // --- 기본 기록 범위 ---
+
+    @Test
+    fun `저장한 기본값이 없으면 06시부터 익일 06시로 시작한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val zone = ZoneId.systemDefault()
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(LocalTime.of(6, 0), state.startTime)
+            assertEquals(DraftEndDay.NEXT_DAY, state.endDay)
+            assertEquals(LocalTime.of(6, 0), state.endTime)
+            val window = state.recordDateWindow(zone)
+            assertEquals(state.selectedDate.atTime(6, 0).atZone(zone).toInstant(), window?.start)
+            assertEquals(state.selectedDate.plusDays(1).atTime(6, 0).atZone(zone).toInstant(), window?.end)
+        }
+
+    @Test
+    fun `저장한 기본값이 있으면 그 범위로 시작하고 그 창으로 사진을 찾는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val zone = ZoneId.systemDefault()
+            defaultRangeRepository.saved.value = DefaultRecordRange(LocalTime.of(9, 0), endsNextDay = true, endTime = LocalTime.of(3, 0))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(LocalTime.of(9, 0), state.startTime)
+            assertEquals(DraftEndDay.NEXT_DAY, state.endDay)
+            assertEquals(LocalTime.of(3, 0), state.endTime)
+            assertEquals(state.selectedDate.atTime(9, 0).atZone(zone).toInstant(), photoSource.requestedWindows.last().start)
+        }
+
+    @Test
+    fun `제약에 맞지 않는 저장값은 처음 값으로 대신한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 정책이 바뀌면 예전에 저장한 값이 최소 길이를 못 채울 수 있다. 그대로 얹으면 만들기가 막힌다.
+            defaultRangeRepository.saved.value = DefaultRecordRange(LocalTime.of(9, 0), endsNextDay = false, endTime = LocalTime.of(10, 0))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(LocalTime.of(6, 0), state.startTime)
+            assertEquals(LocalTime.of(6, 0), state.endTime)
+            assertEquals(DefaultRecordRange.INITIAL, state.defaultRange)
+        }
+
+    @Test
+    fun `이미 범위를 확정했으면 늦게 읽힌 기본값이 덮지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            defaultRangeRepository.readGate = gate
+            defaultRangeRepository.saved.value = DefaultRecordRange(LocalTime.of(9, 0), endsNextDay = true, endTime = LocalTime.of(3, 0))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(7, 0))
+            runCurrent()
+
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(LocalTime.of(7, 0), viewModel.state.value.startTime)
+        }
+
+    @Test
+    fun `보이던 범위를 그대로 확정해도 늦게 읽힌 기본값이 덮지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 바뀐 게 없다고 확정이 아닌 것은 아니다. 사용자는 보이는 06:00 을 골랐다.
+            val gate = CompletableDeferred<Unit>()
+            defaultRangeRepository.readGate = gate
+            defaultRangeRepository.saved.value = DefaultRecordRange(LocalTime.of(9, 0), endsNextDay = true, endTime = LocalTime.of(3, 0))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(6, 0))
+            runCurrent()
+
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.startTime)
+            assertEquals(LocalTime.of(6, 0), viewModel.state.value.endTime)
+        }
+
+    @Test
+    fun `시트에서 항상 이 시간으로를 누르면 곧바로 확정·저장하고 피커의 다른 날짜도 그 범위로 시작한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(5, 0)))
+
+            viewModel.sendIntent(HomeUiIntent.SaveSheetRangeAsDefault)
+            runCurrent()
+
+            assertNull(viewModel.state.value.timeSheet)
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.startTime)
+            assertEquals(LocalTime.of(5, 0), defaultRangeRepository.saved.value.startTime)
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.defaultRange.startTime)
+
+            // 피커는 열려 있다. 거기서 다른 날짜를 골라도 새 기본값이다.
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            runCurrent()
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.datePicker?.startTime)
+
+            val next = createViewModel()
+            runCurrent()
+            assertEquals(LocalTime.of(5, 0), next.state.value.startTime)
+        }
+
+    @Test
+    fun `이 날만은 기본값을 저장하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(5, 0)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmTimeSheet)
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.startTime)
+            assertEquals(0, defaultRangeRepository.saveCount)
+            assertEquals(DefaultRecordRange.INITIAL, viewModel.state.value.defaultRange)
+        }
+
+    @Test
+    fun `항상 이 시간으로 저장에 실패해도 범위는 쓰고 실패를 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            defaultRangeRepository.saveFailure = IOException("disk full")
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.START)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.START, today, LocalTime.of(5, 0)))
+            viewModel.sendIntent(HomeUiIntent.SaveSheetRangeAsDefault)
+            runCurrent()
+
+            assertEquals(LocalTime.of(5, 0), viewModel.state.value.startTime)
+            assertEquals(DefaultRecordRange.INITIAL, viewModel.state.value.defaultRange)
+            assertTrue(effect.await() is HomeUiSideEffect.ShowSnackbar)
+        }
+
+    @Test
+    fun `확정할 수 없는 범위는 항상 이 시간으로도 저장하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.selectStartTime(LocalTime.of(9, 0))
+            runCurrent()
+            viewModel.openTimeSheet(HomeTimeField.END)
+            viewModel.sendIntent(HomeUiIntent.ChangeSheetTime(HomeTimeField.END, today, LocalTime.of(14, 0)))
+            viewModel.sendIntent(HomeUiIntent.SaveSheetRangeAsDefault)
+            runCurrent()
+
+            assertNotNull(viewModel.state.value.timeSheet)
+            assertEquals(0, defaultRangeRepository.saveCount)
         }
 
     /** 피커로 날짜만 고르고 확정한다. 범위를 건드리지 않아 판정을 기다리지 않는다. */
@@ -1530,19 +1942,44 @@ class HomeViewModelTest {
             draftConsentSessionStore = sessionStore,
             draftTaskCoordinator = draftTaskCoordinator,
             navigationHelper = navigationHelper,
+            networkConnectionChecker = { isNetworkConnected },
             globalLoadingHelper = NoOpGlobalLoadingHelper,
             autoCollectionCoordinator = autoCollectionCoordinator,
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
             createTimelineDraftUseCase = CreateTimelineDraftUseCase(draftRepository, NoOpMessageHelper),
             loadingSessionStore = loadingSessionStore,
+            submissionStore = submissionStore,
             termsCoordinator = termsCoordinator,
             resolveStayAddress = ResolveStayAddressUseCase(addressResolver, NoOpStayAddressRepository),
             analyticsHelper = analyticsHelper,
             logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
+            observeDefaultRecordRange = ObserveDefaultRecordRangeUseCase(defaultRangeRepository),
+            setDefaultRecordRange = SetDefaultRecordRangeUseCase(defaultRangeRepository),
             clock = clock,
             retentionConfig = SourceItemRetentionConfig(retentionDays),
             collectionLabAccessGate = { isCollectionLabAccessible },
         )
+
+    private class FakeDefaultRecordRangeRepository : DefaultRecordRangeRepository {
+        val saved = MutableStateFlow(DefaultRecordRange.INITIAL)
+        var saveCount = 0
+        var saveFailure: Throwable? = null
+
+        /** 채우면 완료될 때까지 첫 값을 내보내지 않는다. 저장소가 늦게 읽히는 경우를 만든다. */
+        var readGate: CompletableDeferred<Unit>? = null
+
+        override val range: Flow<DefaultRecordRange> =
+            flow {
+                readGate?.await()
+                emitAll(saved)
+            }
+
+        override suspend fun setRange(range: DefaultRecordRange) {
+            saveFailure?.let { throw it }
+            saveCount++
+            saved.value = range
+        }
+    }
 
     private class RecordingAnalyticsHelper : AnalyticsHelper {
         val logged = mutableListOf<AnalyticsEvent>()
@@ -1614,6 +2051,12 @@ class HomeViewModelTest {
     }
 
     private enum class ConfirmAnswer { CREATE, CANCEL, HOLD }
+
+    /** 로딩 화면에서 홈으로 돌아왔다. 로딩 화면이 사라지며 알리는 것과 같다. */
+    private fun TestScope.leaveLoading() {
+        submissionStore.setLoadingShown(false)
+        runCurrent()
+    }
 
     /** 뜬 확인 다이얼로그를 기록하고 무엇으로 답할지 정해 둔다. */
     private class ConfirmDialogRecorder {
@@ -1888,9 +2331,9 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `생성 중에는 원천 상세를 열지 않는다`() =
+    fun `생성 중에도 원천 상세를 열고 상세는 읽기 전용으로 받는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            // 확정한 스냅샷으로 요청이 진행되는 동안 바뀐 수집을 보여 주면 보낸 것과 어긋난다.
+            // 무엇을 보냈는지는 만드는 중에도 볼 수 있어야 한다. 바꾸는 것만 막는다.
             sourceRepository.items.value = listOf(todayItem("cal-1"))
             val viewModel = createViewModel()
             runCurrent()
@@ -1900,7 +2343,34 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.CALENDAR))
             runCurrent()
 
-            assertTrue(navigationHelper.destinations.isEmpty())
+            assertEquals(listOf<Page>(DraftConsentDetailPage("CALENDAR")), navigationHelper.destinations)
+            assertTrue(sessionStore.isSelectionReadOnly.value)
+        }
+
+    @Test
+    fun `생성 중에도 사진 시트는 열리지만 선택을 바꾸지 않고 날짜도 그대로다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(today)
+            runCurrent()
+            val date = viewModel.state.value.selectedDate
+
+            viewModel.sendIntent(HomeUiIntent.OpenSourceDetail(HomeSourceKind.PHOTO))
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            runCurrent()
+            assertEquals(emptySet<Long>(), viewModel.state.value.pendingPhotoIds)
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+            assertNull(viewModel.state.value.datePicker)
+            assertEquals(date, viewModel.state.value.selectedDate)
         }
 
     @Test
@@ -1978,6 +2448,233 @@ class HomeViewModelTest {
             assertEquals(0, viewModel.state.value.summary.location.sending)
             // 다른 유형은 그대로다.
             assertEquals(1, viewModel.state.value.summary.calendar.sending)
+        }
+
+    // --- 만들기 즉시 로딩 이동 ---
+
+    @Test
+    fun `만들기를 누르면 서버 응답을 기다리지 않고 로딩 화면으로 가고 사진·건수를 먼저 넣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val gate = CompletableDeferred<Unit>()
+            draftRepository.createGate = gate
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
+            val session = loadingSessionStore.session.value
+            assertNull(session?.taskId)
+            assertEquals(1, session?.calendarCount)
+            assertNotNull(session?.submittedAt)
+            assertTrue(submissionStore.submission.value is DraftSubmission.Submitting)
+            assertTrue(viewModel.state.value.isSubmitting)
+            // 로딩에서 뒤로 나오면 제작중으로 보여 다시 들어갈 수 있다.
+            assertEquals(DraftCreationStatus.PROCESSING, viewModel.state.value.timelineButtonStatus)
+
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals("task-1", loadingSessionStore.session.value?.taskId)
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertFalse(viewModel.state.value.isSubmitting)
+            assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
+        }
+
+    @Test
+    fun `요청이 실패하면 실패를 남기고 돌아간 뒤의 처리는 홈이 보일 때 한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftRepository.createFailure = ApiException.ServerException(rawCode = 500)
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            // 로딩 화면이 떠 있는 동안은 그 화면이 안내한다. 홈은 꺼내 갈 실패가 없다고 본다.
+            assertTrue(submissionStore.submission.value is DraftSubmission.Failed)
+            assertFalse(viewModel.state.value.hasPendingSubmitFailure)
+            assertFalse(viewModel.state.value.isSubmitting)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+
+            leaveLoading()
+            assertTrue(viewModel.state.value.hasPendingSubmitFailure)
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.FAILED, viewModel.state.value.draftStatus)
+            assertEquals("초안 생성 요청을 보내지 못했어요.", viewModel.state.value.draftMessage)
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertFalse(viewModel.state.value.hasPendingSubmitFailure)
+            assertNull(loadingSessionStore.session.value)
+        }
+
+    @Test
+    fun `무응답으로 끊기면 무응답으로 기록하고 돌아간 뒤 서버 기록 상태를 다시 읽는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 초안 생성 POST 에 멱등 키가 없어 서버는 받았을 수 있다. 홈 CTA 는 서버 판정이라 다시 읽어야 맞다.
+            draftRepository.createFailure = SocketTimeoutException()
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            val failed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().single()
+            assertEquals(AnalyticsFailureCode.TIMEOUT, failed.failureCode)
+            assertEquals(DraftSubmitFailureKind.TIMEOUT, (submissionStore.submission.value as DraftSubmission.Failed).kind)
+            val before = recordRepository.dailyRecordCallCount
+
+            leaveLoading()
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertTrue(recordRepository.dailyRecordCallCount > before)
+        }
+
+    @Test
+    fun `약관 동의가 필요하면 돌아간 뒤 약관 화면으로 간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftRepository.createFailure = ApiException.ClientException(rawCode = 403, errorCode = -3001, message = "약관")
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
+
+            leaveLoading()
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertTrue(navigationHelper.destinations.last() is StageTermsPage)
+        }
+
+    @Test
+    fun `로딩 화면이 떠 있는 동안에는 홈이 실패를 꺼내 가지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 오프라인이면 실패가 로딩으로 넘어가는 전환 중에 온다. 그때는 홈도 그려져 있어 홈이 먼저 꺼내 가면
+            // 로딩 화면은 안내할 실패를 잃고 연출에 멈춘다.
+            draftRepository.createFailure = ApiException.NetworkException()
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            val failed = submissionStore.submission.value as DraftSubmission.Failed
+            assertEquals(DraftSubmitFailureKind.NETWORK, failed.kind)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+        }
+
+    @Test
+    fun `보내는 중에 연결이 끊겨 실패하면 돌아온 홈에서 실패 카드 없이 스낵바로 알리고 서버 기록을 다시 읽는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            draftRepository.createFailure = ApiException.NetworkException()
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+            runCurrent()
+            createDraft(viewModel)
+            // 응답을 읽다 끊겨도 같은 예외다. 서버가 받아 만들고 있을 수 있어 CTA 를 서버 판정으로 되돌려야 한다.
+            val before = recordRepository.dailyRecordCallCount
+
+            leaveLoading()
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertTrue(recordRepository.dailyRecordCallCount > before)
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+            assertEquals(
+                listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.")),
+                effects,
+            )
+        }
+
+    @Test
+    fun `확인 다이얼로그가 떠 있는 동안 연결이 끊기면 만들기에서 로딩으로 가지 않고 홈에서 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+            runCurrent()
+            createDraft(viewModel)
+            assertNotNull(viewModel.state.value.createConfirm)
+
+            isNetworkConnected = false
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertTrue(navigationHelper.destinations.isEmpty())
+            assertEquals(0, draftRepository.createCount)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertEquals(
+                listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요.")),
+                effects,
+            )
+            val failed = analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().single()
+            assertEquals(AnalyticsFailureCode.NETWORK, failed.failureCode)
+        }
+
+    @Test
+    fun `인터넷 연결이 없으면 확인 다이얼로그 없이 홈에서 바로 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            isNetworkConnected = false
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            val effect = async { viewModel.sideEffect.first() }
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertTrue(navigationHelper.destinations.isEmpty())
+            assertEquals(0, draftRepository.createCount)
+            assertEquals(
+                HomeUiSideEffect.ShowSnackbar("인터넷에 연결되어 있지 않아요. 연결을 확인하고 다시 시도해 주세요."),
+                effect.await(),
+            )
+        }
+
+    @Test
+    fun `계정이 바뀌면 보내던 요청을 끊고 그 뒤에 온 이전 계정의 결과를 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 이전 계정의 약관 실패가 새 계정 홈에 남으면 새 계정을 약관 화면으로 보낸다.
+            draftRepository.createFailure = ApiException.ClientException(rawCode = 403, errorCode = -3001, message = "약관")
+            val gate = CompletableDeferred<Unit>()
+            draftRepository.createGate = gate
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertTrue(viewModel.state.value.isSubmitting)
+
+            sessionStore.clearAll()
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(DraftSubmission.Idle, submissionStore.submission.value)
+            assertFalse(viewModel.state.value.isSubmitting)
+            assertTrue(analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateRequestFailed>().isEmpty())
+        }
+
+    @Test
+    fun `남은 실패가 없으면 꺼내도 아무 일이 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
+            assertTrue(navigationHelper.destinations.isEmpty())
         }
 
     @Test

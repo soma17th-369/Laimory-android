@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +40,7 @@ import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
 import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoViewerDialog
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreateConfirm
 import com.soma369.laimory.feature.home.state.DraftCreateConfirmCount
@@ -49,12 +52,17 @@ import com.soma369.laimory.core.ui.R as UiR
  *
  * 사진은 고른 것을 한 줄로 넘겨 보이고, 나머지는 칸마다 건수만 적는다. 사진이 없으면 썸네일 줄 자리에
  * 같은 높이의 안내 칸을 둔다 — 사진 유무로 높이가 바뀌면 `만들기` 가 손가락 밑에서 움직인다.
+ *
+ * 여기서 사진을 고르러 갈 수 있다(Figma `Home / Timeline confirm dialog` 2854:1400). 0장이면 안내 아래
+ * `사진 고르기`, 고른 사진이 있으면 머리 줄 오른쪽 `사진 바꾸기`. 둘 다 [onPickPhotos] 로 사진 시트를 열고,
+ * 시트를 닫으면 이 다이얼로그가 새 사진으로 다시 뜬다.
  */
 @Composable
 internal fun DraftCreateConfirmDialog(
     confirm: DraftCreateConfirm,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    onPickPhotos: () -> Unit,
 ) {
     LaimoryDialog(
         title = "타임라인을 만들까요?",
@@ -67,7 +75,7 @@ internal fun DraftCreateConfirmDialog(
             ),
         onDismissRequest = onDismiss,
     ) {
-        PhotoSection(photoUris = confirm.photoUris)
+        PhotoSection(photoUris = confirm.photoUris, onPickPhotos = onPickPhotos)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.small),
@@ -78,18 +86,24 @@ internal fun DraftCreateConfirmDialog(
 }
 
 @Composable
-private fun PhotoSection(photoUris: List<String>) {
+private fun PhotoSection(
+    photoUris: List<String>,
+    onPickPhotos: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
             SourceIcon(iconRes = HomeSourceKind.PHOTO.iconRes)
             Text(
                 text = "사진 ${photoUris.size}${DraftConsentTypeGroup.PHOTO.countUnit}",
+                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
+            if (photoUris.isNotEmpty()) PickPhotosLink(label = "사진 바꾸기", onClick = onPickPhotos)
         }
         if (photoUris.isEmpty()) {
             Box(
@@ -102,17 +116,41 @@ private fun PhotoSection(photoUris: List<String>) {
                         .padding(horizontal = Spacing.medium),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "사진을 선택하시면 풍성한 타임라인을 얻을 수 있어요",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+                ) {
+                    Text(
+                        text = "사진을 선택하시면 풍성한 타임라인을 얻을 수 있어요",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    PickPhotosLink(label = "사진 고르기", onClick = onPickPhotos)
+                }
             }
         } else {
             PhotoStrip(photoUris = photoUris)
         }
     }
+}
+
+/** 사진 시트로 가는 글자 버튼. 안내 칸(64) 안에 들어가야 해서 버튼 최소 높이를 쓰지 않는다. */
+@Composable
+private fun PickPhotosLink(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(Spacing.small))
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(horizontal = Spacing.extraSmall, vertical = 2.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.laimoryColors.primaryText,
+    )
 }
 
 /**
@@ -241,6 +279,7 @@ private fun DraftCreateConfirmDialogPreview() {
             confirm = DraftCreateConfirm(photoUris = List(5) { "" }, counts = PREVIEW_COUNTS),
             onConfirm = {},
             onDismiss = {},
+            onPickPhotos = {},
         )
     }
 }
@@ -253,6 +292,7 @@ private fun DraftCreateConfirmDialogEmptyPreview() {
             confirm = DraftCreateConfirm(photoUris = emptyList(), counts = PREVIEW_COUNTS),
             onConfirm = {},
             onDismiss = {},
+            onPickPhotos = {},
         )
     }
 }

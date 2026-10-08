@@ -79,8 +79,10 @@ import com.soma369.laimory.feature.home.component.HomeRotatingContent
 import com.soma369.laimory.feature.home.component.HomeSourceCard
 import com.soma369.laimory.feature.home.component.HomeTimelineButton
 import com.soma369.laimory.feature.home.component.PhotoSelectionSheet
+import com.soma369.laimory.feature.home.component.RecordRangeInfo
 import com.soma369.laimory.feature.home.component.cardBody
 import com.soma369.laimory.feature.home.component.cardClick
+import com.soma369.laimory.feature.home.component.cardHint
 import com.soma369.laimory.feature.home.component.permissionAction
 import com.soma369.laimory.feature.home.component.photoEmptyMessage
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
@@ -213,6 +215,11 @@ private fun HomeContent(
     LaunchedEffect(Unit) {
         snackbarFlow.collect(snackbarHostState::showSnackbar)
     }
+    // 요청 실패는 홈이 보일 때 처리한다. 이 화면은 로딩 화면이 떠 있는 동안 그려지지 않으므로, 여기서 부르면 곧
+    // "돌아온 뒤" 다 — 로딩에서 `홈으로` 를 눌렀거나, 요청 중에 뒤로 나와 이미 홈에 있던 경우다.
+    LaunchedEffect(state.hasPendingSubmitFailure) {
+        if (state.hasPendingSubmitFailure) onIntent(HomeUiIntent.ConsumeSubmitFailure)
+    }
     LaunchedEffect(Unit) {
         sideEffectFlow.collect { effect ->
             when (effect) {
@@ -296,11 +303,17 @@ private fun HomeContent(
             confirm = confirm,
             onConfirm = { onIntent(HomeUiIntent.ConfirmCreateDraft) },
             onDismiss = { onIntent(HomeUiIntent.DismissCreateConfirm) },
+            onPickPhotos = { onIntent(HomeUiIntent.PickPhotosForCreate) },
         )
     }
 
     // 날짜 피커 위에 겹쳐 뜬다. 뒤에 그려야 창이 위로 올라가, 뒤로가기·바깥 탭이 이 시트만 닫고 피커로 돌아간다.
+    //
+    // 기본값과 다른 범위를 고르면 그 자리에서 `항상 이 시간으로` / `이 날만` 을 묻는다(Figma 3119:1564). 되돌리기
+    // 쉬운 `이 날만` 을 주 버튼에 둔다. 같으면 묻을 것이 없어 `확인` 하나다. 제약 안내는 제목 옆 ⓘ 가 맡고, 시트
+    // 본문에는 확정할 수 없을 때만 이유로 적는다.
     state.timeSheet?.let { sheet ->
+        val isOneDayRange = sheet.range != state.defaultRange
         LaimoryTimePickerSheet(
             fields = draftTimePickerFields(sheet),
             expandedFieldId = sheet.expandedField?.name,
@@ -312,9 +325,13 @@ private fun HomeContent(
             },
             onConfirm = { onIntent(HomeUiIntent.ConfirmTimeSheet) },
             onDismiss = { onIntent(HomeUiIntent.DismissTimePicker) },
-            title = "시간 설정",
+            title = "기록 범위 설정",
+            confirmLabel = if (isOneDayRange) "이 날만" else "확인",
             confirmEnabled = sheet.isConfirmEnabled,
-            supportingText = DRAFT_WINDOW_GUIDE,
+            supportingText = DRAFT_WINDOW_GUIDE.takeUnless { sheet.isConfirmEnabled },
+            titleAccessory = { RecordRangeInfo() },
+            secondaryLabel = "항상 이 시간으로".takeIf { isOneDayRange },
+            onSecondaryClick = { onIntent(HomeUiIntent.SaveSheetRangeAsDefault) },
         )
     }
 }
@@ -409,6 +426,7 @@ private fun HomeScreen(
                 body = state.cardBody(HomeSourceKind.PHOTO),
                 onClick = state.cardClick(HomeSourceKind.PHOTO, onIntent, onRequestPermission),
                 permissionAction = state.permissionAction(HomeSourceKind.PHOTO, onRequestPermission),
+                hint = state.cardHint(HomeSourceKind.PHOTO),
             ) {
                 HomePhotoGrid(cells = state.summary.photoCells, emptyMessage = state.photoEmptyMessage())
             }
@@ -470,8 +488,6 @@ private fun HomeScreen(
             status = state.timelineButtonStatus,
             selectedDate = state.selectedDate,
             today = state.today,
-            // 제출을 기다리는 동안에는 다시 눌러도 아무 일이 없어야 한다.
-            enabled = !state.isSubmitting,
             onClick = {
                 onIntent(
                     when (state.timelineButtonStatus) {
@@ -602,7 +618,7 @@ private fun HomeHeaderRow(
 /** 날짜를 바꿀 수 없을 때의 캐럿. 다른 비활성 요소와 같은 비율이다. */
 private const val DISABLED_CARET_ALPHA = 0.38f
 
-/** 일정 카드 내용. 3초마다 한 건씩 넘기고 우측에 순번을 적는다. */
+/** 일정 카드 내용. 3초마다 한 건씩 넘긴다. 순번은 적지 않는다 — 몇 건인지는 본문 `N / M` 이 말한다(Figma 홈 시안). */
 @Composable
 private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
     if (items.isEmpty()) {
@@ -614,7 +630,6 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
         Row(
             // 시안 높이는 최소값이다. 큰 글꼴에서는 시간·제목 두 줄이 다 들어가도록 늘어난다.
             modifier = Modifier.fillMaxWidth().heightIn(min = CALENDAR_SLOT_HEIGHT),
-            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // 시간과 제목 사이 4. 붙이면 두 줄이 한 덩어리로 읽혀 어느 쪽이 제목인지 흐려진다.
@@ -635,11 +650,6 @@ private fun HomeCalendarSlot(items: List<HomeCalendarItem>) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = slot.positionLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

@@ -50,12 +50,10 @@ class HomeTimelineButtonStatusTest {
     }
 
     @Test
-    fun `완성된 날도 모인 것을 보는 것은 막지 않고 제출·생성 중에만 막는다`() {
-        assertFalse(HomeUiState(selectedRecord = HomeRecordState.SAVED).isSourceViewLocked)
-        assertFalse(HomeUiState(draftStatus = DraftCreationStatus.SUCCESS).isSourceViewLocked)
-        assertTrue(HomeUiState(draftStatus = DraftCreationStatus.PROCESSING).isSourceViewLocked)
-        assertTrue(HomeUiState(draftStatus = DraftCreationStatus.LONG_RUNNING).isSourceViewLocked)
-        assertTrue(HomeUiState(isSubmitting = true).isSourceViewLocked)
+    fun `제출·생성 중에는 선택을 바꿀 수 없다`() {
+        assertTrue(HomeUiState(draftStatus = DraftCreationStatus.PROCESSING).isInputLocked)
+        assertTrue(HomeUiState(draftStatus = DraftCreationStatus.LONG_RUNNING).isInputLocked)
+        assertTrue(HomeUiState(isSubmitting = true).isInputLocked)
     }
 
     @Test

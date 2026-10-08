@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
@@ -10,8 +11,11 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.feature.home.draft.DraftLoadingSession
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.draft.DraftSubmission
+import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
 import com.soma369.laimory.feature.home.loading.DraftLoadingStage
 import com.soma369.laimory.feature.home.loading.DraftLoadingStageState
+import com.soma369.laimory.feature.home.loading.DraftLoadingUiIntent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,8 +24,12 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.net.SocketTimeoutException
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -39,6 +47,8 @@ class DraftLoadingViewModelTest {
 
     private val coordinator = FakeDraftTaskCoordinator()
     private val loadingSessionStore = DraftLoadingSessionStore()
+    private val submissionStore = DraftSubmissionStore()
+    private val navigationHelper = RecordingNavigationHelper()
     private var created: DraftLoadingViewModel? = null
 
     /**
@@ -143,11 +153,150 @@ class DraftLoadingViewModelTest {
             assertEquals(DraftLoadingStageState.PENDING, states[DraftLoadingStage.STAY])
         }
 
+    @Test
+    fun `요청을 보내는 동안은 만들기 누른 시각부터 연출하고 이전 작업의 완료를 보지 않는다`() =
+        loadingTest {
+            // 다른 날짜의 이전 작업이 완료로 남아 있다. 새 요청의 로딩 화면이 그것을 보면 곧바로 완료가 뜬다.
+            coordinator.emit(DraftTaskTrackingState.Success(task.copy(taskId = "old"), eventCount = 3))
+            submissionStore.begin(date, requestedAt.minusSeconds(10))
+            loadingSessionStore.start(
+                DraftLoadingSession(
+                    taskId = null,
+                    recordDate = date,
+                    photoUris = listOf("content://photo/1"),
+                    photoCount = 1,
+                    calendarCount = 2,
+                    stayCount = 0,
+                    submittedAt = requestedAt.minusSeconds(10),
+                ),
+            )
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(1, state.photoUris.size)
+            assertEquals(2, state.calendarCount)
+            assertEquals(null, state.notice)
+            assertEquals(DraftLoadingStageState.DONE, state.stageStates[DraftLoadingStage.PHOTO])
+            assertEquals(DraftLoadingStageState.IN_PROGRESS, state.stageStates[DraftLoadingStage.CALENDAR])
+            assertEquals(DraftLoadingStageState.PENDING, state.stageStates[DraftLoadingStage.AI])
+        }
+
+    @Test
+    fun `작업 번호를 받은 뒤에도 요청 중에 흐른 연출이 되돌아가지 않는다`() =
+        loadingTest {
+            // 요청에 20초가 걸렸다. 작업의 요청 시각으로만 세면 0초부터 다시 시작한다.
+            loadingSessionStore.start(
+                DraftLoadingSession(
+                    taskId = "task-1",
+                    recordDate = date,
+                    photoUris = emptyList(),
+                    photoCount = 0,
+                    calendarCount = 0,
+                    stayCount = 0,
+                    submittedAt = requestedAt.minusSeconds(20),
+                ),
+            )
+            coordinator.emit(DraftTaskTrackingState.Processing(task))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val states = viewModel.state.value.stageStates
+            assertEquals(DraftLoadingStageState.DONE, states[DraftLoadingStage.PHOTO])
+            assertEquals(DraftLoadingStageState.DONE, states[DraftLoadingStage.CALENDAR])
+            assertEquals(DraftLoadingStageState.IN_PROGRESS, states[DraftLoadingStage.STAY])
+        }
+
+    @Test
+    fun `요청이 무응답으로 끝나면 사유와 홈으로 버튼을 보여 주고 누르면 확인한 채 돌아간다`() =
+        loadingTest {
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            submissionStore.fail(date, SocketTimeoutException())
+            runCurrent()
+
+            val notice = viewModel.state.value.notice
+            assertEquals("응답이 없어 요청을 멈췄어요. 잠시 후 다시 시도해 주세요.", notice?.message)
+            assertEquals("홈으로", notice?.primaryAction?.label)
+            // 자동으로 돌아가지 않는다.
+            assertEquals(0, navigationHelper.backCount)
+
+            viewModel.sendIntent(DraftLoadingUiIntent.LeaveAfterSubmitFailure)
+            runCurrent()
+
+            assertEquals(1, navigationHelper.backCount)
+            assertTrue((submissionStore.submission.value as DraftSubmission.Failed).shownOnLoading)
+        }
+
+    @Test
+    fun `약관 동의가 필요하면 약관 확인하기 버튼을 보여 준다`() =
+        loadingTest {
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            submissionStore.fail(date, ApiException.ClientException(rawCode = 403, errorCode = -3001, message = "약관"))
+            runCurrent()
+
+            assertEquals("약관 확인하기", viewModel.state.value.notice?.primaryAction?.label)
+        }
+
+    @Test
+    fun `연결이 없어 요청을 못 보냈으면 안내 없이 곧바로 홈으로 돌아간다`() =
+        loadingTest {
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            submissionStore.fail(date, ApiException.NetworkException())
+            runCurrent()
+
+            assertNull(viewModel.state.value.notice)
+            assertEquals(1, navigationHelper.backCount)
+            // 알림은 돌아간 홈이 한다. 로딩이 안내했다고 표시하지 않는다.
+            assertFalse((submissionStore.submission.value as DraftSubmission.Failed).shownOnLoading)
+
+            // 다른 상태가 바뀌어 같은 실패가 다시 흘러와도 두 번 돌아가지 않는다.
+            coordinator.emit(DraftTaskTrackingState.Success(task.copy(taskId = "old"), eventCount = 3))
+            runCurrent()
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `로딩 화면을 떠난 뒤 연결 실패가 오면 뒤로 가지 않는다`() =
+        loadingTest {
+            // 이 ViewModel 은 Activity 범위라 화면을 떠난 뒤에도 실패를 받는다. 그때 뒤로 가면 홈을 닫는다.
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftLoadingUiIntent.ChangeVisibility(shown = false))
+            runCurrent()
+
+            submissionStore.fail(date, ApiException.NetworkException())
+            runCurrent()
+
+            assertEquals(0, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `화면에 들어오고 나가는 것을 저장소에 알린다`() =
+        loadingTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftLoadingUiIntent.ChangeVisibility(shown = true))
+            runCurrent()
+            assertTrue(submissionStore.isLoadingShown.value)
+
+            viewModel.sendIntent(DraftLoadingUiIntent.ChangeVisibility(shown = false))
+            runCurrent()
+            assertFalse(submissionStore.isLoadingShown.value)
+        }
+
     private fun createViewModel() =
         DraftLoadingViewModel(
             coordinator = coordinator,
             loadingSessionStore = loadingSessionStore,
-            navigationHelper = RecordingNavigationHelper(),
+            submissionStore = submissionStore,
+            navigationHelper = navigationHelper,
             clock = clock,
             retentionConfig = SourceItemRetentionConfig(RETENTION_DAYS),
         ).also { created = it }
@@ -186,10 +335,14 @@ class DraftLoadingViewModelTest {
     }
 
     private class RecordingNavigationHelper : NavigationHelper {
+        var backCount = 0
+
         override fun navigateTo(page: Page) = Unit
 
         override fun replaceRoot(page: Page) = Unit
 
-        override fun navigateToBack() = Unit
+        override fun navigateToBack() {
+            backCount++
+        }
     }
 }

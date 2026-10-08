@@ -2,6 +2,7 @@ package com.soma369.laimory.core.ui.component.timepicker
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -76,6 +78,9 @@ data class TimePickerField(
  * 상태를 스스로 갖지 않는다 — 값·펼침 모두 호출부가 소유하므로, 되돌리기(취소)를 원하면 화면이
  * 임시 값을 들고 있다가 [onConfirm]에서 확정하면 된다. 시트를 닫는 것도 [onDismiss]·[onConfirm]을
  * 받은 화면의 몫이다.
+ *
+ * 화면마다 다른 것은 선택 매개변수로만 받는다 — 제목 옆 요소([titleAccessory])와 확정 버튼 왼쪽의 보조 버튼
+ * ([secondaryLabel]). 주지 않으면 제목과 확정 버튼 하나만 그리므로 다른 사용처는 그대로다.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,6 +96,9 @@ fun LaimoryTimePickerSheet(
     confirmLabel: String = "확인",
     confirmEnabled: Boolean = true,
     supportingText: String? = null,
+    titleAccessory: (@Composable () -> Unit)? = null,
+    secondaryLabel: String? = null,
+    onSecondaryClick: () -> Unit = {},
 ) {
     // 시트 상태는 밖으로 내보내지 않는다 — 실험 API를 호출부까지 번지게 하지 않기 위해서다.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -113,6 +121,9 @@ fun LaimoryTimePickerSheet(
             confirmLabel = confirmLabel,
             confirmEnabled = confirmEnabled,
             supportingText = supportingText,
+            titleAccessory = titleAccessory,
+            secondaryLabel = secondaryLabel,
+            onSecondaryClick = onSecondaryClick,
         )
     }
 }
@@ -129,6 +140,9 @@ private fun TimePickerSheetContent(
     confirmLabel: String,
     confirmEnabled: Boolean,
     supportingText: String? = null,
+    titleAccessory: (@Composable () -> Unit)? = null,
+    secondaryLabel: String? = null,
+    onSecondaryClick: () -> Unit = {},
 ) {
     // 롤러를 펼치면 세로 여유가 줄어드는 만큼 줄 간격도 함께 좁힌다(Figma Collapsed/Expanded).
     // 롤러가 나타나고 사라지는 동안 여백이 한 번에 튀면 같이 끊겨 보이므로 함께 이어서 움직인다.
@@ -157,6 +171,7 @@ private fun TimePickerSheetContent(
             title = title,
             onClose = onDismiss,
             verticalPadding = headerPadding,
+            titleAccessory = titleAccessory,
         )
         Column(modifier = Modifier.fillMaxWidth()) {
             fields.forEachIndexed { index, field ->
@@ -194,26 +209,48 @@ private fun TimePickerSheetContent(
                     },
             )
         }
-        Button(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(ConfirmButtonHeight)
-                    // 비활성 버튼은 "사용 안 함"만 읽히므로 왜 확정할 수 없는지 상태로 함께 알린다.
-                    .semantics { if (!confirmEnabled && supportingText != null) stateDescription = supportingText },
-            onClick = onConfirm,
-            enabled = confirmEnabled,
-            shape = RoundedCornerShape(ConfirmButtonCornerRadius),
-            colors =
-                ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
+        // 보조 버튼이 있으면 왼쪽 테두리 버튼 · 오른쪽 확정 버튼으로 반씩 나눈다.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
-            Text(
-                text = confirmLabel,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            )
+            if (secondaryLabel != null) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f).height(ConfirmButtonHeight),
+                    onClick = onSecondaryClick,
+                    enabled = confirmEnabled,
+                    shape = RoundedCornerShape(ConfirmButtonCornerRadius),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                ) {
+                    Text(
+                        text = secondaryLabel,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                    )
+                }
+            }
+            Button(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .height(ConfirmButtonHeight)
+                        // 비활성 버튼은 "사용 안 함"만 읽히므로 왜 확정할 수 없는지 상태로 함께 알린다.
+                        .semantics { if (!confirmEnabled && supportingText != null) stateDescription = supportingText },
+                onClick = onConfirm,
+                enabled = confirmEnabled,
+                shape = RoundedCornerShape(ConfirmButtonCornerRadius),
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+            ) {
+                Text(
+                    text = confirmLabel,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                )
+            }
         }
     }
 }

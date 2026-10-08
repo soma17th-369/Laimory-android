@@ -14,10 +14,7 @@ internal data class HomeRotatingSlot<T>(
     val value: T,
     val index: Int,
     val count: Int,
-) {
-    /** `1 / 3` 순번 문구. 전체 건수도 이 칸의 것이라 전환 중에 `2 / 1` 같은 짝이 생기지 않는다. */
-    val positionLabel: String get() = "${index + 1} / $count"
-}
+)
 
 /**
  * [index] 자리의 칸. 비어 있으면 null 이고, 자리가 범위를 벗어나면 가장 가까운 자리로 당긴다.

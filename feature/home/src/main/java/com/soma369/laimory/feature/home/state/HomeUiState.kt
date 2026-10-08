@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.StayPayload
+import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemLimits
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
@@ -27,9 +28,15 @@ data class HomeUiState(
      * 화면이 직접 계산하면 재구성될 때만 바뀌어, 날짜 줄은 그대로인데 부제만 먼저 넘어가는 순간이 생긴다.
      */
     val today: LocalDate = LocalDate.now(),
-    val startTime: LocalTime = LocalTime.MIDNIGHT,
-    val endDay: DraftEndDay = DraftEndDay.NEXT_DAY,
-    val endTime: LocalTime = LocalTime.MIDNIGHT,
+    val startTime: LocalTime = DefaultRecordRange.INITIAL.startTime,
+    val endDay: DraftEndDay = DefaultRecordRange.INITIAL.endDay(),
+    val endTime: LocalTime = DefaultRecordRange.INITIAL.endTime,
+    /**
+     * 기기에 저장된 기본 기록 범위. 날짜 피커의 `기본값으로 지정` 이 처음에 체크될지 정한다.
+     *
+     * 읽기 전에는 처음 값이다 — 저장한 적이 없는 사람에게는 그것이 곧 기본값이다.
+     */
+    val defaultRange: DefaultRecordRange = DefaultRecordRange.INITIAL,
     val summary: HomeSourceSummary = HomeSourceSummary(),
     /** 원천별 권한 도트. 화면이 복귀마다 다시 보고 넣어 준다. */
     val permissions: HomeSourcePermissions = HomeSourcePermissions(),
@@ -75,6 +82,12 @@ data class HomeUiState(
      * 입력이 열려 있으면, 화면에서는 새 날짜를 고르는데 요청은 이미 확정한 스냅샷으로 진행된다.
      */
     val isSubmitting: Boolean = false,
+    /**
+     * 작업 번호를 받지 못하고 끝난 요청의 실패가 남아 있다. 화면은 홈이 보일 때 이것을 보고 돌아간 뒤의 처리를
+     * 요청한다(`ConsumeSubmitFailure`). 로딩 화면이 떠 있는 동안은 그 화면이 안내하므로 false 다 — 로딩으로 넘어가는
+     * 전환 중에는 홈도 그려져 있어, 이것으로 막지 않으면 홈이 실패를 먼저 꺼내 간다.
+     */
+    val hasPendingSubmitFailure: Boolean = false,
     val draftRetryMode: DraftRetryMode? = null,
     val draftMessage: String? = null,
     /**
@@ -197,20 +210,11 @@ internal val HomeUiState.isDateLocked: Boolean
 /**
  * 시각·사진 선택·전송 선택을 바꿀 수 없는 구간. 열어 볼 기록이 있는 날은 만들 것이 없어 함께 잠근다.
  *
- * **보는 것은 여기서 정하지 않는다.** 원천 카드로 모인 것을 열어 보는 일은 [isSourceViewLocked] 가 정한다 —
- * 완성된 날에도 그날 무엇이 모였는지는 볼 수 있어야 한다.
+ * **보는 것은 막지 않는다.** 원천 카드는 제출·생성 중에도, 완성된 날에도 열린다. 이 구간에는 상세·사진 시트가
+ * 읽기 전용으로 뜨고, 보여 주는 것이 지금 기기에 모인 것이라 보낸 내용과 다를 수 있다고 함께 알린다.
  */
 internal val HomeUiState.isInputLocked: Boolean
     get() = isSubmitting || timelineButtonStatus.isInputLocked
-
-/**
- * 원천 카드로 모인 것을 열어 보는 것까지 막는 구간. 제출·생성 중뿐이다.
- *
- * 그동안에는 확정한 스냅샷으로 요청이 진행되므로 상세가 바뀐 수집을 보여 주면 보낸 것과 어긋난다.
- * 완성된 날은 막지 않고, 대신 상세·사진 시트를 읽기 전용으로 연다([isInputLocked]).
- */
-internal val HomeUiState.isSourceViewLocked: Boolean
-    get() = isDateLocked
 
 /**
  * 홈 CTA 가 보여 줄 변형. 버튼 모양은 시안대로 셋이고, 여기서 바뀌는 것은 고르는 근거뿐이다.
@@ -225,6 +229,9 @@ internal val HomeUiState.isSourceViewLocked: Boolean
 internal val HomeUiState.timelineButtonStatus: DraftCreationStatus
     get() =
         when {
+            // 요청을 보내는 동안은 아직 작업이 없지만 이미 로딩 화면이 그 요청을 보여 주고 있다. 제작중으로 두어 다시
+            // 들어갈 수 있게 한다.
+            isSubmitting -> DraftCreationStatus.PROCESSING
             draftStatus.isDateLocked -> draftStatus
             draftStatus == DraftCreationStatus.SUCCESS || selectedRecord.isViewable -> DraftCreationStatus.SUCCESS
             else -> draftStatus

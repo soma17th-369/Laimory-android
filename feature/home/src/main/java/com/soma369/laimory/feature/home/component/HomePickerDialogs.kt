@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,24 +18,33 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -54,6 +64,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -166,7 +177,10 @@ internal fun HomeDatePickerDialog(
                             )
                         },
                     )
-                    RecordRangeSection(session = session, onRangeClick = onRangeClick)
+                    RecordRangeSection(
+                        session = session,
+                        onRangeClick = onRangeClick,
+                    )
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = Spacing.large),
@@ -193,7 +207,10 @@ internal fun HomeDatePickerDialog(
 }
 
 /**
- * 격자 아래 기록 범위 한 줄(Figma 2806:1062).
+ * 격자 아래 기록 범위 한 줄(Figma 3119:12942) — `기록 범위` ⓘ · 범위 칩.
+ *
+ * 기본값으로 쓸지는 칩을 눌러 연 시간 시트에서 고른다(`항상 이 시간으로` / `이 날만`). `이 날만` 은 저장하지 않는
+ * 그 날짜의 범위라 따로 표시하지 않는다 — 칩이 지금 범위를 이미 보여 준다.
  *
  * 범위는 홈 카드의 데이터를 거르는 필터라 어느 날이든 바꿀 수 있다.
  */
@@ -205,25 +222,58 @@ private fun RecordRangeSection(
     Column(modifier = Modifier.padding(top = Spacing.large)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = Spacing.medium),
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.small),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "기록 범위",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "기록 범위",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                RecordRangeInfo()
+            }
             RangeChip(label = session.timeRangeLabel(), onClick = onRangeClick)
         }
-        Text(
-            text = "6시간 이상 · 종료는 익일 06:00까지",
-            modifier = Modifier.padding(top = Spacing.small),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    }
+}
+
+/**
+ * 기록 범위 안내. 누르면 툴팁으로 보여 주고, 바깥을 누르면 닫힌다. 날짜 피커와 시간 시트가 같은 설명을 쓴다 —
+ * 어디서 눌러도 같은 답이 나와야 한다.
+ *
+ * 시안대로 아이콘 둘레 4 만 둔다(누르는 영역 24). 낭독 문구에 설명을 그대로 담는다 — 스크린 리더 사용자는
+ * 툴팁을 열지 않아도 듣는다.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun RecordRangeInfo() {
+    val tooltipState = rememberTooltipState(isPersistent = true)
+    val scope = rememberCoroutineScope()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(RECORD_RANGE_GUIDE) } },
+        state = tooltipState,
+    ) {
+        Icon(
+            painter = painterResource(UiR.drawable.ico_setting_info),
+            contentDescription = "기록 범위 안내: $RECORD_RANGE_GUIDE",
+            modifier =
+                Modifier
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button) { scope.launch { tooltipState.show() } }
+                    .padding(Spacing.extraSmall)
+                    .size(RangeInfoIconSize),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+private const val RECORD_RANGE_GUIDE = "이 시간 안에 모인 사진·일정·위치·알림으로 타임라인을 만들어요.\n6시간 이상 · 종료는 익일 06:00까지"
 
 /** 지금 범위 + 캐럿. 누르면 시간 시트가 다이얼로그 위에 뜬다. */
 @Composable
@@ -402,6 +452,8 @@ private val RecordDotSize = 6.dp
 private const val DISABLED_DOT_ALPHA = 0.38f
 private val StepperTouchTarget = 44.dp
 private val RangeCaretSize = 16.dp
+private val RangeInfoIconSize = 16.dp
+
 private val StepperIconSize = 20.dp
 private const val CHIP_CORNER_PERCENT = 50
 
@@ -420,9 +472,9 @@ private fun HomeDatePickerDialogPreview() {
                 session =
                     HomeDatePickerSession(
                         date = today.minusDays(1),
-                        startTime = LocalTime.MIDNIGHT,
+                        startTime = LocalTime.of(5, 0),
                         endDay = DraftEndDay.NEXT_DAY,
-                        endTime = LocalTime.MIDNIGHT,
+                        endTime = LocalTime.of(6, 0),
                     ),
                 savedDates = setOf(today.minusDays(3)),
                 draftDates = setOf(today.minusDays(1)),

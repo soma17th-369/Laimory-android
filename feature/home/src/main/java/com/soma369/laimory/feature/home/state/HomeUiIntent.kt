@@ -76,6 +76,12 @@ sealed interface HomeUiIntent : UiIntent {
     data object ConfirmDatePicker : HomeUiIntent
 
     /**
+     * 시간 시트의 `항상 이 시간으로`. [ConfirmTimeSheet] 처럼 곧바로 확정하고, 더해서 기본값으로 저장한다.
+     * `이 날만` 은 [ConfirmTimeSheet] 다 — 저장하지 않는다.
+     */
+    data object SaveSheetRangeAsDefault : HomeUiIntent
+
+    /**
      * 날짜 피커가 보여 주는 달의 기록 상태를 받아 온다.
      *
      * 피커를 열 때와 달을 넘길 때마다 그 달을 요청한다 — 초안·저장 도트를 찍으려면 그 달에 무엇이
@@ -114,7 +120,7 @@ sealed interface HomeUiIntent : UiIntent {
         val time: LocalTime,
     ) : HomeUiIntent
 
-    /** 시트의 확인 — 날짜 피커 세션의 범위만 바꾼다. 확정은 피커의 확인이 한다. */
+    /** 시트의 확인(`확인` · `이 날만`) — 피커에서 고른 날짜와 이 범위를 곧바로 확정하고 시트만 닫는다. 피커는 열어 둔다. */
     data object ConfirmTimeSheet : HomeUiIntent
 
     /** 시트만 닫는다. 시트에서 바꾸던 값은 버리고 날짜 피커 세션은 그대로 둔다. */
@@ -128,6 +134,12 @@ sealed interface HomeUiIntent : UiIntent {
 
     /** 확인 다이얼로그의 `취소`·바깥 탭·뒤로가기. 제출용 스냅샷만 버린다. */
     data object DismissCreateConfirm : HomeUiIntent
+
+    /**
+     * 확인 다이얼로그의 `사진 고르기`·`사진 바꾸기`. 다이얼로그를 닫고 사진 시트를 연다.
+     * 시트가 닫히면(선택 완료·사진 없이 계속·닫기 모두) 확인 다이얼로그를 새로 만들어 다시 띄운다.
+     */
+    data object PickPhotosForCreate : HomeUiIntent
 
     /**
      * 원천별 권한 도트를 다시 본다. 판정은 화면이 하고 결과만 싣는다.
@@ -159,6 +171,9 @@ sealed interface HomeUiIntent : UiIntent {
 
     /** 생성 중인 초안의 로딩 화면으로 들어간다. */
     data object OpenDraftLoading : HomeUiIntent
+
+    /** 홈이 보일 때 남은 초안 요청 실패를 꺼내 돌아간 뒤의 처리를 한다(사진 시트 · 약관 화면 · 실패 카드). */
+    data object ConsumeSubmitFailure : HomeUiIntent
 
     /** 지난 기록 전용 화면을 연다. 목록·동기화는 그 화면이 소유한다. */
     data object OpenPastRecords : HomeUiIntent
