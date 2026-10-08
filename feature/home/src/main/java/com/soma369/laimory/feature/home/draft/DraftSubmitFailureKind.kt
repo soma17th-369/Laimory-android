@@ -21,6 +21,9 @@ enum class DraftSubmitFailureKind {
     /** 스냅샷 확정 뒤 사진이 지워졌거나 권한이 바뀌었다. */
     PHOTO_ACCESS,
 
+    /** 잔액이 이번 비용보다 적다(-1021). 서버가 아무것도 만들기 전에 거절한다 — 다시 시도해도 같다. */
+    INSUFFICIENT_CREDIT,
+
     /** 사진 상한을 넘었다. */
     PHOTO_LIMIT,
 
@@ -40,12 +43,14 @@ enum class DraftSubmitFailureKind {
     companion object {
         const val TERMS_AGREEMENT_REQUIRED = -3001
         const val APPEND_NO_NEW_ITEMS = -1013
+        const val CREDIT_INSUFFICIENT = -1021
 
         fun of(error: Throwable): DraftSubmitFailureKind {
             val cause = (error as? HandledException)?.cause ?: error
             return when {
                 cause is ApiException && cause.errorCode == TERMS_AGREEMENT_REQUIRED -> TERMS_REQUIRED
                 cause is ApiException && cause.errorCode == APPEND_NO_NEW_ITEMS -> NO_NEW_ITEMS
+                cause is ApiException && cause.errorCode == CREDIT_INSUFFICIENT -> INSUFFICIENT_CREDIT
                 cause is DraftPhotoAccessException -> PHOTO_ACCESS
                 cause is DraftPhotoLimitExceededException -> PHOTO_LIMIT
                 cause is SocketTimeoutException -> TIMEOUT

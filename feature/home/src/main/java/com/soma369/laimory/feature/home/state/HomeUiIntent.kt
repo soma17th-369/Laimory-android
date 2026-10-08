@@ -135,6 +135,9 @@ sealed interface HomeUiIntent : UiIntent {
     /** 확인 다이얼로그의 `취소`·바깥 탭·뒤로가기. 제출용 스냅샷만 버린다. */
     data object DismissCreateConfirm : HomeUiIntent
 
+    /** 크레딧이 모자랄 때 확인 다이얼로그의 `충전하러 가기`. 충전은 아직 준비 중이라 닫고 알리기만 한다. */
+    data object ChargeCredits : HomeUiIntent
+
     /**
      * 확인 다이얼로그의 `사진 고르기`·`사진 바꾸기`. 다이얼로그를 닫고 사진 시트를 연다.
      * 시트가 닫히면(선택 완료·사진 없이 계속·닫기 모두) 확인 다이얼로그를 새로 만들어 다시 띄운다.

@@ -242,6 +242,19 @@ class DraftLoadingViewModelTest {
         }
 
     @Test
+    fun `크레딧이 부족하면 다시 시도 대신 홈으로 버튼을 보여 준다`() =
+        loadingTest {
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            submissionStore.fail(date, ApiException.UnauthorizedException(rawCode = 403, errorCode = -1021, message = "크레딧"))
+            runCurrent()
+
+            val notice = viewModel.state.value.notice
+            assertEquals("크레딧이 부족해 타임라인을 만들 수 없어요.", notice?.message)
+            assertEquals("홈으로", notice?.primaryAction?.label)
+        }
+
+    @Test
     fun `연결이 없어 요청을 못 보냈으면 안내 없이 곧바로 홈으로 돌아간다`() =
         loadingTest {
             submissionStore.begin(date, requestedAt)
