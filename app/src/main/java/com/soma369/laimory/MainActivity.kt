@@ -17,6 +17,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
@@ -31,6 +34,7 @@ import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
+import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.settings.AppThemeMode
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
@@ -46,6 +50,8 @@ import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.navigation.LaimoryNavGraph
+import com.soma369.laimory.notice.PopupNoticeHost
+import com.soma369.laimory.notice.PopupNoticeQueue
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
 import com.soma369.laimory.ui.GlobalUiHost
@@ -102,6 +108,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var appUpdateGate: AppUpdateGate
+
+    @Inject
+    lateinit var popupNoticeQueue: PopupNoticeQueue
 
     /**
      * 저장된 화면 모드. `null` 은 아직 읽기 전이다.
@@ -183,6 +192,12 @@ class MainActivity : ComponentActivity() {
         // 다이얼로그는 거부되기 쉽고, 한 번 거부하면 다시 물을 기회가 사실상 없다.
         // 요청은 온보딩의 알림 장 CTA 가 맡는다.
         val authSessionStates = observeAuthSession()
+        // 앱 시작 팝업 공지는 로그인 상태가 된 뒤 프로세스마다 한 번 받는다(앱 초기화 조회가 인증 API 다). 띄우는 것은
+        // 홈이 보일 때다 — 받는 것은 미리 해 둬야 홈에 닿자마자 뜬다.
+        lifecycleScope.launch {
+            authSessionStates.first { it == AuthSessionState.Authenticated }
+            popupNoticeQueue.loadOnce()
+        }
         setContent {
             val mode by themeMode.collectAsStateWithLifecycle()
             // 값을 읽기 전에는 그리지 않는다. 스플래시가 그동안 화면을 덮고 있다.
@@ -191,6 +206,8 @@ class MainActivity : ComponentActivity() {
             val gateState by appUpdateGate.state.collectAsStateWithLifecycle()
             val recommendation by appUpdateGate.recommendation.collectAsStateWithLifecycle()
             val activeDialog by messageHelper.activeDialog.collectAsStateWithLifecycle()
+            val popupNotice by popupNoticeQueue.current.collectAsStateWithLifecycle()
+            var currentPath by remember { mutableStateOf<String?>(null) }
 
             // 강제 화면 동안 발행된 이동 신호는 버린다. NavGraph 가 컴포즈되지 않는 사이 신호가
             // 버퍼에 쌓였다가, 게이트가 풀리는 순간 한꺼번에 재생된다. 평상시 수집자는 NavGraph
@@ -223,6 +240,7 @@ class MainActivity : ComponentActivity() {
                                     // 홈이 상시로 유지하는 선택 스냅샷의 날짜가 곧 홈이 보고 있는 날짜다.
                                     homeRecordDate = { draftConsentSessionStore.selection.value?.recordDate },
                                     loadingShowsOtherAttempt = draftLoadingSessionStore::showsOtherAttemptThan,
+                                    onCurrentPathChange = { currentPath = it },
                                     onAuthRootReplaced = {
                                         // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
                                         messageHelper.clearDialogs()
@@ -244,6 +262,22 @@ class MainActivity : ComponentActivity() {
                                 // 돌아올 때마다 다시 뜨면 반복이 심하다.
                                 lifecycleScope.launch { appUpdateGate.dismissRecommendation(version) }
                                 StoreLink.open(context)
+                            },
+                        )
+                        // 팝업 공지는 맨 뒤에 둔다 — 강제 · 권장 업데이트 안내와 다른 전역 Dialog 가 먼저다. 그것들이 떠 있거나
+                        // 홈이 아니면 기다렸다가 띄운다.
+                        PopupNoticeHost(
+                            notice = popupNotice,
+                            isVisible =
+                                currentPath == HomePage.PATH &&
+                                    gateState != AppUpdateGateState.BLOCKED &&
+                                    recommendation == null &&
+                                    activeDialog == null,
+                            onClose = { notice -> lifecycleScope.launch { popupNoticeQueue.close(notice, opened = false) } },
+                            onOpen = { notice ->
+                                // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열지 못했으면(브라우저 없음) 띄운 것으로만 남긴다.
+                                val opened = openInCustomTab(notice.contentUrl)
+                                lifecycleScope.launch { popupNoticeQueue.close(notice, opened = opened) }
                             },
                         )
                     }
@@ -289,7 +323,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Auth Tab 이 막혔을 때 이 변경 전과 같은 방식으로 연다. 결과는 App Link 로 돌아온다. */
+    /**
+     * Auth Tab 이 막혔을 때 이 변경 전과 같은 방식으로 연다. 결과는 App Link 로 돌아온다.
+     *
+     * 팝업 공지의 원문도 이것으로 연다 — 설정 공지사항과 같은 창(공유 메뉴 없는 Custom Tab)이다.
+     */
     private fun openInCustomTab(url: String): Boolean =
         try {
             CustomTabsIntent

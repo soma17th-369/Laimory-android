@@ -74,7 +74,9 @@ fun LaimoryNavGraph(
     homeRecordDate: () -> LocalDate? = { null },
     loadingShowsOtherAttempt: (taskId: String) -> Boolean = { false },
     onAuthRootReplaced: () -> Unit = {},
+    onCurrentPathChange: (String?) -> Unit = {},
 ) {
+    val currentOnPathChange by rememberUpdatedState(onCurrentPathChange)
     val sessionState by authSessionStates.collectAsStateWithLifecycle(initialValue = AuthSessionState.Loading)
     // 아직 읽기 전이면 null 이다. 온보딩 상태를 모르는 채로 Home 을 먼저 그리면, 온보딩이 필요한
     // 사용자에게 홈이 한 프레임 번쩍인 뒤 화면이 갈린다.
@@ -84,6 +86,8 @@ fun LaimoryNavGraph(
     val termsGate by termsGateStates.collectAsStateWithLifecycle(initialValue = TermsGateState.Unknown)
     val rootPage = rootPage(sessionState, termsGate, onboardingCompleted)
     if (rootPage == null) {
+        // 판정 중에는 어느 화면도 아니다. 이전에 알린 경로가 남으면 그 화면이 보이는 줄 안다.
+        LaunchedEffect(Unit) { currentOnPathChange(null) }
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
@@ -105,6 +109,7 @@ fun LaimoryNavGraph(
     // 않는다 — 화면 인자(기록 날짜 등)가 붙는 경로는 여기 오기 전에 path 로만 줄어 있다.
     LaunchedEffect(currentPath) {
         Logger.setCrashKey(CrashKey.ROUTE, currentPath ?: "unknown")
+        currentOnPathChange(currentPath)
     }
 
     LaunchedEffect(messages) {
