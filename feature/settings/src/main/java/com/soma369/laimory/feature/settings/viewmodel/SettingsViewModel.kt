@@ -22,6 +22,7 @@ import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.credit.GetRemainingCreditsUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
@@ -58,17 +59,25 @@ class SettingsViewModel
         observeLocationTracking: ObserveLocationTrackingUseCase,
         private val setLocationTracking: SetLocationTrackingUseCase,
         private val logPermissionEvent: LogPermissionEventUseCase,
+        private val getRemainingCredits: GetRemainingCreditsUseCase,
         private val analyticsHelper: AnalyticsHelper,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
+
+        /**
+         * 로그아웃할 때마다 하나씩 올린다. 그 전에 보낸 잔액 요청이 늦게 오면 이전 계정의 값이라 버린다 — 이 ViewModel 은
+         * Activity 수명이라 다른 계정으로 다시 들어와도 같은 상태를 이어 쓴다.
+         */
+        private var creditGeneration = 0
 
         init {
             viewModelScope.launch {
                 observeSignedInAccount().collect { account ->
                     updateState {
                         if (account == null) {
-                            copy(accountProvider = null)
+                            creditGeneration++
+                            copy(accountProvider = null, remainingCredits = null)
                         } else {
                             // 진행 상태는 재인증된 계정을 관찰할 때 해제한다. ViewModel 이 Activity 수명이라
                             // 여기서 안 지우면 새 계정으로 로그인한 뒤에도 계정 항목이 잠긴 채 남는다.
@@ -90,6 +99,15 @@ class SettingsViewModel
             safeLaunch {
                 val hasNew = hasNewNotice()
                 updateState { copy(hasNewNotice = hasNew) }
+            }
+        }
+
+        /** 못 받으면 칸을 비운다. 이전 값을 남겨 두면 줄어든 뒤에도 옛 잔액이 보인다. */
+        private fun refreshCredits() {
+            val generation = creditGeneration
+            safeLaunch {
+                val remaining = getRemainingCredits()
+                if (generation == creditGeneration) updateState { copy(remainingCredits = remaining) }
             }
         }
 
@@ -135,6 +153,7 @@ class SettingsViewModel
                 SettingsUiIntent.NoticesClicked -> navigationHelper.navigateTo(NoticesPage)
                 SettingsUiIntent.InquiryClicked -> navigationHelper.navigateTo(InquiryPage)
                 SettingsUiIntent.RefreshNoticeBadge -> refreshNoticeBadge()
+                SettingsUiIntent.RefreshCredits -> refreshCredits()
                 is SettingsUiIntent.LocationCollectionToggled -> setLocationTracking(intent.enabled)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit

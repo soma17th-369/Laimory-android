@@ -39,6 +39,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -58,6 +60,7 @@ import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.LocalLaimoryColors
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.settings.component.DataSourceSheet
 import com.soma369.laimory.feature.settings.component.NewNoticeDot
 import com.soma369.laimory.feature.settings.model.DataSourceUiModel
@@ -79,6 +82,7 @@ fun SettingsRoute(
         viewModel.sendIntent(SettingsUiIntent.RefreshProfile)
         viewModel.sendIntent(SettingsUiIntent.RefreshTermLinks)
         viewModel.sendIntent(SettingsUiIntent.RefreshNoticeBadge)
+        viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     SettingsContent(
@@ -189,7 +193,11 @@ private fun SettingsScreen(
                     .padding(top = Spacing.small, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            AccountSummaryCard(provider = state.accountProvider, nickname = state.nickname)
+            AccountSummaryCard(
+                provider = state.accountProvider,
+                nickname = state.nickname,
+                remainingCredits = state.remainingCredits,
+            )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.large)) {
                 SettingsSection(title = "데이터 소스") {
                     SettingsGroup(
@@ -316,10 +324,14 @@ private fun SettingsScreen(
     }
 }
 
+/**
+ * 계정 카드. 오른쪽 칸은 남은 크레딧이다(Figma 663:2070 — 시안의 `연속 기록` 자리). 못 받았으면 칸을 비운다.
+ */
 @Composable
 private fun AccountSummaryCard(
     provider: SocialLoginProvider?,
     nickname: String?,
+    remainingCredits: Int?,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -349,7 +361,38 @@ private fun AccountSummaryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            remainingCredits?.let { RemainingCredits(count = it) }
         }
+    }
+}
+
+@Composable
+private fun RemainingCredits(count: Int) {
+    Column(
+        modifier = Modifier.clearAndSetSemantics { contentDescription = "남은 크레딧 ${count}개" },
+        horizontalAlignment = Alignment.End,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        ) {
+            Icon(
+                painter = painterResource(CoreUiR.drawable.ico_default_coins),
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.laimoryColors.warning,
+            )
+            Text(
+                text = count.toString(),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(
+            text = "남은 크레딧",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -574,7 +617,7 @@ private fun SettingsDefaultPreview() {
         SettingsScreen(
             innerPadding = PaddingValues(),
             appVersionName = "1.0.0",
-            state = SettingsUiState(accountProvider = SocialLoginProvider.GOOGLE),
+            state = SettingsUiState(accountProvider = SocialLoginProvider.GOOGLE, remainingCredits = 42),
             statusOf = { PreviewDataSourceStatuses.getValue(it) },
             locationStep = LocationPermissionStep.GRANTED,
             onOpenTerm = {},

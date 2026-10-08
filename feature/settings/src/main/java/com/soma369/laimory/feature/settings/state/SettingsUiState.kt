@@ -18,6 +18,8 @@ data class SettingsUiState(
     val isLocationCollectionEnabled: Boolean = true,
     /** `공지사항` 줄에 새 공지 표시를 띄울지. 모르면 띄우지 않는다. */
     val hasNewNotice: Boolean = false,
+    /** 계정 카드 오른쪽의 남은 크레딧. 받기 전이거나 못 받으면 `null` 이고 칸을 비운다(0 으로 보이면 안 된다). */
+    val remainingCredits: Int? = null,
 ) : UiState {
     /** 계정 관련 동작 하나가 진행 중이면 나머지 항목도 잠근다. */
     val isAccountActionInProgress: Boolean get() = isLoggingOut || isWithdrawing

@@ -34,6 +34,9 @@ sealed interface SettingsUiIntent : UiIntent {
      */
     data object RefreshNoticeBadge : SettingsUiIntent
 
+    /** 화면 진입·복귀. 남은 크레딧은 만들기로 줄어드는 값이라 들어올 때마다 다시 받는다. */
+    data object RefreshCredits : SettingsUiIntent
+
     /**
      * 위치 자동 수집을 켜거나 끈다.
      *
