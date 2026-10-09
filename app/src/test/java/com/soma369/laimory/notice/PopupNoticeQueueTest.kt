@@ -45,15 +45,16 @@ class PopupNoticeQueueTest {
         }
 
     @Test
-    fun `시트를 닫으면 목록 전부 본 것으로 남기고 읽음은 연 것만이다`() =
+    fun `시트를 닫으면 넘겨 본 카드만 본 것으로 남기고 읽음은 연 것만이다`() =
         runTest {
-            popupRepository.ids = listOf(12, 9)
+            popupRepository.ids = listOf(12, 9, 5)
             queue.loadOnce()
             queue.open(queue.notices.value.first())
 
-            queue.closeAll()
+            queue.close(viewedIds = setOf(12L, 9L))
 
             assertTrue(queue.notices.value.isEmpty())
+            // 넘기지 않은 5 는 보지 않은 것 — 다음 콜드 스타트에 다시 뜬다.
             assertEquals(setOf(12L, 9L), popupRepository.seen)
             assertEquals(setOf(12L), noticeRepository.read)
         }
@@ -64,7 +65,7 @@ class PopupNoticeQueueTest {
             popupRepository.ids = listOf(12)
 
             queue.loadOnce()
-            queue.closeAll()
+            queue.close(viewedIds = setOf(12L))
             queue.loadOnce()
 
             assertEquals(1, popupRepository.idsCallCount)

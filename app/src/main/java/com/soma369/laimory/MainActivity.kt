@@ -278,7 +278,7 @@ class MainActivity : ComponentActivity() {
                                 // 시트를 닫을 때 본 것으로만 남는다.
                                 if (openInCustomTab(notice.contentUrl)) lifecycleScope.launch { popupNoticeQueue.open(notice) }
                             },
-                            onClose = { lifecycleScope.launch { popupNoticeQueue.closeAll() } },
+                            onClose = { viewedIds -> lifecycleScope.launch { popupNoticeQueue.close(viewedIds) } },
                         )
                     }
                 }

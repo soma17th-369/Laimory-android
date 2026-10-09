@@ -13,7 +13,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * 앱 시작 팝업 공지 목록. 프로세스마다 한 번 받아, 시트 하나에 모아 보여 줄 목록으로 들고 있는다.
+ * 앱 시작 팝업 공지 목록. 프로세스마다 한 번 받아, 시트에서 카드로 넘겨 볼 목록으로 들고 있는다.
  *
  * 목록은 메모리에만 둔다 — 다음 콜드 스타트에 다시 받는다. 기기에 남는 것은 "이미 띄웠다"는 기록뿐이다.
  */
@@ -53,19 +53,24 @@ class PopupNoticeQueue
         }
 
         /**
-         * 목록의 [notice] 원문을 열었다. 시트는 그대로 두고, 그 공지는 곧바로 본 것 · 읽은 것으로 남긴다 — 원문을 보는 사이
+         * 카드의 [notice] 원문을 열었다(`자세히 보기`). 시트는 그대로 두고, 그 공지는 곧바로 본 것 · 읽은 것으로 남긴다 — 원문을 보는 사이
          * 프로세스가 죽어도 다시 뜨지 않게.
          */
         suspend fun open(notice: Notice) {
             markPopupNoticeSeen(notice, opened = true)
         }
 
-        /** 시트를 닫았다. `확인` · X · 쓸어내리기 · 뒤로가기 · 바깥 누름 모두 같다 — 보여 준 목록 전부 본 것으로 남긴다. */
-        suspend fun closeAll() {
+        /**
+         * 시트를 닫았다. `모두 닫기` · X · 쓸어내리기 · 뒤로가기 · 바깥 누름 모두 같다.
+         *
+         * [viewedIds] — 넘겨서 화면에 띄운 카드 — 만 본 것으로 남긴다. 넘기지 않은 카드는 보지 않은 것이라 다음 콜드
+         * 스타트에 다시 뜬다. 이번 프로세스에서는 시트를 다시 띄우지 않는다.
+         */
+        suspend fun close(viewedIds: Set<Long>) {
             val shown =
                 mutex.withLock {
                     _notices.value.also { _notices.value = emptyList() }
                 }
-            shown.forEach { markPopupNoticeSeen(it, opened = false) }
+            shown.filter { it.id in viewedIds }.forEach { markPopupNoticeSeen(it, opened = false) }
         }
     }
