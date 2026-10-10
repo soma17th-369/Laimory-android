@@ -286,7 +286,8 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             },
-                            onClose = { viewedIds -> lifecycleScope.launch { popupNoticeQueue.close(viewedIds) } },
+                            onViewed = popupNoticeQueue::markViewed,
+                            onClose = { lifecycleScope.launch { popupNoticeQueue.close() } },
                         )
                     }
                 }

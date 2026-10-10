@@ -35,6 +35,12 @@ class PopupNoticeQueue
         private var isLoaded = false
 
         /**
+         * 지금 목록에서 넘겨서 화면에 띄운 카드. 시트가 아니라 여기 둔다 — 회전 · Activity 재생성 · 권장 업데이트나 전역
+         * Dialog 로 시트가 잠시 내려가도, 닫을 때까지 쌓은 기록이 남아야 앞서 본 카드가 다음에 다시 뜨지 않는다.
+         */
+        private val viewedIds = mutableSetOf<Long>()
+
+        /**
          * 로그인 상태가 된 뒤 한 번 받는다(앱 초기화 조회가 인증 API 다). 같은 프로세스에서 다시 불러도 받지 않는다 —
          * 계정을 바꿔도 띄운 기록은 기기 단위라 다시 받을 것이 없다.
          */
@@ -54,6 +60,11 @@ class PopupNoticeQueue
             }
         }
 
+        /** 시트가 [notice] 카드를 화면에 띄웠다. 닫을 때 본 것으로 남긴다. */
+        fun markViewed(notice: PopupNotice) {
+            synchronized(viewedIds) { viewedIds += notice.id }
+        }
+
         /** [notice] 의 원문 주소. 팝업 응답엔 없어 공지 단건 조회로 받는다. 숨겨졌거나(404) 못 받으면 `null` — 열지 않는다. */
         suspend fun contentUrlOf(notice: PopupNotice): String? = getContentUrl(notice.id)
 
@@ -68,14 +79,15 @@ class PopupNoticeQueue
         /**
          * 시트를 닫았다. `모두 닫기` · X · 쓸어내리기 · 뒤로가기 · 바깥 누름 모두 같다.
          *
-         * [viewedIds] — 넘겨서 화면에 띄운 카드 — 만 본 것으로 남긴다. 넘기지 않은 카드는 보지 않은 것이라 다음 콜드
+         * 넘겨서 화면에 띄운 카드([markViewed])만 본 것으로 남긴다. 넘기지 않은 카드는 보지 않은 것이라 다음 콜드
          * 스타트에 다시 뜬다. 이번 프로세스에서는 시트를 다시 띄우지 않는다.
          */
-        suspend fun close(viewedIds: Set<Long>) {
+        suspend fun close() {
             val shown =
                 mutex.withLock {
                     _notices.value.also { _notices.value = emptyList() }
                 }
-            shown.filter { it.id in viewedIds }.forEach { markPopupNoticeSeen(it.id, opened = false) }
+            val viewed = synchronized(viewedIds) { viewedIds.toSet().also { viewedIds.clear() } }
+            shown.filter { it.id in viewed }.forEach { markPopupNoticeSeen(it.id, opened = false) }
         }
     }

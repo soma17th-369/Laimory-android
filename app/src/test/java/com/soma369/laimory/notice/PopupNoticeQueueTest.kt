@@ -66,8 +66,10 @@ class PopupNoticeQueueTest {
             popupRepository.popups = listOf(popup(12), popup(9), popup(5))
             queue.loadOnce()
             queue.markOpened(queue.notices.value.first())
+            queue.markViewed(popup(12))
+            queue.markViewed(popup(9))
 
-            queue.close(viewedIds = setOf(12L, 9L))
+            queue.close()
 
             assertTrue(queue.notices.value.isEmpty())
             // 넘기지 않은 5 는 보지 않은 것 — 다음 콜드 스타트에 다시 뜬다.
@@ -76,12 +78,29 @@ class PopupNoticeQueueTest {
         }
 
     @Test
+    fun `시트가 다시 그려져도 앞서 넘겨 본 카드 기록이 남는다`() =
+        runTest {
+            // 회전 · 권장 업데이트 안내로 시트가 잠시 내려갔다 다시 뜨면 시트는 지금 카드만 다시 알린다.
+            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
+            queue.loadOnce()
+            queue.markViewed(popup(12))
+            queue.markViewed(popup(9))
+
+            // 다시 그려진 시트가 지금 카드(9)를 한 번 더 알린다.
+            queue.markViewed(popup(9))
+            queue.close()
+
+            assertEquals(setOf(12L, 9L), popupRepository.seen)
+        }
+
+    @Test
     fun `같은 프로세스에서는 한 번만 받는다`() =
         runTest {
             popupRepository.popups = listOf(popup(12))
 
             queue.loadOnce()
-            queue.close(viewedIds = setOf(12L))
+            queue.markViewed(popup(12))
+            queue.close()
             queue.loadOnce()
 
             assertEquals(1, popupRepository.popupsCallCount)

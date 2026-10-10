@@ -26,7 +26,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -52,8 +53,9 @@ import com.soma369.laimory.core.ui.theme.Spacing
  * 앱 시작 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트` 3201:2651, 카드는 썸네일형 3204:2663). 안 본 팝업 공지를 카드로 한 장씩 보여 주고 좌우로
  * 넘긴다. 아래 점이 몇 건 중 몇 번째인지 보여 준다(1건이면 점 없음).
  *
- * `자세히 보기` 는 지금 카드의 원문을 연다([onOpen]) — 시트는 그대로다. `모두 닫기` · X · 쓸어내리기 · 뒤로가기 · 바깥
- * 누름은 [onClose] 이고, **넘겨서 화면에 띄운 카드의 id 만** 넘긴다. 넘기지 않은 카드는 보지 않은 것이라 다음에 다시 뜬다.
+ * `자세히 보기` 는 지금 카드의 원문을 연다([onOpen]) — 시트는 그대로다. 카드가 화면에 뜰 때마다 [onViewed] 로 알리고,
+ * `모두 닫기` · X · 쓸어내리기 · 뒤로가기 · 바깥 누름은 [onClose] 다. 넘겨 본 기록은 시트가 아니라 호출부(대기열)가 쥔다 —
+ * 회전이나 일시 숨김으로 시트가 다시 그려져도 앞서 본 카드를 잃지 않게.
  *
  * 공용 Dialog 자리(`GlobalDialogHost`)와 따로 둔다. 그쪽은 한 번에 하나만 보여 줘 다른 Dialog 가 뜨면 밀려 사라지고,
  * 계정 경계에서 통째 비워진다. 띄울지는 [isVisible] 로 받는다.
@@ -65,19 +67,19 @@ import com.soma369.laimory.core.ui.theme.Spacing
 fun PopupNoticeHost(
     notices: List<PopupNotice>,
     isVisible: Boolean,
+    onViewed: (PopupNotice) -> Unit,
     onOpen: (PopupNotice) -> Unit,
-    onClose: (viewedIds: Set<Long>) -> Unit,
+    onClose: () -> Unit,
 ) {
     if (notices.isEmpty() || !isVisible) return
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val pagerState = rememberPagerState(pageCount = { notices.size })
-    // 화면을 다시 그릴 값이 아니라 닫을 때 넘길 기록이라 상태로 두지 않는다.
-    val viewedIds = remember(notices) { mutableSetOf<Long>() }
+    val currentOnViewed by rememberUpdatedState(onViewed)
     LaunchedEffect(notices, pagerState.currentPage) {
-        notices.getOrNull(pagerState.currentPage)?.let { viewedIds += it.id }
+        notices.getOrNull(pagerState.currentPage)?.let(currentOnViewed)
     }
-    val close = { onClose(viewedIds.toSet()) }
+    val close = onClose
     ModalBottomSheet(
         onDismissRequest = close,
         sheetState = sheetState,
