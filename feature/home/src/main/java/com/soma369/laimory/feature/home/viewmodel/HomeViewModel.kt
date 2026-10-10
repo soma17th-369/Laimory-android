@@ -984,6 +984,18 @@ class HomeViewModel
          */
         private suspend fun showCreateConfirm(isResume: Boolean = false) {
             val preparation = draftConsentSessionStore.preparation.value ?: return
+            val accountSession = draftConsentSessionStore.accountSession.value
+            // 크레딧을 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌어, 누르려던 것과
+            // 다른 버튼을 누르게 된다. 못 받으면 줄 없이 띄운다(판정은 서버의 -1021).
+            val credit = getTimelineCredit()
+            // 기다리는 동안(최대 3초) 홈 입력은 잠기지 않는다. 그사이 날짜 · 범위를 바꿨거나 계정이 바뀌었으면 이 시도는
+            // 낡았다 — 띄우면 홈에 보이는 날짜와 다른 날짜로 제출되거나 이전 계정의 확인창이 되살아난다.
+            if (!isStillCurrent(preparation, accountSession)) {
+                if (draftConsentSessionStore.preparation.value?.attemptId == preparation.attemptId) {
+                    draftConsentSessionStore.clearPreparation()
+                }
+                return
+            }
             val submission = submissionOf(preparation)
             val recordDate = preparation.recordDate
             val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
@@ -1000,11 +1012,20 @@ class HomeViewModel
                     AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, preparation.selection.analyticsCounts().total),
                 )
             }
-            // 크레딧을 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌어, 누르려던 것과
-            // 다른 버튼을 누르게 된다. 못 받으면 줄 없이 띄운다(판정은 서버의 -1021).
-            val credit = getTimelineCredit()
             confirmedSubmission = submission
             updateState { copy(createConfirm = submission.toCreateConfirm(credit)) }
+        }
+
+        /** [preparation] 이 아직 지금 홈의 시도인지 — 같은 준비 · 같은 계정 · 홈에 보이는 날짜와 범위 그대로. */
+        private fun isStillCurrent(
+            preparation: DraftConsentPreparation,
+            accountSession: Long,
+        ): Boolean {
+            val current = state.value
+            return draftConsentSessionStore.preparation.value?.attemptId == preparation.attemptId &&
+                draftConsentSessionStore.accountSession.value == accountSession &&
+                current.selectedDate == preparation.recordDate &&
+                current.recordDateWindow(zone) == preparation.window
         }
 
         /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 목록을 그대로 제출한다. */

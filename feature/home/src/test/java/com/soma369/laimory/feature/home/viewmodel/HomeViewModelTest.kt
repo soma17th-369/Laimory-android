@@ -273,6 +273,53 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `크레딧을 기다리는 사이 날짜를 바꾸면 이전 날짜의 확인창을 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기다리는 동안 홈 입력은 잠기지 않는다. 띄우면 홈에 보이는 날짜와 다른 날짜로 제출된다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertNull(viewModel.state.value.createConfirm)
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `크레딧을 기다리는 사이 계정이 바뀌면 이전 계정의 확인창을 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            sessionStore.clearAll()
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
     fun `크레딧이 모자라면 충전하러 가기는 만들지 않고 준비 중이라고 알린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             creditRepository.remaining = 0
@@ -2123,7 +2170,11 @@ class HomeViewModelTest {
         var cost = 1
         var failure: Throwable? = null
 
+        /** 채우면 완료될 때까지 잔액을 주지 않는다. 확인창이 크레딧을 기다리는 사이를 만든다. */
+        var gate: CompletableDeferred<Unit>? = null
+
         override suspend fun getRemainingCredits(): Int {
+            gate?.await()
             failure?.let { throw it }
             return remaining
         }
