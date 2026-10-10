@@ -8,7 +8,9 @@ import com.soma369.laimory.core.data.datasource.remote.AppInitializerRemoteDataS
 import com.soma369.laimory.core.data.datasource.remote.NoticeRemoteDataSource
 import com.soma369.laimory.core.data.di.AppSettingsDataStore
 import com.soma369.laimory.core.data.model.notice.toDomain
+import com.soma369.laimory.core.data.model.onboarding.toDomain
 import com.soma369.laimory.core.domain.model.notice.Notice
+import com.soma369.laimory.core.domain.model.notice.PopupNotice
 import com.soma369.laimory.core.domain.repository.PopupNoticeRepository
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -25,7 +27,7 @@ internal class PopupNoticeRepositoryImpl
         private val noticeRemoteDataSource: NoticeRemoteDataSource,
         @AppSettingsDataStore private val dataStore: DataStore<Preferences>,
     ) : PopupNoticeRepository {
-        override suspend fun getPopupNoticeIds(): List<Long> = initializerRemoteDataSource.fetch().popupNoticeIds
+        override suspend fun getPopupNotices(): List<PopupNotice> = initializerRemoteDataSource.fetch().popupNotices.map { it.toDomain() }
 
         override suspend fun getNotice(noticeId: Long): Notice =
             noticeRemoteDataSource.getNotice(noticeId).toDomain()

@@ -1,6 +1,7 @@
 package com.soma369.laimory.notice
 
-import com.soma369.laimory.core.domain.model.notice.Notice
+import com.soma369.laimory.core.domain.model.notice.PopupNotice
+import com.soma369.laimory.core.domain.usecase.notice.GetPopupNoticeContentUrlUseCase
 import com.soma369.laimory.core.domain.usecase.notice.GetPopupNoticesUseCase
 import com.soma369.laimory.core.domain.usecase.notice.MarkPopupNoticeSeenUseCase
 import kotlinx.coroutines.CancellationException
@@ -22,12 +23,13 @@ class PopupNoticeQueue
     @Inject
     constructor(
         private val getPopupNotices: GetPopupNoticesUseCase,
+        private val getContentUrl: GetPopupNoticeContentUrlUseCase,
         private val markPopupNoticeSeen: MarkPopupNoticeSeenUseCase,
     ) {
-        private val _notices = MutableStateFlow<List<Notice>>(emptyList())
+        private val _notices = MutableStateFlow<List<PopupNotice>>(emptyList())
 
         /** 지금 띄울 팝업 공지, 서버 순서(최신 순). 비면 띄우지 않는다. */
-        val notices: StateFlow<List<Notice>> = _notices.asStateFlow()
+        val notices: StateFlow<List<PopupNotice>> = _notices.asStateFlow()
 
         private val mutex = Mutex()
         private var isLoaded = false
@@ -52,12 +54,15 @@ class PopupNoticeQueue
             }
         }
 
+        /** [notice] 의 원문 주소. 팝업 응답엔 없어 공지 단건 조회로 받는다. 숨겨졌거나(404) 못 받으면 `null` — 열지 않는다. */
+        suspend fun contentUrlOf(notice: PopupNotice): String? = getContentUrl(notice.id)
+
         /**
-         * 카드의 [notice] 원문을 열었다(`자세히 보기`). 시트는 그대로 두고, 그 공지는 곧바로 본 것 · 읽은 것으로 남긴다 — 원문을 보는 사이
-         * 프로세스가 죽어도 다시 뜨지 않게.
+         * 카드의 [notice] 원문을 열었다(`자세히 보기`). 시트는 그대로 두고, 그 공지는 곧바로 본 것 · 읽은 것으로 남긴다 —
+         * 원문을 보는 사이 프로세스가 죽어도 다시 뜨지 않게.
          */
-        suspend fun open(notice: Notice) {
-            markPopupNoticeSeen(notice, opened = true)
+        suspend fun markOpened(notice: PopupNotice) {
+            markPopupNoticeSeen(notice.id, opened = true)
         }
 
         /**
@@ -71,6 +76,6 @@ class PopupNoticeQueue
                 mutex.withLock {
                     _notices.value.also { _notices.value = emptyList() }
                 }
-            shown.filter { it.id in viewedIds }.forEach { markPopupNoticeSeen(it, opened = false) }
+            shown.filter { it.id in viewedIds }.forEach { markPopupNoticeSeen(it.id, opened = false) }
         }
     }

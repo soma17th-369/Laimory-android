@@ -8,6 +8,8 @@ import com.soma369.laimory.core.data.datasource.remote.NoticeRemoteDataSource
 import com.soma369.laimory.core.data.model.notice.NoticeListResponse
 import com.soma369.laimory.core.data.model.notice.NoticeResponse
 import com.soma369.laimory.core.data.model.onboarding.AppInitializerResponse
+import com.soma369.laimory.core.data.model.onboarding.PopupNoticeResponse
+import com.soma369.laimory.core.domain.model.notice.PopupNotice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -22,11 +24,24 @@ class PopupNoticeRepositoryImplTest {
     private val dataStore = InMemoryPreferencesDataStore()
 
     @Test
-    fun `팝업 id 는 앱 초기화 응답 순서 그대로다`() =
+    fun `팝업 공지는 앱 초기화 응답 순서 그대로 제목 · 썸네일까지 읽는다`() =
         runTest {
-            val repository = repository(popupNoticeIds = listOf(12, 9))
+            val repository =
+                repository(
+                    popupNotices =
+                        listOf(
+                            PopupNoticeResponse(12, "점검 안내", "https://cdn.laimory.app/notices/a.webp"),
+                            PopupNoticeResponse(9, "업데이트", "https://cdn.laimory.app/notices/b.webp"),
+                        ),
+                )
 
-            assertEquals(listOf(12L, 9L), repository.getPopupNoticeIds())
+            assertEquals(
+                listOf(
+                    PopupNotice(12, "점검 안내", "https://cdn.laimory.app/notices/a.webp"),
+                    PopupNotice(9, "업데이트", "https://cdn.laimory.app/notices/b.webp"),
+                ),
+                repository.getPopupNotices(),
+            )
         }
 
     @Test
@@ -36,13 +51,23 @@ class PopupNoticeRepositoryImplTest {
 
         val response = json.decodeFromString(AppInitializerResponse.serializer(), """{"onboardingCompleted":true}""")
 
-        assertTrue(response.popupNoticeIds.isEmpty())
+        assertTrue(response.popupNotices.isEmpty())
+    }
+
+    @Test
+    fun `이전 계약의 popupNoticeIds 만 있는 응답도 깨지지 않는다`() {
+        val json = Json { ignoreUnknownKeys = true }
+
+        val response =
+            json.decodeFromString(AppInitializerResponse.serializer(), """{"onboardingCompleted":true,"popupNoticeIds":[3]}""")
+
+        assertTrue(response.popupNotices.isEmpty())
     }
 
     @Test
     fun `띄운 기록은 남고 서버 목록에서 빠져도 지우지 않는다`() =
         runTest {
-            val repository = repository(popupNoticeIds = emptyList())
+            val repository = repository(popupNotices = emptyList())
 
             repository.markSeen(12)
             repository.markSeen(9)
@@ -53,7 +78,7 @@ class PopupNoticeRepositoryImplTest {
     @Test
     fun `띄운 기록은 id 가 큰 순으로 200개만 남긴다`() =
         runTest {
-            val repository = repository(popupNoticeIds = emptyList())
+            val repository = repository(popupNotices = emptyList())
 
             (1L..201L).forEach { repository.markSeen(it) }
 
@@ -63,11 +88,11 @@ class PopupNoticeRepositoryImplTest {
             assertTrue(201L in seen)
         }
 
-    private fun repository(popupNoticeIds: List<Long>) =
+    private fun repository(popupNotices: List<PopupNoticeResponse>) =
         PopupNoticeRepositoryImpl(
             initializerRemoteDataSource =
                 object : AppInitializerRemoteDataSource {
-                    override suspend fun fetch() = AppInitializerResponse(onboardingCompleted = true, popupNoticeIds = popupNoticeIds)
+                    override suspend fun fetch() = AppInitializerResponse(onboardingCompleted = true, popupNotices = popupNotices)
                 },
             noticeRemoteDataSource =
                 object : NoticeRemoteDataSource {

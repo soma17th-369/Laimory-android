@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.browser.auth.AuthTabIntent
@@ -274,9 +275,16 @@ class MainActivity : ComponentActivity() {
                                     recommendation == null &&
                                     activeDialog == null,
                             onOpen = { notice ->
-                                // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열지 못했으면(브라우저 없음) 아무것도 남기지 않고,
-                                // 시트를 닫을 때 본 것으로만 남는다.
-                                if (openInCustomTab(notice.contentUrl)) lifecycleScope.launch { popupNoticeQueue.open(notice) }
+                                // 팝업 응답엔 원문 주소가 없어 단건 조회로 받는다. 그사이 숨겨졌으면(404) 열지 않는다(서버 계약).
+                                // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열지 못했으면 시트를 닫을 때 본 것으로만 남는다.
+                                lifecycleScope.launch {
+                                    val url = popupNoticeQueue.contentUrlOf(notice)
+                                    if (url != null && openInCustomTab(url)) {
+                                        popupNoticeQueue.markOpened(notice)
+                                    } else {
+                                        Toast.makeText(context, POPUP_NOTICE_UNAVAILABLE, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             },
                             onClose = { viewedIds -> lifecycleScope.launch { popupNoticeQueue.close(viewedIds) } },
                         )
@@ -427,6 +435,9 @@ class MainActivity : ComponentActivity() {
 
         /** 재생성 뒤에도 폴백으로 다시 열 수 있게 보관하는 인증 주소 키. */
         const val STATE_AUTH_TAB_AUTHORIZATION_URL = "auth_tab_authorization_url"
+
+        /** 팝업 공지 원문을 못 열었을 때 — 그사이 내려간 공지(404)거나 연결 · 브라우저 문제다. */
+        const val POPUP_NOTICE_UNAVAILABLE = "공지를 열 수 없어요. 잠시 후 다시 시도해 주세요."
     }
 }
 

@@ -1,6 +1,5 @@
 package com.soma369.laimory.core.domain.usecase.notice
 
-import com.soma369.laimory.core.domain.model.notice.Notice
 import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.PopupNoticeRepository
 import javax.inject.Inject
@@ -22,14 +21,14 @@ class MarkPopupNoticeSeenUseCase
         private val noticeRepository: NoticeRepository,
     ) {
         suspend operator fun invoke(
-            notice: Notice,
+            noticeId: Long,
             opened: Boolean,
         ) {
-            swallow { popupNoticeRepository.markSeen(notice.id) }
+            swallow { popupNoticeRepository.markSeen(noticeId) }
             if (opened) {
                 // 설정 쪽 정리 기준(표시 기간)은 공지 목록을 봐야 알 수 있다. 여기서는 기존 기록을 그대로 두고 하나만
                 // 더한다 — 정리는 다음에 설정이 읽음을 남길 때 한다.
-                swallow { noticeRepository.markRead(notice.id, keepIds = noticeRepository.getReadNoticeIds()) }
+                swallow { noticeRepository.markRead(noticeId, keepIds = noticeRepository.getReadNoticeIds()) }
             }
         }
 
