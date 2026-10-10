@@ -31,10 +31,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.soma369.laimory.core.domain.model.credit.TimelineCredit
 import com.soma369.laimory.core.ui.component.LaimoryDialog
 import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
 import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoViewerDialog
@@ -56,6 +60,9 @@ import com.soma369.laimory.core.ui.R as UiR
  * 여기서 사진을 고르러 갈 수 있다(Figma `Home / Timeline confirm dialog` 2854:1400). 0장이면 안내 아래
  * `사진 고르기`, 고른 사진이 있으면 머리 줄 오른쪽 `사진 바꾸기`. 둘 다 [onPickPhotos] 로 사진 시트를 열고,
  * 시트를 닫으면 이 다이얼로그가 새 사진으로 다시 뜬다.
+ *
+ * 건수 칸 아래에 크레딧 줄을 둔다(Figma `제안 / 크레딧 줄` 3153:1693). 잔액이 비용보다 적으면 버튼을 막지 않고
+ * `만들기` 자리를 `충전하러 가기`([onCharge])로 바꾼다. 크레딧을 못 받았으면 줄을 숨기고 `만들기` 를 그대로 둔다.
  */
 @Composable
 internal fun DraftCreateConfirmDialog(
@@ -63,6 +70,7 @@ internal fun DraftCreateConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     onPickPhotos: () -> Unit,
+    onCharge: () -> Unit,
 ) {
     LaimoryDialog(
         title = "타임라인을 만들까요?",
@@ -70,8 +78,8 @@ internal fun DraftCreateConfirmDialog(
             LaimoryDialogButtons.Two(
                 secondaryLabel = "취소",
                 onSecondaryClick = onDismiss,
-                primaryLabel = "만들기",
-                onPrimaryClick = onConfirm,
+                primaryLabel = if (confirm.isCreditShort) "충전하러 가기" else "만들기",
+                onPrimaryClick = if (confirm.isCreditShort) onCharge else onConfirm,
             ),
         onDismissRequest = onDismiss,
     ) {
@@ -82,6 +90,55 @@ internal fun DraftCreateConfirmDialog(
         ) {
             confirm.counts.forEach { CountTile(count = it, modifier = Modifier.weight(1f)) }
         }
+        confirm.credit?.let { CreditRow(credit = it) }
+    }
+}
+
+/** `크레딧 1개 사용 · 남은 크레딧 42`. 모자라면 오류 색 바탕에 `크레딧이 부족해요`. */
+@Composable
+private fun CreditRow(credit: TimelineCredit) {
+    val isShort = !credit.isEnough
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    val strong = MaterialTheme.colorScheme.onSurface
+    val usage =
+        if (isShort) {
+            buildAnnotatedString { append("크레딧이 부족해요") }
+        } else {
+            buildAnnotatedString {
+                append("크레딧 ")
+                withStyle(SpanStyle(color = strong)) { append("${credit.cost}개") }
+                append(" 사용")
+            }
+        }
+    val balance = "남은 크레딧 ${credit.remaining}"
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(CREDIT_ROW_CORNER))
+                .background(if (isShort) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer)
+                .padding(horizontal = Spacing.medium, vertical = Spacing.small)
+                .clearAndSetSemantics { contentDescription = "$usage, $balance" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(CREDIT_ROW_GAP),
+    ) {
+        Icon(
+            painter = painterResource(UiR.drawable.ico_default_coins),
+            contentDescription = null,
+            modifier = Modifier.size(CREDIT_ICON_SIZE),
+            tint = MaterialTheme.laimoryColors.warning,
+        )
+        Text(
+            text = usage,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (isShort) MaterialTheme.colorScheme.error else variant,
+        )
+        Text(
+            text = balance,
+            style = MaterialTheme.typography.labelMedium,
+            color = strong,
+        )
     }
 }
 
@@ -263,6 +320,9 @@ private val THUMBNAIL_CORNER = 8.dp
 private val TILE_CORNER = 12.dp
 private val TILE_GAP = 6.dp
 private val ICON_SIZE = 20.dp
+private val CREDIT_ROW_CORNER = 8.dp
+private val CREDIT_ROW_GAP = 6.dp
+private val CREDIT_ICON_SIZE = 16.dp
 
 private val PREVIEW_COUNTS =
     listOf(
@@ -276,10 +336,16 @@ private val PREVIEW_COUNTS =
 private fun DraftCreateConfirmDialogPreview() {
     LaimoryTheme {
         DraftCreateConfirmDialog(
-            confirm = DraftCreateConfirm(photoUris = List(5) { "" }, counts = PREVIEW_COUNTS),
+            confirm =
+                DraftCreateConfirm(
+                    photoUris = List(5) { "" },
+                    counts = PREVIEW_COUNTS,
+                    credit = TimelineCredit(cost = 1, remaining = 42),
+                ),
             onConfirm = {},
             onDismiss = {},
             onPickPhotos = {},
+            onCharge = {},
         )
     }
 }
@@ -293,6 +359,26 @@ private fun DraftCreateConfirmDialogEmptyPreview() {
             onConfirm = {},
             onDismiss = {},
             onPickPhotos = {},
+            onCharge = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun DraftCreateConfirmDialogCreditShortPreview() {
+    LaimoryTheme {
+        DraftCreateConfirmDialog(
+            confirm =
+                DraftCreateConfirm(
+                    photoUris = List(5) { "" },
+                    counts = PREVIEW_COUNTS,
+                    credit = TimelineCredit(cost = 1, remaining = 0),
+                ),
+            onConfirm = {},
+            onDismiss = {},
+            onPickPhotos = {},
+            onCharge = {},
         )
     }
 }

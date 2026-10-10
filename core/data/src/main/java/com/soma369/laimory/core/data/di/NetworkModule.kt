@@ -4,6 +4,8 @@ import com.soma369.laimory.core.data.BuildConfig
 import com.soma369.laimory.core.data.network.ApiPrefix
 import com.soma369.laimory.core.data.network.SplitJsonConverterFactory
 import com.soma369.laimory.core.data.network.api.AuthApi
+import com.soma369.laimory.core.data.network.api.CreditApi
+import com.soma369.laimory.core.data.network.api.CreditCostApi
 import com.soma369.laimory.core.data.network.api.Feature1Api
 import com.soma369.laimory.core.data.network.api.InquiryApi
 import com.soma369.laimory.core.data.network.api.IntroApi
@@ -300,4 +302,17 @@ object NetworkModule {
     fun provideTermAgreementApi(
         @AuthRetrofit retrofit: Retrofit,
     ): TermAgreementApi = retrofit.create(TermAgreementApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideCreditApi(
+        @AuthRetrofit retrofit: Retrofit,
+    ): CreditApi = retrofit.create(CreditApi::class.java)
+
+    /** 비용은 사용자와 무관한 서버 상수라 공개 경로다(잔액만 인증). */
+    @Provides
+    @Singleton
+    fun provideCreditCostApi(
+        @PublicRetrofit retrofit: Retrofit,
+    ): CreditCostApi = retrofit.create(CreditCostApi::class.java)
 }

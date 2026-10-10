@@ -117,6 +117,8 @@ class NoticeRepositoryImplTest {
         private val notices: List<NoticeResponse>,
     ) : NoticeRemoteDataSource {
         override suspend fun getNotices(): NoticeListResponse = NoticeListResponse(notices)
+
+        override suspend fun getNotice(noticeId: Long): NoticeResponse = notices.first { it.noticeId == noticeId }
     }
 
     private class InMemoryPreferencesDataStore : DataStore<Preferences> {

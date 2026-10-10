@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.state
 
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.collection.PhotoPayload
+import com.soma369.laimory.core.domain.model.credit.TimelineCredit
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
 
 /**
@@ -9,12 +10,17 @@ import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
  *
  * [photoUris] 는 보낼 사진을 고른 차례대로 담는다. 비면 다이얼로그가 사진을 고르라는 안내를 띄운다.
  * [counts] 는 사진 아래 칸들이다.
+ * [credit] 은 칸들 아래 크레딧 줄이다. 못 받았으면 `null` 이고 줄을 숨긴다 — 만들기는 막지 않는다(판정은 서버).
  */
 @Immutable
 data class DraftCreateConfirm(
     val photoUris: List<String>,
     val counts: List<DraftCreateConfirmCount>,
-)
+    val credit: TimelineCredit? = null,
+) {
+    /** 잔액이 비용보다 적다고 **알고 있을 때만** 참. 모르면(조회 실패) 만들기를 그대로 둔다. */
+    val isCreditShort: Boolean get() = credit?.isEnough == false
+}
 
 /**
  * 제출할 스냅샷으로 확인 다이얼로그를 만든다.
@@ -26,7 +32,7 @@ data class DraftCreateConfirm(
  * **건강은 보낼 때만 붙인다.** 홈 카드에는 없지만 전송되므로, 빠지면 "보여준 것 = 보내는 것" 이 깨지고
  * 사용자는 걸음 수가 나간 줄 모른다.
  */
-internal fun DraftSourceItemSelection.toCreateConfirm(): DraftCreateConfirm {
+internal fun DraftSourceItemSelection.toCreateConfirm(credit: TimelineCredit? = null): DraftCreateConfirm {
     val countOf = { group: DraftConsentTypeGroup ->
         group.memberTypes.sumOf { report.selectedCounts.getOrDefault(it, 0) }
     }
@@ -36,6 +42,7 @@ internal fun DraftSourceItemSelection.toCreateConfirm(): DraftCreateConfirm {
         counts =
             FIXED_COUNT_GROUPS.map { DraftCreateConfirmCount(it, countOf(it)) } +
                 listOfNotNull(DraftCreateConfirmCount(DraftConsentTypeGroup.HEALTH, health).takeIf { health > 0 }),
+        credit = credit,
     )
 }
 

@@ -19,6 +19,7 @@ import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
+import com.soma369.laimory.core.domain.model.credit.CreditCosts
 import com.soma369.laimory.core.domain.model.notice.NewNoticePolicy
 import com.soma369.laimory.core.domain.model.notice.Notice
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
@@ -31,6 +32,7 @@ import com.soma369.laimory.core.domain.navigation.NoticesPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
 import com.soma369.laimory.core.domain.repository.AuthRepository
+import com.soma369.laimory.core.domain.repository.CreditRepository
 import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
@@ -41,6 +43,7 @@ import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.credit.GetRemainingCreditsUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
@@ -84,6 +87,7 @@ class SettingsViewModelTest {
     private val locationTrackingRepository = FakeLocationTrackingRepository()
     private val analyticsHelper = RecordingAnalyticsHelper()
     private val noticeRepository = FakeNoticeRepository()
+    private val creditRepository = FakeCreditRepository()
 
     @Test
     fun `읽지 않은 최근 공지가 있으면 공지사항 줄에 표시를 띄우고, 읽고 돌아오면 지운다`() =
@@ -533,7 +537,87 @@ class SettingsViewModelTest {
             setLocationTracking = SetLocationTrackingUseCase(locationTrackingRepository),
             logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
             analyticsHelper = analyticsHelper,
+            getRemainingCredits = GetRemainingCreditsUseCase(creditRepository),
         )
+
+    @Test
+    fun `화면에 들어오면 남은 크레딧을 받아 계정 카드에 싣는다`() =
+        runTest {
+            creditRepository.remaining = 42
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            assertEquals(42, viewModel.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `남은 크레딧을 못 받으면 0 이 아니라 빈칸이다`() =
+        runTest {
+            // 크레딧 행이 없는 500 · 운영 서버에 API 가 없는 404. 0 으로 보이면 남은 게 없는 줄 안다.
+            creditRepository.remaining = 42
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            creditRepository.failure = ApiException.ServerException(rawCode = 500)
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            assertNull(viewModel.state.value.remainingCredits)
+            assertTrue(messageHelper.sentMessages.isEmpty())
+        }
+
+    @Test
+    fun `조회가 겹치면 늦게 도착한 이전 응답이 최신 잔액을 덮지 않는다`() =
+        runTest {
+            // 설정을 떠나 크레딧을 쓰고 돌아오면 복귀마다 조회가 겹친다. 앞선 느린 응답(42)이 나중에 와도 41 이 남아야 한다.
+            val viewModel = createViewModel()
+            runCurrent()
+            val slow = CompletableDeferred<Unit>()
+            creditRepository.remaining = 42
+            creditRepository.gate = slow
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            creditRepository.gate = null
+            creditRepository.remaining = 41
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+            assertEquals(41, viewModel.state.value.remainingCredits)
+
+            creditRepository.remaining = 42
+            slow.complete(Unit)
+            runCurrent()
+
+            assertEquals(41, viewModel.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `로그아웃하면 남은 크레딧을 비우고 늦게 온 이전 계정의 응답은 버린다`() =
+        runTest {
+            repository.account.value = SignedInAccount(SocialLoginProvider.GOOGLE)
+            creditRepository.remaining = 42
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+            assertEquals(42, viewModel.state.value.remainingCredits)
+
+            val late = CompletableDeferred<Unit>()
+            creditRepository.gate = late
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+            repository.account.value = null
+            runCurrent()
+            late.complete(Unit)
+            runCurrent()
+
+            assertNull(viewModel.state.value.remainingCredits)
+        }
 
     @Test
     fun `설정에서 연 권한 요청을 설정 자리로 기록한다`() =
@@ -779,5 +863,21 @@ class SettingsViewModelTest {
         override fun setUserId(userId: Long?) = Unit
 
         override fun setInstallAttribution(attribution: InstallAttribution) = Unit
+    }
+
+    private class FakeCreditRepository : CreditRepository {
+        var remaining = 60
+        var failure: Throwable? = null
+
+        /** 채우면 완료될 때까지 응답하지 않는다. 응답이 늦게 오는 경우를 만든다. */
+        var gate: CompletableDeferred<Unit>? = null
+
+        override suspend fun getRemainingCredits(): Int {
+            gate?.await()
+            failure?.let { throw it }
+            return remaining
+        }
+
+        override suspend fun getCosts(): CreditCosts = CreditCosts(timelineCreation = 1)
     }
 }

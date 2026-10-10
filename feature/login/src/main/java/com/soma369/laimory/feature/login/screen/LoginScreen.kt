@@ -53,7 +53,6 @@ import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimorySignature
-import com.soma369.laimory.feature.login.R
 import com.soma369.laimory.feature.login.state.LoginPhase
 import com.soma369.laimory.feature.login.state.LoginUiIntent
 import com.soma369.laimory.feature.login.state.LoginUiSideEffect
@@ -189,7 +188,7 @@ private fun LoginHeader() {
                 Modifier
                     .fillMaxWidth()
                     .heightIn(max = WordmarkMaxHeight),
-            painter = painterResource(R.drawable.img_laimory_wordmark),
+            painter = painterResource(CoreUiR.drawable.img_laimory_wordmark),
             // 워드마크가 곧 앱 이름이라 스크린 리더에는 이름으로 읽힌다.
             contentDescription = "Laimory",
             contentScale = ContentScale.Fit,

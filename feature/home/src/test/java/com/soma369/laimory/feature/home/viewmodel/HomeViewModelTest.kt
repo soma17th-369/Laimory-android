@@ -30,6 +30,8 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.collection.SourceName
 import com.soma369.laimory.core.domain.model.collection.StayPayload
+import com.soma369.laimory.core.domain.model.credit.CreditCosts
+import com.soma369.laimory.core.domain.model.credit.TimelineCredit
 import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermRequirement
@@ -63,6 +65,7 @@ import com.soma369.laimory.core.domain.navigation.PastRecordsPage
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.provider.LocationAddressResolver
+import com.soma369.laimory.core.domain.repository.CreditRepository
 import com.soma369.laimory.core.domain.repository.DefaultRecordRangeRepository
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.StayAddressRepository
@@ -80,6 +83,7 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
+import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
 import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
@@ -149,6 +153,7 @@ class HomeViewModelTest {
     private val submissionStore = DraftSubmissionStore()
     private val confirmDialog = ConfirmDialogRecorder()
     private val draftRepository = FakeDraftRepository()
+    private val creditRepository = FakeCreditRepository()
     private val termsCoordinator = FakeHomeTermsCoordinator()
     private val addressResolver = FakeHomeAddressResolver()
     private val analyticsHelper = RecordingAnalyticsHelper()
@@ -233,6 +238,135 @@ class HomeViewModelTest {
             assertNull(sessionStore.preparation.value)
             assertEquals(0, draftRepository.createCount)
             assertTrue(navigationHelper.destinations.isEmpty())
+        }
+
+    @Test
+    fun `확인 다이얼로그는 이번 비용과 남은 크레딧을 싣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            creditRepository.remaining = 42
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            val confirm = viewModel.state.value.createConfirm!!
+            assertEquals(TimelineCredit(cost = 1, remaining = 42), confirm.credit)
+            assertFalse(confirm.isCreditShort)
+        }
+
+    @Test
+    fun `크레딧을 못 받으면 줄 없이 띄우고 만들기는 막지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 운영 서버에 API 가 없는 404 · 크레딧 행이 없는 500. 판정은 서버의 -1021 에 맡긴다.
+            creditRepository.failure = ApiException.ServerException(rawCode = 500)
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertNull(confirmDialog.shown.single().credit)
+            assertFalse(confirmDialog.shown.single().isCreditShort)
+            assertEquals(1, draftRepository.createCount)
+        }
+
+    @Test
+    fun `크레딧을 기다리는 사이 날짜를 바꾸면 이전 날짜의 확인창을 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기다리는 동안 홈 입력은 잠기지 않는다. 띄우면 홈에 보이는 날짜와 다른 날짜로 제출된다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertNull(viewModel.state.value.createConfirm)
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(today.minusDays(2)))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `크레딧을 기다리는 사이 계정이 바뀌면 이전 계정의 확인창을 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            sessionStore.clearAll()
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `크레딧이 모자라면 충전하러 가기는 만들지 않고 준비 중이라고 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            creditRepository.remaining = 0
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertTrue(viewModel.state.value.createConfirm!!.isCreditShort)
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+
+            viewModel.sendIntent(HomeUiIntent.ChargeCredits)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+            assertTrue(navigationHelper.destinations.isEmpty())
+            assertEquals(listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("크레딧 충전은 준비 중이에요")), effects)
+        }
+
+    @Test
+    fun `서버가 크레딧 부족으로 거절하면 기록을 다시 읽지 않고 이유를 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 다이얼로그가 크레딧을 못 받았거나 그사이 다른 생성으로 잔액이 줄었다. 서버는 아무것도 만들기 전에 거절한다.
+            creditRepository.failure = ApiException.NetworkException()
+            draftRepository.createFailure = ApiException.UnauthorizedException(rawCode = 403, errorCode = -1021, message = "크레딧")
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            val failed = submissionStore.submission.value as DraftSubmission.Failed
+            assertEquals(DraftSubmitFailureKind.INSUFFICIENT_CREDIT, failed.kind)
+            val before = recordRepository.dailyRecordCallCount
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+
+            leaveLoading()
+            viewModel.sendIntent(HomeUiIntent.ConsumeSubmitFailure)
+            runCurrent()
+
+            assertEquals(before, recordRepository.dailyRecordCallCount)
+            assertEquals(
+                listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("크레딧이 부족해 타임라인을 만들 수 없어요.")),
+                effects,
+            )
         }
 
     @Test
@@ -1947,6 +2081,7 @@ class HomeViewModelTest {
             autoCollectionCoordinator = autoCollectionCoordinator,
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
             createTimelineDraftUseCase = CreateTimelineDraftUseCase(draftRepository, NoOpMessageHelper),
+            getTimelineCredit = GetTimelineCreditUseCase(creditRepository),
             loadingSessionStore = loadingSessionStore,
             submissionStore = submissionStore,
             termsCoordinator = termsCoordinator,
@@ -2028,6 +2163,23 @@ class HomeViewModelTest {
         }
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
+    }
+
+    private class FakeCreditRepository : CreditRepository {
+        var remaining = 60
+        var cost = 1
+        var failure: Throwable? = null
+
+        /** 채우면 완료될 때까지 잔액을 주지 않는다. 확인창이 크레딧을 기다리는 사이를 만든다. */
+        var gate: CompletableDeferred<Unit>? = null
+
+        override suspend fun getRemainingCredits(): Int {
+            gate?.await()
+            failure?.let { throw it }
+            return remaining
+        }
+
+        override suspend fun getCosts(): CreditCosts = CreditCosts(timelineCreation = cost)
     }
 
     /**

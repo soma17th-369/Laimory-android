@@ -48,6 +48,7 @@ import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
+import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
 import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -121,6 +122,7 @@ class HomeViewModel
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
+        private val getTimelineCredit: GetTimelineCreditUseCase,
         private val loadingSessionStore: DraftLoadingSessionStore,
         private val submissionStore: DraftSubmissionStore,
         private val termsCoordinator: TermsAgreementCoordinator,
@@ -329,6 +331,7 @@ class HomeViewModel
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
                 HomeUiIntent.ConfirmCreateDraft -> confirmCreateDraft()
                 HomeUiIntent.DismissCreateConfirm -> dismissCreateConfirm()
+                HomeUiIntent.ChargeCredits -> chargeCredits()
                 HomeUiIntent.PickPhotosForCreate -> pickPhotosForCreate()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 HomeUiIntent.RetryDraft -> retryDraft()
@@ -981,6 +984,18 @@ class HomeViewModel
          */
         private suspend fun showCreateConfirm(isResume: Boolean = false) {
             val preparation = draftConsentSessionStore.preparation.value ?: return
+            val accountSession = draftConsentSessionStore.accountSession.value
+            // 크레딧을 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌어, 누르려던 것과
+            // 다른 버튼을 누르게 된다. 못 받으면 줄 없이 띄운다(판정은 서버의 -1021).
+            val credit = getTimelineCredit()
+            // 기다리는 동안(최대 3초) 홈 입력은 잠기지 않는다. 그사이 날짜 · 범위를 바꿨거나 계정이 바뀌었으면 이 시도는
+            // 낡았다 — 띄우면 홈에 보이는 날짜와 다른 날짜로 제출되거나 이전 계정의 확인창이 되살아난다.
+            if (!isStillCurrent(preparation, accountSession)) {
+                if (draftConsentSessionStore.preparation.value?.attemptId == preparation.attemptId) {
+                    draftConsentSessionStore.clearPreparation()
+                }
+                return
+            }
             val submission = submissionOf(preparation)
             val recordDate = preparation.recordDate
             val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
@@ -998,7 +1013,19 @@ class HomeViewModel
                 )
             }
             confirmedSubmission = submission
-            updateState { copy(createConfirm = submission.toCreateConfirm()) }
+            updateState { copy(createConfirm = submission.toCreateConfirm(credit)) }
+        }
+
+        /** [preparation] 이 아직 지금 홈의 시도인지 — 같은 준비 · 같은 계정 · 홈에 보이는 날짜와 범위 그대로. */
+        private fun isStillCurrent(
+            preparation: DraftConsentPreparation,
+            accountSession: Long,
+        ): Boolean {
+            val current = state.value
+            return draftConsentSessionStore.preparation.value?.attemptId == preparation.attemptId &&
+                draftConsentSessionStore.accountSession.value == accountSession &&
+                current.selectedDate == preparation.recordDate &&
+                current.recordDateWindow(zone) == preparation.window
         }
 
         /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 목록을 그대로 제출한다. */
@@ -1062,6 +1089,16 @@ class HomeViewModel
 
         /** 요청을 보낸 계정이 아직 그대로인지. 취소가 응답보다 늦게 닿아도 이전 계정의 결과를 버린다. */
         private fun isSameAccount(accountSession: Long): Boolean = draftConsentSessionStore.accountSession.value == accountSession
+
+        /**
+         * 크레딧이 모자랄 때 `만들기` 자리에 오는 `충전하러 가기`. 충전은 서버에 아직 없어 다이얼로그를 닫고 준비 중이라고만
+         * 알린다 — 만들지 않았으니 취소와 같게 정리한다. 충전 화면이 생기면 목적지만 바꾼다.
+         */
+        private suspend fun chargeCredits() {
+            if (confirmedSubmission == null) return
+            dismissCreateConfirm()
+            sendEffect(HomeUiSideEffect.ShowSnackbar(CREDIT_CHARGE_NOT_READY_MESSAGE))
+        }
 
         /**
          * 취소·바깥 탭·뒤로가기는 모두 만들지 않는다. **제출용 스냅샷만 버리고** 홈 선택은 남긴다 —
@@ -1219,6 +1256,11 @@ class HomeViewModel
                 // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 실패로만 보이면 이유를 알 수 없다.
                 DraftSubmitFailureKind.NO_NEW_ITEMS ->
                     if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(NO_NEW_ITEMS_MESSAGE))
+
+                // 다이얼로그가 크레딧을 못 받았거나 그사이 다른 생성이 끝나 잔액이 줄었다. 서버가 아무것도 만들기 전에
+                // 거절하므로 기록을 다시 읽을 필요가 없다.
+                DraftSubmitFailureKind.INSUFFICIENT_CREDIT ->
+                    if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.INSUFFICIENT_CREDIT))
 
                 // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 사진으로는 복구되지
                 // 않으므로 고르는 자리를 다시 연다.
@@ -1625,6 +1667,9 @@ class HomeViewModel
         private companion object {
             /** 이어 붙일 새 항목이 없을 때(-1013) 안내. 로딩 화면도 같은 문구를 쓴다. */
             const val NO_NEW_ITEMS_MESSAGE = DraftSubmitFailureMessages.NO_NEW_ITEMS
+
+            /** 크레딧 충전은 서버에 아직 없다. */
+            const val CREDIT_CHARGE_NOT_READY_MESSAGE = "크레딧 충전은 준비 중이에요"
 
             /**
              * 서버가 초안 생성 요청을 받았을 수 있는 실패. 돌아간 뒤 기록 상태를 다시 읽는다 — 홈 CTA 는 서버 판정이라, 실제로

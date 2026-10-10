@@ -22,6 +22,7 @@ import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
+import com.soma369.laimory.core.domain.usecase.credit.GetRemainingCreditsUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
@@ -58,17 +59,28 @@ class SettingsViewModel
         observeLocationTracking: ObserveLocationTrackingUseCase,
         private val setLocationTracking: SetLocationTrackingUseCase,
         private val logPermissionEvent: LogPermissionEventUseCase,
+        private val getRemainingCredits: GetRemainingCreditsUseCase,
         private val analyticsHelper: AnalyticsHelper,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
+
+        /**
+         * 잔액 요청 번호. 조회를 시작할 때와 로그아웃할 때 하나씩 올리고, **가장 최근 번호의 응답만** 반영한다.
+         *
+         * - 같은 계정에서도 화면 복귀마다 조회가 겹친다. 앞선 느린 응답이 나중에 오면 이미 줄어든 최신 잔액을 옛 값으로 덮는다.
+         * - 로그아웃 전에 보낸 응답은 이전 계정의 값이다 — 이 ViewModel 은 Activity 수명이라 다른 계정으로 다시 들어와도
+         *   같은 상태를 이어 쓴다.
+         */
+        private var creditRequest = 0
 
         init {
             viewModelScope.launch {
                 observeSignedInAccount().collect { account ->
                     updateState {
                         if (account == null) {
-                            copy(accountProvider = null)
+                            creditRequest++
+                            copy(accountProvider = null, remainingCredits = null)
                         } else {
                             // 진행 상태는 재인증된 계정을 관찰할 때 해제한다. ViewModel 이 Activity 수명이라
                             // 여기서 안 지우면 새 계정으로 로그인한 뒤에도 계정 항목이 잠긴 채 남는다.
@@ -90,6 +102,15 @@ class SettingsViewModel
             safeLaunch {
                 val hasNew = hasNewNotice()
                 updateState { copy(hasNewNotice = hasNew) }
+            }
+        }
+
+        /** 못 받으면 칸을 비운다. 이전 값을 남겨 두면 줄어든 뒤에도 옛 잔액이 보인다. */
+        private fun refreshCredits() {
+            val request = ++creditRequest
+            safeLaunch {
+                val remaining = getRemainingCredits()
+                if (request == creditRequest) updateState { copy(remainingCredits = remaining) }
             }
         }
 
@@ -135,6 +156,7 @@ class SettingsViewModel
                 SettingsUiIntent.NoticesClicked -> navigationHelper.navigateTo(NoticesPage)
                 SettingsUiIntent.InquiryClicked -> navigationHelper.navigateTo(InquiryPage)
                 SettingsUiIntent.RefreshNoticeBadge -> refreshNoticeBadge()
+                SettingsUiIntent.RefreshCredits -> refreshCredits()
                 is SettingsUiIntent.LocationCollectionToggled -> setLocationTracking(intent.enabled)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit

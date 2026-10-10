@@ -171,6 +171,9 @@ class DraftLoadingViewModel
                         secondaryAction = null,
                     )
                 DraftSubmitFailureKind.NO_NEW_ITEMS -> DraftLoadingNotice(DraftSubmitFailureMessages.NO_NEW_ITEMS, home, null)
+                // 다시 시도해도 같은 거절이라 재시도가 아닌 `홈으로`. 충전은 아직 없다.
+                DraftSubmitFailureKind.INSUFFICIENT_CREDIT ->
+                    DraftLoadingNotice(DraftSubmitFailureMessages.INSUFFICIENT_CREDIT, home, null)
                 DraftSubmitFailureKind.PHOTO_ACCESS -> DraftLoadingNotice(DraftSubmitFailureMessages.PHOTO_ACCESS, repick, null)
                 DraftSubmitFailureKind.PHOTO_LIMIT ->
                     DraftLoadingNotice("${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}", repick, null)

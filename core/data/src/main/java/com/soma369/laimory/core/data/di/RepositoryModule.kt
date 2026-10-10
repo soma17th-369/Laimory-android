@@ -4,12 +4,14 @@ import com.soma369.laimory.core.data.repository.ActiveDraftTaskRepositoryImpl
 import com.soma369.laimory.core.data.repository.AppThemeRepositoryImpl
 import com.soma369.laimory.core.data.repository.AppUpdateRepositoryImpl
 import com.soma369.laimory.core.data.repository.AuthRepositoryImpl
+import com.soma369.laimory.core.data.repository.CreditRepositoryImpl
 import com.soma369.laimory.core.data.repository.DefaultRecordRangeRepositoryImpl
 import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
 import com.soma369.laimory.core.data.repository.InquiryRepositoryImpl
 import com.soma369.laimory.core.data.repository.IntroRepositoryImpl
 import com.soma369.laimory.core.data.repository.NoticeRepositoryImpl
 import com.soma369.laimory.core.data.repository.OnboardingRepositoryImpl
+import com.soma369.laimory.core.data.repository.PopupNoticeRepositoryImpl
 import com.soma369.laimory.core.data.repository.PushRegistrationRepositoryImpl
 import com.soma369.laimory.core.data.repository.PushSettingsRepositoryImpl
 import com.soma369.laimory.core.data.repository.SocialLoginRepositoryImpl
@@ -22,12 +24,14 @@ import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
 import com.soma369.laimory.core.domain.repository.AppThemeRepository
 import com.soma369.laimory.core.domain.repository.AppUpdateRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
+import com.soma369.laimory.core.domain.repository.CreditRepository
 import com.soma369.laimory.core.domain.repository.DefaultRecordRangeRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.InquiryRepository
 import com.soma369.laimory.core.domain.repository.IntroRepository
 import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
+import com.soma369.laimory.core.domain.repository.PopupNoticeRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.PushSettingsRepository
 import com.soma369.laimory.core.domain.repository.SocialLoginRepository
@@ -116,4 +120,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindInquiryRepository(impl: InquiryRepositoryImpl): InquiryRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindCreditRepository(impl: CreditRepositoryImpl): CreditRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindPopupNoticeRepository(impl: PopupNoticeRepositoryImpl): PopupNoticeRepository
 }
