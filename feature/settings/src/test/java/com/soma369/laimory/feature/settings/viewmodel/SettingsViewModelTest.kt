@@ -572,6 +572,31 @@ class SettingsViewModelTest {
         }
 
     @Test
+    fun `조회가 겹치면 늦게 도착한 이전 응답이 최신 잔액을 덮지 않는다`() =
+        runTest {
+            // 설정을 떠나 크레딧을 쓰고 돌아오면 복귀마다 조회가 겹친다. 앞선 느린 응답(42)이 나중에 와도 41 이 남아야 한다.
+            val viewModel = createViewModel()
+            runCurrent()
+            val slow = CompletableDeferred<Unit>()
+            creditRepository.remaining = 42
+            creditRepository.gate = slow
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            creditRepository.gate = null
+            creditRepository.remaining = 41
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+            assertEquals(41, viewModel.state.value.remainingCredits)
+
+            creditRepository.remaining = 42
+            slow.complete(Unit)
+            runCurrent()
+
+            assertEquals(41, viewModel.state.value.remainingCredits)
+        }
+
+    @Test
     fun `로그아웃하면 남은 크레딧을 비우고 늦게 온 이전 계정의 응답은 버린다`() =
         runTest {
             repository.account.value = SignedInAccount(SocialLoginProvider.GOOGLE)

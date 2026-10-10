@@ -66,17 +66,20 @@ class SettingsViewModel
         private var accountDeleteConfirmJob: Job? = null
 
         /**
-         * 로그아웃할 때마다 하나씩 올린다. 그 전에 보낸 잔액 요청이 늦게 오면 이전 계정의 값이라 버린다 — 이 ViewModel 은
-         * Activity 수명이라 다른 계정으로 다시 들어와도 같은 상태를 이어 쓴다.
+         * 잔액 요청 번호. 조회를 시작할 때와 로그아웃할 때 하나씩 올리고, **가장 최근 번호의 응답만** 반영한다.
+         *
+         * - 같은 계정에서도 화면 복귀마다 조회가 겹친다. 앞선 느린 응답이 나중에 오면 이미 줄어든 최신 잔액을 옛 값으로 덮는다.
+         * - 로그아웃 전에 보낸 응답은 이전 계정의 값이다 — 이 ViewModel 은 Activity 수명이라 다른 계정으로 다시 들어와도
+         *   같은 상태를 이어 쓴다.
          */
-        private var creditGeneration = 0
+        private var creditRequest = 0
 
         init {
             viewModelScope.launch {
                 observeSignedInAccount().collect { account ->
                     updateState {
                         if (account == null) {
-                            creditGeneration++
+                            creditRequest++
                             copy(accountProvider = null, remainingCredits = null)
                         } else {
                             // 진행 상태는 재인증된 계정을 관찰할 때 해제한다. ViewModel 이 Activity 수명이라
@@ -104,10 +107,10 @@ class SettingsViewModel
 
         /** 못 받으면 칸을 비운다. 이전 값을 남겨 두면 줄어든 뒤에도 옛 잔액이 보인다. */
         private fun refreshCredits() {
-            val generation = creditGeneration
+            val request = ++creditRequest
             safeLaunch {
                 val remaining = getRemainingCredits()
-                if (generation == creditGeneration) updateState { copy(remainingCredits = remaining) }
+                if (request == creditRequest) updateState { copy(remainingCredits = remaining) }
             }
         }
 
