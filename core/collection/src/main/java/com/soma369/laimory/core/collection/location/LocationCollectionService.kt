@@ -40,6 +40,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
+import com.soma369.laimory.core.util.R as UtilR
 
 /**
  * 위치 자동 수집 Foreground Service(Phase 2). LocationManager 업데이트를 [LocationSegmenter] 로 분절해
@@ -375,7 +376,9 @@ internal class LocationCollectionService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("위치 수집 중")
             .setContentText("체류·이동을 자동으로 기록하고 있어요")
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            // 위치 아이콘이 아니라 앱 아이콘이다. 상태 표시줄에서는 무슨 일인지보다 어느 앱 알림인지가 먼저고,
+            // 무슨 일인지는 제목("위치 수집 중")이 말한다.
+            .setSmallIcon(UtilR.drawable.ico_notification_small)
             .setOngoing(true)
             .apply { contentIntent?.let { setContentIntent(it) } }
             .addAction(stopAction)
