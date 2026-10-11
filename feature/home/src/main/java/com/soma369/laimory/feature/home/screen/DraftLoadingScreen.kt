@@ -4,12 +4,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -96,54 +99,72 @@ private fun DraftLoadingScreen(
             title = { Text(text = state.recordDate?.format(TopBarDateFormatter).orEmpty()) },
             onBackClick = { onIntent(DraftLoadingUiIntent.NavigateBack) },
         )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    // 작은 화면이나 큰 글꼴에서 안내와 재시도 버튼이 잘리면 손쓸 방법이 없다.
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = Spacing.extraLarge2)
-                    .padding(top = Spacing.medium, bottom = Spacing.extraLarge),
-            verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2),
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall)) {
-                Text(
-                    text = state.recordDate.headline(),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = "보통 1분 정도 걸려요",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (state.photoUris.isEmpty()) {
-                DraftLoadingPlaceholder()
-            } else {
-                DraftLoadingPhotoPager(photoUris = state.photoUris, modifier = Modifier.fillMaxWidth())
-            }
-            DraftLoadingProgressCard(rows = state.progressRows())
-            state.notice?.let { notice ->
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
-                    Text(
-                        text = notice.message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
-                        notice.primaryAction?.let { action ->
-                            Button(onClick = { onIntent(action.intent) }) { Text(action.label) }
-                        }
-                        notice.secondaryAction?.let { action ->
-                            OutlinedButton(onClick = { onIntent(action.intent) }) { Text(action.label) }
-                        }
-                    }
+        // 하단 안내는 화면 맨 아래에 붙인다. 진행 카드 바로 밑에 두면 그 아래가 통째로 비어 안내가
+        // 화면 가운데 떠 보인다. 내용이 화면보다 길면 스크롤 끝에 붙는다.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        // 작은 화면이나 큰 글꼴에서 안내와 재시도 버튼이 잘리면 손쓸 방법이 없다.
+                        .verticalScroll(rememberScrollState())
+                        .heightIn(min = maxHeight)
+                        .padding(horizontal = Spacing.extraLarge2)
+                        .padding(top = Spacing.medium, bottom = Spacing.extraLarge),
+            ) {
+                DraftLoadingBody(state = state, onIntent = onIntent)
+                // 간격과 남는 자리를 따로 둔다. 남는 자리는 내용이 넘치면 0 이 되지만 간격은 남는다.
+                Spacer(modifier = Modifier.height(Spacing.extraLarge2))
+                Spacer(modifier = Modifier.weight(1f))
+                // 개인정보 안내(회색 상자)가 맨 아래, AI 안내가 그 위다.
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
+                    AiNotice()
+                    FooterNote(retentionDays = state.retentionDays)
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
-                FooterNote(retentionDays = state.retentionDays)
-                AiNotice()
+        }
+    }
+}
+
+@Composable
+private fun DraftLoadingBody(
+    state: DraftLoadingUiState,
+    onIntent: (DraftLoadingUiIntent) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge2)) {
+        Column(verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall)) {
+            Text(
+                text = state.recordDate.headline(),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "보통 1분 정도 걸려요",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (state.photoUris.isEmpty()) {
+            DraftLoadingPlaceholder()
+        } else {
+            DraftLoadingPhotoPager(photoUris = state.photoUris, modifier = Modifier.fillMaxWidth())
+        }
+        DraftLoadingProgressCard(rows = state.progressRows())
+        state.notice?.let { notice ->
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.medium)) {
+                Text(
+                    text = notice.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
+                    notice.primaryAction?.let { action ->
+                        Button(onClick = { onIntent(action.intent) }) { Text(action.label) }
+                    }
+                    notice.secondaryAction?.let { action ->
+                        OutlinedButton(onClick = { onIntent(action.intent) }) { Text(action.label) }
+                    }
+                }
             }
         }
     }
