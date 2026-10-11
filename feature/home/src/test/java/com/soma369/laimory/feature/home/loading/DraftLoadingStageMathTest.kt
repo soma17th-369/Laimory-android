@@ -22,19 +22,19 @@ class DraftLoadingStageMathTest {
 
     @Test
     fun `앞 단계는 정해진 시각에 차례로 끝난다`() {
-        assertEquals(DraftLoadingStageState.DONE, stateOf(DraftLoadingStage.PHOTO, 8.seconds))
-        assertEquals(DraftLoadingStageState.IN_PROGRESS, stateOf(DraftLoadingStage.CALENDAR, 8.seconds))
+        assertEquals(DraftLoadingStageState.DONE, stateOf(DraftLoadingStage.PHOTO, 15.seconds))
+        assertEquals(DraftLoadingStageState.IN_PROGRESS, stateOf(DraftLoadingStage.CALENDAR, 15.seconds))
 
-        assertEquals(DraftLoadingStageState.DONE, stateOf(DraftLoadingStage.CALENDAR, 16.seconds))
-        assertEquals(DraftLoadingStageState.IN_PROGRESS, stateOf(DraftLoadingStage.STAY, 16.seconds))
+        assertEquals(DraftLoadingStageState.DONE, stateOf(DraftLoadingStage.CALENDAR, 30.seconds))
+        assertEquals(DraftLoadingStageState.IN_PROGRESS, stateOf(DraftLoadingStage.STAY, 30.seconds))
 
-        assertEquals(DraftLoadingStageState.DONE, stateOf(DraftLoadingStage.STAY, 24.seconds))
+        assertEquals(DraftLoadingStageState.DONE, stateOf(DraftLoadingStage.STAY, 45.seconds))
     }
 
     @Test
     fun `AI 단계는 앞 단계가 끝난 뒤에 진행 중이 되고 시간만으로는 끝나지 않는다`() {
-        assertEquals(DraftLoadingStageState.PENDING, stateOf(DraftLoadingStage.AI, 23.seconds))
-        assertEquals(DraftLoadingStageState.IN_PROGRESS, stateOf(DraftLoadingStage.AI, 24.seconds))
+        assertEquals(DraftLoadingStageState.PENDING, stateOf(DraftLoadingStage.AI, 44.seconds))
+        assertEquals(DraftLoadingStageState.IN_PROGRESS, stateOf(DraftLoadingStage.AI, 45.seconds))
         // 아무리 기다려도 서버 완료 없이는 끝나지 않는다.
         assertEquals(DraftLoadingStageState.IN_PROGRESS, stateOf(DraftLoadingStage.AI, 10.seconds * 60))
     }

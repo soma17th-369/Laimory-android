@@ -141,7 +141,10 @@ private fun DraftLoadingScreen(
                     }
                 }
             }
-            FooterNote(retentionDays = state.retentionDays)
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
+                FooterNote(retentionDays = state.retentionDays)
+                AiNotice()
+            }
         }
     }
 }
@@ -155,6 +158,28 @@ private fun DraftLoadingPlaceholder() {
     ) {
         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
     }
+}
+
+/**
+ * 무엇이 기록을 만드는지와, 그 결과를 그대로 믿지 말라는 안내.
+ *
+ * 모델 이름(Nova · GPT 등)은 쓰지 않고 실행 환경(Amazon Bedrock)까지만 쓴다. AI 서버는 Bedrock 안에서
+ * 모델을 환경 설정만으로 바꾸고 단계마다 다른 모델을 쓸 수도 있어, 이름을 박으면 앱 업데이트 없이
+ * 문구가 틀린다. 처리방침의 AI 처리 위탁 상대도 AWS 라 이 문구와 어긋나지 않는다.
+ *
+ * 개인정보 안내(회색 상자)와 성격이 달라 상자 밖에 둔다.
+ */
+@Composable
+private fun AiNotice() {
+    Text(
+        text =
+            "Amazon Bedrock 의 AI 모델로 기록을 만들어요.\n" +
+                "AI 가 만든 결과라 실제와 다를 수 있으니 한 번 확인해 주세요.",
+        modifier = Modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable

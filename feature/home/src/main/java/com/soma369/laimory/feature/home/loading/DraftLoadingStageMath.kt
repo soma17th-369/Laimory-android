@@ -13,12 +13,17 @@ import kotlin.time.Duration.Companion.seconds
  * 더 기다리게 하지 않는다.
  */
 internal object DraftLoadingStageMath {
-    /** 앞 세 줄이 차례로 끝나는 시각. 마지막 값 이후로는 AI 줄만 진행 중으로 남는다. */
+    /**
+     * 앞 세 줄이 차례로 끝나는 시각. 마지막 값 이후로는 AI 줄만 진행 중으로 남는다.
+     *
+     * 15초 간격으로 45초에 앞 줄이 다 끝난다. 화면이 "보통 1분 정도 걸려요"라고 말하는데 앞 줄이
+     * 너무 일찍 끝나면, 남은 시간 내내 AI 줄 하나만 돌아 앞 단계를 대충 넘긴 것처럼 보인다.
+     */
     private val STAGE_DEADLINES =
         mapOf(
-            DraftLoadingStage.PHOTO to 8.seconds,
-            DraftLoadingStage.CALENDAR to 16.seconds,
-            DraftLoadingStage.STAY to 24.seconds,
+            DraftLoadingStage.PHOTO to 15.seconds,
+            DraftLoadingStage.CALENDAR to 30.seconds,
+            DraftLoadingStage.STAY to 45.seconds,
         )
 
     fun stateOf(
