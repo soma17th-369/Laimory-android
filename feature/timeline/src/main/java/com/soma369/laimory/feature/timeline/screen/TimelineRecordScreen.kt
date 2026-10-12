@@ -44,6 +44,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +75,8 @@ import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.timeline.component.TimelineAiNotice
+import com.soma369.laimory.feature.timeline.component.TimelineAiNoticeDialog
 import com.soma369.laimory.feature.timeline.component.TimelineDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelineEmotionSheet
 import com.soma369.laimory.feature.timeline.component.TimelineEventCard
@@ -216,6 +219,7 @@ private fun TimelineRecordScreen(
     onIntent: (TimelineRecordUiIntent) -> Unit,
 ) {
     var photoViewerState by remember { mutableStateOf<TimelinePhotoViewerState?>(null) }
+    var isAiNoticeDialogVisible by rememberSaveable { mutableStateOf(false) }
     var isRecordMenuExpanded by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     // 키보드가 보이는 동안에는 하단 버튼을 숨긴다. 좁아진 화면에서 쓰고 있는 메모를 가리지 않게 한다.
@@ -359,6 +363,7 @@ private fun TimelineRecordScreen(
                                         initialIndex = initialIndex,
                                     )
                             },
+                            onAiNoticeClick = { isAiNoticeDialogVisible = true },
                             modifier = Modifier.fillMaxSize(),
                         )
                         // 목록 위에 얹어 저장 버튼과 겹치지 않게 둔다. 편집 모드에서만 보인다 —
@@ -404,6 +409,10 @@ private fun TimelineRecordScreen(
                     }
                 }
         }
+    }
+
+    if (isAiNoticeDialogVisible) {
+        TimelineAiNoticeDialog(onDismiss = { isAiNoticeDialogVisible = false })
     }
 
     photoViewerState?.let { viewerState ->
@@ -500,6 +509,7 @@ private fun TimelineRecordBody(
     onMemoChange: (timelineEventId: Long, value: String) -> Unit,
     onMemoCommit: (Long) -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
+    onAiNoticeClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (record.events.isEmpty()) {
@@ -513,6 +523,16 @@ private fun TimelineRecordBody(
         // 행 사이 간격은 항목이 스스로 진다. 여기서 주면 읽기 모드 연결선의 그리기 영역 밖이라
         // 이벤트마다 선이 끊긴다.
     ) {
+        // 저장 전에만 둔다. 저장한 기록은 사용자가 확인을 마친 것이라 다시 알리지 않는다.
+        // 목록의 한 항목이라 스크롤하면 함께 올라간다 — 위에 고정하면 편집할 자리를 계속 가린다.
+        if (!record.isSaved) {
+            item(key = AI_NOTICE_KEY) {
+                TimelineAiNotice(
+                    onClick = onAiNoticeClick,
+                    modifier = Modifier.padding(bottom = Spacing.medium),
+                )
+            }
+        }
         itemsIndexed(
             items = record.events,
             key = { _, event -> event.timelineEventId },
@@ -623,6 +643,8 @@ private fun AddEventFab(
 }
 
 private val FabMargin = 20.dp
+
+private const val AI_NOTICE_KEY = "ai-notice"
 
 /**
  * 앱바 타이틀 — 날짜와 하루 감정.

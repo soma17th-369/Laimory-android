@@ -116,11 +116,7 @@ private fun DraftLoadingScreen(
                 // 간격과 남는 자리를 따로 둔다. 남는 자리는 내용이 넘치면 0 이 되지만 간격은 남는다.
                 Spacer(modifier = Modifier.height(Spacing.extraLarge2))
                 Spacer(modifier = Modifier.weight(1f))
-                // 개인정보 안내(회색 상자)가 맨 아래, AI 안내가 그 위다.
-                Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
-                    AiNotice()
-                    FooterNote(retentionDays = state.retentionDays)
-                }
+                FooterNote(retentionDays = state.retentionDays)
             }
         }
     }
@@ -179,28 +175,6 @@ private fun DraftLoadingPlaceholder() {
     ) {
         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
     }
-}
-
-/**
- * 무엇이 기록을 만드는지와, 그 결과를 그대로 믿지 말라는 안내.
- *
- * 사용자가 알아보는 이름(OpenAI GPT)으로 쓰고, 버전(5.6 · mini 등)과 실행 환경(Bedrock 등)은 쓰지
- * 않는다. AI 서버는 단계마다 다른 GPT 모델을 쓰고 환경 설정만으로 바꾸므로, 버전까지 박으면 앱
- * 업데이트 없이 문구가 틀린다. **AI 서버가 GPT 가 아닌 모델로 옮기면 이 문구도 함께 바꾼다.**
- *
- * 개인정보 안내(회색 상자)와 성격이 달라 상자 밖에 둔다.
- */
-@Composable
-private fun AiNotice() {
-    Text(
-        text =
-            "OpenAI GPT 모델로 기록을 만들어요.\n" +
-                "AI 가 만든 결과라 실제와 다를 수 있으니 한 번 확인해 주세요.",
-        modifier = Modifier.fillMaxWidth(),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center,
-    )
 }
 
 @Composable
