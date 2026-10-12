@@ -34,7 +34,7 @@ import com.soma369.laimory.core.ui.R as UiR
  * 한 번 닫으면 다음에 열 때 그 사실을 잊는다.
  *
  * 빨강은 얇은 테두리와 아이콘에만 쓴다. 바탕까지 칠하면 오류(실패·한도 초과)처럼 읽히고, 이 띠는 열 때마다
- * 보이는 자리라 무거워진다. 글자는 바탕이 흰색이라 회색·검정으로 읽힌다.
+ * 보이는 자리라 무거워진다. 문구와 `자세히` 는 같은 진한 글자색이다 — 읽어야 할 것은 문구라 옅게 두지 않는다.
  */
 @Composable
 internal fun TimelineAiNotice(
@@ -69,7 +69,7 @@ internal fun TimelineAiNotice(
             text = "AI가 만든 기록이라 실제와 다를 수 있어요",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Row(
             horizontalArrangement = Arrangement.spacedBy(MoreIconGap),
