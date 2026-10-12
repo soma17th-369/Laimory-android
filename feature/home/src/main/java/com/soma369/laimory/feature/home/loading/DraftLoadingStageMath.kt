@@ -1,46 +1,34 @@
 package com.soma369.laimory.feature.home.loading
 
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * 진행 카드 각 줄의 상태를 경과 시간으로 계산한다.
  *
  * 앞의 세 줄은 서버의 실제 진척률이 아니라 대기 연출이다. 서버는 `PROCESSING`/`SUCCESS`/`FAILED`만
- * 알려주므로 중간 진척을 만들어낼 수 없고, 만들어낸 숫자를 사실처럼 보이게 하지 않는다.
+ * 알려주므로 중간 진척을 만들어낼 수 없고, 만들어낸 숫자를 사실처럼 보이게 하지 않는다. 줄마다 언제 끝날지는
+ * [DraftLoadingStagePlan] 이 고른 개수로 정한다.
  *
  * 서버 완료가 확인되면([isCompleted]) 남은 연출을 건너뛰고 모두 완료로 본다 — 사용자를 장식 때문에
  * 더 기다리게 하지 않는다.
  */
 internal object DraftLoadingStageMath {
-    /**
-     * 앞 세 줄이 차례로 끝나는 시각. 마지막 값 이후로는 AI 줄만 진행 중으로 남는다.
-     *
-     * 15초 간격으로 45초에 앞 줄이 다 끝난다. 화면이 "보통 1분 정도 걸려요"라고 말하는데 앞 줄이
-     * 너무 일찍 끝나면, 남은 시간 내내 AI 줄 하나만 돌아 앞 단계를 대충 넘긴 것처럼 보인다.
-     */
-    private val STAGE_DEADLINES =
-        mapOf(
-            DraftLoadingStage.PHOTO to 15.seconds,
-            DraftLoadingStage.CALENDAR to 30.seconds,
-            DraftLoadingStage.STAY to 45.seconds,
-        )
-
     fun stateOf(
         stage: DraftLoadingStage,
         elapsed: Duration,
         isCompleted: Boolean,
+        plan: DraftLoadingStagePlan,
     ): DraftLoadingStageState {
         if (isCompleted) return DraftLoadingStageState.DONE
-        val deadline = STAGE_DEADLINES[stage] ?: return aiStateOf(elapsed)
+        val deadline = plan.deadlines[stage] ?: return aiStateOf(elapsed, plan)
         if (elapsed >= deadline) return DraftLoadingStageState.DONE
-        val start = STAGE_DEADLINES.entries.lastOrNull { it.value < deadline }?.value ?: Duration.ZERO
+        val start = plan.deadlines.values.filter { it < deadline }.maxOrNull() ?: Duration.ZERO
         return if (elapsed >= start) DraftLoadingStageState.IN_PROGRESS else DraftLoadingStageState.PENDING
     }
 
     /** AI 줄은 연출이 아니라 실제 완료로만 끝난다. 앞 줄이 다 끝난 뒤부터 진행 중으로 보인다. */
-    private fun aiStateOf(elapsed: Duration): DraftLoadingStageState {
-        val lastDeadline = STAGE_DEADLINES.values.max()
-        return if (elapsed >= lastDeadline) DraftLoadingStageState.IN_PROGRESS else DraftLoadingStageState.PENDING
-    }
+    private fun aiStateOf(
+        elapsed: Duration,
+        plan: DraftLoadingStagePlan,
+    ): DraftLoadingStageState = if (elapsed >= plan.lastDeadline) DraftLoadingStageState.IN_PROGRESS else DraftLoadingStageState.PENDING
 }

@@ -111,8 +111,8 @@ class DraftLoadingViewModelTest {
     @Test
     fun `서버가 알려준 경과 시간이 기기 시각보다 앞서면 그쪽을 따른다`() =
         loadingTest {
-            // 기기 시각으로는 0초지만 서버는 이미 40초가 지났다고 알려준다.
-            coordinator.emit(DraftTaskTrackingState.Processing(task, elapsedSeconds = 40L))
+            // 기기 시각으로는 0초지만 서버는 이미 5초가 지났다고 알려준다. 고른 것이 없어 줄마다 최소 시간(2초 남짓)이다.
+            coordinator.emit(DraftTaskTrackingState.Processing(task, elapsedSeconds = 5L))
             val viewModel = createViewModel()
             runCurrent()
 
@@ -158,7 +158,7 @@ class DraftLoadingViewModelTest {
         loadingTest {
             // 다른 날짜의 이전 작업이 완료로 남아 있다. 새 요청의 로딩 화면이 그것을 보면 곧바로 완료가 뜬다.
             coordinator.emit(DraftTaskTrackingState.Success(task.copy(taskId = "old"), eventCount = 3))
-            submissionStore.begin(date, requestedAt.minusSeconds(20))
+            submissionStore.begin(date, requestedAt.minusSeconds(7))
             loadingSessionStore.start(
                 DraftLoadingSession(
                     taskId = null,
@@ -167,7 +167,8 @@ class DraftLoadingViewModelTest {
                     photoCount = 1,
                     calendarCount = 2,
                     stayCount = 0,
-                    submittedAt = requestedAt.minusSeconds(20),
+                    // 사진 1장 = 5초 · 일정 2건 = 5초(각 ±15%). 7초면 사진은 끝났고 일정이 도는 중이다.
+                    submittedAt = requestedAt.minusSeconds(7),
                 ),
             )
             val viewModel = createViewModel()
@@ -185,7 +186,7 @@ class DraftLoadingViewModelTest {
     @Test
     fun `작업 번호를 받은 뒤에도 요청 중에 흐른 연출이 되돌아가지 않는다`() =
         loadingTest {
-            // 요청에 40초가 걸렸다. 작업의 요청 시각으로만 세면 0초부터 다시 시작한다.
+            // 요청에 5초가 걸렸다(고른 것이 없어 줄마다 2초 남짓). 작업의 요청 시각으로만 세면 0초부터 다시 시작한다.
             loadingSessionStore.start(
                 DraftLoadingSession(
                     taskId = "task-1",
@@ -194,7 +195,7 @@ class DraftLoadingViewModelTest {
                     photoCount = 0,
                     calendarCount = 0,
                     stayCount = 0,
-                    submittedAt = requestedAt.minusSeconds(40),
+                    submittedAt = requestedAt.minusSeconds(5),
                 ),
             )
             coordinator.emit(DraftTaskTrackingState.Processing(task))
