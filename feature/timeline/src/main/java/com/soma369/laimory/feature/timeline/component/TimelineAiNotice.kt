@@ -1,8 +1,6 @@
 package com.soma369.laimory.feature.timeline.component
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -25,6 +23,7 @@ import com.soma369.laimory.core.ui.component.LaimoryDialog
 import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.core.ui.R as UiR
 
 /**
@@ -33,8 +32,12 @@ import com.soma369.laimory.core.ui.R as UiR
  * 닫는 버튼이 없다 — 저장 전에는 언제 열어도 보인다. AI 가 만든 내용을 확인하는 단계가 바로 이 화면이라,
  * 한 번 닫으면 다음에 열 때 그 사실을 잊는다.
  *
- * 빨강은 얇은 테두리와 아이콘에만 쓴다. 바탕까지 칠하면 오류(실패·한도 초과)처럼 읽히고, 이 띠는 열 때마다
- * 보이는 자리라 무거워진다. 문구와 `자세히` 는 같은 진한 글자색이다 — 읽어야 할 것은 문구라 옅게 두지 않는다.
+ * 경고(warning) 한 벌로 칠한다 — 오류가 아니라 "다를 수 있으니 확인해 달라"는 주의라서다. 빨강(error)은
+ * 실패·한도 초과의 색이고, 이 띠는 열 때마다 보이는 자리라 빨강이면 기록이 잘못된 것처럼 읽힌다.
+ * 아이콘·문구·`자세히` 가 모두 같은 색이라 강조 순서가 문구를 거스르지 않는다(대비 5.8:1).
+ *
+ * 아이콘은 반짝이가 아니라 원 안 느낌표다. 반짝이는 바로 아래 이벤트마다 붙는 AI 질문 말풍선의 표시라,
+ * 같은 아이콘이면 이 띠도 질문 하나처럼 보인다.
  */
 @Composable
 internal fun TimelineAiNotice(
@@ -42,13 +45,13 @@ internal fun TimelineAiNotice(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(NoticeCornerRadius)
+    val colors = MaterialTheme.laimoryColors
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .background(MaterialTheme.colorScheme.surface)
-                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.error), shape)
+                .background(colors.warningContainer)
                 .clickable(onClickLabel = "AI 안내 자세히 보기", role = Role.Button, onClick = onClick)
                 .padding(
                     start = Spacing.medium,
@@ -60,16 +63,16 @@ internal fun TimelineAiNotice(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            painter = painterResource(UiR.drawable.ico_default_sparkle),
+            painter = painterResource(UiR.drawable.ico_default_warning_circle),
             contentDescription = null,
             modifier = Modifier.size(NoticeIconSize),
-            tint = MaterialTheme.colorScheme.error,
+            tint = colors.onWarningContainer,
         )
         Text(
             text = "AI가 만든 기록이라 실제와 다를 수 있어요",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = colors.onWarningContainer,
         )
         Row(
             horizontalArrangement = Arrangement.spacedBy(MoreIconGap),
@@ -78,13 +81,13 @@ internal fun TimelineAiNotice(
             Text(
                 text = "자세히",
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = colors.onWarningContainer,
             )
             Icon(
                 painter = painterResource(UiR.drawable.ico_default_caret_right),
                 contentDescription = null,
                 modifier = Modifier.size(MoreIconSize),
-                tint = MaterialTheme.colorScheme.onSurface,
+                tint = colors.onWarningContainer,
             )
         }
     }
