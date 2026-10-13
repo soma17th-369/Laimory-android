@@ -17,6 +17,7 @@ import com.soma369.laimory.feature.home.loading.DraftLoadingAction
 import com.soma369.laimory.feature.home.loading.DraftLoadingNotice
 import com.soma369.laimory.feature.home.loading.DraftLoadingStage
 import com.soma369.laimory.feature.home.loading.DraftLoadingStageMath
+import com.soma369.laimory.feature.home.loading.DraftLoadingStagePlan
 import com.soma369.laimory.feature.home.loading.DraftLoadingStageState
 import com.soma369.laimory.feature.home.loading.DraftLoadingUiIntent
 import com.soma369.laimory.feature.home.loading.DraftLoadingUiState
@@ -217,10 +218,18 @@ class DraftLoadingViewModel
                                 }
                             val isCompleted = submission is DraftSubmission.Idle && tracking is DraftTaskTrackingState.Success
                             updateState {
+                                // 틱마다 다시 만들어도 같은 생성이면 같은 계획이 나온다 — 씨앗이 `만들기` 시각이라.
+                                val plan =
+                                    DraftLoadingStagePlan.of(
+                                        photoCount = photoCount,
+                                        calendarCount = calendarCount,
+                                        stayCount = stayCount,
+                                        seed = stageSeedOf(submitting, task),
+                                    )
                                 copy(
                                     stageStates =
                                         DraftLoadingStage.entries.associateWith { stage ->
-                                            DraftLoadingStageMath.stateOf(stage, elapsed, isCompleted)
+                                            DraftLoadingStageMath.stateOf(stage, elapsed, isCompleted, plan)
                                         },
                                 )
                             }
@@ -232,6 +241,21 @@ class DraftLoadingViewModel
                     }
             }
         }
+
+        /**
+         * 연출 흔들림의 씨앗. 한 번의 생성 안에서는 같고 생성마다 달라야 한다 — `만들기` 를 누른 시각을 쓴다.
+         * 요청 중에는 제출 시각, 작업 번호를 받은 뒤에는 스냅샷의 제출 시각, 그것도 없으면(프로세스 재시작) 작업의
+         * 요청 시각이다. 요청 중과 받은 뒤가 같은 시각이라 그 사이에 계획이 바뀌지 않는다.
+         */
+        private fun stageSeedOf(
+            submitting: DraftSubmission.Submitting?,
+            task: ActiveDraftTask?,
+        ): Long =
+            (
+                submitting?.startedAt
+                    ?: task?.let { loadingSessionStore.sessionFor(it.taskId)?.submittedAt }
+                    ?: task?.requestedAt
+            )?.toEpochMilli() ?: 0L
 
         private fun DraftTaskTrackingState.isTerminal(): Boolean =
             this is DraftTaskTrackingState.Success ||
