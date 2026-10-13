@@ -9,4 +9,6 @@
     <color name="white">#FFFFFFFF</color>
     <!-- 앱 background 토큰(Neutral50)과 같은 값. -->
     <color name="splash_background">#FFFAF8F5</color>
+    <!-- 알림 강조색. 브랜드 primary(워드마크 그라디언트 시작색)와 같은 값. -->
+    <color name="notification_accent">#FF879BD3</color>
 </resources>
