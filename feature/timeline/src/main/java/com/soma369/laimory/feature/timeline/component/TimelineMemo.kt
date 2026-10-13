@@ -42,15 +42,20 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -317,6 +322,9 @@ private fun MemoInputLine(
             ),
         )
     }
+    val cursorAnchor = remember(editor.timelineEventId) { MemoCursorAnchor() }
+    var textLayout by remember(editor.timelineEventId) { mutableStateOf<TextLayoutResult?>(null) }
+    var isOpened by remember(editor.timelineEventId) { mutableStateOf(false) }
     val imeInsets = WindowInsets.ime
     val density = LocalDensity.current
     LaunchedEffect(editor.timelineEventId) {
@@ -324,6 +332,23 @@ private fun MemoInputLine(
         imeInsets.awaitSettled(density)
         withFrameNanos { }
         bringIntoViewRequester.bringIntoView()
+        isOpened = true
+    }
+    // 입력칸은 줄 수만큼 아래로 자라는데, 바깥 목록은 안쪽 높이가 바뀌었다고 스크롤하지 않는다. 그대로
+    // 두면 엔터를 칠 때마다 새 줄이 키보드 뒤로 들어간다. 그래서 **커서가 선 줄이 바뀔 때마다** 그
+    // 줄을 다시 화면 안으로 끌어온다 — 줄바꿈·자동 줄넘김·붙여넣기가 모두 여기로 온다.
+    //
+    // 여는 순간의 맞춤이 끝나기 전에는 움직이지 않는다. 키보드가 올라오는 중에 끌어오면 두 스크롤이
+    // 서로 다른 목표를 잡는다.
+    val cursorLine = textLayout?.getLineForOffset(textFieldValue.selection.end)
+    val lineCount = textLayout?.lineCount
+    LaunchedEffect(editor.timelineEventId, isOpened, cursorLine, lineCount) {
+        if (!isOpened || cursorLine == null) return@LaunchedEffect
+        // 자란 입력칸으로 목록이 다시 재어진 뒤의 위치로 계산한다.
+        withFrameNanos { }
+        val layout = textLayout ?: return@LaunchedEffect
+        val rect = cursorAnchor.cursorLineRect(layout, textFieldValue.selection.end) ?: return@LaunchedEffect
+        bringIntoViewRequester.bringIntoView(rect)
     }
     // 키보드를 내리는 것도 이 자리에서 손을 떼는 동작이다. `BasicTextField` 는 키보드가 내려가도
     // 입력 포커스를 쥐고 있어서 `onFocusChanged` 만으로는 이 경로가 잡히지 않는다 — 키보드의
@@ -355,7 +380,12 @@ private fun MemoInputLine(
     }
 
     Column(
-        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(bringIntoViewRequester).padding(top = MEMO_LINE_TOP_PADDING),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .bringIntoViewRequester(bringIntoViewRequester)
+                .onGloballyPositioned { cursorAnchor.line = it }
+                .padding(top = MEMO_LINE_TOP_PADDING),
         verticalArrangement = Arrangement.spacedBy(INPUT_LINE_GAP),
     ) {
         BasicTextField(
@@ -365,10 +395,12 @@ private fun MemoInputLine(
                 textFieldValue = limited
                 onValueChange(limited.text)
             },
+            onTextLayout = { textLayout = it },
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = EDITOR_MIN_HEIGHT)
+                    .onGloballyPositioned { cursorAnchor.field = it }
                     .focusRequester(focusRequester)
                     .onFocusChanged { focusState ->
                         if (focusState.isFocused) {
@@ -447,6 +479,41 @@ private fun TextFieldValue.limitedToMemoLength(previousText: String): TextFieldV
     // 커서는 붙여넣은 글 끝에 서 있었으니 줄어든 만큼 당긴다.
     val cursor = (selection.end - (text.length - limited.length)).coerceIn(0, limited.length)
     return copy(text = limited, selection = TextRange(cursor))
+}
+
+/**
+ * 커서 줄을 끌어올 사각형을 입력 줄([MemoInputLine]의 바깥 `Column`) 좌표로 잰다.
+ *
+ * 입력칸 전체가 아니라 **커서가 선 줄만** 잡는다. 전체를 잡으면 긴 메모의 위쪽을 고칠 때도 화면이
+ * 맨 아래로 튀고, 화면보다 긴 메모는 오히려 맨 위로 맞춰진다.
+ *
+ * 커서가 마지막 줄이면 그 아래 밑줄·글자 수까지 넓힌다. 쓰는 중인 끝줄 바로 밑에 붙어 있는 것들이라
+ * 키보드에 걸쳐 잘리면 어디까지 썼는지, 얼마나 남았는지가 보이지 않는다.
+ *
+ * 좌표는 상태가 아니다 — 읽는 쪽이 한 프레임 뒤에 꺼내 쓰기만 하므로 바뀔 때마다 다시 그릴 까닭이
+ * 없다.
+ */
+private class MemoCursorAnchor {
+    var line: LayoutCoordinates? = null
+    var field: LayoutCoordinates? = null
+
+    fun cursorLineRect(
+        layout: TextLayoutResult,
+        offset: Int,
+    ): Rect? {
+        val line = line?.takeIf { it.isAttached } ?: return null
+        val field = field?.takeIf { it.isAttached } ?: return null
+        val cursor = layout.getCursorRect(offset.coerceIn(0, layout.layoutInput.text.length))
+        val top = line.localPositionOf(field, Offset(0f, cursor.top)).y
+        val isLastLine = layout.getLineForOffset(offset) == layout.lineCount - 1
+        val bottom =
+            if (isLastLine) {
+                line.size.height.toFloat()
+            } else {
+                line.localPositionOf(field, Offset(0f, cursor.bottom)).y
+            }
+        return Rect(left = 0f, top = top, right = line.size.width.toFloat(), bottom = bottom)
+    }
 }
 
 private suspend fun WindowInsets.awaitSettled(density: Density) {
