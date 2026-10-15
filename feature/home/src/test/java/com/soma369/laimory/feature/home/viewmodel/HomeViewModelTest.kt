@@ -96,6 +96,7 @@ import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreateConfirm
+import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeRecordState
@@ -426,7 +427,7 @@ class HomeViewModelTest {
             createDraft(viewModel)
 
             val confirm = viewModel.state.value.createConfirm!!
-            assertTrue(confirm.isEmpty)
+            assertEquals(DraftCreateEmptyReason.NO_DATA, confirm.emptyReason)
             assertEquals(listOf(0, 0, 0), confirm.counts.map { it.count })
             // 만들 수 없으니 크레딧 줄도 없다.
             assertNull(confirm.credit)
@@ -466,7 +467,7 @@ class HomeViewModelTest {
             createDraft(viewModel)
 
             val confirm = confirmDialog.shown.single()
-            assertTrue(confirm.isEmpty)
+            assertEquals(DraftCreateEmptyReason.NO_DATA, confirm.emptyReason)
             assertTrue(confirm.counts.none { it.group == DraftConsentTypeGroup.HEALTH })
             assertEquals(0, draftRepository.createCount)
         }
@@ -483,14 +484,15 @@ class HomeViewModelTest {
 
             createDraft(viewModel)
 
-            assertTrue(viewModel.state.value.createConfirm!!.isEmpty)
+            assertEquals(DraftCreateEmptyReason.NO_DATA, viewModel.state.value.createConfirm!!.emptyReason)
             assertTrue(effects.isEmpty())
         }
 
     @Test
-    fun `모인 것을 홈에서 모두 뺐으면 다이얼로그 없이 모두 제외했다고 알린다`() =
+    fun `모인 것을 홈에서 모두 뺐으면 모두 뺐다는 빈 다이얼로그를 띄우고 닫으면 모두 제외로 중단을 기록한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("a"), todayHealthItem("steps", HealthPayload.Metric.STEPS))
+            confirmDialog.answer = ConfirmAnswer.CANCEL
             val viewModel = createViewModel()
             runCurrent()
             sessionStore.toggleExcluded("a")
@@ -499,10 +501,15 @@ class HomeViewModelTest {
 
             createDraft(viewModel)
 
-            // 걸음만 남은 것도 모두 뺀 것이다.
-            assertNull(viewModel.state.value.createConfirm)
-            assertEquals(listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요.")), effects)
+            // 걸음만 남은 것도 모두 뺀 것이다. 건강 칸은 붙지 않는다.
+            val confirm = confirmDialog.shown.single()
+            assertEquals(DraftCreateEmptyReason.ALL_EXCLUDED, confirm.emptyReason)
+            assertTrue(confirm.counts.none { it.group == DraftConsentTypeGroup.HEALTH })
+            assertNull(confirm.credit)
+            assertTrue(effects.isEmpty())
             assertEquals(0, draftRepository.createCount)
+            val stopped = analyticsHelper.logged.last() as AnalyticsEvent.TimelineCreateStopped
+            assertEquals(AnalyticsCreateStopReason.ALL_EXCLUDED, stopped.reason)
         }
 
     @Test

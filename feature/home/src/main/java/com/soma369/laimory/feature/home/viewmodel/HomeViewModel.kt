@@ -64,6 +64,7 @@ import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureMessages
 import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
+import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.DraftWindowPolicy
@@ -988,17 +989,15 @@ class HomeViewModel
          * 화면을 한 장 더 두지 않는다 — 보낼 데이터를 보여 주고 유형 상세로 들어가는 일은 이미
          * 홈 카드가 하므로, 남는 것은 "이 건수로 만들겠습니까" 라는 마지막 확인뿐이다.
          *
-         * **모인 것이 없어도 띄운다.** 스낵바 한 줄로 끝내면 무엇을 하면 되는지 모른 채 홈에 남는다. 빈 다이얼로그는
-         * `만들기` 를 끄고 `사진 고르기` 로 이어 갈 길을 보여 준다. 판정은 제외 **전** 스냅샷으로 한다 — 제외 뒤로
-         * 하면 사용자가 모두 뺀 것과 처음부터 없던 것이 구분되지 않는다.
+         * **보낼 것이 없어도 띄운다.** 처음부터 없었든 사용자가 모두 뺐든, 스낵바 한 줄로 끝내면 무엇을 하면 되는지
+         * 모른 채 홈에 남는다. 빈 다이얼로그는 `만들기` 를 끄고 `사진 고르기` 로 이어 갈 길을 보여 준다.
          */
         private suspend fun showCreateConfirm() {
             val preparation = draftConsentSessionStore.preparation.value ?: return
             val accountSession = draftConsentSessionStore.accountSession.value
-            val hasData = preparation.selection.hasCreatableItems()
             // 크레딧을 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌어, 누르려던 것과
             // 다른 버튼을 누르게 된다. 못 받으면 줄 없이 띄운다(판정은 서버의 -1021). 빈 다이얼로그는 만들 수 없어 받지 않는다.
-            val credit = if (hasData) getTimelineCredit() else null
+            val credit = if (submissionOf(preparation).hasCreatableItems()) getTimelineCredit() else null
             // 기다리는 동안(최대 3초) 홈 입력은 잠기지 않는다. 그사이 날짜 · 범위를 바꿨거나 계정이 바뀌었으면 이 시도는
             // 낡았다 — 띄우면 홈에 보이는 날짜와 다른 날짜로 제출되거나 이전 계정의 확인창이 되살아난다.
             if (!isStillCurrent(preparation, accountSession)) {
@@ -1010,17 +1009,11 @@ class HomeViewModel
             val submission = submissionOf(preparation)
             val recordDate = preparation.recordDate
             val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
-            if (!hasData) {
+            val emptyReason = emptyReasonOf(preparation, submission)
+            if (emptyReason != null) {
                 // 중단은 닫을 때 남긴다([dismissCreateConfirm]). 여기서 남기면 사진을 골라 이어 간 사용자도 중단으로 센다.
                 confirmedSubmission = submission
-                updateState { copy(createConfirm = submission.toCreateConfirm()) }
-                return
-            }
-            // 건강만 남은 것도 모두 뺀 것이다 — 걸음만으로는 만들지 않는다.
-            if (!submission.hasCreatableItems()) {
-                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation, recordDate))
-                draftConsentSessionStore.clearPreparation()
-                sendEffect(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요."))
+                updateState { copy(createConfirm = submission.toCreateConfirm(emptyReason = emptyReason)) }
                 return
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
@@ -1131,14 +1124,34 @@ class HomeViewModel
             val preparation = draftConsentSessionStore.preparation.value ?: return
             analyticsHelper.log(
                 AnalyticsEvent.TimelineCreateStopped(
-                    // 빈 다이얼로그를 닫은 것은 고를 것이 없어 그만둔 것이다.
-                    if (submission.hasCreatableItems()) AnalyticsCreateStopReason.CANCELLED else AnalyticsCreateStopReason.NO_DATA,
+                    // 빈 다이얼로그를 닫은 것은 보낼 것이 없어 그만둔 것이다.
+                    when (emptyReasonOf(preparation, submission)) {
+                        null -> AnalyticsCreateStopReason.CANCELLED
+                        DraftCreateEmptyReason.NO_DATA -> AnalyticsCreateStopReason.NO_DATA
+                        DraftCreateEmptyReason.ALL_EXCLUDED -> AnalyticsCreateStopReason.ALL_EXCLUDED
+                    },
                     AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
                     preparation.recordDate,
                 ),
             )
             draftConsentSessionStore.clearPreparation()
         }
+
+        /**
+         * [submission] 으로는 만들 수 없을 때 그 이유. 만들 수 있으면 null.
+         *
+         * 제외 **전** 스냅샷을 함께 본다 — 제출 목록만 보면 처음부터 없던 것과 사용자가 모두 뺀 것이 구분되지 않는다.
+         * 건강만 남은 것도 만들 수 없다(걸음만으로는 만들지 않는다).
+         */
+        private fun emptyReasonOf(
+            preparation: DraftConsentPreparation,
+            submission: DraftSourceItemSelection,
+        ): DraftCreateEmptyReason? =
+            when {
+                submission.hasCreatableItems() -> null
+                preparation.selection.hasCreatableItems() -> DraftCreateEmptyReason.ALL_EXCLUDED
+                else -> DraftCreateEmptyReason.NO_DATA
+            }
 
         private fun closeCreateConfirm() {
             confirmedSubmission = null
