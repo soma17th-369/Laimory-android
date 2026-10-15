@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -63,6 +64,9 @@ import com.soma369.laimory.core.ui.R as UiR
  *
  * 건수 칸 아래에 크레딧 줄을 둔다(Figma `제안 / 크레딧 줄` 3153:1693). 잔액이 비용보다 적으면 버튼을 막지 않고
  * `만들기` 자리를 `충전하러 가기`([onCharge])로 바꾼다. 크레딧을 못 받았으면 줄을 숨기고 `만들기` 를 그대로 둔다.
+ *
+ * 모인 것이 하나도 없으면([DraftCreateConfirm.isEmpty]) `만들기` 를 끄고, `사진 고르기` 바로 아래 말풍선으로
+ * 이유와 할 일을 함께 알린다. 일정·위치·알림은 시간이 지나야 모이니 지금 바로 할 수 있는 건 사진뿐이다.
  */
 @Composable
 internal fun DraftCreateConfirmDialog(
@@ -80,10 +84,11 @@ internal fun DraftCreateConfirmDialog(
                 onSecondaryClick = onDismiss,
                 primaryLabel = if (confirm.isCreditShort) "충전하러 가기" else "만들기",
                 onPrimaryClick = if (confirm.isCreditShort) onCharge else onConfirm,
+                primaryEnabled = !confirm.isEmpty,
             ),
         onDismissRequest = onDismiss,
     ) {
-        PhotoSection(photoUris = confirm.photoUris, onPickPhotos = onPickPhotos)
+        PhotoSection(photoUris = confirm.photoUris, onPickPhotos = onPickPhotos, showsEmptyGuide = confirm.isEmpty)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.small),
@@ -146,6 +151,7 @@ private fun CreditRow(credit: TimelineCredit) {
 private fun PhotoSection(
     photoUris: List<String>,
     onPickPhotos: () -> Unit,
+    showsEmptyGuide: Boolean,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
         Row(
@@ -186,11 +192,56 @@ private fun PhotoSection(
                     PickPhotosLink(label = "사진 고르기", onClick = onPickPhotos)
                 }
             }
+            if (showsEmptyGuide) EmptyGuideBubble()
         } else {
             PhotoStrip(photoUris = photoUris)
         }
     }
 }
+
+/**
+ * 모인 것이 없을 때 `사진 고르기` 를 가리키는 말풍선. 꼬리는 위 가운데 — 링크가 안내 칸 가운데에 선다.
+ *
+ * 색은 타임라인 AI 질문 말풍선과 같은 계열(primaryContainer)이다. 앱 안에서 말풍선이 한 가지 얼굴로 보인다.
+ */
+@Composable
+private fun EmptyGuideBubble() {
+    val color = MaterialTheme.colorScheme.primaryContainer
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(width = BUBBLE_TAIL_WIDTH, height = BUBBLE_TAIL_HEIGHT)
+                    .background(color, BubbleTailShape),
+        )
+        Text(
+            text = EMPTY_GUIDE_MESSAGE,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(BUBBLE_CORNER))
+                    .background(color)
+                    .padding(horizontal = Spacing.medium, vertical = Spacing.small),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/** 위로 뾰족한 삼각형. 밑변이 말풍선 윗변에 붙는다. */
+private val BubbleTailShape =
+    GenericShape { size, _ ->
+        moveTo(size.width / 2f, 0f)
+        lineTo(size.width, size.height)
+        lineTo(0f, size.height)
+        close()
+    }
+
+private const val EMPTY_GUIDE_MESSAGE = "아직 모인 기록이 없어요. 사진을 고르면 바로 만들 수 있어요"
 
 /** 사진 시트로 가는 글자 버튼. 안내 칸(64) 안에 들어가야 해서 버튼 최소 높이를 쓰지 않는다. */
 @Composable
@@ -323,6 +374,9 @@ private val ICON_SIZE = 20.dp
 private val CREDIT_ROW_CORNER = 8.dp
 private val CREDIT_ROW_GAP = 6.dp
 private val CREDIT_ICON_SIZE = 16.dp
+private val BUBBLE_CORNER = 12.dp
+private val BUBBLE_TAIL_WIDTH = 12.dp
+private val BUBBLE_TAIL_HEIGHT = 6.dp
 
 private val PREVIEW_COUNTS =
     listOf(
@@ -352,10 +406,28 @@ private fun DraftCreateConfirmDialogPreview() {
 
 @Preview
 @Composable
-private fun DraftCreateConfirmDialogEmptyPreview() {
+private fun DraftCreateConfirmDialogNoPhotoPreview() {
     LaimoryTheme {
         DraftCreateConfirmDialog(
             confirm = DraftCreateConfirm(photoUris = emptyList(), counts = PREVIEW_COUNTS),
+            onConfirm = {},
+            onDismiss = {},
+            onPickPhotos = {},
+            onCharge = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun DraftCreateConfirmDialogNoDataPreview() {
+    LaimoryTheme {
+        DraftCreateConfirmDialog(
+            confirm =
+                DraftCreateConfirm(
+                    photoUris = emptyList(),
+                    counts = PREVIEW_COUNTS.map { it.copy(count = 0) },
+                ),
             onConfirm = {},
             onDismiss = {},
             onPickPhotos = {},
