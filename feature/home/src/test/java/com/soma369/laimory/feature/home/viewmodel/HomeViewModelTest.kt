@@ -21,6 +21,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
+import com.soma369.laimory.core.domain.model.collection.HealthPayload
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.NotificationPrivacyPolicy
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
@@ -95,6 +96,7 @@ import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreateConfirm
+import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeRecordState
@@ -164,14 +166,14 @@ class HomeViewModelTest {
     private val clock = MutableClock(LocalDate.now(ZoneId.systemDefault()).atTime(12, 0))
 
     @Test
-    fun `빈 범위에서는 동의 화면으로 이동하지 않는다`() =
+    fun `빈 범위에서는 만들기를 눌러도 로딩으로 이동하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
             runCurrent()
 
             createDraft(viewModel)
 
-            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
             assertTrue(navigationHelper.destinations.isEmpty())
             assertEquals(DraftCreationStatus.IDLE, viewModel.state.value.draftStatus)
         }
@@ -414,8 +416,35 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `빈 범위면 시작 뒤 데이터 없음으로 중단을 기록한다`() =
+    fun `빈 범위면 빈 확인 다이얼로그를 띄우고 만들기는 보내지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+
+            createDraft(viewModel)
+
+            val confirm = viewModel.state.value.createConfirm!!
+            assertEquals(DraftCreateEmptyReason.NO_DATA, confirm.emptyReason)
+            assertEquals(listOf(0, 0, 0), confirm.counts.map { it.count })
+            // 만들 수 없으니 크레딧 줄도 없다.
+            assertNull(confirm.credit)
+            assertTrue(effects.isEmpty())
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(0, draftRepository.createCount)
+            assertTrue(navigationHelper.destinations.isEmpty())
+            assertNotNull(viewModel.state.value.createConfirm)
+        }
+
+    @Test
+    fun `빈 확인 다이얼로그를 닫으면 데이터 없음으로 중단을 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            confirmDialog.answer = ConfirmAnswer.CANCEL
             val viewModel = createViewModel()
             runCurrent()
 
@@ -424,6 +453,94 @@ class HomeViewModelTest {
             val events = analyticsHelper.logged
             assertEquals(listOf("TimelineCreateStarted", "TimelineCreateStopped"), events.map { it::class.simpleName })
             assertEquals(AnalyticsCreateStopReason.NO_DATA, (events.last() as AnalyticsEvent.TimelineCreateStopped).reason)
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+        }
+
+    @Test
+    fun `걸음만 모였으면 만들 거리가 없다고 보고 건강 칸 없이 빈 다이얼로그를 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayHealthItem("steps", HealthPayload.Metric.STEPS))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            val confirm = confirmDialog.shown.single()
+            assertEquals(DraftCreateEmptyReason.NO_DATA, confirm.emptyReason)
+            assertTrue(confirm.counts.none { it.group == DraftConsentTypeGroup.HEALTH })
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `서버가 받지 않는 수면만 모였으면 모두 제외했다고 하지 않고 빈 다이얼로그를 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayHealthItem("sleep", HealthPayload.Metric.SLEEP))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+
+            createDraft(viewModel)
+
+            assertEquals(DraftCreateEmptyReason.NO_DATA, viewModel.state.value.createConfirm!!.emptyReason)
+            assertTrue(effects.isEmpty())
+        }
+
+    @Test
+    fun `모인 것을 홈에서 모두 뺐으면 모두 뺐다는 빈 다이얼로그를 띄우고 닫으면 모두 제외로 중단을 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("a"), todayHealthItem("steps", HealthPayload.Metric.STEPS))
+            confirmDialog.answer = ConfirmAnswer.CANCEL
+            val viewModel = createViewModel()
+            runCurrent()
+            sessionStore.toggleExcluded("a")
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+
+            createDraft(viewModel)
+
+            // 걸음만 남은 것도 모두 뺀 것이다. 건강 칸은 붙지 않는다.
+            val confirm = confirmDialog.shown.single()
+            assertEquals(DraftCreateEmptyReason.ALL_EXCLUDED, confirm.emptyReason)
+            assertTrue(confirm.counts.none { it.group == DraftConsentTypeGroup.HEALTH })
+            assertNull(confirm.credit)
+            assertTrue(effects.isEmpty())
+            assertEquals(0, draftRepository.createCount)
+            val stopped = analyticsHelper.logged.last() as AnalyticsEvent.TimelineCreateStopped
+            assertEquals(AnalyticsCreateStopReason.ALL_EXCLUDED, stopped.reason)
+        }
+
+    @Test
+    fun `빈 다이얼로그에서 사진을 골라 돌아오면 만들기가 켜지고 그때 검토 시작을 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertTrue(viewModel.state.value.createConfirm!!.isEmpty)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            val confirm = viewModel.state.value.createConfirm!!
+            assertFalse(confirm.isEmpty)
+            assertEquals(1, confirm.photoUris.size)
+            assertEquals(
+                listOf("TimelineCreateStarted", "TimelineEventReviewStarted"),
+                analyticsHelper.logged.map { it::class.simpleName },
+            )
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(1, draftRepository.createCount)
         }
 
     @Test
@@ -2883,6 +3000,24 @@ class HomeViewModelTest {
             timeZoneId = zone,
             payload = CalendarPayload("일정", null, null, false),
             sourceName = SourceName.CALENDAR_PROVIDER,
+            sourceKey = id,
+            collectedAt = instant,
+        )
+    }
+
+    private fun todayHealthItem(
+        id: String,
+        metric: HealthPayload.Metric,
+    ): SourceItem {
+        val zone = ZoneId.systemDefault()
+        val instant = LocalDate.now(zone).atTime(12, 0).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = id,
+            startAt = instant,
+            endAt = null,
+            timeZoneId = zone,
+            payload = HealthPayload(metric, 100.0, "count"),
+            sourceName = SourceName.HEALTH_CONNECT,
             sourceKey = id,
             collectedAt = instant,
         )
