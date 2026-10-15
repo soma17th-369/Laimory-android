@@ -28,6 +28,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -197,6 +199,7 @@ private fun SettingsScreen(
                 provider = state.accountProvider,
                 nickname = state.nickname,
                 remainingCredits = state.remainingCredits,
+                onCreditsClick = { onIntent(SettingsUiIntent.CreditsClicked) },
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.large)) {
                 SettingsSection(title = "데이터 소스") {
@@ -326,12 +329,14 @@ private fun SettingsScreen(
 
 /**
  * 계정 카드. 오른쪽 칸은 남은 크레딧이다(Figma 663:2070 — 시안의 `연속 기록` 자리). 못 받았으면 칸을 비운다.
+ * 칸을 누르면 크레딧 화면으로 간다.
  */
 @Composable
 private fun AccountSummaryCard(
     provider: SocialLoginProvider?,
     nickname: String?,
     remainingCredits: Int?,
+    onCreditsClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -361,15 +366,22 @@ private fun AccountSummaryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            remainingCredits?.let { RemainingCredits(count = it) }
+            remainingCredits?.let { RemainingCredits(count = it, onClick = onCreditsClick) }
         }
     }
 }
 
 @Composable
-private fun RemainingCredits(count: Int) {
+private fun RemainingCredits(
+    count: Int,
+    onClick: () -> Unit,
+) {
     Column(
-        modifier = Modifier.clearAndSetSemantics { contentDescription = "남은 크레딧 ${count}개" },
+        modifier =
+            Modifier
+                .minimumInteractiveComponentSize()
+                .clickable(onClickLabel = "크레딧 보기", role = Role.Button, onClick = onClick)
+                .clearAndSetSemantics { contentDescription = "남은 크레딧 ${count}개" },
         horizontalAlignment = Alignment.End,
     ) {
         Row(

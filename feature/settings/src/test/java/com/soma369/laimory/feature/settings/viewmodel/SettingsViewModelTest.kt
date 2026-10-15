@@ -26,6 +26,7 @@ import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.model.user.UserProfile
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
@@ -146,6 +147,18 @@ class SettingsViewModelTest {
             runCurrent()
 
             assertEquals(listOf<Page>(NoticesPage), navigationHelper.navigatedTo)
+        }
+
+    @Test
+    fun `남은 크레딧을 누르면 크레딧 화면으로 간다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.CreditsClicked)
+            runCurrent()
+
+            assertEquals(listOf<Page>(CreditPage), navigationHelper.navigatedTo)
         }
 
     @Test

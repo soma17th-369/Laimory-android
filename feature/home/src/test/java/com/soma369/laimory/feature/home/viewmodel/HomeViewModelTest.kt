@@ -58,6 +58,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Page
@@ -320,7 +321,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `크레딧이 모자라면 충전하러 가기는 만들지 않고 준비 중이라고 알린다`() =
+    fun `크레딧이 모자라면 충전하러 가기는 만들지 않고 크레딧 화면으로 간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             creditRepository.remaining = 0
             confirmDialog.answer = ConfirmAnswer.HOLD
@@ -338,8 +339,8 @@ class HomeViewModelTest {
             assertNull(viewModel.state.value.createConfirm)
             assertNull(sessionStore.preparation.value)
             assertEquals(0, draftRepository.createCount)
-            assertTrue(navigationHelper.destinations.isEmpty())
-            assertEquals(listOf<HomeUiSideEffect>(HomeUiSideEffect.ShowSnackbar("크레딧 충전은 준비 중이에요")), effects)
+            assertEquals(listOf<Page>(CreditPage), navigationHelper.destinations)
+            assertTrue(effects.isEmpty())
         }
 
     @Test

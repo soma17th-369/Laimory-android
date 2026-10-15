@@ -32,6 +32,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.navigation.CollectionPage
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.PastRecordsPage
@@ -1091,13 +1092,13 @@ class HomeViewModel
         private fun isSameAccount(accountSession: Long): Boolean = draftConsentSessionStore.accountSession.value == accountSession
 
         /**
-         * 크레딧이 모자랄 때 `만들기` 자리에 오는 `충전하러 가기`. 충전은 서버에 아직 없어 다이얼로그를 닫고 준비 중이라고만
-         * 알린다 — 만들지 않았으니 취소와 같게 정리한다. 충전 화면이 생기면 목적지만 바꾼다.
+         * 크레딧이 모자랄 때 `만들기` 자리에 오는 `충전하러 가기`. 다이얼로그를 닫고 크레딧 화면으로 간다 — 만들지 않았으니
+         * 취소와 같게 정리한다. 충전 자체는 아직 열지 않아 그 화면이 준비 중이라고 알린다.
          */
         private suspend fun chargeCredits() {
             if (confirmedSubmission == null) return
             dismissCreateConfirm()
-            sendEffect(HomeUiSideEffect.ShowSnackbar(CREDIT_CHARGE_NOT_READY_MESSAGE))
+            navigationHelper.navigateTo(CreditPage)
         }
 
         /**
@@ -1667,9 +1668,6 @@ class HomeViewModel
         private companion object {
             /** 이어 붙일 새 항목이 없을 때(-1013) 안내. 로딩 화면도 같은 문구를 쓴다. */
             const val NO_NEW_ITEMS_MESSAGE = DraftSubmitFailureMessages.NO_NEW_ITEMS
-
-            /** 크레딧 충전은 서버에 아직 없다. */
-            const val CREDIT_CHARGE_NOT_READY_MESSAGE = "크레딧 충전은 준비 중이에요"
 
             /**
              * 서버가 초안 생성 요청을 받았을 수 있는 실패. 돌아간 뒤 기록 상태를 다시 읽는다 — 홈 CTA 는 서버 판정이라, 실제로

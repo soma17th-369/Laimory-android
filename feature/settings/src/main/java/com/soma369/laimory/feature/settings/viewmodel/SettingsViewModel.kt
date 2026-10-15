@@ -12,6 +12,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
@@ -157,6 +158,7 @@ class SettingsViewModel
                 SettingsUiIntent.InquiryClicked -> navigationHelper.navigateTo(InquiryPage)
                 SettingsUiIntent.RefreshNoticeBadge -> refreshNoticeBadge()
                 SettingsUiIntent.RefreshCredits -> refreshCredits()
+                SettingsUiIntent.CreditsClicked -> navigationHelper.navigateTo(CreditPage)
                 is SettingsUiIntent.LocationCollectionToggled -> setLocationTracking(intent.enabled)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit

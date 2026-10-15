@@ -22,4 +22,7 @@ sealed interface DraftLoadingUiIntent : UiIntent {
 
     /** 초안 요청 실패 안내를 확인하고 홈으로 돌아간다. 돌아간 뒤의 처리(사진 시트 · 약관 화면)는 홈이 한다. */
     data object LeaveAfterSubmitFailure : DraftLoadingUiIntent
+
+    /** 크레딧 부족(-1021) 안내의 `충전하러 가기`. 로딩 화면을 닫고 크레딧 화면으로 간다. */
+    data object ChargeCreditsAfterSubmitFailure : DraftLoadingUiIntent
 }
