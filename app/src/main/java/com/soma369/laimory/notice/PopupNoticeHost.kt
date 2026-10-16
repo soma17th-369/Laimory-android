@@ -32,7 +32,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -159,7 +163,7 @@ fun PopupNoticeHost(
 }
 
 /**
- * 카드 = 썸네일(4:3) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를 보여 주는
+ * 카드 = 썸네일(1:1) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를 보여 주는
  * 규칙은 [NoticeThumbnail]. 누르면 원문을 연다.
  *
  * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 카드가 바뀔 때 시트가 출렁이지 않게.
@@ -193,8 +197,14 @@ private fun NoticeCard(
 }
 
 /**
- * 4:3 칸, 높이 고정. 가로 · 세로 이미지 모두 칸을 꽉 채워 가운데를 기준으로 자른다 — 칸 안에 여백을 두지 않는다. 불러오는
- * 중 · 실패면 회색 바탕에 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해 주소가 없는 경우는 없다.
+ * 1:1 칸, 높이 고정. 이미지는 자르지 않고 칸 안에 통째로 맞춘다. 정사각이 아니면 남는 위아래 · 좌우에 같은 이미지를 꽉
+ * 채워 흐리게 깐다. 불러오는 중 · 실패면 회색 바탕에 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해 주소가
+ * 없는 경우는 없다.
+ *
+ * 흐린 배경은 칸보다 크게 키워 그린다. 흐림은 가장자리에서 바깥의 빈 곳을 섞어 옅어지는데, 칸 크기 그대로면 그 옅은 테가
+ * 회색 바탕을 비춰 여백처럼 보인다. 키워서 옅은 테를 칸 밖(잘리는 곳)으로 밀어낸다.
+ *
+ * 흐림(`Modifier.blur`)은 Android 12 부터 그려진다. 그 아래에서는 흐리지 않은 채 어둡게만 깔린다.
  */
 @Composable
 private fun NoticeThumbnail(imageUrl: String) {
@@ -209,7 +219,19 @@ private fun NoticeThumbnail(imageUrl: String) {
                 .background(MaterialTheme.colorScheme.surfaceContainer),
         contentAlignment = Alignment.Center,
     ) {
-        if (!isLoaded) {
+        if (isLoaded) {
+            Image(
+                painter = painter,
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .scale(BACKDROP_SCALE)
+                        .blur(BackdropBlur, BlurredEdgeTreatment.Unbounded),
+                contentScale = ContentScale.Crop,
+            )
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_DIM)))
+        } else {
             Image(
                 painter = painterResource(R.drawable.img_laimory_wordmark),
                 contentDescription = null,
@@ -220,7 +242,7 @@ private fun NoticeThumbnail(imageUrl: String) {
             painter = painter,
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
+            contentScale = ContentScale.Fit,
         )
     }
 }
@@ -287,7 +309,13 @@ private fun dotCenters(
 }
 
 private val SheetCornerRadius = 24.dp
-private const val THUMBNAIL_ASPECT_RATIO = 4f / 3f
+
+private const val THUMBNAIL_ASPECT_RATIO = 1f
+private val BackdropBlur = 24.dp
+private const val BACKDROP_DIM = 0.2f
+
+/** 흐린 배경을 키우는 배율. 옅은 테(흐림 반경쯤)가 칸 밖으로 넉넉히 나가는 크기다 — 칸 한 변의 20% 씩. */
+private const val BACKDROP_SCALE = 1.4f
 private val ThumbnailCornerRadius = 16.dp
 private val WordmarkWidth = 140.dp
 
