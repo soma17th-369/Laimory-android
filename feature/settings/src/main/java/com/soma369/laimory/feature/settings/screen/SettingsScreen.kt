@@ -304,6 +304,15 @@ private fun SettingsScreen(
                     SettingsGroup(
                         items =
                             listOf(
+                                // 계정 카드의 숫자 칸만으로는 크레딧 화면으로 가는 길이 잘 안 보인다. 목록의 표준 줄로 한 번 더 둔다.
+                                // 잔액을 못 받았어도 줄은 남긴다 — 들어가면 크레딧 화면이 다시 받는다.
+                                SettingsItem(
+                                    iconRes = CoreUiR.drawable.ico_default_coins,
+                                    title = "크레딧",
+                                    trailingText = state.remainingCredits?.let { "${it}개" },
+                                    showChevron = true,
+                                    onClick = { onIntent(SettingsUiIntent.CreditsClicked) },
+                                ),
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_signout,
                                     title = "로그아웃",

@@ -138,6 +138,9 @@ sealed interface HomeUiIntent : UiIntent {
     /** 크레딧이 모자랄 때 확인 다이얼로그의 `충전하러 가기`. 다이얼로그를 닫고 크레딧 화면으로 간다. */
     data object ChargeCredits : HomeUiIntent
 
+    /** 확인 다이얼로그의 크레딧 줄. 잔액과 상관없이 다이얼로그를 닫고 크레딧 화면으로 간다. */
+    data object OpenCredits : HomeUiIntent
+
     /**
      * 확인 다이얼로그의 `사진 고르기`·`사진 바꾸기`. 다이얼로그를 닫고 사진 시트를 연다.
      * 시트가 닫히면(선택 완료·사진 없이 계속·닫기 모두) 확인 다이얼로그를 새로 만들어 다시 띄운다.

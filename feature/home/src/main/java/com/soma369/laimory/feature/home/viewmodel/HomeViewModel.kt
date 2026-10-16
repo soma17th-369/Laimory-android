@@ -332,7 +332,7 @@ class HomeViewModel
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
                 HomeUiIntent.ConfirmCreateDraft -> confirmCreateDraft()
                 HomeUiIntent.DismissCreateConfirm -> dismissCreateConfirm()
-                HomeUiIntent.ChargeCredits -> chargeCredits()
+                HomeUiIntent.ChargeCredits, HomeUiIntent.OpenCredits -> openCredits()
                 HomeUiIntent.PickPhotosForCreate -> pickPhotosForCreate()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 HomeUiIntent.RetryDraft -> retryDraft()
@@ -1092,10 +1092,10 @@ class HomeViewModel
         private fun isSameAccount(accountSession: Long): Boolean = draftConsentSessionStore.accountSession.value == accountSession
 
         /**
-         * 크레딧이 모자랄 때 `만들기` 자리에 오는 `충전하러 가기`. 다이얼로그를 닫고 크레딧 화면으로 간다 — 만들지 않았으니
-         * 취소와 같게 정리한다. 충전 자체는 아직 열지 않아 그 화면이 준비 중이라고 알린다.
+         * 확인 다이얼로그에서 크레딧 화면으로 간다 — 크레딧 줄, 또는 크레딧이 모자랄 때 `만들기` 자리에 오는 `충전하러 가기`.
+         * 다이얼로그를 닫는다. 만들지 않았으니 취소와 같게 정리한다. 충전 자체는 아직 열지 않아 그 화면이 준비 중이라고 알린다.
          */
-        private suspend fun chargeCredits() {
+        private suspend fun openCredits() {
             if (confirmedSubmission == null) return
             dismissCreateConfirm()
             navigationHelper.navigateTo(CreditPage)

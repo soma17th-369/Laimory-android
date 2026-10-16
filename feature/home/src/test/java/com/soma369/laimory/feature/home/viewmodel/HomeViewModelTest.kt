@@ -321,6 +321,25 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `잔액이 충분해도 크레딧 줄을 누르면 만들지 않고 크레딧 화면으로 간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            sourceRepository.items.value = listOf(todayItem("calendar"))
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertFalse(viewModel.state.value.createConfirm!!.isCreditShort)
+
+            viewModel.sendIntent(HomeUiIntent.OpenCredits)
+            runCurrent()
+
+            assertNull(viewModel.state.value.createConfirm)
+            assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+            assertEquals(listOf<Page>(CreditPage), navigationHelper.destinations)
+        }
+
+    @Test
     fun `크레딧이 모자라면 충전하러 가기는 만들지 않고 크레딧 화면으로 간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             creditRepository.remaining = 0

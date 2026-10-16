@@ -305,6 +305,7 @@ private fun HomeContent(
             onDismiss = { onIntent(HomeUiIntent.DismissCreateConfirm) },
             onPickPhotos = { onIntent(HomeUiIntent.PickPhotosForCreate) },
             onCharge = { onIntent(HomeUiIntent.ChargeCredits) },
+            onCreditClick = { onIntent(HomeUiIntent.OpenCredits) },
         )
     }
 
