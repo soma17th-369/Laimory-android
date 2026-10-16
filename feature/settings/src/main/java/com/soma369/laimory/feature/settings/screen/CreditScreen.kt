@@ -127,7 +127,7 @@ private fun CreditScreen(
             ChargeNotReadyNotice()
             PackageSection(onPackageClick = { amount -> onIntent(CreditUiIntent.PackageClicked(amount)) })
             Text(
-                text = "충전이 열리면 Google Play 결제로 구매할 수 있어요.",
+                text = "표시된 가격은 예정 가격이라 충전이 열릴 때 달라질 수 있어요.\n충전이 열리면 Google Play 결제로 구매할 수 있어요.",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -219,14 +219,29 @@ private fun ChargeNotReadyNotice() {
     )
 }
 
+/**
+ * 충전 상품 목록. 가격은 확정이 아닌 예정 가격이라 제목 줄 오른쪽에 한 번 알린다 — 줄마다 붙이면 가격 · `예정` · `준비 중` 이
+ * 겹친다. 달라질 수 있다는 설명은 화면 아래 안내가 맡는다.
+ */
 @Composable
 private fun PackageSection(onPackageClick: (Int) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.small)) {
-        Text(
-            text = "충전 상품",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "충전 상품",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "예정 가격",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.medium,
@@ -311,8 +326,8 @@ private data class CreditPackage(
 )
 
 /**
- * 하루 한 번 기록하는 기준으로 기간을 붙인다. 가격은 충전을 열 때 Play 인앱 상품 가격과 맞춰야 한다 — 그때는 Play 가 돌려주는
- * 현지화된 가격 문자열로 바꾼다.
+ * 하루 한 번 기록하는 기준으로 기간을 붙인다. 가격은 예정 가격이다 — 충전을 열 때 Play 인앱 상품 가격과 맞추고, Play 가
+ * 돌려주는 현지화된 가격 문자열로 바꾼다.
  */
 private val CREDIT_PACKAGES =
     listOf(
