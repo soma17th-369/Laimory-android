@@ -33,6 +33,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.repository.AnalyticsTimelineEditLogRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
@@ -1259,6 +1260,37 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.ExitEditMode)
             runCurrent()
             assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
+        }
+
+    @Test
+    fun `이벤트가 0건인 읽기 모드에서 이벤트 추가는 편집 모드로 바꾸고 만들기 화면을 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = emptyList(), status = DailyRecordStatus.SAVED),
+                )
+            assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.AddEvent)
+            runCurrent()
+
+            assertEquals(TimelineRecordMode.EDIT, viewModel.state.value.mode)
+            assertEquals(listOf<Page>(TimelineEventCreatePage(RECORD_DATE)), navigationHelper.pages)
+        }
+
+    @Test
+    fun `이벤트가 있는 읽기 모드에서는 이벤트 추가를 받지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(event()), status = DailyRecordStatus.SAVED),
+                )
+
+            viewModel.sendIntent(TimelineRecordUiIntent.AddEvent)
+            runCurrent()
+
+            assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
+            assertTrue(navigationHelper.pages.isEmpty())
         }
 
     @Test

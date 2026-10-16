@@ -26,7 +26,7 @@ sealed interface TimelineRecordUiIntent : UiIntent {
         val emotion: TimelineEmotion,
     ) : TimelineRecordUiIntent
 
-    /** 플로팅 버튼으로 새 이벤트를 만든다. 편집 모드에서만 연다. */
+    /** 새 이벤트를 만든다. 편집 모드의 플로팅 버튼, 또는 이벤트가 0건인 읽기 모드의 빈 화면 버튼에서 연다. */
     data object AddEvent : TimelineRecordUiIntent
 
     /** 앱바 감정을 눌러 수정 시트를 연다. 저장된 기록의 편집 모드에서만 열린다. */
