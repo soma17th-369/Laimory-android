@@ -15,8 +15,12 @@ import javax.inject.Singleton
  * 비우고 로딩을 띄우면 한순간 번쩍여 버그처럼 보인다.
  *
  * 디스크에는 두지 않는다. 잔액은 다른 기기 · 결과 저장으로 바뀌는 서버 값이라 기기에 저장하지 않는다 — 프로세스가 끝나면
- * 사라진다. **계정 경계에서 [clear] 한다**(로그아웃 · 다른 계정 로그인). 비우기 전에 보낸 조회의 응답은 이전 계정의 값이라,
- * 조회를 보낼 때 받은 [generation] 이 그사이 바뀌었으면 버린다.
+ * 사라진다.
+ *
+ * **요청 순서는 여기서 한 줄로 센다.** 조회를 보낼 때 [beginRequest] 로 번호를 받고 응답을 넣을 때 함께 넘긴다. 이미 반영한
+ * 응답보다 먼저 보낸 요청의 응답은 버린다 — 두 화면이 번호를 따로 세면, 설정에서 보낸 느린 조회가 그 뒤 크레딧 화면이 받은
+ * 최신 잔액을 덮는다(늦게 실패하면 비우기까지 한다). **계정 경계에서 [clear] 한다**(로그아웃 · 다른 계정 로그인) — 그 전에
+ * 보낸 요청의 응답은 이전 계정의 값이라 모두 버린다.
  */
 @Singleton
 class CreditBalanceStore
@@ -25,32 +29,46 @@ class CreditBalanceStore
         private val mutableBalance = MutableStateFlow(CreditBalance())
         val balance: StateFlow<CreditBalance> = mutableBalance.asStateFlow()
 
-        /** 계정 경계마다 오르는 번호. 조회를 보낼 때 받아 두고 응답을 넣을 때 함께 넘긴다. */
-        var generation: Long = 0L
-            private set
+        /** 마지막으로 내준 요청 번호. */
+        private var issued = 0L
+
+        /** 이 번호 이하의 응답은 버린다 — 이미 더 나중 요청의 응답을 반영했거나, 계정 경계 전에 보낸 요청이다. */
+        private var discardUpTo = 0L
+
+        @Synchronized
+        fun beginRequest(): Long = ++issued
 
         /** 남은 크레딧만 받은 경우(설정 계정 카드). 못 받았으면 `null` — 옛 값을 남기면 줄어든 뒤에도 옛 잔액이 보인다. */
+        @Synchronized
         fun updateRemaining(
-            requestedGeneration: Long,
+            request: Long,
             remaining: Int?,
         ) {
-            if (requestedGeneration != generation) return
+            if (!accept(request)) return
             mutableBalance.update { it.copy(remaining = remaining) }
         }
 
         /** 잔액과 비용을 함께 받은 경우(크레딧 화면). 못 받았으면 잔액을 비운다. 비용은 이전 값을 둔다 — 서버 상수라 잘 바뀌지 않는다. */
+        @Synchronized
         fun updateCredit(
-            requestedGeneration: Long,
+            request: Long,
             credit: TimelineCredit?,
         ) {
-            if (requestedGeneration != generation) return
+            if (!accept(request)) return
             mutableBalance.update { current ->
                 if (credit == null) current.copy(remaining = null) else CreditBalance(remaining = credit.remaining, cost = credit.cost)
             }
         }
 
+        @Synchronized
         fun clear() {
-            generation++
+            discardUpTo = issued
             mutableBalance.value = CreditBalance()
+        }
+
+        private fun accept(request: Long): Boolean {
+            if (request <= discardUpTo) return false
+            discardUpTo = request
+            return true
         }
     }

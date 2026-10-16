@@ -118,12 +118,12 @@ class SettingsViewModel
          */
         private fun refreshCredits() {
             val request = ++creditRequest
-            val generation = creditBalanceStore.generation
+            val token = creditBalanceStore.beginRequest()
             updateState { copy(isCreditsLoading = true) }
             safeLaunch {
                 val remaining = getRemainingCredits()
                 if (request != creditRequest) return@safeLaunch
-                creditBalanceStore.updateRemaining(generation, remaining)
+                creditBalanceStore.updateRemaining(token, remaining)
                 updateState { copy(isCreditsLoading = false) }
             }
         }

@@ -49,12 +49,12 @@ class CreditViewModel
         /** 들어올 때마다 다시 받는다. 보이던 값은 비우지 않는다 — 응답이 오면 저장소를 거쳐 조용히 바뀐다. */
         private fun refresh() {
             val current = ++request
-            val generation = balanceStore.generation
+            val token = balanceStore.beginRequest()
             updateState { copy(isLoading = true) }
             safeLaunch {
                 val credit = getTimelineCredit()
                 if (current != request) return@safeLaunch
-                balanceStore.updateCredit(generation, credit)
+                balanceStore.updateCredit(token, credit)
                 updateState { copy(isLoading = false) }
             }
         }

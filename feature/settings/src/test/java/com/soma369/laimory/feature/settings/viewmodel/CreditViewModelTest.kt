@@ -50,7 +50,7 @@ class CreditViewModelTest {
     fun `기억해 둔 잔액이 있으면 다시 받는 동안에도 그 값을 보인다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 설정이 받아 둔 값. 들어올 때마다 비우면 로딩이 번쩍인다.
-            store.updateRemaining(store.generation, 42)
+            store.updateRemaining(store.beginRequest(), 42)
             repository.gate = CompletableDeferred()
             val viewModel = createViewModel()
 
@@ -65,7 +65,7 @@ class CreditViewModelTest {
     fun `잔액이나 비용을 못 받으면 0 이 아니라 받지 못함으로 둔다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 크레딧 행이 없으면 서버가 500 을 낸다. 0 으로 보이면 남은 게 없는 줄 안다.
-            store.updateRemaining(store.generation, 42)
+            store.updateRemaining(store.beginRequest(), 42)
             repository.failure = ApiException.ServerException(rawCode = 500)
             val viewModel = createViewModel()
 
