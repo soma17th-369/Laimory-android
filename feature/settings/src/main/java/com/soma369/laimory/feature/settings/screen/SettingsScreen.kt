@@ -312,16 +312,6 @@ private fun SettingsScreen(
                     SettingsGroup(
                         items =
                             listOf(
-                                // 계정 카드의 숫자 칸만으로는 크레딧 화면으로 가는 길이 잘 안 보인다. 목록의 표준 줄로 한 번 더 둔다.
-                                // 잔액을 못 받았어도 줄은 남긴다 — 들어가면 크레딧 화면이 다시 받는다.
-                                SettingsItem(
-                                    iconRes = CoreUiR.drawable.ico_default_coins,
-                                    title = "크레딧",
-                                    trailingText = state.remainingCredits?.let { "${it.toCreditCount()}개" },
-                                    showTrailingProgress = state.showsCreditsLoading,
-                                    showChevron = true,
-                                    onClick = { onIntent(SettingsUiIntent.CreditsClicked) },
-                                ),
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_signout,
                                     title = "로그아웃",
@@ -583,13 +573,6 @@ private fun SettingsRow(item: SettingsItem) {
             )
             if (item.showNewBadge) NewNoticeDot()
         }
-        if (item.showTrailingProgress) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                strokeWidth = 2.dp,
-            )
-        }
         item.trailingText?.let { trailingText ->
             val trailingColor =
                 item.trailingColor.takeUnless { it == Color.Unspecified }
@@ -637,8 +620,6 @@ private data class SettingsItem(
     val contentColor: Color = Color.Unspecified,
     val isEnabled: Boolean = true,
     val showChevron: Boolean = false,
-    /** 후행 값을 받는 중이면 문구 대신 작은 로딩을 둔다. */
-    val showTrailingProgress: Boolean = false,
     val onClick: (() -> Unit)? = null,
 )
 

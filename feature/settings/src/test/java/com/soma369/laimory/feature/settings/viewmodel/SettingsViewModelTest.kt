@@ -577,17 +577,18 @@ class SettingsViewModelTest {
 
             viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
             runCurrent()
-            assertTrue(viewModel.state.value.showsCreditsLoading)
+            assertTrue(viewModel.state.value.isCreditsLoading)
+            assertNull(viewModel.state.value.remainingCredits)
 
             slow.complete(Unit)
             runCurrent()
 
-            assertFalse(viewModel.state.value.showsCreditsLoading)
+            assertFalse(viewModel.state.value.isCreditsLoading)
             assertEquals(42, viewModel.state.value.remainingCredits)
         }
 
     @Test
-    fun `이미 받은 잔액이 있으면 다시 받는 동안 로딩으로 바꾸지 않는다`() =
+    fun `이미 받은 잔액이 있으면 다시 받는 동안에도 그 숫자를 둔다`() =
         runTest {
             // 화면 복귀마다 다시 받는다. 있던 숫자를 그때마다 로딩으로 바꾸면 깜빡인다.
             creditRepository.remaining = 42
@@ -600,7 +601,7 @@ class SettingsViewModelTest {
             viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
             runCurrent()
 
-            assertFalse(viewModel.state.value.showsCreditsLoading)
+            // 칸은 값이 있으면 받는 중이어도 숫자를 그린다.
             assertEquals(42, viewModel.state.value.remainingCredits)
         }
 
