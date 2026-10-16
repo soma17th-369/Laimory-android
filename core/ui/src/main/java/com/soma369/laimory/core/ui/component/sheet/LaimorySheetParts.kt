@@ -29,7 +29,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
  *
  * [ModalBottomSheet]의 `dragHandle` 슬롯에 그대로 넘겨 쓴다.
  *
- * @param bottomPadding 손잡이와 시트 내용 사이. 시안마다 다른 시트만 바꾼다(팝업 공지 시트는 20dp).
+ * @param bottomPadding 손잡이와 시트 내용 사이. 시트마다 다르게 둘 때만 바꾼다(팝업 공지 시트는 12dp).
  */
 @Composable
 fun LaimorySheetDragHandle(
