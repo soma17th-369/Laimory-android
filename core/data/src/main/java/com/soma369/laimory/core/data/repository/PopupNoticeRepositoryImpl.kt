@@ -16,9 +16,9 @@ import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 /**
- * 띄운 기록은 공지 읽음과 같은 앱 설정 저장소에 둔다 — 로그아웃해도 남는 기기 단위 값이다.
+ * `다시 보지 않기` 기록은 공지 읽음과 같은 앱 설정 저장소에 둔다 — 로그아웃해도 남는 기기 단위 값이다.
  *
- * Room 이 아닌 이유: 저장할 것은 id 몇 개짜리 집합이고 묻는 것은 "봤나?" 하나뿐이다.
+ * Room 이 아닌 이유: 저장할 것은 id 몇 개짜리 집합이고 묻는 것은 "다시 보지 않기로 했나?" 하나뿐이다.
  */
 internal class PopupNoticeRepositoryImpl
     @Inject

@@ -65,6 +65,7 @@ import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureMessages
 import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
+import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.DraftWindowPolicy
@@ -80,6 +81,7 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.endDay
+import com.soma369.laimory.feature.home.state.hasCreatableItems
 import com.soma369.laimory.feature.home.state.isDateLocked
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
@@ -183,6 +185,14 @@ class HomeViewModel
          * 한다. 다이얼로그가 보여 주는 것과 `만들기` 가 보내는 것이 언제나 같은 스냅샷이다.
          */
         private var resumesCreateAfterPhotoSheet = false
+
+        /**
+         * 이번 만들기 시도에서 아직 검토 시작을 남기지 않았는지. 내용 있는 다이얼로그가 처음 뜰 때 한 번 남긴다.
+         *
+         * 재진입 여부만으로는 가를 수 없다 — 모인 것이 없어 빈 다이얼로그가 뜬 뒤 사진을 골라 돌아오면 재진입이지만,
+         * 검토는 그때 처음 시작된다.
+         */
+        private var isReviewStartPending = false
         private var locationConsentJob: Job? = null
 
         /** 고른 날짜의 서버 기록 판정. 날짜가 바뀌면 이전 판정을 끊는다. */
@@ -283,6 +293,7 @@ class HomeViewModel
                     // 이전 계정의 썸네일이 다시 뜨고, `만들기` 는 준비 스냅샷이 없어 무반응이다.
                     confirmedSubmission = null
                     resumesCreateAfterPhotoSheet = false
+                    isReviewStartPending = false
                     // 이전 계정이 보내던 요청의 결과를 새 계정 홈에서 처리하면 안 된다. 요청을 먼저 끊고 남은 실패를 비운다.
                     submissionJob?.cancel()
                     submissionJob = null
@@ -936,7 +947,7 @@ class HomeViewModel
                 sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.NETWORK))
                 return
             }
-            // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤로 미룬다. 여기서 끊으면 아직 한 번도
+            // `데이터 0건` 판정은 자동 수집과 최신 조회 뒤([showCreateConfirm])로 미룬다. 여기서 끊으면 아직 한 번도
             // 수집하지 않은 사용자가 수집 기회를 갖기 전에 생성이 막힌다.
             val shouldDiscardPreviousTask = current.draftRetryMode == DraftRetryMode.NEW_DRAFT
             val recordDate = current.selectedDate
@@ -946,18 +957,14 @@ class HomeViewModel
                     onError = ::handleDraftCreationFailure,
                 ) {
                     // 다이얼로그에서 사진을 고르고 돌아온 것은 같은 만들기의 이어짐이다. 시작을 두 번 세지 않는다.
-                    if (!isResume) analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
+                    if (!isResume) {
+                        analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
+                        isReviewStartPending = true
+                    }
                     awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
-                    if (collected.isEmpty() && selectedPhotoItems.isEmpty()) {
-                        analyticsHelper.log(
-                            AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, dayRelation, recordDate),
-                        )
-                        sendEffect(HomeUiSideEffect.ShowSnackbar("선택한 범위에 모인 데이터가 없어요."))
-                        return@safeLaunch
-                    }
                     val selection =
                         prepareTimelineDraftSelectionUseCase(
                             window,
@@ -973,7 +980,7 @@ class HomeViewModel
                         selection = selection,
                         discardActiveTask = shouldDiscardPreviousTask,
                     )
-                    showCreateConfirm(isResume)
+                    showCreateConfirm()
                 }
         }
 
@@ -982,13 +989,16 @@ class HomeViewModel
          *
          * 화면을 한 장 더 두지 않는다 — 보낼 데이터를 보여 주고 유형 상세로 들어가는 일은 이미
          * 홈 카드가 하므로, 남는 것은 "이 건수로 만들겠습니까" 라는 마지막 확인뿐이다.
+         *
+         * **보낼 것이 없어도 띄운다.** 처음부터 없었든 사용자가 모두 뺐든, 스낵바 한 줄로 끝내면 무엇을 하면 되는지
+         * 모른 채 홈에 남는다. 빈 다이얼로그는 `만들기` 를 끄고 `사진 고르기` 로 이어 갈 길을 보여 준다.
          */
-        private suspend fun showCreateConfirm(isResume: Boolean = false) {
+        private suspend fun showCreateConfirm() {
             val preparation = draftConsentSessionStore.preparation.value ?: return
             val accountSession = draftConsentSessionStore.accountSession.value
             // 크레딧을 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌어, 누르려던 것과
-            // 다른 버튼을 누르게 된다. 못 받으면 줄 없이 띄운다(판정은 서버의 -1021).
-            val credit = getTimelineCredit()
+            // 다른 버튼을 누르게 된다. 못 받으면 줄 없이 띄운다(판정은 서버의 -1021). 빈 다이얼로그는 만들 수 없어 받지 않는다.
+            val credit = if (submissionOf(preparation).hasCreatableItems()) getTimelineCredit() else null
             // 기다리는 동안(최대 3초) 홈 입력은 잠기지 않는다. 그사이 날짜 · 범위를 바꿨거나 계정이 바뀌었으면 이 시도는
             // 낡았다 — 띄우면 홈에 보이는 날짜와 다른 날짜로 제출되거나 이전 계정의 확인창이 되살아난다.
             if (!isStillCurrent(preparation, accountSession)) {
@@ -1000,15 +1010,17 @@ class HomeViewModel
             val submission = submissionOf(preparation)
             val recordDate = preparation.recordDate
             val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
-            if (submission.items.isEmpty()) {
-                analyticsHelper.log(AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.ALL_EXCLUDED, dayRelation, recordDate))
-                draftConsentSessionStore.clearPreparation()
-                sendEffect(HomeUiSideEffect.ShowSnackbar("보낼 데이터를 모두 제외했어요."))
+            val emptyReason = emptyReasonOf(preparation, submission)
+            if (emptyReason != null) {
+                // 중단은 닫을 때 남긴다([dismissCreateConfirm]). 여기서 남기면 사진을 골라 이어 간 사용자도 중단으로 센다.
+                confirmedSubmission = submission
+                updateState { copy(createConfirm = submission.toCreateConfirm(emptyReason = emptyReason)) }
                 return
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
             // 제외율은 묶음별 건수에서 사진을 빼고 계산한다.
-            if (!isResume) {
+            if (isReviewStartPending) {
+                isReviewStartPending = false
                 analyticsHelper.log(
                     AnalyticsEvent.TimelineEventReviewStarted(dayRelation, recordDate, preparation.selection.analyticsCounts().total),
                 )
@@ -1032,6 +1044,8 @@ class HomeViewModel
         /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 목록을 그대로 제출한다. */
         private suspend fun confirmCreateDraft() {
             val submission = confirmedSubmission ?: return
+            // 빈 다이얼로그는 버튼이 꺼져 있다. 눌림이 새어 들어와도 보내지 않는다.
+            if (!submission.hasCreatableItems()) return
             closeCreateConfirm()
             val preparation = draftConsentSessionStore.preparation.value ?: return
             analyticsHelper.log(
@@ -1106,18 +1120,39 @@ class HomeViewModel
          * 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
          */
         private suspend fun dismissCreateConfirm() {
-            if (confirmedSubmission == null) return
+            val submission = confirmedSubmission ?: return
             closeCreateConfirm()
             val preparation = draftConsentSessionStore.preparation.value ?: return
             analyticsHelper.log(
                 AnalyticsEvent.TimelineCreateStopped(
-                    AnalyticsCreateStopReason.CANCELLED,
+                    // 빈 다이얼로그를 닫은 것은 보낼 것이 없어 그만둔 것이다.
+                    when (emptyReasonOf(preparation, submission)) {
+                        null -> AnalyticsCreateStopReason.CANCELLED
+                        DraftCreateEmptyReason.NO_DATA -> AnalyticsCreateStopReason.NO_DATA
+                        DraftCreateEmptyReason.ALL_EXCLUDED -> AnalyticsCreateStopReason.ALL_EXCLUDED
+                    },
                     AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
                     preparation.recordDate,
                 ),
             )
             draftConsentSessionStore.clearPreparation()
         }
+
+        /**
+         * [submission] 으로는 만들 수 없을 때 그 이유. 만들 수 있으면 null.
+         *
+         * 제외 **전** 스냅샷을 함께 본다 — 제출 목록만 보면 처음부터 없던 것과 사용자가 모두 뺀 것이 구분되지 않는다.
+         * 건강만 남은 것도 만들 수 없다(걸음만으로는 만들지 않는다).
+         */
+        private fun emptyReasonOf(
+            preparation: DraftConsentPreparation,
+            submission: DraftSourceItemSelection,
+        ): DraftCreateEmptyReason? =
+            when {
+                submission.hasCreatableItems() -> null
+                preparation.selection.hasCreatableItems() -> DraftCreateEmptyReason.ALL_EXCLUDED
+                else -> DraftCreateEmptyReason.NO_DATA
+            }
 
         private fun closeCreateConfirm() {
             confirmedSubmission = null

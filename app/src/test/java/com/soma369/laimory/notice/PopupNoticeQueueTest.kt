@@ -1,5 +1,7 @@
 package com.soma369.laimory.notice
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.notice.Notice
 import com.soma369.laimory.core.domain.model.notice.PopupNotice
@@ -7,6 +9,7 @@ import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.PopupNoticeRepository
 import com.soma369.laimory.core.domain.usecase.notice.GetPopupNoticeContentUrlUseCase
 import com.soma369.laimory.core.domain.usecase.notice.GetPopupNoticesUseCase
+import com.soma369.laimory.core.domain.usecase.notice.MarkPopupNoticeOpenedUseCase
 import com.soma369.laimory.core.domain.usecase.notice.MarkPopupNoticeSeenUseCase
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -22,18 +25,134 @@ class PopupNoticeQueueTest {
         PopupNoticeQueue(
             getPopupNotices = GetPopupNoticesUseCase(popupRepository),
             getContentUrl = GetPopupNoticeContentUrlUseCase(popupRepository),
-            markPopupNoticeSeen = MarkPopupNoticeSeenUseCase(popupRepository, noticeRepository),
+            markPopupNoticeSeen = MarkPopupNoticeSeenUseCase(popupRepository),
+            markPopupNoticeOpened = MarkPopupNoticeOpenedUseCase(noticeRepository),
         )
 
     @Test
-    fun `안 본 팝업을 최신 순 목록으로 한 번에 내놓는다`() =
+    fun `다시 보지 않기 한 것을 빼고 최신 순 목록으로 내놓는다`() =
         runTest {
             popupRepository.popups = listOf(popup(12), popup(9), popup(5))
             popupRepository.seen += 9
 
-            queue.loadOnce()
+            queue.refresh()
 
-            assertEquals(listOf(12L, 5L), queue.notices.value.map(PopupNotice::id))
+            assertEquals(listOf(12L, 5L), queue.ids())
+        }
+
+    @Test
+    fun `카드를 처리하면 대기열에서 빠져 남은 첫 장이 다음 차례다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
+            queue.refresh()
+
+            queue.close(popup(12))
+            assertEquals(listOf(9L, 5L), queue.ids())
+
+            // 점을 눌러 가운데가 아닌 카드를 처리해도 그 카드만 빠진다.
+            queue.dismissForever(popup(5))
+            assertEquals(listOf(9L), queue.ids())
+        }
+
+    @Test
+    fun `다시 보지 않기만 기기에 남고 닫기는 남지 않는다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+
+            queue.dismissForever(popup(12))
+            queue.close(popup(9))
+
+            assertEquals(setOf(12L), popupRepository.seen)
+            assertTrue(noticeRepository.read.isEmpty())
+        }
+
+    @Test
+    fun `닫은 공지는 앱 안에서 홈에 돌아와도 다시 뜨지 않는다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+            queue.close(popup(12))
+            queue.close(popup(9))
+
+            // 그사이 새 공지가 올라왔다. 홈 진입 확인은 새 공지만 잡는다.
+            popupRepository.popups = listOf(popup(15), popup(12), popup(9))
+            queue.refresh()
+
+            assertEquals(listOf(15L), queue.ids())
+        }
+
+    @Test
+    fun `앱을 나갔다 다시 열면 닫은 공지가 다시 뜨고 다시 보지 않기 한 것은 안 뜬다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+            queue.dismissForever(popup(12))
+            queue.close(popup(9))
+
+            queue.onStop(ProcessOwner)
+            queue.refresh()
+
+            assertEquals(listOf(9L), queue.ids())
+        }
+
+    @Test
+    fun `시트를 내리면 남은 카드를 모두 닫는다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
+            queue.refresh()
+            queue.dismissForever(popup(12))
+
+            queue.closeAll()
+            assertTrue(queue.notices.value.isEmpty())
+            assertEquals(setOf(12L), popupRepository.seen)
+
+            queue.refresh()
+            assertTrue(queue.notices.value.isEmpty())
+
+            queue.onStop(ProcessOwner)
+            queue.refresh()
+            assertEquals(listOf(9L, 5L), queue.ids())
+        }
+
+    @Test
+    fun `시트가 떠 있으면 다시 받지 않는다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12))
+            queue.refresh()
+
+            popupRepository.popups = listOf(popup(15), popup(12))
+            queue.refresh()
+
+            assertEquals(1, popupRepository.popupsCallCount)
+            assertEquals(listOf(12L), queue.ids())
+        }
+
+    @Test
+    fun `받지 못했으면 다음 홈 진입에서 다시 받는다`() =
+        runTest {
+            popupRepository.popupsFailure = IllegalStateException("502")
+            queue.refresh()
+            assertTrue(queue.notices.value.isEmpty())
+
+            popupRepository.popupsFailure = null
+            popupRepository.popups = listOf(popup(12))
+            queue.refresh()
+
+            assertEquals(listOf(12L), queue.ids())
+        }
+
+    @Test
+    fun `원문을 열면 카드는 그대로 두고 공지 읽음에만 남긴다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+
+            queue.markOpened(popup(12))
+
+            assertEquals(listOf(12L, 9L), queue.ids())
+            assertTrue(popupRepository.seen.isEmpty())
+            assertEquals(setOf(12L), noticeRepository.read)
         }
 
     @Test
@@ -41,81 +160,24 @@ class PopupNoticeQueueTest {
         runTest {
             popupRepository.popups = listOf(popup(12), popup(9))
             popupRepository.missing += 9
-            queue.loadOnce()
+            queue.refresh()
 
             assertEquals("https://www.laimory.app/notices/12", queue.contentUrlOf(popup(12)))
             assertNull(queue.contentUrlOf(popup(9)))
         }
 
-    @Test
-    fun `원문을 열면 시트는 그대로 두고 그 공지만 본 것 · 읽은 것으로 남긴다`() =
-        runTest {
-            popupRepository.popups = listOf(popup(12), popup(9))
-            queue.loadOnce()
-
-            queue.markOpened(queue.notices.value.first())
-
-            assertEquals(2, queue.notices.value.size)
-            assertEquals(setOf(12L), popupRepository.seen)
-            assertEquals(setOf(12L), noticeRepository.read)
-        }
-
-    @Test
-    fun `시트를 닫으면 넘겨 본 카드만 본 것으로 남기고 읽음은 연 것만이다`() =
-        runTest {
-            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
-            queue.loadOnce()
-            queue.markOpened(queue.notices.value.first())
-            queue.markViewed(popup(12))
-            queue.markViewed(popup(9))
-
-            queue.close()
-
-            assertTrue(queue.notices.value.isEmpty())
-            // 넘기지 않은 5 는 보지 않은 것 — 다음 콜드 스타트에 다시 뜬다.
-            assertEquals(setOf(12L, 9L), popupRepository.seen)
-            assertEquals(setOf(12L), noticeRepository.read)
-        }
-
-    @Test
-    fun `시트가 다시 그려져도 앞서 넘겨 본 카드 기록이 남는다`() =
-        runTest {
-            // 회전 · 권장 업데이트 안내로 시트가 잠시 내려갔다 다시 뜨면 시트는 지금 카드만 다시 알린다.
-            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
-            queue.loadOnce()
-            queue.markViewed(popup(12))
-            queue.markViewed(popup(9))
-
-            // 다시 그려진 시트가 지금 카드(9)를 한 번 더 알린다.
-            queue.markViewed(popup(9))
-            queue.close()
-
-            assertEquals(setOf(12L, 9L), popupRepository.seen)
-        }
-
-    @Test
-    fun `같은 프로세스에서는 한 번만 받는다`() =
-        runTest {
-            popupRepository.popups = listOf(popup(12))
-
-            queue.loadOnce()
-            queue.markViewed(popup(12))
-            queue.close()
-            queue.loadOnce()
-
-            assertEquals(1, popupRepository.popupsCallCount)
-            assertTrue(queue.notices.value.isEmpty())
-        }
+    private fun PopupNoticeQueue.ids(): List<Long> = notices.value.map(PopupNotice::id)
 
     private class FakePopupNoticeRepository : PopupNoticeRepository {
         var popups: List<PopupNotice> = emptyList()
+        var popupsFailure: Throwable? = null
         var popupsCallCount = 0
         val seen = mutableSetOf<Long>()
         val missing = mutableSetOf<Long>()
 
         override suspend fun getPopupNotices(): List<PopupNotice> {
             popupsCallCount++
-            return popups
+            return popupsFailure?.let { throw it } ?: popups
         }
 
         override suspend fun getNotice(noticeId: Long): Notice {
@@ -144,6 +206,11 @@ class PopupNoticeQueueTest {
             read.retainAll(keepIds)
             read += noticeId
         }
+    }
+
+    /** 앱 프로세스 수명 자리. 대기열은 소유자를 읽지 않는다. */
+    private object ProcessOwner : LifecycleOwner {
+        override val lifecycle: Lifecycle get() = error("읽지 않는다")
     }
 
     private companion object {
