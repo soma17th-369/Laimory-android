@@ -43,14 +43,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.soma369.laimory.core.domain.model.credit.TimelineCredit
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.component.rememberDelayedVisibility
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.settings.model.toCreditCount
-import com.soma369.laimory.feature.settings.state.CreditBalance
 import com.soma369.laimory.feature.settings.state.CreditUiIntent
 import com.soma369.laimory.feature.settings.state.CreditUiSideEffect
 import com.soma369.laimory.feature.settings.state.CreditUiState
@@ -131,7 +130,7 @@ private fun CreditScreen(
                     .padding(top = Spacing.small, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(Spacing.large),
         ) {
-            BalanceCard(balance = state.balance)
+            BalanceCard(state = state)
             ChargeNotReadyNotice()
             PackageSection(onPackageClick = { amount -> onIntent(CreditUiIntent.PackageClicked(amount)) })
             Text(
@@ -148,7 +147,7 @@ private fun CreditScreen(
  * 받음 · 못 받음 사이에 카드 크기와 아래 내용이 움직이지 않는다.
  */
 @Composable
-private fun BalanceCard(balance: CreditBalance) {
+private fun BalanceCard(state: CreditUiState) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
@@ -169,8 +168,8 @@ private fun BalanceCard(balance: CreditBalance) {
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                BalanceCount(balance = balance)
-                UsageLine(balance = balance)
+                BalanceCount(remaining = state.remaining, isLoading = state.isLoading)
+                UsageLine(remaining = state.remaining, cost = state.cost, isLoading = state.isLoading)
             }
             CoinBadge()
         }
@@ -178,19 +177,18 @@ private fun BalanceCard(balance: CreditBalance) {
 }
 
 /**
- * 숫자 자리. 높이는 숫자 글자 한 줄로, 폭은 최소 폭으로 고정한다 — 받는 중에는 이 자리에만 로딩을 두고, 받으면 숫자만 바꾼다.
- * 못 받았으면 0 이 아니라 `-` 다.
+ * 숫자 자리. 높이는 숫자 글자 한 줄로, 폭은 최소 폭으로 고정한다. 기억해 둔 값이 있으면 받는 중에도 그 숫자다. 값이 없을 때만
+ * 기다리는데, 늦을 때만 로딩을 띄우고([rememberDelayedVisibility]) 그 전에는 자리만 비워 둔다. 못 받았으면 0 이 아니라 `-`.
  */
 @Composable
-private fun BalanceCount(balance: CreditBalance) {
+private fun BalanceCount(
+    remaining: Int?,
+    isLoading: Boolean,
+) {
     val style = MaterialTheme.typography.displayLarge
     val lineHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
-    val count =
-        when (balance) {
-            CreditBalance.Loading -> null
-            CreditBalance.Unavailable -> "-"
-            is CreditBalance.Loaded -> balance.credit.remaining.toCreditCount()
-        }
+    val showsProgress = rememberDelayedVisibility(active = remaining == null && isLoading)
+    val count = remaining?.toCreditCount() ?: if (isLoading) null else "-"
     Box(
         modifier =
             Modifier
@@ -201,14 +199,14 @@ private fun BalanceCount(balance: CreditBalance) {
                 },
         contentAlignment = Alignment.CenterStart,
     ) {
-        if (count == null) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(BALANCE_PROGRESS_SIZE),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 3.dp,
-            )
-        } else {
-            Text(text = count, style = style, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+        when {
+            showsProgress ->
+                CircularProgressIndicator(
+                    modifier = Modifier.size(BALANCE_PROGRESS_SIZE),
+                    color = MaterialTheme.colorScheme.primary,
+                    strokeWidth = 3.dp,
+                )
+            count != null -> Text(text = count, style = style, color = MaterialTheme.colorScheme.primary, maxLines = 1)
         }
     }
 }
@@ -216,28 +214,22 @@ private fun BalanceCount(balance: CreditBalance) {
 /**
  * 1개당 쓰임. 비용은 서버 값이라 받은 그대로 쓴다. 모자라면 몇 개가 필요한지로 바꾼다.
  *
- * 늘 한 줄을 차지한다 — 받는 중에는 같은 문구를 보이지 않게 깔아 자리만 잡고, 못 받았으면 그렇다고 적는다. 줄이 생겼다
+ * 늘 한 줄을 차지한다 — 기다리는 동안에는 같은 문구를 보이지 않게 깔아 자리만 잡고, 못 받았으면 그렇다고 적는다. 줄이 생겼다
  * 없어지면 카드 높이가 바뀌어 아래 내용이 밀린다.
  */
 @Composable
-private fun UsageLine(balance: CreditBalance) {
+private fun UsageLine(
+    remaining: Int?,
+    cost: Int?,
+    isLoading: Boolean,
+) {
     val style = MaterialTheme.typography.bodySmall
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
-    when (balance) {
-        CreditBalance.Loading ->
-            Text(
-                text = "1개로 타임라인을 1번 만들 수 있어요",
-                modifier = Modifier.alpha(0f).clearAndSetSemantics { },
-                style = style,
-                maxLines = 1,
-            )
-        CreditBalance.Unavailable ->
-            Text(text = "잔액을 불러오지 못했어요", style = style, color = variant, maxLines = 1)
-        is CreditBalance.Loaded -> {
-            val credit = balance.credit
-            if (credit.isEnough) {
+    when {
+        remaining != null && cost != null ->
+            if (remaining >= cost) {
                 Text(
-                    text = "${credit.cost}개로 타임라인을 1번 만들 수 있어요",
+                    text = "${cost}개로 타임라인을 1번 만들 수 있어요",
                     style = style,
                     color = variant,
                     maxLines = 1,
@@ -245,14 +237,21 @@ private fun UsageLine(balance: CreditBalance) {
                 )
             } else {
                 Text(
-                    text = "만들려면 크레딧 ${credit.cost}개가 필요해요",
+                    text = "만들려면 크레딧 ${cost}개가 필요해요",
                     style = style,
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
+        isLoading ->
+            Text(
+                text = "1개로 타임라인을 1번 만들 수 있어요",
+                modifier = Modifier.alpha(0f).clearAndSetSemantics { },
+                style = style,
+                maxLines = 1,
+            )
+        else -> Text(text = "잔액을 불러오지 못했어요", style = style, color = variant, maxLines = 1)
     }
 }
 
@@ -438,7 +437,7 @@ private fun CreditPreview() {
     LaimoryTheme {
         CreditScreen(
             innerPadding = PaddingValues(),
-            state = CreditUiState(balance = CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 42))),
+            state = CreditUiState(remaining = 42, cost = 1, isLoading = false),
             onIntent = {},
         )
     }
@@ -450,7 +449,7 @@ private fun CreditShortPreview() {
     LaimoryTheme {
         CreditScreen(
             innerPadding = PaddingValues(),
-            state = CreditUiState(balance = CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 0))),
+            state = CreditUiState(remaining = 0, cost = 1, isLoading = false),
             onIntent = {},
         )
     }
@@ -462,7 +461,7 @@ private fun CreditFourDigitsPreview() {
     LaimoryTheme {
         CreditScreen(
             innerPadding = PaddingValues(),
-            state = CreditUiState(balance = CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 12_345))),
+            state = CreditUiState(remaining = 12_345, cost = 1, isLoading = false),
             onIntent = {},
         )
     }
@@ -474,7 +473,7 @@ private fun CreditLoadingPreview() {
     LaimoryTheme {
         CreditScreen(
             innerPadding = PaddingValues(),
-            state = CreditUiState(balance = CreditBalance.Loading),
+            state = CreditUiState(isLoading = true),
             onIntent = {},
         )
     }
@@ -486,7 +485,7 @@ private fun CreditUnavailableDarkPreview() {
     LaimoryTheme(darkTheme = true) {
         CreditScreen(
             innerPadding = PaddingValues(),
-            state = CreditUiState(balance = CreditBalance.Unavailable),
+            state = CreditUiState(isLoading = false),
             onIntent = {},
         )
     }

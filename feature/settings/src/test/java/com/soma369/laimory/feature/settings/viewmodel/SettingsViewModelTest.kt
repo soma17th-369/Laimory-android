@@ -53,6 +53,7 @@ import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RequestAccountWithdrawalUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
+import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -89,6 +90,7 @@ class SettingsViewModelTest {
     private val analyticsHelper = RecordingAnalyticsHelper()
     private val noticeRepository = FakeNoticeRepository()
     private val creditRepository = FakeCreditRepository()
+    private val creditBalanceStore = CreditBalanceStore()
 
     @Test
     fun `읽지 않은 최근 공지가 있으면 공지사항 줄에 표시를 띄우고, 읽고 돌아오면 지운다`() =
@@ -551,6 +553,7 @@ class SettingsViewModelTest {
             logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
             analyticsHelper = analyticsHelper,
             getRemainingCredits = GetRemainingCreditsUseCase(creditRepository),
+            creditBalanceStore = creditBalanceStore,
         )
 
     @Test
@@ -664,11 +667,28 @@ class SettingsViewModelTest {
             viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
             runCurrent()
             repository.account.value = null
+            // 계정 경계에서 앱이 저장소를 비운다(MainActivity).
+            creditBalanceStore.clear()
             runCurrent()
             late.complete(Unit)
             runCurrent()
 
             assertNull(viewModel.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `기억해 둔 잔액이 있으면 다시 받기 전부터 보인다`() =
+        runTest {
+            // 크레딧 화면이 받아 둔 값. 설정에 들어오자마자 그 숫자가 보여야 로딩이 번쩍이지 않는다.
+            creditBalanceStore.updateRemaining(creditBalanceStore.generation, 42)
+            creditRepository.gate = CompletableDeferred()
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            assertEquals(42, viewModel.state.value.remainingCredits)
         }
 
     @Test

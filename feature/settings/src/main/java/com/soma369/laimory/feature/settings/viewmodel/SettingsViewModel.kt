@@ -33,6 +33,7 @@ import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
+import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiSideEffect
 import com.soma369.laimory.feature.settings.state.SettingsUiState
@@ -61,6 +62,7 @@ class SettingsViewModel
         private val setLocationTracking: SetLocationTrackingUseCase,
         private val logPermissionEvent: LogPermissionEventUseCase,
         private val getRemainingCredits: GetRemainingCreditsUseCase,
+        private val creditBalanceStore: CreditBalanceStore,
         private val analyticsHelper: AnalyticsHelper,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
@@ -80,8 +82,9 @@ class SettingsViewModel
                 observeSignedInAccount().collect { account ->
                     updateState {
                         if (account == null) {
+                            // 잔액 자체는 계정 경계에서 저장소가 비운다. 여기선 진행 중인 조회만 버린다.
                             creditRequest++
-                            copy(accountProvider = null, remainingCredits = null, isCreditsLoading = true)
+                            copy(accountProvider = null, isCreditsLoading = true)
                         } else {
                             // 진행 상태는 재인증된 계정을 관찰할 때 해제한다. ViewModel 이 Activity 수명이라
                             // 여기서 안 지우면 새 계정으로 로그인한 뒤에도 계정 항목이 잠긴 채 남는다.
@@ -91,6 +94,9 @@ class SettingsViewModel
                 }
             }
             observeUserProfile()
+            viewModelScope.launch {
+                creditBalanceStore.balance.collect { balance -> updateState { copy(remainingCredits = balance.remaining) } }
+            }
             viewModelScope.launch {
                 observeLocationTracking().collect { enabled ->
                     updateState { copy(isLocationCollectionEnabled = enabled) }
@@ -106,13 +112,19 @@ class SettingsViewModel
             }
         }
 
-        /** 못 받으면 칸을 비운다. 이전 값을 남겨 두면 줄어든 뒤에도 옛 잔액이 보인다. */
+        /**
+         * 다시 받아 저장소에 넣는다. 보이던 숫자는 비우지 않는다 — 응답이 오면 조용히 바뀐다. 못 받으면 칸을 `-` 로 둔다(저장소가
+         * 비운다). 이전 값을 남겨 두면 줄어든 뒤에도 옛 잔액이 보인다.
+         */
         private fun refreshCredits() {
             val request = ++creditRequest
+            val generation = creditBalanceStore.generation
             updateState { copy(isCreditsLoading = true) }
             safeLaunch {
                 val remaining = getRemainingCredits()
-                if (request == creditRequest) updateState { copy(remainingCredits = remaining, isCreditsLoading = false) }
+                if (request != creditRequest) return@safeLaunch
+                creditBalanceStore.updateRemaining(generation, remaining)
+                updateState { copy(isCreditsLoading = false) }
             }
         }
 
