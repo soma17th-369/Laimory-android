@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -39,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -199,6 +202,7 @@ private fun SettingsScreen(
                 provider = state.accountProvider,
                 nickname = state.nickname,
                 remainingCredits = state.remainingCredits,
+                isCreditsLoading = state.showsCreditsLoading,
                 onCreditsClick = { onIntent(SettingsUiIntent.CreditsClicked) },
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.large)) {
@@ -310,6 +314,7 @@ private fun SettingsScreen(
                                     iconRes = CoreUiR.drawable.ico_default_coins,
                                     title = "크레딧",
                                     trailingText = state.remainingCredits?.let { "${it}개" },
+                                    showTrailingProgress = state.showsCreditsLoading,
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.CreditsClicked) },
                                 ),
@@ -345,6 +350,7 @@ private fun AccountSummaryCard(
     provider: SocialLoginProvider?,
     nickname: String?,
     remainingCredits: Int?,
+    isCreditsLoading: Boolean,
     onCreditsClick: () -> Unit,
 ) {
     Surface(
@@ -375,14 +381,16 @@ private fun AccountSummaryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            remainingCredits?.let { RemainingCredits(count = it, onClick = onCreditsClick) }
+            if (remainingCredits != null || isCreditsLoading) {
+                RemainingCredits(count = remainingCredits, onClick = onCreditsClick)
+            }
         }
     }
 }
 
 @Composable
 private fun RemainingCredits(
-    count: Int,
+    count: Int?,
     onClick: () -> Unit,
 ) {
     Column(
@@ -390,7 +398,9 @@ private fun RemainingCredits(
             Modifier
                 .minimumInteractiveComponentSize()
                 .clickable(onClickLabel = "크레딧 보기", role = Role.Button, onClick = onClick)
-                .clearAndSetSemantics { contentDescription = "남은 크레딧 ${count}개" },
+                .clearAndSetSemantics {
+                    contentDescription = if (count == null) "남은 크레딧 불러오는 중" else "남은 크레딧 ${count}개"
+                },
         horizontalAlignment = Alignment.End,
     ) {
         Row(
@@ -403,11 +413,23 @@ private fun RemainingCredits(
                 modifier = Modifier.size(14.dp),
                 tint = MaterialTheme.laimoryColors.warning,
             )
-            Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            // 받는 중에는 숫자 자리에만 로딩을 둔다. 줄 높이는 숫자와 같게 맞춰 받은 뒤 칸이 흔들리지 않게 한다.
+            if (count == null) {
+                val lineHeight = with(LocalDensity.current) { MaterialTheme.typography.titleLarge.lineHeight.toDp() }
+                Box(modifier = Modifier.height(lineHeight), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.dp,
+                    )
+                }
+            } else {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
         Text(
             text = "남은 크레딧",
@@ -523,6 +545,13 @@ private fun SettingsRow(item: SettingsItem) {
             )
             if (item.showNewBadge) NewNoticeDot()
         }
+        if (item.showTrailingProgress) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                strokeWidth = 2.dp,
+            )
+        }
         item.trailingText?.let { trailingText ->
             val trailingColor =
                 item.trailingColor.takeUnless { it == Color.Unspecified }
@@ -570,6 +599,8 @@ private data class SettingsItem(
     val contentColor: Color = Color.Unspecified,
     val isEnabled: Boolean = true,
     val showChevron: Boolean = false,
+    /** 후행 값을 받는 중이면 문구 대신 작은 로딩을 둔다. */
+    val showTrailingProgress: Boolean = false,
     val onClick: (() -> Unit)? = null,
 )
 

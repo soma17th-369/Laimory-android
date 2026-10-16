@@ -567,6 +567,44 @@ class SettingsViewModelTest {
         }
 
     @Test
+    fun `남은 크레딧을 받는 동안 값이 없으면 숫자 자리에 로딩을 보인다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+            val slow = CompletableDeferred<Unit>()
+            creditRepository.remaining = 42
+            creditRepository.gate = slow
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+            assertTrue(viewModel.state.value.showsCreditsLoading)
+
+            slow.complete(Unit)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.showsCreditsLoading)
+            assertEquals(42, viewModel.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `이미 받은 잔액이 있으면 다시 받는 동안 로딩으로 바꾸지 않는다`() =
+        runTest {
+            // 화면 복귀마다 다시 받는다. 있던 숫자를 그때마다 로딩으로 바꾸면 깜빡인다.
+            creditRepository.remaining = 42
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            creditRepository.gate = CompletableDeferred()
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.showsCreditsLoading)
+            assertEquals(42, viewModel.state.value.remainingCredits)
+        }
+
+    @Test
     fun `남은 크레딧을 못 받으면 0 이 아니라 빈칸이다`() =
         runTest {
             // 크레딧 행이 없는 500 · 운영 서버에 API 가 없는 404. 0 으로 보이면 남은 게 없는 줄 안다.

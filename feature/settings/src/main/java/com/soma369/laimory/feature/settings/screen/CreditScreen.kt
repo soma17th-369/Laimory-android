@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -143,7 +144,7 @@ private fun BalanceCard(balance: CreditBalance) {
     val credit = (balance as? CreditBalance.Loaded)?.credit
     val count =
         when (balance) {
-            CreditBalance.Loading -> ""
+            CreditBalance.Loading -> null
             CreditBalance.Unavailable -> "-"
             is CreditBalance.Loaded -> balance.credit.remaining.toString()
         }
@@ -166,9 +167,8 @@ private fun BalanceCard(balance: CreditBalance) {
                 modifier =
                     Modifier
                         .heightIn(min = BALANCE_ROW_MIN_HEIGHT)
-                        // 받는 중에는 빈 숫자를 읽지 않게 한다.
                         .clearAndSetSemantics {
-                            if (balance !is CreditBalance.Loading) contentDescription = "남은 크레딧 $count"
+                            contentDescription = if (count == null) "남은 크레딧 불러오는 중" else "남은 크레딧 $count"
                         },
                 horizontalArrangement = Arrangement.spacedBy(Spacing.small),
                 verticalAlignment = Alignment.CenterVertically,
@@ -179,11 +179,20 @@ private fun BalanceCard(balance: CreditBalance) {
                     modifier = Modifier.size(28.dp),
                     tint = MaterialTheme.laimoryColors.warning,
                 )
-                Text(
-                    text = count,
-                    style = MaterialTheme.typography.displaySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                // 조회가 늦을 수 있어 받는 중에는 숫자 자리에만 로딩을 둔다. 받으면 숫자로 바뀐다.
+                if (count == null) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(BALANCE_PROGRESS_SIZE),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.5.dp,
+                    )
+                } else {
+                    Text(
+                        text = count,
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             credit?.let { UsageLine(credit = it) }
         }
@@ -358,6 +367,8 @@ private val CREDIT_PACKAGES =
 /** 두 상품의 가격 칩 폭을 맞춘다. 글자 길이를 따르면 줄마다 칩 끝이 어긋난다. */
 private val PRICE_CHIP_MIN_WIDTH = 88.dp
 
+private val BALANCE_PROGRESS_SIZE = 24.dp
+
 /** 받는 중에도 숫자 줄 높이를 지켜 값이 도착할 때 아래가 밀리지 않게 한다. */
 private val BALANCE_ROW_MIN_HEIGHT = 40.dp
 
@@ -380,6 +391,18 @@ private fun CreditShortPreview() {
         CreditScreen(
             innerPadding = PaddingValues(),
             state = CreditUiState(balance = CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 0))),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(name = "받는 중", showBackground = true, widthDp = 360, heightDp = 720)
+@Composable
+private fun CreditLoadingPreview() {
+    LaimoryTheme {
+        CreditScreen(
+            innerPadding = PaddingValues(),
+            state = CreditUiState(balance = CreditBalance.Loading),
             onIntent = {},
         )
     }
