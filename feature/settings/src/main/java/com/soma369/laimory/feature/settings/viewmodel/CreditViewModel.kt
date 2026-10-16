@@ -48,6 +48,6 @@ class CreditViewModel
         }
 
         companion object {
-            const val CHARGE_NOT_OPEN_MESSAGE = "크레딧 충전은 곧 열려요"
+            const val CHARGE_NOT_OPEN_MESSAGE = "크레딧 충전은 준비 중이에요"
         }
     }

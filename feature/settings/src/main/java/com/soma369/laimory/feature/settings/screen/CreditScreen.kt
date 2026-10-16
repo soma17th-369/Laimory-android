@@ -49,6 +49,7 @@ import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimoryColors
+import com.soma369.laimory.feature.settings.model.toCreditCount
 import com.soma369.laimory.feature.settings.state.CreditBalance
 import com.soma369.laimory.feature.settings.state.CreditUiIntent
 import com.soma369.laimory.feature.settings.state.CreditUiSideEffect
@@ -188,7 +189,7 @@ private fun BalanceCount(balance: CreditBalance) {
         when (balance) {
             CreditBalance.Loading -> null
             CreditBalance.Unavailable -> "-"
-            is CreditBalance.Loaded -> balance.credit.remaining.toString()
+            is CreditBalance.Loaded -> balance.credit.remaining.toCreditCount()
         }
     Box(
         modifier =
@@ -207,7 +208,7 @@ private fun BalanceCount(balance: CreditBalance) {
                 strokeWidth = 3.dp,
             )
         } else {
-            Text(text = count, style = style, color = MaterialTheme.colorScheme.primary)
+            Text(text = count, style = style, color = MaterialTheme.colorScheme.primary, maxLines = 1)
         }
     }
 }
@@ -277,7 +278,7 @@ private fun CoinBadge() {
 @Composable
 private fun ChargeNotReadyNotice() {
     Text(
-        text = "크레딧 충전은 준비 중이에요. 곧 열릴 거예요.",
+        text = "크레딧 충전은 준비 중이에요.",
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -450,6 +451,18 @@ private fun CreditShortPreview() {
         CreditScreen(
             innerPadding = PaddingValues(),
             state = CreditUiState(balance = CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 0))),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(name = "네 자리", showBackground = true, widthDp = 360, heightDp = 720)
+@Composable
+private fun CreditFourDigitsPreview() {
+    LaimoryTheme {
+        CreditScreen(
+            innerPadding = PaddingValues(),
+            state = CreditUiState(balance = CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 12_345))),
             onIntent = {},
         )
     }

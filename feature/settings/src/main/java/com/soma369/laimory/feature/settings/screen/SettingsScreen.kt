@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -71,6 +73,7 @@ import com.soma369.laimory.feature.settings.component.DataSourceSheet
 import com.soma369.laimory.feature.settings.component.NewNoticeDot
 import com.soma369.laimory.feature.settings.model.DataSourceUiModel
 import com.soma369.laimory.feature.settings.model.needsAttention
+import com.soma369.laimory.feature.settings.model.toCreditCount
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiState
 import com.soma369.laimory.feature.settings.viewmodel.SettingsViewModel
@@ -314,7 +317,7 @@ private fun SettingsScreen(
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_default_coins,
                                     title = "크레딧",
-                                    trailingText = state.remainingCredits?.let { "${it}개" },
+                                    trailingText = state.remainingCredits?.let { "${it.toCreditCount()}개" },
                                     showTrailingProgress = state.showsCreditsLoading,
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.CreditsClicked) },
@@ -374,11 +377,16 @@ private fun AccountSummaryCard(
                     text = nickname ?: provider.accountTitle,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
+                    // 크레딧 칸이 자릿수만큼 넓어지면 이 칸이 좁아진다. 줄이 늘어 카드가 커지지 않게 한 줄로 줄인다.
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = provider.accountSubtitle,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             // 받는 중 · 못 받음에도 칸은 그대로 둔다. 칸이 생겼다 사라지면 이름 칸 폭이 바뀐다.
@@ -410,7 +418,7 @@ private fun RemainingCredits(
                 .clearAndSetSemantics {
                     contentDescription =
                         when {
-                            count != null -> "남은 크레딧 ${count}개"
+                            count != null -> "남은 크레딧 ${count.toCreditCount()}개"
                             isLoading -> "남은 크레딧 불러오는 중"
                             else -> "남은 크레딧 불러오지 못함"
                         }
@@ -418,13 +426,18 @@ private fun RemainingCredits(
         horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // 폭은 라벨과 숫자 줄 중 넓은 쪽. 동전은 왼쪽 끝, 숫자는 오른쪽 끝(화살표 쪽)에 붙인다.
+        Column(
+            modifier = Modifier.width(IntrinsicSize.Max),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Text(
                 text = "남은 크레딧",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -435,11 +448,12 @@ private fun RemainingCredits(
                     tint = MaterialTheme.laimoryColors.warning,
                 )
                 Box(
-                    modifier = Modifier.height(countLineHeight).widthIn(min = CREDIT_COUNT_MIN_WIDTH),
-                    contentAlignment = Alignment.CenterStart,
+                    modifier = Modifier.weight(1f).height(countLineHeight).widthIn(min = CREDIT_COUNT_MIN_WIDTH),
+                    contentAlignment = Alignment.CenterEnd,
                 ) {
                     when {
-                        count != null -> Text(text = count.toString(), style = countStyle, color = MaterialTheme.colorScheme.primary)
+                        count != null ->
+                            Text(text = count.toCreditCount(), style = countStyle, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                         isLoading ->
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),

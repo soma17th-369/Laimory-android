@@ -90,13 +90,13 @@ class CreditViewModelTest {
         }
 
     @Test
-    fun `상품을 누르면 충전은 곧 열린다고 알린다`() =
+    fun `상품을 누르면 충전은 준비 중이라고 알린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()
 
             viewModel.sendIntent(CreditUiIntent.PackageClicked(amount = 7))
 
-            assertEquals(CreditUiSideEffect.ShowSnackbar("크레딧 충전은 곧 열려요"), viewModel.sideEffect.first())
+            assertEquals(CreditUiSideEffect.ShowSnackbar("크레딧 충전은 준비 중이에요"), viewModel.sideEffect.first())
         }
 
     @Test
