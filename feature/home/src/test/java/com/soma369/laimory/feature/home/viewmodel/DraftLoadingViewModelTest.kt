@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfi
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.feature.home.draft.DraftLoadingSession
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
@@ -243,7 +244,7 @@ class DraftLoadingViewModelTest {
         }
 
     @Test
-    fun `크레딧이 부족하면 다시 시도 대신 홈으로 버튼을 보여 준다`() =
+    fun `크레딧이 부족하면 다시 시도 대신 충전하러 가기와 홈으로를 보여 준다`() =
         loadingTest {
             submissionStore.begin(date, requestedAt)
             val viewModel = createViewModel()
@@ -252,7 +253,25 @@ class DraftLoadingViewModelTest {
 
             val notice = viewModel.state.value.notice
             assertEquals("크레딧이 부족해 타임라인을 만들 수 없어요.", notice?.message)
-            assertEquals("홈으로", notice?.primaryAction?.label)
+            assertEquals("충전하러 가기", notice?.primaryAction?.label)
+            assertEquals("홈으로", notice?.secondaryAction?.label)
+        }
+
+    @Test
+    fun `충전하러 가기는 로딩 화면을 닫고 크레딧 화면으로 간다`() =
+        loadingTest {
+            submissionStore.begin(date, requestedAt)
+            val viewModel = createViewModel()
+            submissionStore.fail(date, ApiException.UnauthorizedException(rawCode = 403, errorCode = -1021, message = "크레딧"))
+            runCurrent()
+
+            viewModel.sendIntent(viewModel.state.value.notice!!.primaryAction!!.intent)
+            runCurrent()
+
+            // 로딩 화면 위에 쌓으면 크레딧 화면에서 뒤로 갈 때 끝난 로딩 화면이 다시 보인다.
+            assertEquals(listOf<Any>(BACK, CreditPage), navigationHelper.moves)
+            // 안내를 본 것이므로 돌아간 홈이 같은 이유를 다시 알리지 않는다.
+            assertTrue((submissionStore.submission.value as DraftSubmission.Failed).shownOnLoading)
         }
 
     @Test
@@ -346,17 +365,24 @@ class DraftLoadingViewModelTest {
 
     private companion object {
         const val RETENTION_DAYS = 30
+        const val BACK = "back"
     }
 
     private class RecordingNavigationHelper : NavigationHelper {
         var backCount = 0
 
-        override fun navigateTo(page: Page) = Unit
+        /** 이동 순서. 뒤로는 [BACK], 앞으로는 목적지 [Page]. */
+        val moves = mutableListOf<Any>()
+
+        override fun navigateTo(page: Page) {
+            moves += page
+        }
 
         override fun replaceRoot(page: Page) = Unit
 
         override fun navigateToBack() {
             backCount++
+            moves += BACK
         }
     }
 }

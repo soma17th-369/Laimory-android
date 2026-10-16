@@ -8,6 +8,7 @@ import com.soma369.laimory.LocalAuthorizationLauncher
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.navigation.CalendarPage
 import com.soma369.laimory.core.domain.navigation.CollectionPage
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.Feature1Page
@@ -34,6 +35,7 @@ import com.soma369.laimory.feature.home.screen.HomeRoute
 import com.soma369.laimory.feature.home.screen.PastRecordsRoute
 import com.soma369.laimory.feature.login.screen.LoginRoute
 import com.soma369.laimory.feature.onboarding.screen.OnboardingRoute
+import com.soma369.laimory.feature.settings.screen.CreditRoute
 import com.soma369.laimory.feature.settings.screen.InquiryDetailRoute
 import com.soma369.laimory.feature.settings.screen.InquiryRoute
 import com.soma369.laimory.feature.settings.screen.NoticesRoute
@@ -161,6 +163,10 @@ val appRoutes: List<AppRoute> =
                     appVersionName = BuildConfig.VERSION_NAME,
                 )
             },
+        ),
+        AppRoute(
+            path = CreditPage.PATH,
+            render = { innerPadding, _ -> CreditRoute(innerPadding = innerPadding) },
         ),
         AppRoute(
             path = NotificationSettingsPage.PATH,

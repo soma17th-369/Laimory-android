@@ -65,6 +65,7 @@ import com.soma369.laimory.core.ui.R as UiR
  *
  * 건수 칸 아래에 크레딧 줄을 둔다(Figma `제안 / 크레딧 줄` 3153:1693). 잔액이 비용보다 적으면 버튼을 막지 않고
  * `만들기` 자리를 `충전하러 가기`([onCharge])로 바꾼다. 크레딧을 못 받았으면 줄을 숨기고 `만들기` 를 그대로 둔다.
+ * 크레딧 줄은 잔액과 상관없이 눌러 크레딧 화면으로 갈 수 있다([onCreditClick]).
  *
  * 보낼 것이 하나도 없으면([DraftCreateConfirm.emptyReason]) `만들기` 를 끄고, `사진 고르기` 바로 아래 말풍선으로
  * 이유와 할 일을 함께 알린다. 처음부터 없었으면 일정·위치·알림은 시간이 지나야 모이니 지금 할 수 있는 건 사진뿐이고,
@@ -77,6 +78,7 @@ internal fun DraftCreateConfirmDialog(
     onDismiss: () -> Unit,
     onPickPhotos: () -> Unit,
     onCharge: () -> Unit,
+    onCreditClick: () -> Unit,
 ) {
     LaimoryDialog(
         title = "타임라인을 만들까요?",
@@ -97,13 +99,21 @@ internal fun DraftCreateConfirmDialog(
         ) {
             confirm.counts.forEach { CountTile(count = it, modifier = Modifier.weight(1f)) }
         }
-        confirm.credit?.let { CreditRow(credit = it) }
+        confirm.credit?.let { CreditRow(credit = it, onClick = onCreditClick) }
     }
 }
 
-/** `크레딧 1개 사용 · 남은 크레딧 42`. 모자라면 오류 색 바탕에 `크레딧이 부족해요`. */
+/**
+ * `크레딧 1개 사용 · 남은 크레딧 42 >`. 모자라면 오류 색 바탕에 `크레딧이 부족해요`.
+ *
+ * 줄 전체가 크레딧 화면으로 가는 길이다. 잔액이 충분한 사용자에게는 설정 말고 거의 유일한 진입이라, 오른쪽 화살표로 눌린다는
+ * 것을 보인다.
+ */
 @Composable
-private fun CreditRow(credit: TimelineCredit) {
+private fun CreditRow(
+    credit: TimelineCredit,
+    onClick: () -> Unit,
+) {
     val isShort = !credit.isEnough
     val variant = MaterialTheme.colorScheme.onSurfaceVariant
     val strong = MaterialTheme.colorScheme.onSurface
@@ -124,7 +134,8 @@ private fun CreditRow(credit: TimelineCredit) {
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(CREDIT_ROW_CORNER))
                 .background(if (isShort) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer)
-                .padding(horizontal = Spacing.medium, vertical = Spacing.small)
+                .clickable(onClickLabel = "크레딧 보기", role = Role.Button, onClick = onClick)
+                .padding(start = Spacing.medium, end = Spacing.small, top = Spacing.small, bottom = Spacing.small)
                 .clearAndSetSemantics { contentDescription = "$usage, $balance" },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(CREDIT_ROW_GAP),
@@ -145,6 +156,12 @@ private fun CreditRow(credit: TimelineCredit) {
             text = balance,
             style = MaterialTheme.typography.labelMedium,
             color = strong,
+        )
+        Icon(
+            painter = painterResource(UiR.drawable.ico_default_caret_right),
+            contentDescription = null,
+            modifier = Modifier.size(CREDIT_ICON_SIZE),
+            tint = variant,
         )
     }
 }
@@ -406,6 +423,7 @@ private fun DraftCreateConfirmDialogPreview() {
             onDismiss = {},
             onPickPhotos = {},
             onCharge = {},
+            onCreditClick = {},
         )
     }
 }
@@ -420,6 +438,7 @@ private fun DraftCreateConfirmDialogNoPhotoPreview() {
             onDismiss = {},
             onPickPhotos = {},
             onCharge = {},
+            onCreditClick = {},
         )
     }
 }
@@ -439,6 +458,7 @@ private fun DraftCreateConfirmDialogNoDataPreview() {
             onDismiss = {},
             onPickPhotos = {},
             onCharge = {},
+            onCreditClick = {},
         )
     }
 }
@@ -458,6 +478,7 @@ private fun DraftCreateConfirmDialogAllExcludedPreview() {
             onDismiss = {},
             onPickPhotos = {},
             onCharge = {},
+            onCreditClick = {},
         )
     }
 }
@@ -477,6 +498,7 @@ private fun DraftCreateConfirmDialogCreditShortPreview() {
             onDismiss = {},
             onPickPhotos = {},
             onCharge = {},
+            onCreditClick = {},
         )
     }
 }

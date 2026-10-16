@@ -8,18 +8,23 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -37,8 +42,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +73,7 @@ import com.soma369.laimory.feature.settings.component.DataSourceSheet
 import com.soma369.laimory.feature.settings.component.NewNoticeDot
 import com.soma369.laimory.feature.settings.model.DataSourceUiModel
 import com.soma369.laimory.feature.settings.model.needsAttention
+import com.soma369.laimory.feature.settings.model.toCreditCount
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiState
 import com.soma369.laimory.feature.settings.viewmodel.SettingsViewModel
@@ -197,6 +206,8 @@ private fun SettingsScreen(
                 provider = state.accountProvider,
                 nickname = state.nickname,
                 remainingCredits = state.remainingCredits,
+                isCreditsLoading = state.isCreditsLoading,
+                onCreditsClick = { onIntent(SettingsUiIntent.CreditsClicked) },
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.large)) {
                 SettingsSection(title = "데이터 소스") {
@@ -301,6 +312,16 @@ private fun SettingsScreen(
                     SettingsGroup(
                         items =
                             listOf(
+                                // 계정 카드의 숫자 칸만으로는 크레딧 화면으로 가는 길이 잘 안 보인다. 목록의 표준 줄로 한 번 더 둔다.
+                                // 잔액을 못 받았어도 줄은 남긴다 — 들어가면 크레딧 화면이 다시 받는다.
+                                SettingsItem(
+                                    iconRes = CoreUiR.drawable.ico_default_coins,
+                                    title = "크레딧",
+                                    trailingText = state.remainingCredits?.let { "${it.toCreditCount()}개" },
+                                    showTrailingProgress = state.showsCreditsLoading,
+                                    showChevron = true,
+                                    onClick = { onIntent(SettingsUiIntent.CreditsClicked) },
+                                ),
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_signout,
                                     title = "로그아웃",
@@ -325,13 +346,15 @@ private fun SettingsScreen(
 }
 
 /**
- * 계정 카드. 오른쪽 칸은 남은 크레딧이다(Figma 663:2070 — 시안의 `연속 기록` 자리). 못 받았으면 칸을 비운다.
+ * 계정 카드. 오른쪽 칸은 남은 크레딧이다(Figma 663:2070 — 시안의 `연속 기록` 자리). 칸을 누르면 크레딧 화면으로 간다.
  */
 @Composable
 private fun AccountSummaryCard(
     provider: SocialLoginProvider?,
     nickname: String?,
     remainingCredits: Int?,
+    isCreditsLoading: Boolean,
+    onCreditsClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -354,47 +377,105 @@ private fun AccountSummaryCard(
                     text = nickname ?: provider.accountTitle,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
+                    // 크레딧 칸이 자릿수만큼 넓어지면 이 칸이 좁아진다. 줄이 늘어 카드가 커지지 않게 한 줄로 줄인다.
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = provider.accountSubtitle,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            remainingCredits?.let { RemainingCredits(count = it) }
+            // 받는 중 · 못 받음에도 칸은 그대로 둔다. 칸이 생겼다 사라지면 이름 칸 폭이 바뀐다.
+            RemainingCredits(count = remainingCredits, isLoading = isCreditsLoading, onClick = onCreditsClick)
         }
     }
 }
 
+/**
+ * 계정 카드 오른쪽 크레딧 칸(Figma 663:2070 의 3363:1033). 누르면 크레딧 화면이라 토널 바탕 · 화살표로 버튼처럼 둔다.
+ *
+ * 값에 따라 바뀌는 것은 숫자뿐이다 — 라벨 · 동전 · 화살표는 처음부터 보이고, 숫자 자리는 높이 · 최소 폭을 고정해 받는 중
+ * (로딩) · 받음(숫자) · 못 받음(`-`) 사이에 칸이 움직이지 않는다. 못 받았을 때 0 으로 보이면 남은 게 없는 줄 안다.
+ */
 @Composable
-private fun RemainingCredits(count: Int) {
-    Column(
-        modifier = Modifier.clearAndSetSemantics { contentDescription = "남은 크레딧 ${count}개" },
-        horizontalAlignment = Alignment.End,
+private fun RemainingCredits(
+    count: Int?,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+) {
+    val countStyle = MaterialTheme.typography.headlineMedium
+    val countLineHeight = with(LocalDensity.current) { countStyle.lineHeight.toDp() }
+    Row(
+        modifier =
+            Modifier
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .clickable(onClickLabel = "크레딧 보기", role = Role.Button, onClick = onClick)
+                .clearAndSetSemantics {
+                    contentDescription =
+                        when {
+                            count != null -> "남은 크레딧 ${count.toCreditCount()}개"
+                            isLoading -> "남은 크레딧 불러오는 중"
+                            else -> "남은 크레딧 불러오지 못함"
+                        }
+                }.padding(start = Spacing.medium, end = Spacing.small, top = Spacing.small, bottom = Spacing.small),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        // 폭은 라벨과 숫자 줄 중 넓은 쪽. 동전은 왼쪽 끝, 숫자는 오른쪽 끝(화살표 쪽)에 붙인다.
+        Column(
+            modifier = Modifier.width(IntrinsicSize.Max),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Icon(
-                painter = painterResource(CoreUiR.drawable.ico_default_coins),
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.laimoryColors.warning,
-            )
             Text(
-                text = count.toString(),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.primary,
+                text = "남은 크레딧",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    painter = painterResource(CoreUiR.drawable.ico_default_coins),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.laimoryColors.warning,
+                )
+                Box(
+                    modifier = Modifier.weight(1f).height(countLineHeight).widthIn(min = CREDIT_COUNT_MIN_WIDTH),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    when {
+                        count != null ->
+                            Text(text = count.toCreditCount(), style = countStyle, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                        isLoading ->
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp,
+                            )
+                        else -> Text(text = "-", style = countStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
         }
-        Text(
-            text = "남은 크레딧",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Icon(
+            painter = painterResource(CoreUiR.drawable.ico_default_caret_right),
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+/** 숫자 자리 최소 폭. 로딩과 두 자리 숫자가 같은 자리를 써 칸 폭이 흔들리지 않는다. */
+private val CREDIT_COUNT_MIN_WIDTH = 32.dp
 
 @Composable
 private fun ProviderAvatar(provider: SocialLoginProvider?) {
@@ -502,6 +583,13 @@ private fun SettingsRow(item: SettingsItem) {
             )
             if (item.showNewBadge) NewNoticeDot()
         }
+        if (item.showTrailingProgress) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                strokeWidth = 2.dp,
+            )
+        }
         item.trailingText?.let { trailingText ->
             val trailingColor =
                 item.trailingColor.takeUnless { it == Color.Unspecified }
@@ -549,6 +637,8 @@ private data class SettingsItem(
     val contentColor: Color = Color.Unspecified,
     val isEnabled: Boolean = true,
     val showChevron: Boolean = false,
+    /** 후행 값을 받는 중이면 문구 대신 작은 로딩을 둔다. */
+    val showTrailingProgress: Boolean = false,
     val onClick: (() -> Unit)? = null,
 )
 

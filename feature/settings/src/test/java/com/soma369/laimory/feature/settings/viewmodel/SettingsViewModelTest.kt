@@ -26,6 +26,7 @@ import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.domain.model.user.UserProfile
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
@@ -146,6 +147,18 @@ class SettingsViewModelTest {
             runCurrent()
 
             assertEquals(listOf<Page>(NoticesPage), navigationHelper.navigatedTo)
+        }
+
+    @Test
+    fun `남은 크레딧을 누르면 크레딧 화면으로 간다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.CreditsClicked)
+            runCurrent()
+
+            assertEquals(listOf<Page>(CreditPage), navigationHelper.navigatedTo)
         }
 
     @Test
@@ -550,6 +563,44 @@ class SettingsViewModelTest {
             viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
             runCurrent()
 
+            assertEquals(42, viewModel.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `남은 크레딧을 받는 동안 값이 없으면 숫자 자리에 로딩을 보인다`() =
+        runTest {
+            val viewModel = createViewModel()
+            runCurrent()
+            val slow = CompletableDeferred<Unit>()
+            creditRepository.remaining = 42
+            creditRepository.gate = slow
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+            assertTrue(viewModel.state.value.showsCreditsLoading)
+
+            slow.complete(Unit)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.showsCreditsLoading)
+            assertEquals(42, viewModel.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `이미 받은 잔액이 있으면 다시 받는 동안 로딩으로 바꾸지 않는다`() =
+        runTest {
+            // 화면 복귀마다 다시 받는다. 있던 숫자를 그때마다 로딩으로 바꾸면 깜빡인다.
+            creditRepository.remaining = 42
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            creditRepository.gate = CompletableDeferred()
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            assertFalse(viewModel.state.value.showsCreditsLoading)
             assertEquals(42, viewModel.state.value.remainingCredits)
         }
 

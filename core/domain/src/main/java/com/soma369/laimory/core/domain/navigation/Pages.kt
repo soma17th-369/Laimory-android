@@ -208,6 +208,17 @@ data object SettingsPage : Page {
     override fun toRoute(): NavRoute = NavRoute(PATH)
 }
 
+/**
+ * 남은 크레딧과 충전 상품. 충전은 아직 열지 않아 상품은 `준비 중` 으로만 보인다.
+ *
+ * 설정 계정 카드 · 만들기 확인 다이얼로그 · 크레딧 부족 실패 안내 세 곳에서 들어오므로 설정 아래 경로에 두지 않는다.
+ */
+data object CreditPage : Page {
+    const val PATH = "/credit"
+
+    override fun toRoute(): NavRoute = NavRoute(PATH)
+}
+
 /** 설정 > 앱 설정 > 알림. 설정 화면 안에서 값을 바꾸지 않고 별도 화면으로 나온다. */
 data object NotificationSettingsPage : Page {
     const val PATH = "/settings/notification"

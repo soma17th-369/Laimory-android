@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.base.UiSideEffect
 import com.soma369.laimory.feature.home.draft.DraftLoadingSession
@@ -73,6 +74,12 @@ class DraftLoadingViewModel
                 DraftLoadingUiIntent.LeaveAfterSubmitFailure -> {
                     submissionStore.markShownOnLoading()
                     navigationHelper.navigateToBack()
+                }
+                // 로딩 화면 위에 쌓지 않는다. 크레딧 화면에서 뒤로 가면 홈으로 돌아와야 한다.
+                DraftLoadingUiIntent.ChargeCreditsAfterSubmitFailure -> {
+                    submissionStore.markShownOnLoading()
+                    navigationHelper.navigateToBack()
+                    navigationHelper.navigateTo(CreditPage)
                 }
                 DraftLoadingUiIntent.Retry -> coordinator.retry()
                 DraftLoadingUiIntent.ContinueWaiting -> coordinator.continueWaiting()
@@ -172,9 +179,13 @@ class DraftLoadingViewModel
                         secondaryAction = null,
                     )
                 DraftSubmitFailureKind.NO_NEW_ITEMS -> DraftLoadingNotice(DraftSubmitFailureMessages.NO_NEW_ITEMS, home, null)
-                // 다시 시도해도 같은 거절이라 재시도가 아닌 `홈으로`. 충전은 아직 없다.
+                // 다시 시도해도 같은 거절이라 재시도는 두지 않는다. 크레딧 화면으로 가거나 홈으로 돌아간다.
                 DraftSubmitFailureKind.INSUFFICIENT_CREDIT ->
-                    DraftLoadingNotice(DraftSubmitFailureMessages.INSUFFICIENT_CREDIT, home, null)
+                    DraftLoadingNotice(
+                        message = DraftSubmitFailureMessages.INSUFFICIENT_CREDIT,
+                        primaryAction = DraftLoadingAction("충전하러 가기", DraftLoadingUiIntent.ChargeCreditsAfterSubmitFailure),
+                        secondaryAction = home,
+                    )
                 DraftSubmitFailureKind.PHOTO_ACCESS -> DraftLoadingNotice(DraftSubmitFailureMessages.PHOTO_ACCESS, repick, null)
                 DraftSubmitFailureKind.PHOTO_LIMIT ->
                     DraftLoadingNotice("${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}", repick, null)
