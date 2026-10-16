@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.settings.screen
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -30,6 +32,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -261,10 +264,11 @@ private fun PackageSection(onPackageClick: (Int) -> Unit) {
 }
 
 /**
- * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격은 보이되 아직 살 수 없다는 것을 함께 보인다 — 가격을 흐린 색으로
- * 두고 옆에 `준비 중` 을 붙인다.
+ * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격은 결제 버튼 자리에 보이되 아직 살 수 없다는 것을 함께 보인다 —
+ * 흐린 가격 칩 왼쪽에 `준비 중` 을 붙인다.
  *
- * 충전을 열지 않았어도 누를 수 있다 — 누르면 준비 중이라고 알린다. 비활성으로 두면 왜 안 눌리는지 알 수 없다.
+ * 충전을 열지 않았어도 누를 수 있다 — 누르면 준비 중이라고 알린다. 비활성으로 두면 왜 안 눌리는지 알 수 없다. 결제를 열면 같은
+ * 줄을 누를 때 곧바로 Play 결제 창이 뜬다(상품 상세 화면은 두지 않는다).
  */
 @Composable
 private fun PackageRow(
@@ -302,21 +306,37 @@ private fun PackageRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text(
-            text = item.price,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = "준비 중",
-            modifier =
-                Modifier
-                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                    .padding(horizontal = 10.dp, vertical = Spacing.extraSmall),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "준비 중",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            PriceChip(price = item.price)
+        }
     }
+}
+
+/**
+ * 결제 버튼 자리의 가격. 아직 살 수 없어 흐린 테두리·글자로 비활성처럼 둔다 — 결제를 열면 테두리·글자만 primary 로 바꾸고
+ * 왼쪽 `준비 중` 을 뺀다. 눌림은 줄 전체가 맡으므로 여기엔 따로 두지 않는다.
+ */
+@Composable
+private fun PriceChip(price: String) {
+    Text(
+        text = price,
+        modifier =
+            Modifier
+                .widthIn(min = PRICE_CHIP_MIN_WIDTH)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+    )
 }
 
 private data class CreditPackage(
@@ -334,6 +354,9 @@ private val CREDIT_PACKAGES =
         CreditPackage(amount = 7, period = "일주일 치", price = "1,000원"),
         CreditPackage(amount = 30, period = "한 달 치", price = "3,500원"),
     )
+
+/** 두 상품의 가격 칩 폭을 맞춘다. 글자 길이를 따르면 줄마다 칩 끝이 어긋난다. */
+private val PRICE_CHIP_MIN_WIDTH = 88.dp
 
 /** 받는 중에도 숫자 줄 높이를 지켜 값이 도착할 때 아래가 밀리지 않게 한다. */
 private val BALANCE_ROW_MIN_HEIGHT = 40.dp
