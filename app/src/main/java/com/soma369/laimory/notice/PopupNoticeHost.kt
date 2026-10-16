@@ -32,8 +32,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -94,7 +96,7 @@ fun PopupNoticeHost(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = SheetCornerRadius, topEnd = SheetCornerRadius),
-        dragHandle = { LaimorySheetDragHandle() },
+        dragHandle = { LaimorySheetDragHandle(bottomPadding = Spacing.extraLarge) },
     ) {
         Column(
             modifier =
@@ -200,6 +202,9 @@ private fun NoticeCard(
  * 가운데 둔 뒤 좌우 빈 곳에 같은 이미지를 꽉 채워 흐리게 깐다(Figma 3241:2698). 불러오는 중 · 실패면 회색 바탕에
  * 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해 주소가 없는 경우는 없다.
  *
+ * 흐린 배경은 칸보다 크게 키워 그린다. 흐림은 가장자리에서 바깥의 빈 곳을 섞어 옅어지는데, 칸 크기 그대로면 그 옅은 테가
+ * 회색 바탕을 비춰 여백처럼 보인다. 키워서 옅은 테를 칸 밖(잘리는 곳)으로 밀어낸다(시안도 배경을 칸보다 20dp 씩 크게 둔다).
+ *
  * 흐림(`Modifier.blur`)은 Android 12 부터 그려진다. 그 아래에서는 흐리지 않은 채 어둡게만 깔린다.
  */
 @Composable
@@ -229,7 +234,11 @@ private fun NoticeThumbnail(imageUrl: String) {
                 Image(
                     painter = painter,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().blur(PortraitBackdropBlur),
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .scale(PORTRAIT_BACKDROP_SCALE)
+                            .blur(PortraitBackdropBlur, BlurredEdgeTreatment.Unbounded),
                     contentScale = ContentScale.Crop,
                 )
                 Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = PORTRAIT_BACKDROP_DIM)))
@@ -311,6 +320,9 @@ private val ThumbnailCornerRadius = 16.dp
 private val WordmarkWidth = 140.dp
 private val PortraitBackdropBlur = 24.dp
 private const val PORTRAIT_BACKDROP_DIM = 0.2f
+
+/** 흐린 배경을 키우는 배율. 옅은 테(흐림 반경쯤)가 칸 위아래 밖으로 넉넉히 나가는 크기다 — 4:3 칸 높이의 20% 씩. */
+private const val PORTRAIT_BACKDROP_SCALE = 1.4f
 private val CardGap = 14.dp
 private val DotSize = 6.dp
 private val CurrentDotWidth = 18.dp

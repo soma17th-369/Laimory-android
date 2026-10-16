@@ -28,11 +28,16 @@ import com.soma369.laimory.core.ui.theme.Spacing
  * 바텀시트 손잡이. Figma 시트들이 공유하는 규격이라 시트마다 다시 그리지 않는다.
  *
  * [ModalBottomSheet]의 `dragHandle` 슬롯에 그대로 넘겨 쓴다.
+ *
+ * @param bottomPadding 손잡이와 시트 내용 사이. 시안마다 다른 시트만 바꾼다(팝업 공지 시트는 20dp).
  */
 @Composable
-fun LaimorySheetDragHandle(modifier: Modifier = Modifier) {
+fun LaimorySheetDragHandle(
+    modifier: Modifier = Modifier,
+    bottomPadding: Dp = Spacing.extraLarge2,
+) {
     Box(
-        modifier = modifier.fillMaxWidth().padding(vertical = Spacing.extraLarge2),
+        modifier = modifier.fillMaxWidth().padding(top = Spacing.extraLarge2, bottom = bottomPadding),
         contentAlignment = Alignment.Center,
     ) {
         Box(
