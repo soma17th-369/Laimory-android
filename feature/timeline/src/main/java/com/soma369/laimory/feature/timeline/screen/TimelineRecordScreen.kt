@@ -590,29 +590,27 @@ private data class TimelinePhotoViewerState(
 
 @Composable
 private fun TimelineRecordEmpty(modifier: Modifier = Modifier) {
-    Column(
+    Box(
         modifier =
             modifier
                 .fillMaxSize()
                 .padding(horizontal = Spacing.large, vertical = Spacing.small),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "표시할 타임라인이 없어요",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = "이 날짜에는 생성된 이벤트가 없습니다.",
-                    modifier = Modifier.padding(top = Spacing.small),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "표시할 타임라인이 없어요",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "이 날짜에는 생성된 이벤트가 없습니다.",
+                modifier = Modifier.padding(top = Spacing.small),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
