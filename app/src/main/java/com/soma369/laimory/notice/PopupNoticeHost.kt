@@ -27,11 +27,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.BlurredEdgeTreatment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -58,8 +54,10 @@ import com.soma369.laimory.core.ui.theme.Spacing
  * 봐야 하는 것이다. 아래 점은 남은 건수와 지금 차례만 보여 주는 표시다(1건이어도 점 하나). 카드를 누르면 원문을
  * 연다([onOpen]) — 시트와 카드는 그대로다.
  *
- * 헤더 X 는 없다. 손잡이로 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]). 본문을 끌어서는
- * 시트가 움직이지 않는다.
+ * 헤더 X 는 없다. 손잡이 · 제목 줄로 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]). 본문을
+ * 끌어서는 시트가 움직이지 않는다.
+ *
+ * `공지사항` 제목은 손잡이 바로 아래에 붙여 한 덩어리 머리 줄로 둔다(손잡이 슬롯 안). 썸네일은 시트 폭 전체를 쓴다.
  *
  * 공용 Dialog 자리(`GlobalDialogHost`)와 따로 둔다. 그쪽은 한 번에 하나만 보여 줘 다른 Dialog 가 뜨면 밀려 사라지고,
  * 계정 경계에서 통째 비워진다. 띄울지는 [isVisible] 로 받는다.
@@ -86,7 +84,17 @@ fun PopupNoticeHost(
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = SheetCornerRadius, topEnd = SheetCornerRadius),
-        dragHandle = { LaimorySheetDragHandle(bottomPadding = Spacing.medium) },
+        dragHandle = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                LaimorySheetDragHandle(topPadding = Spacing.medium, bottomPadding = Spacing.small)
+                Text(
+                    text = "공지사항",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
+                )
+            }
+        },
     ) {
         // 본문을 끌어서는 시트가 움직이지 않는다 — 손잡이로만 끌어 내린다. 시트보다 먼저 세로 끌기를 가져가 소비하면 시트의
         // 끌기는 시작되지 않는다. 누르기(카드 · 버튼)는 끌기 문턱을 넘지 않으므로 그대로 받는다.
@@ -95,16 +103,9 @@ fun PopupNoticeHost(
                 Modifier
                     .fillMaxWidth()
                     .pointerInput(Unit) { detectVerticalDragGestures { change, _ -> change.consume() } }
-                    .padding(horizontal = Spacing.large)
-                    .padding(bottom = Spacing.extraLarge2),
+                    .padding(top = Spacing.large, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
         ) {
-            Text(
-                text = "공지사항",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.small),
-            )
             NoticeCard(
                 notice = notice,
                 position = "${notices.size}건 중 1번째",
@@ -112,7 +113,7 @@ fun PopupNoticeHost(
             )
             PageIndicator(count = notices.size, modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.small),
             ) {
                 OutlinedButton(
@@ -150,8 +151,8 @@ fun PopupNoticeHost(
 }
 
 /**
- * 카드 = 썸네일(1:1) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를 보여 주는
- * 규칙은 [NoticeThumbnail]. 누르면 원문을 연다.
+ * 카드 = 썸네일(1:1, 시트 폭) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를
+ * 보여 주는 규칙은 [NoticeThumbnail]. 누르면 원문을 연다.
  *
  * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 카드가 바뀔 때 시트가 출렁이지 않게.
  */
@@ -165,7 +166,6 @@ private fun NoticeCard(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(ThumbnailCornerRadius))
                 .clickable(onClickLabel = "원문 보기", role = Role.Button, onClick = onClick)
                 .semantics(mergeDescendants = true) { contentDescription = "$position, ${notice.title}" },
         verticalArrangement = Arrangement.spacedBy(CardGap),
@@ -178,20 +178,15 @@ private fun NoticeCard(
             minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.clearAndSetSemantics { },
+            modifier = Modifier.padding(horizontal = Spacing.large).clearAndSetSemantics { },
         )
     }
 }
 
 /**
- * 1:1 칸, 높이 고정. 이미지는 자르지 않고 칸 안에 통째로 맞춘다. 정사각이 아니면 남는 위아래 · 좌우에 같은 이미지를 꽉
- * 채워 흐리게 깐다. 불러오는 중 · 실패면 회색 바탕에 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해 주소가
- * 없는 경우는 없다.
- *
- * 흐린 배경은 칸보다 크게 키워 그린다. 흐림은 가장자리에서 바깥의 빈 곳을 섞어 옅어지는데, 칸 크기 그대로면 그 옅은 테가
- * 회색 바탕을 비춰 여백처럼 보인다. 키워서 옅은 테를 칸 밖(잘리는 곳)으로 밀어낸다.
- *
- * 흐림(`Modifier.blur`)은 Android 12 부터 그려진다. 그 아래에서는 흐리지 않은 채 어둡게만 깔린다.
+ * 1:1 칸, 시트 폭 전체, 높이 고정. 이미지는 칸을 여백 없이 꽉 채우고 넘치는 쪽은 잘라 낸다 — 칸 안에 통째로 맞추면 사진이
+ * 작아 보인다. 칸 비율을 고정해 두어 이미지가 도착해도 시트 높이가 바뀌지 않는다. 불러오는 중 · 실패면 회색 바탕에
+ * 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해 주소가 없는 경우는 없다.
  */
 @Composable
 private fun NoticeThumbnail(imageUrl: String) {
@@ -202,23 +197,10 @@ private fun NoticeThumbnail(imageUrl: String) {
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(THUMBNAIL_ASPECT_RATIO)
-                .clip(RoundedCornerShape(ThumbnailCornerRadius))
                 .background(MaterialTheme.colorScheme.surfaceContainer),
         contentAlignment = Alignment.Center,
     ) {
-        if (isLoaded) {
-            Image(
-                painter = painter,
-                contentDescription = null,
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .scale(BACKDROP_SCALE)
-                        .blur(BackdropBlur, BlurredEdgeTreatment.Unbounded),
-                contentScale = ContentScale.Crop,
-            )
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_DIM)))
-        } else {
+        if (!isLoaded) {
             Image(
                 painter = painterResource(R.drawable.img_laimory_wordmark),
                 contentDescription = null,
@@ -229,7 +211,7 @@ private fun NoticeThumbnail(imageUrl: String) {
             painter = painter,
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
+            contentScale = ContentScale.Crop,
         )
     }
 }
@@ -264,12 +246,6 @@ private fun PageIndicator(
 private val SheetCornerRadius = 24.dp
 
 private const val THUMBNAIL_ASPECT_RATIO = 1f
-private val BackdropBlur = 24.dp
-private const val BACKDROP_DIM = 0.2f
-
-/** 흐린 배경을 키우는 배율. 옅은 테(흐림 반경쯤)가 칸 밖으로 넉넉히 나가는 크기다 — 칸 한 변의 20% 씩. */
-private const val BACKDROP_SCALE = 1.4f
-private val ThumbnailCornerRadius = 16.dp
 private val WordmarkWidth = 140.dp
 
 private val CardGap = 14.dp
