@@ -106,10 +106,13 @@ fun PopupNoticeHost(
                     .padding(top = Spacing.large, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
         ) {
+            // 점 · 버튼은 먼저 자리를 잡고, 카드는 남은 높이 안에서만 그린다. 짧은 창(분할 화면 · 가로)에서도 버튼이 밀려나지
+            // 않게 하려는 것이다 — 본문은 스크롤도 끌기도 없어 밀려난 버튼에 닿을 방법이 없다.
             NoticeCard(
                 notice = notice,
                 position = "${notices.size}건 중 1번째",
                 onClick = { onOpen(notice) },
+                modifier = Modifier.weight(1f, fill = false),
             )
             PageIndicator(count = notices.size, modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(
@@ -154,23 +157,26 @@ fun PopupNoticeHost(
  * 카드 = 썸네일(1:1, 시트 폭) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를
  * 보여 주는 규칙은 [NoticeThumbnail]. 누르면 원문을 연다.
  *
- * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 카드가 바뀔 때 시트가 출렁이지 않게.
+ * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 카드가 바뀔 때 시트가 출렁이지 않게. 높이가 모자라면 제목 칸을 먼저
+ * 두고 썸네일을 남은 높이에 맞춰 줄인다.
  */
 @Composable
 private fun NoticeCard(
     notice: PopupNotice,
     position: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .clickable(onClickLabel = "원문 보기", role = Role.Button, onClick = onClick)
                 .semantics(mergeDescendants = true) { contentDescription = "$position, ${notice.title}" },
         verticalArrangement = Arrangement.spacedBy(CardGap),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        NoticeThumbnail(imageUrl = notice.thumbnailUrl)
+        NoticeThumbnail(imageUrl = notice.thumbnailUrl, modifier = Modifier.weight(1f, fill = false))
         Text(
             text = notice.title,
             style = MaterialTheme.typography.titleLarge,
@@ -178,7 +184,7 @@ private fun NoticeCard(
             minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = Spacing.large).clearAndSetSemantics { },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large).clearAndSetSemantics { },
         )
     }
 }
@@ -187,15 +193,20 @@ private fun NoticeCard(
  * 1:1 칸, 시트 폭 전체, 높이 고정. 이미지는 칸을 여백 없이 꽉 채우고 넘치는 쪽은 잘라 낸다 — 칸 안에 통째로 맞추면 사진이
  * 작아 보인다. 칸 비율을 고정해 두어 이미지가 도착해도 시트 높이가 바뀌지 않는다. 불러오는 중 · 실패면 회색 바탕에
  * 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해 주소가 없는 경우는 없다.
+ *
+ * 창이 짧아 시트 폭만큼 높이를 못 받으면 받은 높이를 한 변으로 하는 정사각으로 줄어 가운데에 놓인다. 폭을 꽉 채우도록
+ * 강제하지 않는 것은 그 때문이다 — 강제하면 정사각을 지키려다 높이를 넘친다.
  */
 @Composable
-private fun NoticeThumbnail(imageUrl: String) {
+private fun NoticeThumbnail(
+    imageUrl: String,
+    modifier: Modifier = Modifier,
+) {
     val painter = rememberAsyncImagePainter(model = imageUrl)
     val isLoaded = painter.state is AsyncImagePainter.State.Success
     Box(
         modifier =
-            Modifier
-                .fillMaxWidth()
+            modifier
                 .aspectRatio(THUMBNAIL_ASPECT_RATIO)
                 .background(MaterialTheme.colorScheme.surfaceContainer),
         contentAlignment = Alignment.Center,
