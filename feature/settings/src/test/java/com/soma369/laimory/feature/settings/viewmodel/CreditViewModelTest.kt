@@ -3,11 +3,10 @@ package com.soma369.laimory.feature.settings.viewmodel
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.credit.CreditCosts
-import com.soma369.laimory.core.domain.model.credit.TimelineCredit
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.CreditRepository
 import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
-import com.soma369.laimory.feature.settings.state.CreditBalance
+import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
 import com.soma369.laimory.feature.settings.state.CreditUiIntent
 import com.soma369.laimory.feature.settings.state.CreditUiSideEffect
 import kotlinx.coroutines.CompletableDeferred
@@ -18,6 +17,9 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -27,6 +29,7 @@ class CreditViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository = FakeCreditRepository()
+    private val store = CreditBalanceStore()
     private val navigationHelper = RecordingNavigationHelper()
 
     @Test
@@ -38,35 +41,56 @@ class CreditViewModelTest {
             viewModel.sendIntent(CreditUiIntent.Refresh)
             advanceUntilIdle()
 
-            assertEquals(CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 42)), viewModel.state.value.balance)
+            assertEquals(42, viewModel.state.value.remaining)
+            assertEquals(1, viewModel.state.value.cost)
+            assertFalse(viewModel.state.value.isLoading)
+        }
+
+    @Test
+    fun `기억해 둔 잔액이 있으면 다시 받는 동안에도 그 값을 보인다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 설정이 받아 둔 값. 들어올 때마다 비우면 로딩이 번쩍인다.
+            store.updateRemaining(store.beginRequest(), 42)
+            repository.gate = CompletableDeferred()
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(CreditUiIntent.Refresh)
+            runCurrent()
+
+            assertEquals(42, viewModel.state.value.remaining)
+            assertTrue(viewModel.state.value.isLoading)
         }
 
     @Test
     fun `잔액이나 비용을 못 받으면 0 이 아니라 받지 못함으로 둔다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             // 크레딧 행이 없으면 서버가 500 을 낸다. 0 으로 보이면 남은 게 없는 줄 안다.
+            store.updateRemaining(store.beginRequest(), 42)
             repository.failure = ApiException.ServerException(rawCode = 500)
             val viewModel = createViewModel()
 
             viewModel.sendIntent(CreditUiIntent.Refresh)
             advanceUntilIdle()
 
-            assertEquals(CreditBalance.Unavailable, viewModel.state.value.balance)
+            assertNull(viewModel.state.value.remaining)
+            assertFalse(viewModel.state.value.isLoading)
         }
 
     @Test
-    fun `다시 들어오면 받는 중으로 돌아가 옛 잔액을 남기지 않는다`() =
+    fun `계정 경계에서 비운 뒤 도착한 이전 계정의 응답은 버린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
+            val late = CompletableDeferred<Unit>()
+            repository.gate = late
+            repository.remaining = 42
             val viewModel = createViewModel()
-            viewModel.sendIntent(CreditUiIntent.Refresh)
-            advanceUntilIdle()
-
-            // Activity 수명 ViewModel 이라 다른 계정으로 다시 들어와도 같은 인스턴스다.
-            repository.gate = CompletableDeferred()
             viewModel.sendIntent(CreditUiIntent.Refresh)
             runCurrent()
 
-            assertEquals(CreditBalance.Loading, viewModel.state.value.balance)
+            store.clear()
+            late.complete(Unit)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.remaining)
         }
 
     @Test
@@ -86,7 +110,7 @@ class CreditViewModelTest {
             slow.complete(Unit)
             advanceUntilIdle()
 
-            assertEquals(CreditBalance.Loaded(TimelineCredit(cost = 1, remaining = 41)), viewModel.state.value.balance)
+            assertEquals(41, viewModel.state.value.remaining)
         }
 
     @Test
@@ -114,6 +138,7 @@ class CreditViewModelTest {
         val viewModel =
             CreditViewModel(
                 getTimelineCredit = GetTimelineCreditUseCase(repository),
+                balanceStore = store,
                 navigationHelper = navigationHelper,
             )
         advanceUntilIdle()

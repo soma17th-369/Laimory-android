@@ -50,6 +50,7 @@ import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
 import com.soma369.laimory.navigation.LaimoryNavGraph
 import com.soma369.laimory.notice.PopupNoticeHost
 import com.soma369.laimory.notice.PopupNoticeQueue
@@ -97,6 +98,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var draftTaskCoordinator: DraftTaskCoordinator
+
+    @Inject
+    lateinit var creditBalanceStore: CreditBalanceStore
 
     @Inject
     lateinit var draftConsentSessionStore: DraftConsentSessionStore
@@ -246,9 +250,10 @@ class MainActivity : ComponentActivity() {
                                     loadingShowsOtherAttempt = draftLoadingSessionStore::showsOtherAttemptThan,
                                     onCurrentPathChange = { currentPath = it },
                                     onAuthRootReplaced = {
-                                        // 계정 경계 교체 시 이전 사용자의 대화 상자와 생성 시도 스냅샷을 함께 정리한다.
+                                        // 계정 경계 교체 시 이전 사용자의 대화 상자 · 생성 시도 스냅샷 · 기억해 둔 잔액을 함께 정리한다.
                                         messageHelper.clearDialogs()
                                         draftConsentSessionStore.clearAll()
+                                        creditBalanceStore.clear()
                                     },
                                 )
                             }

@@ -60,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
+import com.soma369.laimory.core.ui.component.rememberDelayedVisibility
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
@@ -388,8 +389,9 @@ private fun AccountSummaryCard(
 /**
  * 계정 카드 오른쪽 크레딧 칸(Figma 663:2070 의 3363:1033). 누르면 크레딧 화면이라 토널 바탕 · 화살표로 버튼처럼 둔다.
  *
- * 값에 따라 바뀌는 것은 숫자뿐이다 — 라벨 · 동전 · 화살표는 처음부터 보이고, 숫자 자리는 높이 · 최소 폭을 고정해 받는 중
- * (로딩) · 받음(숫자) · 못 받음(`-`) 사이에 칸이 움직이지 않는다. 못 받았을 때 0 으로 보이면 남은 게 없는 줄 안다.
+ * 값에 따라 바뀌는 것은 숫자뿐이다 — 라벨 · 동전 · 화살표는 처음부터 보이고, 숫자 자리는 높이 · 최소 폭을 고정해 받는 중 ·
+ * 받음(숫자) · 못 받음(`-`) 사이에 칸이 움직이지 않는다. 못 받았을 때 0 으로 보이면 남은 게 없는 줄 안다. 숫자는 앱 메모리에
+ * 기억해 둔 마지막 값이라 들어오자마자 보이고, 값이 없을 때만 늦으면 로딩을 띄운다.
  */
 @Composable
 private fun RemainingCredits(
@@ -441,16 +443,18 @@ private fun RemainingCredits(
                     modifier = Modifier.weight(1f).height(countLineHeight).widthIn(min = CREDIT_COUNT_MIN_WIDTH),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
+                    // 값이 없을 때만 기다린다. 늦을 때만 로딩을 띄우고 그 전엔 자리만 비워 둔다.
+                    val showsProgress = rememberDelayedVisibility(active = count == null && isLoading)
                     when {
-                        count != null ->
-                            Text(text = count.toCreditCount(), style = countStyle, color = MaterialTheme.colorScheme.primary, maxLines = 1)
-                        isLoading ->
+                        showsProgress ->
                             CircularProgressIndicator(
                                 modifier = Modifier.size(18.dp),
                                 color = MaterialTheme.colorScheme.primary,
                                 strokeWidth = 2.dp,
                             )
-                        else -> Text(text = "-", style = countStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        count != null ->
+                            Text(text = count.toCreditCount(), style = countStyle, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                        !isLoading -> Text(text = "-", style = countStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
