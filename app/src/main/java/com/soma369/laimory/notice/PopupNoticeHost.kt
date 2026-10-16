@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +25,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -43,13 +38,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
@@ -57,15 +48,15 @@ import com.soma369.laimory.core.domain.model.notice.PopupNotice
 import com.soma369.laimory.core.ui.R
 import com.soma369.laimory.core.ui.component.sheet.LaimorySheetDragHandle
 import com.soma369.laimory.core.ui.theme.Spacing
-import kotlin.math.abs
 
 /**
  * 홈 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트 — 썸네일형` 3204:2663 의 3204:2664 · 2685 · 2709). 처리하지 않은
  * 팝업 공지를 카드로 한 장씩 보여 준다.
  *
  * 카드마다 `다시 보지 않기`([onDismissForever]) | `닫기`([onClose]) 로 처리한다. 처리한 카드는 [notices] 에서 빠지고
- * 남은 카드의 첫 장이 보인다 — 인디케이터도 함께 줄고 커서는 첫 칸이다. 좌우로 쓸어 넘길 수 없고, 아래 점을 눌러 다른
- * 카드를 본다. 1건이어도 점 하나를 보여 남은 건수를 일관되게 알린다. 카드를 누르면 원문을 연다([onOpen]) — 시트와 카드는 그대로다.
+ * 남은 카드의 첫 장이 보인다. 늘 첫 장부터 차례로 처리하고, 쓸어 넘기거나 점을 눌러 건너뛸 수 없다 — 공지는 하나씩 다
+ * 봐야 하는 것이다. 아래 점은 남은 건수와 지금 차례만 보여 주는 표시다(1건이어도 점 하나). 카드를 누르면 원문을
+ * 연다([onOpen]) — 시트와 카드는 그대로다.
  *
  * 헤더 X 는 없다. 손잡이로 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]). 본문을 끌어서는
  * 시트가 움직이지 않는다.
@@ -88,9 +79,8 @@ fun PopupNoticeHost(
     if (notices.isEmpty() || !isVisible) return
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    // 카드가 빠져 목록이 바뀌면 커서는 첫 칸으로 돌아간다(큐에서 다음 차례).
-    var current by remember(notices) { mutableIntStateOf(0) }
-    val notice = notices[current.coerceIn(notices.indices)]
+    // 늘 대기열의 첫 장이다. 처리한 카드가 빠지면 다음 차례가 첫 장이 된다.
+    val notice = notices.first()
     ModalBottomSheet(
         onDismissRequest = onCloseAll,
         sheetState = sheetState,
@@ -99,7 +89,7 @@ fun PopupNoticeHost(
         dragHandle = { LaimorySheetDragHandle(bottomPadding = Spacing.medium) },
     ) {
         // 본문을 끌어서는 시트가 움직이지 않는다 — 손잡이로만 끌어 내린다. 시트보다 먼저 세로 끌기를 가져가 소비하면 시트의
-        // 끌기는 시작되지 않는다. 누르기(카드 · 점 · 버튼)는 끌기 문턱을 넘지 않으므로 그대로 받는다.
+        // 끌기는 시작되지 않는다. 누르기(카드 · 버튼)는 끌기 문턱을 넘지 않으므로 그대로 받는다.
         Column(
             modifier =
                 Modifier
@@ -115,47 +105,44 @@ fun PopupNoticeHost(
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.small),
             )
-            // 카드 · 점 · 버튼 사이 간격은 점 줄이 위아래로 품는다 — 6dp 점의 눌림 영역을 간격만큼 넓히려는 것이다.
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                NoticeCard(
-                    notice = notice,
-                    position = "${notices.size}건 중 ${current + 1}번째",
-                    onClick = { onOpen(notice) },
-                )
-                PageIndicator(count = notices.size, current = current, onSelect = { current = it })
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+            NoticeCard(
+                notice = notice,
+                position = "${notices.size}건 중 1번째",
+                onClick = { onOpen(notice) },
+            )
+            PageIndicator(count = notices.size, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f).height(ButtonHeight),
+                    onClick = { onDismissForever(notice) },
+                    shape = RoundedCornerShape(ButtonCornerRadius),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
                 ) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f).height(ButtonHeight),
-                        onClick = { onDismissForever(notice) },
-                        shape = RoundedCornerShape(ButtonCornerRadius),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
-                    ) {
-                        Text(
-                            text = "다시 보지 않기",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1,
-                        )
-                    }
-                    Button(
-                        modifier = Modifier.weight(1f).height(ButtonHeight),
-                        onClick = { onClose(notice) },
-                        shape = RoundedCornerShape(ButtonCornerRadius),
-                        colors =
-                            ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                            ),
-                    ) {
-                        Text(
-                            text = "닫기",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1,
-                        )
-                    }
+                    Text(
+                        text = "다시 보지 않기",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                    )
+                }
+                Button(
+                    modifier = Modifier.weight(1f).height(ButtonHeight),
+                    onClick = { onClose(notice) },
+                    shape = RoundedCornerShape(ButtonCornerRadius),
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                ) {
+                    Text(
+                        text = "닫기",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                    )
                 }
             }
         }
@@ -248,63 +235,29 @@ private fun NoticeThumbnail(imageUrl: String) {
 }
 
 /**
- * 지금 카드는 길쭉한 점, 나머지는 동그란 점. 점을 누르면 그 카드로 간다.
- *
- * 점은 6dp 라 그대로는 누르기 어렵다. 줄 전체(위아래 간격 · 좌우 여백 포함)를 눌림 영역으로 두고, 누른 자리에서 가장
- * 가까운 점을 고른다. 화면 읽기 도구는 점마다 따로 고른다.
+ * 남은 건수만큼 점, 지금 차례(늘 첫 칸)는 길쭉한 점. 누를 수 없는 표시다. 화면 읽기 도구에는 카드가 "N건 중 1번째"로
+ * 읽히므로 점은 따로 읽지 않는다.
  */
 @Composable
 private fun PageIndicator(
     count: Int,
-    current: Int,
-    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier =
-            Modifier
-                .height(IndicatorTouchHeight)
-                .pointerInput(count, current) {
-                    detectTapGestures { offset ->
-                        val centers = dotCenters(count, current).map { (it + IndicatorTouchInset).toPx() }
-                        val nearest = centers.indices.minBy { abs(centers[it] - offset.x) }
-                        onSelect(nearest)
-                    }
-                }.padding(horizontal = IndicatorTouchInset),
+        modifier = modifier.clearAndSetSemantics { },
         horizontalArrangement = Arrangement.spacedBy(DotGap),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(count) { index ->
-            val isCurrent = index == current
+            val isCurrent = index == 0
             Box(
                 modifier =
                     Modifier
                         .width(if (isCurrent) CurrentDotWidth else DotSize)
                         .height(DotSize)
                         .clip(RoundedCornerShape(DotSize / 2))
-                        .background(if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
-                        .semantics {
-                            role = Role.Tab
-                            selected = isCurrent
-                            contentDescription = "${count}건 중 ${index + 1}번째 공지"
-                            onClick {
-                                onSelect(index)
-                                true
-                            }
-                        },
+                        .background(if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
             )
         }
-    }
-}
-
-/** 점 줄 왼쪽 끝(좌우 여백 안쪽)부터 각 점 가운데까지의 거리. */
-private fun dotCenters(
-    count: Int,
-    current: Int,
-): List<Dp> {
-    var start = 0.dp
-    return List(count) { index ->
-        val width = if (index == current) CurrentDotWidth else DotSize
-        (start + width / 2).also { start += width + DotGap }
     }
 }
 
@@ -323,11 +276,5 @@ private val CardGap = 14.dp
 private val DotSize = 6.dp
 private val CurrentDotWidth = 18.dp
 private val DotGap = 6.dp
-
-/** 점 줄의 눌림 높이 = 위아래 간격(카드 · 버튼과의 20dp) + 점 6dp. 보이는 배치는 시안과 같다. */
-private val IndicatorTouchHeight = Spacing.extraLarge * 2 + DotSize
-
-/** 점 줄 양옆으로 넓힌 눌림 영역. */
-private val IndicatorTouchInset = Spacing.large
 private val ButtonHeight = 52.dp
 private val ButtonCornerRadius = 16.dp
