@@ -3,6 +3,8 @@ package com.soma369.laimory.notice
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,8 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,19 +25,21 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,16 +48,21 @@ import coil.compose.rememberAsyncImagePainter
 import com.soma369.laimory.core.domain.model.notice.PopupNotice
 import com.soma369.laimory.core.ui.R
 import com.soma369.laimory.core.ui.component.sheet.LaimorySheetDragHandle
-import com.soma369.laimory.core.ui.component.sheet.LaimorySheetHeader
 import com.soma369.laimory.core.ui.theme.Spacing
 
 /**
- * 앱 시작 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트` 3201:2651, 카드는 썸네일형 3204:2663). 안 본 팝업 공지를 카드로 한 장씩 보여 주고 좌우로
- * 넘긴다. 아래 점이 몇 건 중 몇 번째인지 보여 준다(1건이면 점 없음).
+ * 홈 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트 — 썸네일형` 3204:2663 의 3204:2664 · 2685 · 2709). 처리하지 않은
+ * 팝업 공지를 카드로 한 장씩 보여 준다.
  *
- * `자세히 보기` 는 지금 카드의 원문을 연다([onOpen]) — 시트는 그대로다. 카드가 화면에 뜰 때마다 [onViewed] 로 알리고,
- * `모두 닫기` · X · 쓸어내리기 · 뒤로가기 · 바깥 누름은 [onClose] 다. 넘겨 본 기록은 시트가 아니라 호출부(대기열)가 쥔다 —
- * 회전이나 일시 숨김으로 시트가 다시 그려져도 앞서 본 카드를 잃지 않게.
+ * 카드마다 `다시 보지 않기`([onDismissForever]) | `닫기`([onClose]) 로 처리한다. 처리한 카드는 [notices] 에서 빠지고
+ * 남은 카드의 첫 장이 보인다. 늘 첫 장부터 차례로 처리하고, 쓸어 넘기거나 점을 눌러 건너뛸 수 없다 — 공지는 하나씩 다
+ * 봐야 하는 것이다. 아래 점은 남은 건수와 지금 차례만 보여 주는 표시다(1건이어도 점 하나). 카드를 누르면 원문을
+ * 연다([onOpen]) — 시트와 카드는 그대로다.
+ *
+ * 헤더 X 는 없다. 손잡이 · 제목 줄로 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]). 본문을
+ * 끌어서는 시트가 움직이지 않는다.
+ *
+ * `공지사항` 제목은 손잡이 바로 아래에 붙여 한 덩어리 머리 줄로 둔다(손잡이 슬롯 안). 썸네일은 시트 폭 전체를 쓴다.
  *
  * 공용 Dialog 자리(`GlobalDialogHost`)와 따로 둔다. 그쪽은 한 번에 하나만 보여 줘 다른 Dialog 가 뜨면 밀려 사라지고,
  * 계정 경계에서 통째 비워진다. 띄울지는 [isVisible] 로 받는다.
@@ -67,64 +74,72 @@ import com.soma369.laimory.core.ui.theme.Spacing
 fun PopupNoticeHost(
     notices: List<PopupNotice>,
     isVisible: Boolean,
-    onViewed: (PopupNotice) -> Unit,
     onOpen: (PopupNotice) -> Unit,
-    onClose: () -> Unit,
+    onDismissForever: (PopupNotice) -> Unit,
+    onClose: (PopupNotice) -> Unit,
+    onCloseAll: () -> Unit,
 ) {
     if (notices.isEmpty() || !isVisible) return
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val pagerState = rememberPagerState(pageCount = { notices.size })
-    val currentOnViewed by rememberUpdatedState(onViewed)
-    LaunchedEffect(notices, pagerState.currentPage) {
-        notices.getOrNull(pagerState.currentPage)?.let(currentOnViewed)
-    }
-    val close = onClose
+    // 늘 대기열의 첫 장이다. 처리한 카드가 빠지면 다음 차례가 첫 장이 된다.
+    val notice = notices.first()
     ModalBottomSheet(
-        onDismissRequest = close,
+        onDismissRequest = onCloseAll,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = SheetCornerRadius, topEnd = SheetCornerRadius),
-        dragHandle = { LaimorySheetDragHandle() },
+        dragHandle = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                LaimorySheetDragHandle(topPadding = Spacing.medium, bottomPadding = Spacing.small)
+                Text(
+                    text = "공지사항",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
+                )
+            }
+        },
     ) {
+        // 본문을 끌어서는 시트가 움직이지 않는다 — 손잡이로만 끌어 내린다. 시트보다 먼저 세로 끌기를 가져가 소비하면 시트의
+        // 끌기는 시작되지 않는다. 누르기(카드 · 버튼)는 끌기 문턱을 넘지 않으므로 그대로 받는다.
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = Spacing.large)
-                    .padding(bottom = Spacing.extraLarge2),
+                    .pointerInput(Unit) { detectVerticalDragGestures { change, _ -> change.consume() } }
+                    .padding(top = Spacing.large, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
-            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            LaimorySheetHeader(title = "공지사항", onClose = close)
-            HorizontalPager(
-                state = pagerState,
-                pageSpacing = Spacing.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) { page ->
-                NoticeCard(notice = notices[page], position = "${notices.size}건 중 ${page + 1}번째")
-            }
-            if (notices.size > 1) PageIndicator(count = notices.size, current = pagerState.currentPage)
+            // 점 · 버튼은 먼저 자리를 잡고, 카드는 남은 높이 안에서만 그린다. 짧은 창(분할 화면 · 가로)에서도 버튼이 밀려나지
+            // 않게 하려는 것이다 — 본문은 스크롤도 끌기도 없어 밀려난 버튼에 닿을 방법이 없다.
+            NoticeCard(
+                notice = notice,
+                position = "${notices.size}건 중 1번째",
+                onClick = { onOpen(notice) },
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            PageIndicator(count = notices.size, modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.small),
             ) {
                 OutlinedButton(
                     modifier = Modifier.weight(1f).height(ButtonHeight),
-                    onClick = close,
+                    onClick = { onDismissForever(notice) },
                     shape = RoundedCornerShape(ButtonCornerRadius),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
                 ) {
                     Text(
-                        text = if (notices.size > 1) "모두 닫기" else "닫기",
+                        text = "다시 보지 않기",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         maxLines = 1,
                     )
                 }
                 Button(
                     modifier = Modifier.weight(1f).height(ButtonHeight),
-                    onClick = { notices.getOrNull(pagerState.currentPage)?.let(onOpen) },
+                    onClick = { onClose(notice) },
                     shape = RoundedCornerShape(ButtonCornerRadius),
                     colors =
                         ButtonDefaults.buttonColors(
@@ -133,7 +148,7 @@ fun PopupNoticeHost(
                         ),
                 ) {
                     Text(
-                        text = "자세히 보기",
+                        text = "닫기",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         maxLines = 1,
                     )
@@ -144,24 +159,29 @@ fun PopupNoticeHost(
 }
 
 /**
- * 카드 = 썸네일(4:3) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를 보여 주는
- * 규칙은 [NoticeThumbnail].
+ * 카드 = 썸네일(1:1, 시트 폭) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를
+ * 보여 주는 규칙은 [NoticeThumbnail]. 누르면 원문을 연다.
  *
- * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 넘길 때 시트가 출렁이지 않게.
+ * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 카드가 바뀔 때 시트가 출렁이지 않게. 높이가 모자라면 제목 칸을 먼저
+ * 두고 썸네일을 남은 높이에 맞춰 줄인다.
  */
 @Composable
 private fun NoticeCard(
     notice: PopupNotice,
     position: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
-                .clearAndSetSemantics { contentDescription = "$position, ${notice.title}" },
+                .clickable(onClickLabel = "원문 보기", role = Role.Button, onClick = onClick)
+                .semantics(mergeDescendants = true) { contentDescription = "$position, ${notice.title}" },
         verticalArrangement = Arrangement.spacedBy(CardGap),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        NoticeThumbnail(imageUrl = notice.thumbnailUrl)
+        NoticeThumbnail(imageUrl = notice.thumbnailUrl, modifier = Modifier.weight(1f, fill = false))
         Text(
             text = notice.title,
             style = MaterialTheme.typography.titleLarge,
@@ -169,68 +189,82 @@ private fun NoticeCard(
             minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large).clearAndSetSemantics { },
         )
     }
 }
 
 /**
- * 4:3 칸, 높이 고정. 가로 이미지(가로 ≥ 세로)는 칸을 꽉 채워 자르고, **세로로 긴 이미지는 자르지 않고** 칸 높이에 맞춰
- * 가운데 둔 뒤 좌우 빈 곳에 같은 이미지를 꽉 채워 흐리게 깐다(Figma 3241:2698). 불러오는 중 · 실패면 회색 바탕에
- * 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해 주소가 없는 경우는 없다.
+ * 1:1 칸, 시트 폭 전체, 높이 고정. 이미지는 자르거나 키우지 않고 칸 안에 통째로 맞춘다 — 세로 포스터도 위아래가 잘리지
+ * 않는다. 정사각이 아니면 남는 위아래 · 좌우에 같은 이미지를 꽉 채워 흐리게 깐다. 칸 비율을 고정해 두어 이미지가 도착해도
+ * 시트 높이가 바뀌지 않는다. 불러오는 중 · 실패면 회색 바탕에 워드마크(3204:2685) — 서버가 팝업 지정에 썸네일을 필수로 해
+ * 주소가 없는 경우는 없다.
  *
- * 흐림(`Modifier.blur`)은 Android 12 부터 그려진다. 그 아래에서는 흐리지 않은 채 어둡게만 깔린다.
+ * 흐린 배경은 칸보다 크게 키워 그린다. 흐림은 가장자리에서 바깥의 빈 곳을 섞어 옅어지는데, 칸 크기 그대로면 그 옅은 테가
+ * 회색 바탕을 비춰 여백처럼 보인다. 키워서 옅은 테를 칸 밖(잘리는 곳)으로 밀어낸다. 흐림(`Modifier.blur`)은 Android 12
+ * 부터 그려진다. 그 아래에서는 흐리지 않은 채 어둡게만 깔린다.
+ *
+ * 창이 짧아 시트 폭만큼 높이를 못 받으면 받은 높이를 한 변으로 하는 정사각으로 줄어 가운데에 놓인다. 폭을 꽉 채우도록
+ * 강제하지 않는 것은 그 때문이다 — 강제하면 정사각을 지키려다 높이를 넘친다.
  */
 @Composable
-private fun NoticeThumbnail(imageUrl: String) {
+private fun NoticeThumbnail(
+    imageUrl: String,
+    modifier: Modifier = Modifier,
+) {
     val painter = rememberAsyncImagePainter(model = imageUrl)
-    val loaded = painter.state as? AsyncImagePainter.State.Success
+    val isLoaded = painter.state is AsyncImagePainter.State.Success
     Box(
         modifier =
-            Modifier
-                .fillMaxWidth()
+            modifier
                 .aspectRatio(THUMBNAIL_ASPECT_RATIO)
-                .clip(RoundedCornerShape(ThumbnailCornerRadius))
+                .clipToBounds()
                 .background(MaterialTheme.colorScheme.surfaceContainer),
         contentAlignment = Alignment.Center,
     ) {
-        if (loaded == null) {
+        if (isLoaded) {
+            Image(
+                painter = painter,
+                contentDescription = null,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .scale(BACKDROP_SCALE)
+                        .blur(BackdropBlur, BlurredEdgeTreatment.Unbounded),
+                contentScale = ContentScale.Crop,
+            )
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = BACKDROP_DIM)))
+        } else {
             Image(
                 painter = painterResource(R.drawable.img_laimory_wordmark),
                 contentDescription = null,
                 modifier = Modifier.width(WordmarkWidth),
             )
         }
-        run {
-            val size = loaded?.painter?.intrinsicSize
-            val isPortrait = size != null && size.isSpecified && size.height > size.width
-            if (isPortrait) {
-                Image(
-                    painter = painter,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize().blur(PortraitBackdropBlur),
-                    contentScale = ContentScale.Crop,
-                )
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = PORTRAIT_BACKDROP_DIM)))
-            }
-            Image(
-                painter = painter,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = if (isPortrait) ContentScale.Fit else ContentScale.Crop,
-            )
-        }
+        Image(
+            painter = painter,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit,
+        )
     }
 }
 
-/** 지금 쪽은 길쭉한 점, 나머지는 동그란 점. */
+/**
+ * 남은 건수만큼 점, 지금 차례(늘 첫 칸)는 길쭉한 점. 누를 수 없는 표시다. 화면 읽기 도구에는 카드가 "N건 중 1번째"로
+ * 읽히므로 점은 따로 읽지 않는다.
+ */
 @Composable
 private fun PageIndicator(
     count: Int,
-    current: Int,
+    modifier: Modifier = Modifier,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(DotGap)) {
+    Row(
+        modifier = modifier.clearAndSetSemantics { },
+        horizontalArrangement = Arrangement.spacedBy(DotGap),
+    ) {
         repeat(count) { index ->
-            val isCurrent = index == current
+            val isCurrent = index == 0
             Box(
                 modifier =
                     Modifier
@@ -244,11 +278,15 @@ private fun PageIndicator(
 }
 
 private val SheetCornerRadius = 24.dp
-private const val THUMBNAIL_ASPECT_RATIO = 4f / 3f
-private val ThumbnailCornerRadius = 16.dp
+
+private const val THUMBNAIL_ASPECT_RATIO = 1f
+private val BackdropBlur = 24.dp
+private const val BACKDROP_DIM = 0.2f
+
+/** 흐린 배경을 키우는 배율. 옅은 테(흐림 반경쯤)가 칸 밖으로 넉넉히 나가는 크기다 — 칸 한 변의 20% 씩. */
+private const val BACKDROP_SCALE = 1.4f
 private val WordmarkWidth = 140.dp
-private val PortraitBackdropBlur = 24.dp
-private const val PORTRAIT_BACKDROP_DIM = 0.2f
+
 private val CardGap = 14.dp
 private val DotSize = 6.dp
 private val CurrentDotWidth = 18.dp

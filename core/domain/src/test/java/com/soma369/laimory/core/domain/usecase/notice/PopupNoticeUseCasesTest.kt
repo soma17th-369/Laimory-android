@@ -58,22 +58,22 @@ class PopupNoticeUseCasesTest {
         }
 
     @Test
-    fun `닫기만 했으면 본 것으로만 남기고 공지 읽음은 남기지 않는다`() =
+    fun `다시 보지 않기는 팝업 기록만 남기고 공지 읽음은 남기지 않는다`() =
         runTest {
-            MarkPopupNoticeSeenUseCase(popupRepository, noticeRepository)(12, opened = false)
+            MarkPopupNoticeSeenUseCase(popupRepository)(12)
 
             assertEquals(setOf(12L), popupRepository.seen)
             assertTrue(noticeRepository.read.isEmpty())
         }
 
     @Test
-    fun `원문을 열었으면 공지 읽음에도 남기고 기존 읽음은 지우지 않는다`() =
+    fun `원문을 열면 공지 읽음에만 남기고 기존 읽음은 지우지 않는다`() =
         runTest {
             noticeRepository.read += 3
 
-            MarkPopupNoticeSeenUseCase(popupRepository, noticeRepository)(12, opened = true)
+            MarkPopupNoticeOpenedUseCase(noticeRepository)(12)
 
-            assertEquals(setOf(12L), popupRepository.seen)
+            assertTrue(popupRepository.seen.isEmpty())
             assertEquals(setOf(3L, 12L), noticeRepository.read)
         }
 

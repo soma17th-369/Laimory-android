@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -35,7 +36,6 @@ import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
-import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.settings.AppThemeMode
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
@@ -193,12 +193,6 @@ class MainActivity : ComponentActivity() {
         // 다이얼로그는 거부되기 쉽고, 한 번 거부하면 다시 물을 기회가 사실상 없다.
         // 요청은 온보딩의 알림 장 CTA 가 맡는다.
         val authSessionStates = observeAuthSession()
-        // 앱 시작 팝업 공지는 로그인 상태가 된 뒤 프로세스마다 한 번 받는다(앱 초기화 조회가 인증 API 다). 띄우는 것은
-        // 홈이 보일 때다 — 받는 것은 미리 해 둬야 홈에 닿자마자 뜬다.
-        lifecycleScope.launch {
-            authSessionStates.first { it == AuthSessionState.Authenticated }
-            popupNoticeQueue.loadOnce()
-        }
         setContent {
             val mode by themeMode.collectAsStateWithLifecycle()
             // 값을 읽기 전에는 그리지 않는다. 스플래시가 그동안 화면을 덮고 있다.
@@ -209,6 +203,15 @@ class MainActivity : ComponentActivity() {
             val activeDialog by messageHelper.activeDialog.collectAsStateWithLifecycle()
             val popupNotices by popupNoticeQueue.notices.collectAsStateWithLifecycle()
             var currentPath by remember { mutableStateOf<String?>(null) }
+            val isOnHome = currentPath == HomePage.PATH
+            val lifecycleOwner = LocalLifecycleOwner.current
+
+            // 팝업 공지는 홈에 들어올 때와 홈에 있는 채로 앱에 돌아올 때마다 띄울 것이 있는지 다시 받는다. 홈은 로그인한
+            // 뒤에만 오므로 인증 API 인 앱 초기화 조회를 불러도 된다.
+            LaunchedEffect(isOnHome, lifecycleOwner) {
+                if (!isOnHome) return@LaunchedEffect
+                lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) { popupNoticeQueue.refresh() }
+            }
 
             // 강제 화면 동안 발행된 이동 신호는 버린다. NavGraph 가 컴포즈되지 않는 사이 신호가
             // 버퍼에 쌓였다가, 게이트가 풀리는 순간 한꺼번에 재생된다. 평상시 수집자는 NavGraph
@@ -270,13 +273,13 @@ class MainActivity : ComponentActivity() {
                         PopupNoticeHost(
                             notices = popupNotices,
                             isVisible =
-                                currentPath == HomePage.PATH &&
+                                isOnHome &&
                                     gateState != AppUpdateGateState.BLOCKED &&
                                     recommendation == null &&
                                     activeDialog == null,
                             onOpen = { notice ->
                                 // 팝업 응답엔 원문 주소가 없어 단건 조회로 받는다. 그사이 숨겨졌으면(404) 열지 않는다(서버 계약).
-                                // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열지 못했으면 시트를 닫을 때 본 것으로만 남는다.
+                                // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열어도 카드는 시트에 남는다.
                                 lifecycleScope.launch {
                                     val url = popupNoticeQueue.contentUrlOf(notice)
                                     if (url != null && openInCustomTab(url)) {
@@ -286,8 +289,9 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             },
-                            onViewed = popupNoticeQueue::markViewed,
-                            onClose = { lifecycleScope.launch { popupNoticeQueue.close() } },
+                            onDismissForever = { notice -> lifecycleScope.launch { popupNoticeQueue.dismissForever(notice) } },
+                            onClose = popupNoticeQueue::close,
+                            onCloseAll = popupNoticeQueue::closeAll,
                         )
                     }
                 }
