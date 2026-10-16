@@ -5,11 +5,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -65,9 +65,10 @@ import kotlin.math.abs
  *
  * 카드마다 `다시 보지 않기`([onDismissForever]) | `닫기`([onClose]) 로 처리한다. 처리한 카드는 [notices] 에서 빠지고
  * 남은 카드의 첫 장이 보인다 — 인디케이터도 함께 줄고 커서는 첫 칸이다. 좌우로 쓸어 넘길 수 없고, 아래 점을 눌러 다른
- * 카드를 본다(1건이면 점 없음). 카드를 누르면 원문을 연다([onOpen]) — 시트와 카드는 그대로다.
+ * 카드를 본다. 1건이어도 점 하나를 보여 남은 건수를 일관되게 알린다. 카드를 누르면 원문을 연다([onOpen]) — 시트와 카드는 그대로다.
  *
- * 헤더 X 는 없다. 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]).
+ * 헤더 X 는 없다. 손잡이로 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]). 본문을 끌어서는
+ * 시트가 움직이지 않는다.
  *
  * 공용 Dialog 자리(`GlobalDialogHost`)와 따로 둔다. 그쪽은 한 번에 하나만 보여 줘 다른 Dialog 가 뜨면 밀려 사라지고,
  * 계정 경계에서 통째 비워진다. 띄울지는 [isVisible] 로 받는다.
@@ -97,10 +98,13 @@ fun PopupNoticeHost(
         shape = RoundedCornerShape(topStart = SheetCornerRadius, topEnd = SheetCornerRadius),
         dragHandle = { LaimorySheetDragHandle(bottomPadding = Spacing.medium) },
     ) {
+        // 본문을 끌어서는 시트가 움직이지 않는다 — 손잡이로만 끌어 내린다. 시트보다 먼저 세로 끌기를 가져가 소비하면 시트의
+        // 끌기는 시작되지 않는다. 누르기(카드 · 점 · 버튼)는 끌기 문턱을 넘지 않으므로 그대로 받는다.
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .pointerInput(Unit) { detectVerticalDragGestures { change, _ -> change.consume() } }
                     .padding(horizontal = Spacing.large)
                     .padding(bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
@@ -118,11 +122,7 @@ fun PopupNoticeHost(
                     position = "${notices.size}건 중 ${current + 1}번째",
                     onClick = { onOpen(notice) },
                 )
-                if (notices.size > 1) {
-                    PageIndicator(count = notices.size, current = current, onSelect = { current = it })
-                } else {
-                    Spacer(modifier = Modifier.height(Spacing.extraLarge))
-                }
+                PageIndicator(count = notices.size, current = current, onSelect = { current = it })
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.small),
