@@ -127,7 +127,7 @@ private fun CreditScreen(
             ChargeNotReadyNotice()
             PackageSection(onPackageClick = { amount -> onIntent(CreditUiIntent.PackageClicked(amount)) })
             Text(
-                text = "가격과 결제 방법은 충전을 열 때 안내할게요.",
+                text = "충전이 열리면 Google Play 결제로 구매할 수 있어요.",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -246,7 +246,8 @@ private fun PackageSection(onPackageClick: (Int) -> Unit) {
 }
 
 /**
- * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격이 정해지면 `준비 중` 자리에 가격이 온다.
+ * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격은 보이되 아직 살 수 없다는 것을 함께 보인다 — 가격을 흐린 색으로
+ * 두고 옆에 `준비 중` 을 붙인다.
  *
  * 충전을 열지 않았어도 누를 수 있다 — 누르면 준비 중이라고 알린다. 비활성으로 두면 왜 안 눌리는지 알 수 없다.
  */
@@ -287,6 +288,11 @@ private fun PackageRow(
             )
         }
         Text(
+            text = item.price,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
             text = "준비 중",
             modifier =
                 Modifier
@@ -301,13 +307,17 @@ private fun PackageRow(
 private data class CreditPackage(
     val amount: Int,
     val period: String,
+    val price: String,
 )
 
-/** 하루 한 번 기록하는 기준으로 기간을 붙인다. 가격은 아직 정하지 않았다. */
+/**
+ * 하루 한 번 기록하는 기준으로 기간을 붙인다. 가격은 충전을 열 때 Play 인앱 상품 가격과 맞춰야 한다 — 그때는 Play 가 돌려주는
+ * 현지화된 가격 문자열로 바꾼다.
+ */
 private val CREDIT_PACKAGES =
     listOf(
-        CreditPackage(amount = 7, period = "일주일 치"),
-        CreditPackage(amount = 30, period = "한 달 치"),
+        CreditPackage(amount = 7, period = "일주일 치", price = "1,000원"),
+        CreditPackage(amount = 30, period = "한 달 치", price = "3,500원"),
     )
 
 /** 받는 중에도 숫자 줄 높이를 지켜 값이 도착할 때 아래가 밀리지 않게 한다. */
