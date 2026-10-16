@@ -3,18 +3,19 @@ package com.soma369.laimory.notice
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -25,37 +26,47 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.soma369.laimory.core.domain.model.notice.PopupNotice
 import com.soma369.laimory.core.ui.R
 import com.soma369.laimory.core.ui.component.sheet.LaimorySheetDragHandle
-import com.soma369.laimory.core.ui.component.sheet.LaimorySheetHeader
 import com.soma369.laimory.core.ui.theme.Spacing
+import kotlin.math.abs
 
 /**
- * 앱 시작 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트` 3201:2651, 카드는 썸네일형 3204:2663). 안 본 팝업 공지를 카드로 한 장씩 보여 주고 좌우로
- * 넘긴다. 아래 점이 몇 건 중 몇 번째인지 보여 준다(1건이면 점 없음).
+ * 홈 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트 — 썸네일형` 3204:2663 의 3204:2664 · 2685 · 2709). 처리하지 않은
+ * 팝업 공지를 카드로 한 장씩 보여 준다.
  *
- * `자세히 보기` 는 지금 카드의 원문을 연다([onOpen]) — 시트는 그대로다. 카드가 화면에 뜰 때마다 [onViewed] 로 알리고,
- * `모두 닫기` · X · 쓸어내리기 · 뒤로가기 · 바깥 누름은 [onClose] 다. 넘겨 본 기록은 시트가 아니라 호출부(대기열)가 쥔다 —
- * 회전이나 일시 숨김으로 시트가 다시 그려져도 앞서 본 카드를 잃지 않게.
+ * 카드마다 `다시 보지 않기`([onDismissForever]) | `닫기`([onClose]) 로 처리한다. 처리한 카드는 [notices] 에서 빠지고
+ * 남은 카드의 첫 장이 보인다 — 인디케이터도 함께 줄고 커서는 첫 칸이다. 좌우로 쓸어 넘길 수 없고, 아래 점을 눌러 다른
+ * 카드를 본다(1건이면 점 없음). 카드를 누르면 원문을 연다([onOpen]) — 시트와 카드는 그대로다.
+ *
+ * 헤더 X 는 없다. 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]).
  *
  * 공용 Dialog 자리(`GlobalDialogHost`)와 따로 둔다. 그쪽은 한 번에 하나만 보여 줘 다른 Dialog 가 뜨면 밀려 사라지고,
  * 계정 경계에서 통째 비워진다. 띄울지는 [isVisible] 로 받는다.
@@ -67,21 +78,19 @@ import com.soma369.laimory.core.ui.theme.Spacing
 fun PopupNoticeHost(
     notices: List<PopupNotice>,
     isVisible: Boolean,
-    onViewed: (PopupNotice) -> Unit,
     onOpen: (PopupNotice) -> Unit,
-    onClose: () -> Unit,
+    onDismissForever: (PopupNotice) -> Unit,
+    onClose: (PopupNotice) -> Unit,
+    onCloseAll: () -> Unit,
 ) {
     if (notices.isEmpty() || !isVisible) return
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val pagerState = rememberPagerState(pageCount = { notices.size })
-    val currentOnViewed by rememberUpdatedState(onViewed)
-    LaunchedEffect(notices, pagerState.currentPage) {
-        notices.getOrNull(pagerState.currentPage)?.let(currentOnViewed)
-    }
-    val close = onClose
+    // 카드가 빠져 목록이 바뀌면 커서는 첫 칸으로 돌아간다(큐에서 다음 차례).
+    var current by remember(notices) { mutableIntStateOf(0) }
+    val notice = notices[current.coerceIn(notices.indices)]
     ModalBottomSheet(
-        onDismissRequest = close,
+        onDismissRequest = onCloseAll,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = SheetCornerRadius, topEnd = SheetCornerRadius),
@@ -94,49 +103,58 @@ fun PopupNoticeHost(
                     .padding(horizontal = Spacing.large)
                     .padding(bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
-            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            LaimorySheetHeader(title = "공지사항", onClose = close)
-            HorizontalPager(
-                state = pagerState,
-                pageSpacing = Spacing.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) { page ->
-                NoticeCard(notice = notices[page], position = "${notices.size}건 중 ${page + 1}번째")
-            }
-            if (notices.size > 1) PageIndicator(count = notices.size, current = pagerState.currentPage)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
-            ) {
-                OutlinedButton(
-                    modifier = Modifier.weight(1f).height(ButtonHeight),
-                    onClick = close,
-                    shape = RoundedCornerShape(ButtonCornerRadius),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
-                ) {
-                    Text(
-                        text = if (notices.size > 1) "모두 닫기" else "닫기",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        maxLines = 1,
-                    )
+            Text(
+                text = "공지사항",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.small),
+            )
+            // 카드 · 점 · 버튼 사이 간격은 점 줄이 위아래로 품는다 — 6dp 점의 눌림 영역을 간격만큼 넓히려는 것이다.
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                NoticeCard(
+                    notice = notice,
+                    position = "${notices.size}건 중 ${current + 1}번째",
+                    onClick = { onOpen(notice) },
+                )
+                if (notices.size > 1) {
+                    PageIndicator(count = notices.size, current = current, onSelect = { current = it })
+                } else {
+                    Spacer(modifier = Modifier.height(Spacing.extraLarge))
                 }
-                Button(
-                    modifier = Modifier.weight(1f).height(ButtonHeight),
-                    onClick = { notices.getOrNull(pagerState.currentPage)?.let(onOpen) },
-                    shape = RoundedCornerShape(ButtonCornerRadius),
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                        ),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.small),
                 ) {
-                    Text(
-                        text = "자세히 보기",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        maxLines = 1,
-                    )
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f).height(ButtonHeight),
+                        onClick = { onDismissForever(notice) },
+                        shape = RoundedCornerShape(ButtonCornerRadius),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                    ) {
+                        Text(
+                            text = "다시 보지 않기",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                        )
+                    }
+                    Button(
+                        modifier = Modifier.weight(1f).height(ButtonHeight),
+                        onClick = { onClose(notice) },
+                        shape = RoundedCornerShape(ButtonCornerRadius),
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                    ) {
+                        Text(
+                            text = "닫기",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }
@@ -145,20 +163,23 @@ fun PopupNoticeHost(
 
 /**
  * 카드 = 썸네일(4:3) + 제목(Figma 썸네일형 3204:2663). 팝업 응답엔 게시일이 없어 일자는 싣지 않는다. 이미지를 보여 주는
- * 규칙은 [NoticeThumbnail].
+ * 규칙은 [NoticeThumbnail]. 누르면 원문을 연다.
  *
- * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 넘길 때 시트가 출렁이지 않게.
+ * 제목 칸은 늘 2줄 높이다 — 제목 길이가 달라도 카드가 바뀔 때 시트가 출렁이지 않게.
  */
 @Composable
 private fun NoticeCard(
     notice: PopupNotice,
     position: String,
+    onClick: () -> Unit,
 ) {
     Column(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clearAndSetSemantics { contentDescription = "$position, ${notice.title}" },
+                .clip(RoundedCornerShape(ThumbnailCornerRadius))
+                .clickable(onClickLabel = "원문 보기", role = Role.Button, onClick = onClick)
+                .semantics(mergeDescendants = true) { contentDescription = "$position, ${notice.title}" },
         verticalArrangement = Arrangement.spacedBy(CardGap),
     ) {
         NoticeThumbnail(imageUrl = notice.thumbnailUrl)
@@ -169,6 +190,7 @@ private fun NoticeCard(
             minLines = 2,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clearAndSetSemantics { },
         )
     }
 }
@@ -222,13 +244,32 @@ private fun NoticeThumbnail(imageUrl: String) {
     }
 }
 
-/** 지금 쪽은 길쭉한 점, 나머지는 동그란 점. */
+/**
+ * 지금 카드는 길쭉한 점, 나머지는 동그란 점. 점을 누르면 그 카드로 간다.
+ *
+ * 점은 6dp 라 그대로는 누르기 어렵다. 줄 전체(위아래 간격 · 좌우 여백 포함)를 눌림 영역으로 두고, 누른 자리에서 가장
+ * 가까운 점을 고른다. 화면 읽기 도구는 점마다 따로 고른다.
+ */
 @Composable
 private fun PageIndicator(
     count: Int,
     current: Int,
+    onSelect: (Int) -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(DotGap)) {
+    Row(
+        modifier =
+            Modifier
+                .height(IndicatorTouchHeight)
+                .pointerInput(count, current) {
+                    detectTapGestures { offset ->
+                        val centers = dotCenters(count, current).map { (it + IndicatorTouchInset).toPx() }
+                        val nearest = centers.indices.minBy { abs(centers[it] - offset.x) }
+                        onSelect(nearest)
+                    }
+                }.padding(horizontal = IndicatorTouchInset),
+        horizontalArrangement = Arrangement.spacedBy(DotGap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         repeat(count) { index ->
             val isCurrent = index == current
             Box(
@@ -237,9 +278,30 @@ private fun PageIndicator(
                         .width(if (isCurrent) CurrentDotWidth else DotSize)
                         .height(DotSize)
                         .clip(RoundedCornerShape(DotSize / 2))
-                        .background(if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                        .background(if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                        .semantics {
+                            role = Role.Tab
+                            selected = isCurrent
+                            contentDescription = "${count}건 중 ${index + 1}번째 공지"
+                            onClick {
+                                onSelect(index)
+                                true
+                            }
+                        },
             )
         }
+    }
+}
+
+/** 점 줄 왼쪽 끝(좌우 여백 안쪽)부터 각 점 가운데까지의 거리. */
+private fun dotCenters(
+    count: Int,
+    current: Int,
+): List<Dp> {
+    var start = 0.dp
+    return List(count) { index ->
+        val width = if (index == current) CurrentDotWidth else DotSize
+        (start + width / 2).also { start += width + DotGap }
     }
 }
 
@@ -253,5 +315,11 @@ private val CardGap = 14.dp
 private val DotSize = 6.dp
 private val CurrentDotWidth = 18.dp
 private val DotGap = 6.dp
+
+/** 점 줄의 눌림 높이 = 위아래 간격(카드 · 버튼과의 20dp) + 점 6dp. 보이는 배치는 시안과 같다. */
+private val IndicatorTouchHeight = Spacing.extraLarge * 2 + DotSize
+
+/** 점 줄 양옆으로 넓힌 눌림 영역. */
+private val IndicatorTouchInset = Spacing.large
 private val ButtonHeight = 52.dp
 private val ButtonCornerRadius = 16.dp
