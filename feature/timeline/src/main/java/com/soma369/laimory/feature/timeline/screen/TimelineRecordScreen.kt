@@ -37,6 +37,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -364,6 +365,8 @@ private fun TimelineRecordScreen(
                                     )
                             },
                             onAiNoticeClick = { isAiNoticeDialogVisible = true },
+                            isAddEventEnabled = state.isModeSwitchable,
+                            onAddEventClick = { onIntent(TimelineRecordUiIntent.AddEvent) },
                             modifier = Modifier.fillMaxSize(),
                         )
                         // 목록 위에 얹어 저장 버튼과 겹치지 않게 둔다. 편집 모드에서만 보인다 —
@@ -510,10 +513,17 @@ private fun TimelineRecordBody(
     onMemoCommit: (Long) -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
     onAiNoticeClick: () -> Unit,
+    isAddEventEnabled: Boolean,
+    onAddEventClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (record.events.isEmpty()) {
-        TimelineRecordEmpty(modifier = modifier)
+        TimelineRecordEmpty(
+            mode = mode,
+            isAddEventEnabled = isAddEventEnabled,
+            onAddEventClick = onAddEventClick,
+            modifier = modifier,
+        )
         return
     }
 
@@ -588,8 +598,19 @@ private data class TimelinePhotoViewerState(
     val initialIndex: Int,
 )
 
+/**
+ * 이벤트가 0건인 기록.
+ *
+ * 편집 모드에는 우하단 FAB 가 있어 같은 일을 하는 버튼을 또 두지 않고 문구로 가리킨다. 읽기 모드에는
+ * FAB 가 없어 여기서 바로 추가할 수 있게 한다 — 그러지 않으면 누를 것이 없는 화면이 된다.
+ */
 @Composable
-private fun TimelineRecordEmpty(modifier: Modifier = Modifier) {
+private fun TimelineRecordEmpty(
+    mode: TimelineRecordMode,
+    isAddEventEnabled: Boolean,
+    onAddEventClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier =
             modifier
@@ -605,12 +626,21 @@ private fun TimelineRecordEmpty(modifier: Modifier = Modifier) {
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "이 날짜에는 생성된 이벤트가 없습니다.",
+                text = if (mode.isEditing) "오른쪽 아래 + 를 눌러 이벤트를 추가해 보세요" else "이 날 기록된 일이 없어요",
                 modifier = Modifier.padding(top = Spacing.small),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
+            if (!mode.isEditing) {
+                TextButton(
+                    onClick = onAddEventClick,
+                    enabled = isAddEventEnabled,
+                    modifier = Modifier.padding(top = Spacing.medium),
+                ) {
+                    Text(text = "이벤트 추가하기")
+                }
+            }
         }
     }
 }
@@ -721,7 +751,23 @@ private fun TimelineRecordEmptyPreview() {
             innerPadding = PaddingValues(),
             state =
                 TimelineRecordUiState(
-                    TimelineRecordUiContent.Record(previewRecord().copy(events = emptyList())),
+                    TimelineRecordUiContent.Record(previewRecord().copy(events = emptyList(), isSaved = true)),
+                ),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(showBackground = true, widthDp = 360, heightDp = 800)
+@Composable
+private fun TimelineRecordEmptyEditPreview() {
+    LaimoryTheme {
+        TimelineRecordScreen(
+            innerPadding = PaddingValues(),
+            state =
+                TimelineRecordUiState(
+                    content = TimelineRecordUiContent.Record(previewRecord().copy(events = emptyList())),
+                    mode = TimelineRecordMode.EDIT,
                 ),
             onIntent = {},
         )

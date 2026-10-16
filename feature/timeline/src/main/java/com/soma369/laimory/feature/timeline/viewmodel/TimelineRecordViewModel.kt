@@ -335,12 +335,22 @@ class TimelineRecordViewModel
             }
         }
 
-        /** 빈 편집기를 열어 새 이벤트를 만든다. 편집 모드에서만, 진행 중인 작업이 없을 때만 연다. */
+        /**
+         * 빈 편집기를 열어 새 이벤트를 만든다. 진행 중인 작업이 없을 때만 연다.
+         *
+         * 편집 모드의 FAB 가 기본 진입점이다. 읽기 모드에서는 이벤트가 0건일 때만 받는다 — 빈 기록에는
+         * FAB 도 읽을 것도 없어 빈 화면의 `이벤트 추가하기` 가 유일한 길이다. 이때는 편집 모드로 바꾼 뒤
+         * 열어, 만들고 돌아오면 이어서 고칠 수 있게 한다.
+         */
         private fun addEvent() {
             commitOpenMemo()
             val current = state.value
             val record = (current.content as? TimelineRecordUiContent.Record)?.value ?: return
-            if (!current.mode.isEditing || !current.isModeSwitchable) return
+            if (!current.isModeSwitchable) return
+            if (!current.mode.isEditing) {
+                if (record.events.isNotEmpty()) return
+                updateState { copy(mode = TimelineRecordMode.EDIT) }
+            }
             navigationHelper.navigateTo(TimelineEventCreatePage(record.recordDate))
         }
 
