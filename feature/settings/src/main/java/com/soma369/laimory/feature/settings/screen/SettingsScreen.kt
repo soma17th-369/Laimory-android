@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -30,7 +31,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -202,7 +203,7 @@ private fun SettingsScreen(
                 provider = state.accountProvider,
                 nickname = state.nickname,
                 remainingCredits = state.remainingCredits,
-                isCreditsLoading = state.showsCreditsLoading,
+                isCreditsLoading = state.isCreditsLoading,
                 onCreditsClick = { onIntent(SettingsUiIntent.CreditsClicked) },
             )
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.large)) {
@@ -342,8 +343,7 @@ private fun SettingsScreen(
 }
 
 /**
- * 계정 카드. 오른쪽 칸은 남은 크레딧이다(Figma 663:2070 — 시안의 `연속 기록` 자리). 못 받았으면 칸을 비운다.
- * 칸을 누르면 크레딧 화면으로 간다.
+ * 계정 카드. 오른쪽 칸은 남은 크레딧이다(Figma 663:2070 — 시안의 `연속 기록` 자리). 칸을 누르면 크레딧 화면으로 간다.
  */
 @Composable
 private fun AccountSummaryCard(
@@ -381,63 +381,87 @@ private fun AccountSummaryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (remainingCredits != null || isCreditsLoading) {
-                RemainingCredits(count = remainingCredits, onClick = onCreditsClick)
-            }
+            // 받는 중 · 못 받음에도 칸은 그대로 둔다. 칸이 생겼다 사라지면 이름 칸 폭이 바뀐다.
+            RemainingCredits(count = remainingCredits, isLoading = isCreditsLoading, onClick = onCreditsClick)
         }
     }
 }
 
+/**
+ * 계정 카드 오른쪽 크레딧 칸(Figma 663:2070 의 3363:1033). 누르면 크레딧 화면이라 토널 바탕 · 화살표로 버튼처럼 둔다.
+ *
+ * 값에 따라 바뀌는 것은 숫자뿐이다 — 라벨 · 동전 · 화살표는 처음부터 보이고, 숫자 자리는 높이 · 최소 폭을 고정해 받는 중
+ * (로딩) · 받음(숫자) · 못 받음(`-`) 사이에 칸이 움직이지 않는다. 못 받았을 때 0 으로 보이면 남은 게 없는 줄 안다.
+ */
 @Composable
 private fun RemainingCredits(
     count: Int?,
+    isLoading: Boolean,
     onClick: () -> Unit,
 ) {
-    Column(
+    val countStyle = MaterialTheme.typography.headlineMedium
+    val countLineHeight = with(LocalDensity.current) { countStyle.lineHeight.toDp() }
+    Row(
         modifier =
             Modifier
-                .minimumInteractiveComponentSize()
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.surfaceContainer)
                 .clickable(onClickLabel = "크레딧 보기", role = Role.Button, onClick = onClick)
                 .clearAndSetSemantics {
-                    contentDescription = if (count == null) "남은 크레딧 불러오는 중" else "남은 크레딧 ${count}개"
-                },
-        horizontalAlignment = Alignment.End,
+                    contentDescription =
+                        when {
+                            count != null -> "남은 크레딧 ${count}개"
+                            isLoading -> "남은 크레딧 불러오는 중"
+                            else -> "남은 크레딧 불러오지 못함"
+                        }
+                }.padding(start = Spacing.medium, end = Spacing.small, top = Spacing.small, bottom = Spacing.small),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
-        ) {
-            Icon(
-                painter = painterResource(CoreUiR.drawable.ico_default_coins),
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.laimoryColors.warning,
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "남은 크레딧",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // 받는 중에는 숫자 자리에만 로딩을 둔다. 줄 높이는 숫자와 같게 맞춰 받은 뒤 칸이 흔들리지 않게 한다.
-            if (count == null) {
-                val lineHeight = with(LocalDensity.current) { MaterialTheme.typography.titleLarge.lineHeight.toDp() }
-                Box(modifier = Modifier.height(lineHeight), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 2.dp,
-                    )
-                }
-            } else {
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    painter = painterResource(CoreUiR.drawable.ico_default_coins),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.laimoryColors.warning,
                 )
+                Box(
+                    modifier = Modifier.height(countLineHeight).widthIn(min = CREDIT_COUNT_MIN_WIDTH),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    when {
+                        count != null -> Text(text = count.toString(), style = countStyle, color = MaterialTheme.colorScheme.primary)
+                        isLoading ->
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 2.dp,
+                            )
+                        else -> Text(text = "-", style = countStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
-        Text(
-            text = "남은 크레딧",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Icon(
+            painter = painterResource(CoreUiR.drawable.ico_default_caret_right),
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
+
+/** 숫자 자리 최소 폭. 로딩과 두 자리 숫자가 같은 자리를 써 칸 폭이 흔들리지 않는다. */
+private val CREDIT_COUNT_MIN_WIDTH = 32.dp
 
 @Composable
 private fun ProviderAvatar(provider: SocialLoginProvider?) {

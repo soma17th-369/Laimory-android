@@ -2,15 +2,15 @@ package com.soma369.laimory.feature.settings.screen
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -28,12 +28,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -139,80 +142,134 @@ private fun CreditScreen(
     }
 }
 
+/**
+ * 잔액 카드(Figma 3356:567 · 받는 중 3356:709). 값에 따라 바뀌는 것은 숫자와 쓰임 줄뿐이고, 둘 다 자리를 고정해 두어 받는 중 ·
+ * 받음 · 못 받음 사이에 카드 크기와 아래 내용이 움직이지 않는다.
+ */
 @Composable
 private fun BalanceCard(balance: CreditBalance) {
-    val credit = (balance as? CreditBalance.Loaded)?.credit
-    val count =
-        when (balance) {
-            CreditBalance.Loading -> null
-            CreditBalance.Unavailable -> "-"
-            is CreditBalance.Loaded -> balance.credit.remaining.toString()
-        }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(Spacing.extraLarge),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.large),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "남은 크레딧",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(
-                modifier =
-                    Modifier
-                        .heightIn(min = BALANCE_ROW_MIN_HEIGHT)
-                        .clearAndSetSemantics {
-                            contentDescription = if (count == null) "남은 크레딧 불러오는 중" else "남은 크레딧 $count"
-                        },
-                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
             ) {
-                Icon(
-                    painter = painterResource(CoreUiR.drawable.ico_default_coins),
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                    tint = MaterialTheme.laimoryColors.warning,
+                Text(
+                    text = "남은 크레딧",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                // 조회가 늦을 수 있어 받는 중에는 숫자 자리에만 로딩을 둔다. 받으면 숫자로 바뀐다.
-                if (count == null) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(BALANCE_PROGRESS_SIZE),
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 2.5.dp,
-                    )
-                } else {
-                    Text(
-                        text = count,
-                        style = MaterialTheme.typography.displaySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                BalanceCount(balance = balance)
+                UsageLine(balance = balance)
             }
-            credit?.let { UsageLine(credit = it) }
+            CoinBadge()
         }
     }
 }
 
-/** 1개당 쓰임. 비용은 서버 값이라 받은 그대로 쓴다. 모자라면 무엇이 얼마나 필요한지로 바꾼다. */
+/**
+ * 숫자 자리. 높이는 숫자 글자 한 줄로, 폭은 최소 폭으로 고정한다 — 받는 중에는 이 자리에만 로딩을 두고, 받으면 숫자만 바꾼다.
+ * 못 받았으면 0 이 아니라 `-` 다.
+ */
 @Composable
-private fun UsageLine(credit: TimelineCredit) {
-    if (credit.isEnough) {
-        Text(
-            text = "${credit.cost}개로 타임라인을 1번 만들 수 있어요",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    } else {
-        Text(
-            text = "타임라인을 만들려면 크레딧 ${credit.cost}개가 필요해요",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
+private fun BalanceCount(balance: CreditBalance) {
+    val style = MaterialTheme.typography.displayLarge
+    val lineHeight = with(LocalDensity.current) { style.lineHeight.toDp() }
+    val count =
+        when (balance) {
+            CreditBalance.Loading -> null
+            CreditBalance.Unavailable -> "-"
+            is CreditBalance.Loaded -> balance.credit.remaining.toString()
+        }
+    Box(
+        modifier =
+            Modifier
+                .height(lineHeight)
+                .widthIn(min = BALANCE_COUNT_MIN_WIDTH)
+                .clearAndSetSemantics {
+                    contentDescription = if (count == null) "남은 크레딧 불러오는 중" else "남은 크레딧 $count"
+                },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        if (count == null) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(BALANCE_PROGRESS_SIZE),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.dp,
+            )
+        } else {
+            Text(text = count, style = style, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+/**
+ * 1개당 쓰임. 비용은 서버 값이라 받은 그대로 쓴다. 모자라면 몇 개가 필요한지로 바꾼다.
+ *
+ * 늘 한 줄을 차지한다 — 받는 중에는 같은 문구를 보이지 않게 깔아 자리만 잡고, 못 받았으면 그렇다고 적는다. 줄이 생겼다
+ * 없어지면 카드 높이가 바뀌어 아래 내용이 밀린다.
+ */
+@Composable
+private fun UsageLine(balance: CreditBalance) {
+    val style = MaterialTheme.typography.bodySmall
+    val variant = MaterialTheme.colorScheme.onSurfaceVariant
+    when (balance) {
+        CreditBalance.Loading ->
+            Text(
+                text = "1개로 타임라인을 1번 만들 수 있어요",
+                modifier = Modifier.alpha(0f).clearAndSetSemantics { },
+                style = style,
+                maxLines = 1,
+            )
+        CreditBalance.Unavailable ->
+            Text(text = "잔액을 불러오지 못했어요", style = style, color = variant, maxLines = 1)
+        is CreditBalance.Loaded -> {
+            val credit = balance.credit
+            if (credit.isEnough) {
+                Text(
+                    text = "${credit.cost}개로 타임라인을 1번 만들 수 있어요",
+                    style = style,
+                    color = variant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                Text(
+                    text = "만들려면 크레딧 ${credit.cost}개가 필요해요",
+                    style = style,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** 오른쪽 동전 배지. 숫자 옆에 붙이지 않고 원 안에 넉넉히 둔다. */
+@Composable
+private fun CoinBadge() {
+    Box(
+        modifier =
+            Modifier
+                .size(COIN_BADGE_SIZE)
+                .background(MaterialTheme.laimoryColors.warningContainer, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(CoreUiR.drawable.ico_default_coins),
+            contentDescription = null,
+            modifier = Modifier.size(COIN_ICON_SIZE),
+            tint = MaterialTheme.laimoryColors.warning,
         )
     }
 }
@@ -273,8 +330,8 @@ private fun PackageSection(onPackageClick: (Int) -> Unit) {
 }
 
 /**
- * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격은 결제 버튼 자리에 보이되 아직 살 수 없다는 것을 함께 보인다 —
- * 흐린 가격 칩 왼쪽에 `준비 중` 을 붙인다.
+ * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격은 결제 버튼 자리의 토널 칩이고, 아직 살 수 없다는 것은 그 왼쪽
+ * `준비 중` 이 알린다.
  *
  * 충전을 열지 않았어도 누를 수 있다 — 누르면 준비 중이라고 알린다. 비활성으로 두면 왜 안 눌리는지 알 수 없다. 결제를 열면 같은
  * 줄을 누를 때 곧바로 Play 결제 창이 뜬다(상품 상세 화면은 두지 않는다).
@@ -330,8 +387,8 @@ private fun PackageRow(
 }
 
 /**
- * 결제 버튼 자리의 가격. 아직 살 수 없어 흐린 테두리·글자로 비활성처럼 둔다 — 결제를 열면 테두리·글자만 primary 로 바꾸고
- * 왼쪽 `준비 중` 을 뺀다. 눌림은 줄 전체가 맡으므로 여기엔 따로 두지 않는다.
+ * 결제 버튼 자리의 가격(Figma `Price button`). 누를 수 있는 버튼처럼 토널 칩으로 둔다 — 아직 살 수 없다는 것은 왼쪽 `준비 중`
+ * 과 위 배너가 알린다. 눌림은 줄 전체가 맡는다. 결제를 열면 `준비 중` 만 뺀다.
  */
 @Composable
 private fun PriceChip(price: String) {
@@ -340,10 +397,10 @@ private fun PriceChip(price: String) {
         modifier =
             Modifier
                 .widthIn(min = PRICE_CHIP_MIN_WIDTH)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                .padding(horizontal = Spacing.large, vertical = Spacing.small),
         style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = MaterialTheme.colorScheme.onPrimaryContainer,
         textAlign = TextAlign.Center,
     )
 }
@@ -367,10 +424,12 @@ private val CREDIT_PACKAGES =
 /** 두 상품의 가격 칩 폭을 맞춘다. 글자 길이를 따르면 줄마다 칩 끝이 어긋난다. */
 private val PRICE_CHIP_MIN_WIDTH = 88.dp
 
-private val BALANCE_PROGRESS_SIZE = 24.dp
+private val BALANCE_PROGRESS_SIZE = 28.dp
 
-/** 받는 중에도 숫자 줄 높이를 지켜 값이 도착할 때 아래가 밀리지 않게 한다. */
-private val BALANCE_ROW_MIN_HEIGHT = 40.dp
+/** 숫자 자리 최소 폭. 로딩(28dp)과 두 자리 숫자가 같은 자리를 쓴다. */
+private val BALANCE_COUNT_MIN_WIDTH = 48.dp
+private val COIN_BADGE_SIZE = 64.dp
+private val COIN_ICON_SIZE = 32.dp
 
 @Preview(showBackground = true, widthDp = 360, heightDp = 720)
 @Composable

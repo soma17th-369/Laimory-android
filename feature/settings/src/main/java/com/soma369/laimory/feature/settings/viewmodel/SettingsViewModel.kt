@@ -81,7 +81,7 @@ class SettingsViewModel
                     updateState {
                         if (account == null) {
                             creditRequest++
-                            copy(accountProvider = null, remainingCredits = null, isCreditsLoading = false)
+                            copy(accountProvider = null, remainingCredits = null, isCreditsLoading = true)
                         } else {
                             // 진행 상태는 재인증된 계정을 관찰할 때 해제한다. ViewModel 이 Activity 수명이라
                             // 여기서 안 지우면 새 계정으로 로그인한 뒤에도 계정 항목이 잠긴 채 남는다.

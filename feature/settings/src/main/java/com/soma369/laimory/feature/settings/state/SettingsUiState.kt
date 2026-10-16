@@ -20,8 +20,11 @@ data class SettingsUiState(
     val hasNewNotice: Boolean = false,
     /** 계정 카드 오른쪽의 남은 크레딧. 받기 전이거나 못 받으면 `null` 이고 칸을 비운다(0 으로 보이면 안 된다). */
     val remainingCredits: Int? = null,
-    /** 남은 크레딧을 받는 중. 조회가 늦을 수 있어 값이 없는 동안 숫자 자리에 로딩을 둔다. */
-    val isCreditsLoading: Boolean = false,
+    /**
+     * 남은 크레딧을 받는 중. 조회가 늦을 수 있어 값이 없는 동안 숫자 자리에 로딩을 둔다. 처음엔 참이다 — 화면이 뜬 뒤 조회를
+     * 보내기 전 한순간 `-`(못 받음)가 비쳤다 로딩으로 바뀌지 않게.
+     */
+    val isCreditsLoading: Boolean = true,
 ) : UiState {
     /**
      * 숫자 자리에 로딩을 보일지. **아직 값이 없을 때만** 보인다 — 화면 복귀마다 다시 받는데, 있던 숫자를 그때마다 로딩으로
