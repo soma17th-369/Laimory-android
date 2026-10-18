@@ -378,6 +378,7 @@ class AnalyticsEventMapperTest {
             mapOf(
                 AnalyticsCreateStopReason.NO_DATA to "no_data",
                 AnalyticsCreateStopReason.ALL_EXCLUDED to "all_excluded",
+                AnalyticsCreateStopReason.INSUFFICIENT_DATA to "insufficient_data",
                 AnalyticsCreateStopReason.CANCELLED to "cancelled",
             ),
             AnalyticsCreateStopReason.entries,

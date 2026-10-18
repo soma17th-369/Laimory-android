@@ -13,8 +13,8 @@ import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
  * [counts] 는 사진 아래 칸들이다.
  * [credit] 은 칸들 아래 크레딧 줄이다. 못 받았으면 `null` 이고 줄을 숨긴다 — 만들기는 막지 않는다(판정은 서버).
  *
- * [emptyReason] 이 있으면 보낼 것이 하나도 없다. 다이얼로그는 그대로 뜨되 `만들기` 를 끄고 그 이유와 함께
- * 사진을 고르라고 안내한다. 이때 건강 칸은 붙지 않아 모든 칸이 0 이다.
+ * [emptyReason] 이 있으면 만들 수 없다. 다이얼로그는 그대로 뜨되 `만들기` 를 끄고 그 이유와 함께 사진을 고르라고
+ * 안내한다. 보낼 것이 하나도 없으면 건강 칸은 붙지 않아 모든 칸이 0 이고, 기록이 너무 적으면 칸은 실제 건수 그대로다.
  */
 @Immutable
 data class DraftCreateConfirm(
@@ -23,8 +23,12 @@ data class DraftCreateConfirm(
     val credit: TimelineCredit? = null,
     val emptyReason: DraftCreateEmptyReason? = null,
 ) {
-    /** 잔액이 비용보다 적다고 **알고 있을 때만** 참. 모르면(조회 실패) 만들기를 그대로 둔다. */
-    val isCreditShort: Boolean get() = credit?.isEnough == false
+    /**
+     * 잔액이 비용보다 적다고 **알고 있을 때만** 참. 모르면(조회 실패) 만들기를 그대로 둔다.
+     *
+     * 만들 수 없는 날은 거짓이다 — `충전하러 가기` 로 보내도 충전한 뒤 여전히 만들 수 없다. 크레딧 줄은 그대로 보인다.
+     */
+    val isCreditShort: Boolean get() = credit?.isEnough == false && emptyReason == null
 
     val isEmpty: Boolean get() = emptyReason != null
 }

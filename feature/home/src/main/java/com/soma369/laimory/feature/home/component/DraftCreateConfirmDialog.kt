@@ -67,9 +67,10 @@ import com.soma369.laimory.core.ui.R as UiR
  * `만들기` 자리를 `충전하러 가기`([onCharge])로 바꾼다. 크레딧을 못 받았으면 줄을 숨기고 `만들기` 를 그대로 둔다.
  * 크레딧 줄은 잔액과 상관없이 눌러 크레딧 화면으로 갈 수 있다([onCreditClick]).
  *
- * 보낼 것이 하나도 없으면([DraftCreateConfirm.emptyReason]) `만들기` 를 끄고, `사진 고르기` 바로 아래 말풍선으로
+ * 만들 수 없으면([DraftCreateConfirm.emptyReason]) `만들기` 를 끄고, `사진 고르기` 바로 아래 말풍선으로
  * 이유와 할 일을 함께 알린다. 처음부터 없었으면 일정·위치·알림은 시간이 지나야 모이니 지금 할 수 있는 건 사진뿐이고,
- * 모두 뺐으면 홈에서 다시 고르는 길도 있다.
+ * 모두 뺐으면 홈에서 다시 고르는 길도 있다. 기록이 너무 적다고 서버가 판정한 날도 같은 자리다 — 사진이 한 장이라도
+ * 있으면 서버는 만들 수 있다고 하므로, 이때도 다이얼로그에는 사진이 없고 할 수 있는 건 사진을 고르는 것이다.
  */
 @Composable
 internal fun DraftCreateConfirmDialog(
@@ -211,10 +212,11 @@ private fun PhotoSection(
                     PickPhotosLink(label = "사진 고르기", onClick = onPickPhotos)
                 }
             }
-            emptyReason?.let { EmptyGuideBubble(message = it.guideMessage()) }
         } else {
             PhotoStrip(photoUris = photoUris)
         }
+        // 사진이 있는데 만들 수 없는 경우는 서버 기준상 없지만, 기준이 바뀌어도 꺼진 버튼의 이유는 보이게 둔다.
+        emptyReason?.let { EmptyGuideBubble(message = it.guideMessage()) }
     }
 }
 
@@ -264,6 +266,7 @@ private fun DraftCreateEmptyReason.guideMessage(): String =
     when (this) {
         DraftCreateEmptyReason.NO_DATA -> "아직 모인 기록이 없어요. 사진을 고르면 바로 만들 수 있어요"
         DraftCreateEmptyReason.ALL_EXCLUDED -> "보낼 기록을 모두 뺐어요. 사진을 고르거나 홈에서 다시 선택해 주세요"
+        DraftCreateEmptyReason.INSUFFICIENT_DATA -> "쌓인 데이터가 부족해요"
     }
 
 /** 사진 시트로 가는 글자 버튼. 안내 칸(64) 안에 들어가야 해서 버튼 최소 높이를 쓰지 않는다. */
@@ -473,6 +476,27 @@ private fun DraftCreateConfirmDialogAllExcludedPreview() {
                     photoUris = emptyList(),
                     counts = PREVIEW_COUNTS.map { it.copy(count = 0) },
                     emptyReason = DraftCreateEmptyReason.ALL_EXCLUDED,
+                ),
+            onConfirm = {},
+            onDismiss = {},
+            onPickPhotos = {},
+            onCharge = {},
+            onCreditClick = {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun DraftCreateConfirmDialogInsufficientPreview() {
+    LaimoryTheme {
+        DraftCreateConfirmDialog(
+            confirm =
+                DraftCreateConfirm(
+                    photoUris = emptyList(),
+                    counts = PREVIEW_COUNTS.map { it.copy(count = minOf(it.count, 2)) },
+                    credit = TimelineCredit(cost = 1, remaining = 42),
+                    emptyReason = DraftCreateEmptyReason.INSUFFICIENT_DATA,
                 ),
             onConfirm = {},
             onDismiss = {},

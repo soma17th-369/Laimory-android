@@ -415,6 +415,7 @@ private val AnalyticsCreateStopReason.paramValue: String
         when (this) {
             AnalyticsCreateStopReason.NO_DATA -> "no_data"
             AnalyticsCreateStopReason.ALL_EXCLUDED -> "all_excluded"
+            AnalyticsCreateStopReason.INSUFFICIENT_DATA -> "insufficient_data"
             AnalyticsCreateStopReason.CANCELLED -> "cancelled"
         }
 
