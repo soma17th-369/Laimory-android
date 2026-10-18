@@ -149,6 +149,8 @@ class ObserveDraftTaskUseCaseTest {
     ) : TimelineDraftRepository {
         var statusCallCount: Int = 0
 
+        override suspend fun isCreatable(items: List<SourceItem>): Boolean = error("사용하지 않음")
+
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot {
             statusCallCount++
             return when (val response = responses.removeFirst()) {

@@ -689,6 +689,8 @@ class DraftConsentViewModelTest {
             return createGate?.await() ?: DraftTaskHandle("task-$createCount")
         }
 
+        override suspend fun isCreatable(items: List<SourceItem>): Boolean = error("사용하지 않음")
+
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
     }
 

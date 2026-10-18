@@ -2299,6 +2299,8 @@ class HomeViewModelTest {
             return DraftTaskHandle("task-$createCount")
         }
 
+        override suspend fun isCreatable(items: List<SourceItem>): Boolean = true
+
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw UnsupportedOperationException()
     }
 
