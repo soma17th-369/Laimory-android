@@ -4,6 +4,8 @@ import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventPhotoDeleteException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
+import com.soma369.laimory.core.domain.exception.findServerMessage
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
@@ -405,13 +407,17 @@ class TimelineEventEditorViewModel
             val reason = (error as? TimelineEventUpdateException)?.reason
             when (reason) {
                 TimelineEventUpdateException.Reason.INVALID_REQUEST ->
-                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("입력값을 다시 확인해 주세요."))
+                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar(error.serverMessageOr("입력값을 다시 확인해 주세요.")))
                 TimelineEventUpdateException.Reason.PHOTO_LIMIT_EXCEEDED ->
-                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("추가할 수 있는 사진 수를 초과했어요."))
+                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar(error.serverMessageOr("추가할 수 있는 사진 수를 초과했어요.")))
                 TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE ->
                     updateState { copy(content = TimelineEventEditorUiContent.Unavailable) }
                 TimelineEventUpdateException.Reason.DATE_OPERATION_IN_PROGRESS ->
-                    sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar("같은 날짜의 작업이 진행 중이에요. 잠시 후 다시 시도해 주세요."))
+                    sendEffect(
+                        TimelineEventEditorUiSideEffect.ShowSnackbar(
+                            error.serverMessageOr("같은 날짜의 작업이 진행 중이에요. 잠시 후 다시 시도해 주세요."),
+                        ),
+                    )
                 null -> handleFailure(error)
             }
             // 사진 빼기는 수정 요청보다 먼저 끝났다. 수정이 실패해도 그 사진은 돌아오지 않는다.
@@ -514,11 +520,12 @@ class TimelineEventEditorViewModel
                 notifyAppliedRemovals()
                 return
             }
+            // 실패 사유는 서버 문구가 먼저다. 이미 반영된 사진 빼기는 서버가 모르는 앱 상태라 앱이 뒤에 덧붙인다.
             val reason =
                 when (error) {
-                    is TimelineEventPhotoDeleteException -> "뺄 수 없는 사진이 있어 되돌렸어요."
+                    is TimelineEventPhotoDeleteException -> error.serverMessageOr("뺄 수 없는 사진이 있어 되돌렸어요.")
                     is ApiException.NetworkException -> "네트워크 상태를 확인한 뒤 다시 저장해 주세요."
-                    else -> "사진을 빼지 못했어요. 잠시 후 다시 저장해 주세요."
+                    else -> error?.findServerMessage() ?: "사진을 빼지 못했어요. 잠시 후 다시 저장해 주세요."
                 }
             val applied = appliedRemovalNotice()
             sendEffect(TimelineEventEditorUiSideEffect.ShowSnackbar(if (applied != null) "$reason $applied" else reason))

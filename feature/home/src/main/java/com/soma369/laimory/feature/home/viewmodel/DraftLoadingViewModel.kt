@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
@@ -165,7 +166,10 @@ class DraftLoadingViewModel
         }
 
         /**
-         * 요청 실패 안내. 연결 없음은 안내하지 않는다([leaveOnNetworkFailure]). 자동으로 돌아가지 않는다 — 사유를 읽기 전에 화면이 바뀌면 왜 실패했는지 모른다. 버튼 문구는
+         * 요청 실패 안내. 문구는 서버가 준 것을 먼저 쓴다 — 버튼과 돌아간 뒤의 처리만 앱이 [kind] 로 정한다. 사진 접근·상한·시간 초과는
+         * 서버 응답이 없는 실패라 앱 문구다.
+         *
+         * 연결 없음은 안내하지 않는다([leaveOnNetworkFailure]). 자동으로 돌아가지 않는다 — 사유를 읽기 전에 화면이 바뀌면 왜 실패했는지 모른다. 버튼 문구는
          * 돌아간 뒤 홈이 할 일을 말한다(사진 시트를 다시 연다 · 약관 화면으로 간다).
          */
         private fun DraftSubmission.Failed.toNotice(): DraftLoadingNotice? {
@@ -174,15 +178,16 @@ class DraftLoadingViewModel
             return when (kind) {
                 DraftSubmitFailureKind.TERMS_REQUIRED ->
                     DraftLoadingNotice(
-                        message = DraftSubmitFailureMessages.TERMS_REQUIRED,
+                        message = error.serverMessageOr(DraftSubmitFailureMessages.TERMS_REQUIRED),
                         primaryAction = DraftLoadingAction("약관 확인하기", DraftLoadingUiIntent.LeaveAfterSubmitFailure),
                         secondaryAction = null,
                     )
-                DraftSubmitFailureKind.NO_NEW_ITEMS -> DraftLoadingNotice(DraftSubmitFailureMessages.NO_NEW_ITEMS, home, null)
+                DraftSubmitFailureKind.NO_NEW_ITEMS ->
+                    DraftLoadingNotice(error.serverMessageOr(DraftSubmitFailureMessages.NO_NEW_ITEMS), home, null)
                 // 다시 시도해도 같은 거절이라 재시도는 두지 않는다. 크레딧 화면으로 가거나 홈으로 돌아간다.
                 DraftSubmitFailureKind.INSUFFICIENT_CREDIT ->
                     DraftLoadingNotice(
-                        message = DraftSubmitFailureMessages.INSUFFICIENT_CREDIT,
+                        message = error.serverMessageOr(DraftSubmitFailureMessages.INSUFFICIENT_CREDIT),
                         primaryAction = DraftLoadingAction("충전하러 가기", DraftLoadingUiIntent.ChargeCreditsAfterSubmitFailure),
                         secondaryAction = home,
                     )
@@ -191,7 +196,7 @@ class DraftLoadingViewModel
                     DraftLoadingNotice("${error.message}\n${DraftSubmitFailureMessages.PHOTO_LIMIT_SUFFIX}", repick, null)
                 DraftSubmitFailureKind.TIMEOUT -> DraftLoadingNotice(DraftSubmitFailureMessages.TIMEOUT, home, null)
                 DraftSubmitFailureKind.NETWORK -> null
-                DraftSubmitFailureKind.OTHER -> DraftLoadingNotice(DraftSubmitFailureMessages.OTHER, home, null)
+                DraftSubmitFailureKind.OTHER -> DraftLoadingNotice(error.serverMessageOr(DraftSubmitFailureMessages.OTHER), home, null)
             }
         }
 

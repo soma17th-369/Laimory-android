@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.settings.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.model.push.PushSettings
 import com.soma369.laimory.core.domain.usecase.push.GetPushSettingsUseCase
@@ -179,7 +180,7 @@ class NotificationSettingsViewModel
                 if (error is ApiException.NetworkException) {
                     "네트워크 상태를 확인한 뒤 다시 시도해주세요."
                 } else {
-                    "설정을 바꾸지 못했어요. 잠시 후 다시 시도해주세요."
+                    error.serverMessageOr("설정을 바꾸지 못했어요. 잠시 후 다시 시도해주세요.")
                 }
             sendEffect(NotificationSettingsUiSideEffect.ShowSnackbar(message))
         }

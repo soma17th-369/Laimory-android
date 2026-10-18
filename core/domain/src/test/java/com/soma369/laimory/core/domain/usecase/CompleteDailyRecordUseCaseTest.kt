@@ -74,14 +74,19 @@ class CompleteDailyRecordUseCaseTest {
         runBlocking {
             val repository =
                 FakeRecordRepository(
-                    failure = ApiException.ClientException(errorCode = -404, rawCode = 404),
+                    failure =
+                        ApiException.ClientException(
+                            errorCode = -404,
+                            rawCode = 404,
+                            serverMessage = "요청한 리소스를 찾을 수 없습니다.",
+                        ),
                 )
             val session = FakeSessionRepository(timeline(recordDate))
             val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
 
             val outcome = useCase(recordDate, emotion).getOrNull()
 
-            assertEquals(CompleteDailyRecordOutcome.RecordUnavailable, outcome)
+            assertEquals(CompleteDailyRecordOutcome.RecordUnavailable("요청한 리소스를 찾을 수 없습니다."), outcome)
             assertTrue(session.cleared)
         }
 

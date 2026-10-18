@@ -17,8 +17,14 @@ sealed interface CompleteDailyRecordOutcome {
     /** `-1003` — 이미 SAVED. 응답 유실 뒤 재시도로 보고 작성 완료로 수렴한다. */
     data object AlreadySaved : CompleteDailyRecordOutcome
 
-    /** `-404` — 해당 날짜의 하루 기록이 더 이상 존재하지 않는다. */
-    data object RecordUnavailable : CompleteDailyRecordOutcome
+    /**
+     * `-404` — 해당 날짜의 하루 기록이 더 이상 존재하지 않는다.
+     *
+     * @property serverMessage 서버가 준 안내 문구. 화면이 앱 문구보다 먼저 쓴다.
+     */
+    data class RecordUnavailable(
+        val serverMessage: String? = null,
+    ) : CompleteDailyRecordOutcome
 }
 
 /**
@@ -54,7 +60,7 @@ class CompleteDailyRecordUseCase
                         }
                         RECORD_UNAVAILABLE_ERROR_CODE -> {
                             clearSession(recordDate)
-                            CompleteDailyRecordOutcome.RecordUnavailable
+                            CompleteDailyRecordOutcome.RecordUnavailable(exception.serverMessage)
                         }
                         else -> throw exception
                     }
