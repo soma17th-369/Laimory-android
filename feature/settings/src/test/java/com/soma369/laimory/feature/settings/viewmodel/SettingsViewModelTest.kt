@@ -45,6 +45,7 @@ import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCa
 import com.soma369.laimory.core.domain.usecase.auth.LogoutUseCase
 import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCase
 import com.soma369.laimory.core.domain.usecase.credit.GetRemainingCreditsUseCase
+import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
@@ -53,6 +54,8 @@ import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RequestAccountWithdrawalUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
+import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
+import com.soma369.laimory.feature.settings.state.CreditUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -89,6 +92,7 @@ class SettingsViewModelTest {
     private val analyticsHelper = RecordingAnalyticsHelper()
     private val noticeRepository = FakeNoticeRepository()
     private val creditRepository = FakeCreditRepository()
+    private val creditBalanceStore = CreditBalanceStore()
 
     @Test
     fun `읽지 않은 최근 공지가 있으면 공지사항 줄에 표시를 띄우고, 읽고 돌아오면 지운다`() =
@@ -551,6 +555,15 @@ class SettingsViewModelTest {
             logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
             analyticsHelper = analyticsHelper,
             getRemainingCredits = GetRemainingCreditsUseCase(creditRepository),
+            creditBalanceStore = creditBalanceStore,
+        )
+
+    /** 같은 잔액 저장소를 쓰는 크레딧 화면. 두 화면의 조회가 겹치는 경우를 만든다. */
+    private fun createCreditViewModel() =
+        CreditViewModel(
+            getTimelineCredit = GetTimelineCreditUseCase(creditRepository),
+            balanceStore = creditBalanceStore,
+            navigationHelper = navigationHelper,
         )
 
     @Test
@@ -664,11 +677,75 @@ class SettingsViewModelTest {
             viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
             runCurrent()
             repository.account.value = null
+            // 계정 경계에서 앱이 저장소를 비운다(MainActivity).
+            creditBalanceStore.clear()
             runCurrent()
             late.complete(Unit)
             runCurrent()
 
             assertNull(viewModel.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `설정의 느린 조회가 그 뒤 크레딧 화면이 받은 잔액을 덮지 않는다`() =
+        runTest {
+            val settings = createViewModel()
+            val credit = createCreditViewModel()
+            runCurrent()
+            val slow = CompletableDeferred<Unit>()
+            creditRepository.remaining = 42
+            creditRepository.gate = slow
+            settings.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            creditRepository.gate = null
+            creditRepository.remaining = 41
+            credit.sendIntent(CreditUiIntent.Refresh)
+            runCurrent()
+            slow.complete(Unit)
+            runCurrent()
+
+            assertEquals(41, creditBalanceStore.balance.value.remaining)
+            assertEquals(41, settings.state.value.remainingCredits)
+            assertEquals(41, credit.state.value.remaining)
+        }
+
+    @Test
+    fun `크레딧 화면의 느린 조회가 늦게 실패해도 그 뒤 설정이 받은 잔액을 비우지 않는다`() =
+        runTest {
+            val settings = createViewModel()
+            val credit = createCreditViewModel()
+            runCurrent()
+            val slow = CompletableDeferred<Unit>()
+            creditRepository.gate = slow
+            credit.sendIntent(CreditUiIntent.Refresh)
+            runCurrent()
+
+            creditRepository.gate = null
+            creditRepository.remaining = 41
+            settings.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+            creditRepository.failure = ApiException.ServerException(rawCode = 500)
+            slow.complete(Unit)
+            runCurrent()
+
+            assertEquals(41, creditBalanceStore.balance.value.remaining)
+            assertEquals(41, settings.state.value.remainingCredits)
+        }
+
+    @Test
+    fun `기억해 둔 잔액이 있으면 다시 받기 전부터 보인다`() =
+        runTest {
+            // 크레딧 화면이 받아 둔 값. 설정에 들어오자마자 그 숫자가 보여야 로딩이 번쩍이지 않는다.
+            creditBalanceStore.updateRemaining(creditBalanceStore.beginRequest(), 42)
+            creditRepository.gate = CompletableDeferred()
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.RefreshCredits)
+            runCurrent()
+
+            assertEquals(42, viewModel.state.value.remainingCredits)
         }
 
     @Test
@@ -925,9 +1002,12 @@ class SettingsViewModelTest {
         var gate: CompletableDeferred<Unit>? = null
 
         override suspend fun getRemainingCredits(): Int {
-            gate?.await()
+            // 부른 시점의 값과 문을 붙잡는다 — 같은 저장소를 두 화면이 부를 때 요청마다 다른 응답을 만들 수 있게.
+            val pending = gate
+            val value = remaining
+            pending?.await()
             failure?.let { throw it }
-            return remaining
+            return value
         }
 
         override suspend fun getCosts(): CreditCosts = CreditCosts(timelineCreation = 1)
