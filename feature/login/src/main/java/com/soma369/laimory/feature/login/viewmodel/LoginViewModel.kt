@@ -3,6 +3,8 @@ package com.soma369.laimory.feature.login.viewmodel
 import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.SocialLoginException
+import com.soma369.laimory.core.domain.exception.displayMessage
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.auth.SocialLoginCallback
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
@@ -171,11 +173,11 @@ class LoginViewModel
                 is ApiException.NetworkException -> ApiException.NETWORK_ERROR
                 is ApiException.UnauthorizedException ->
                     if (errorCode == EXPIRED_APP_CODE) {
-                        "로그인 요청이 만료되었습니다. 다시 시도해 주세요."
+                        serverMessageOr("로그인 요청이 만료되었습니다. 다시 시도해 주세요.")
                     } else {
-                        message
+                        displayMessage
                     }
-                is ApiException -> message
+                is ApiException -> displayMessage
                 else -> ApiException.UNKNOWN_ERROR
             }
 

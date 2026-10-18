@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
+import com.soma369.laimory.core.domain.exception.displayMessage
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.channels.Channel
@@ -142,16 +143,8 @@ abstract class BaseMviViewModel<S : UiState, I : UiIntent, E : UiSideEffect>(
     protected open fun handleFailure(e: Throwable) {
         if (e is HandledException) return
         logFailure(e)
-        val message =
-            when (e) {
-                is ApiException.NetworkException -> ApiException.NETWORK_ERROR
-                is ApiException.UnauthorizedException -> e.message
-                is ApiException.ServerException -> ApiException.SERVER_ERROR
-                is ApiException.ClientException -> e.message
-                is ApiException.ConflictException -> e.message
-                is ApiException -> e.message
-                else -> ApiException.UNKNOWN_ERROR
-            }
+        // 서버가 준 문구가 먼저다. 없을 때만 종류별 기본 문구로 대신한다.
+        val message = (e as? ApiException)?.displayMessage ?: ApiException.UNKNOWN_ERROR
         viewModelScope.launch { _snackbar.send(message) }
     }
 }

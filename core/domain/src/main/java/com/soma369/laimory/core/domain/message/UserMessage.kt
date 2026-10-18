@@ -15,6 +15,15 @@ sealed interface UserMessage {
     /** 일시적 오류 — 잠시 후 재시도. */
     data object TemporaryUnavailable : UserMessage
 
+    /**
+     * 서버가 실패 응답에 담아 준 안내 문구. 공통 정책(세션 만료·미지원·일시 오류)도 서버가 문구를 주면 이것으로 대신한다.
+     *
+     * 문구를 서버가 정하므로 앱 배포 없이 바뀐다. 앱이 정하는 것은 어느 실패를 공통으로 알릴지뿐이다.
+     */
+    data class ServerNotice(
+        val text: String,
+    ) : UserMessage
+
     /** 하루 기록 작성 완료 — 화면 pop 이후에도 Root 채널로 안내한다. */
     data object DailyRecordSaved : UserMessage
 

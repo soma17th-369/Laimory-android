@@ -2,16 +2,27 @@ package com.soma369.laimory.core.domain.exception
 
 import java.io.IOException
 
+/**
+ * 서버 호출 실패.
+ *
+ * [message] 는 로그·디버깅용이다. 앱이 만든 개발용 문장("잘못된 … 형식입니다")이 들어갈 수 있어 사용자에게
+ * 그대로 보이면 안 된다. 사용자에게 보일 문구는 [serverMessage] — 서버가 응답 봉투에 담아 준 안내 — 를 먼저 쓰고,
+ * 없을 때만 앱 문구로 대신한다([serverMessageOr]).
+ *
+ * @property serverMessage 응답 봉투 `header.message`. 봉투가 없는 응답(ALB 오류 페이지, S3, 응답 해석 실패)이면 null.
+ */
 sealed class ApiException(
     override val message: String,
     val errorCode: Int? = null,
     val rawCode: Int? = null,
+    val serverMessage: String? = null,
 ) : IOException(message) {
     class UnknownException(
         message: String? = null,
         errorCode: Int? = null,
         rawCode: Int? = null,
-    ) : ApiException(message ?: UNKNOWN_ERROR, errorCode, rawCode)
+        serverMessage: String? = null,
+    ) : ApiException(message ?: UNKNOWN_ERROR, errorCode, rawCode, serverMessage)
 
     class NetworkException : ApiException(NETWORK_ERROR)
 
@@ -19,25 +30,29 @@ sealed class ApiException(
         message: String? = null,
         errorCode: Int? = null,
         rawCode: Int? = null,
-    ) : ApiException(message ?: UNAUTHORIZED_ERROR, errorCode = errorCode, rawCode = rawCode)
+        serverMessage: String? = null,
+    ) : ApiException(message ?: UNAUTHORIZED_ERROR, errorCode, rawCode, serverMessage)
 
     class ServerException(
         message: String? = null,
         errorCode: Int? = null,
         rawCode: Int? = null,
-    ) : ApiException(message ?: SERVER_ERROR, errorCode = errorCode, rawCode = rawCode)
+        serverMessage: String? = null,
+    ) : ApiException(message ?: SERVER_ERROR, errorCode, rawCode, serverMessage)
 
     class ClientException(
         message: String? = null,
         errorCode: Int? = null,
         rawCode: Int? = null,
-    ) : ApiException(message ?: CLIENT_ERROR, errorCode = errorCode, rawCode = rawCode)
+        serverMessage: String? = null,
+    ) : ApiException(message ?: CLIENT_ERROR, errorCode, rawCode, serverMessage)
 
     class ConflictException(
         message: String? = null,
         errorCode: Int? = null,
         rawCode: Int? = null,
-    ) : ApiException(message ?: CONFLICT_ERROR, errorCode = errorCode, rawCode = rawCode)
+        serverMessage: String? = null,
+    ) : ApiException(message ?: CONFLICT_ERROR, errorCode, rawCode, serverMessage)
 
     companion object {
         const val UNKNOWN_ERROR = "알 수 없는 에러 발생"
@@ -55,13 +70,14 @@ sealed class ApiException(
             code: Int,
             message: String? = null,
             errorCode: Int? = null,
+            serverMessage: String? = null,
         ): ApiException =
             when (code) {
-                401, 403 -> UnauthorizedException(message, errorCode = errorCode, rawCode = code)
-                409 -> ConflictException(message, errorCode = errorCode, rawCode = code)
-                in 400..499 -> ClientException(message, errorCode = errorCode, rawCode = code)
-                in 500..599 -> ServerException(message, errorCode = errorCode, rawCode = code)
-                else -> UnknownException(message, errorCode = errorCode, rawCode = code)
+                401, 403 -> UnauthorizedException(message, errorCode, code, serverMessage)
+                409 -> ConflictException(message, errorCode, code, serverMessage)
+                in 400..499 -> ClientException(message, errorCode, code, serverMessage)
+                in 500..599 -> ServerException(message, errorCode, code, serverMessage)
+                else -> UnknownException(message, errorCode, code, serverMessage)
             }
     }
 }

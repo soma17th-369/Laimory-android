@@ -29,11 +29,15 @@ abstract class BaseUseCase(
         return HandledException(e)
     }
 
-    private fun ApiException.toCommonMessage(): UserMessage? =
-        when (rawCode) {
-            401 -> UserMessage.SessionExpired
-            404 -> UserMessage.UnsupportedFeature
-            in 500..599 -> UserMessage.TemporaryUnavailable
-            else -> null // 403/409/400 계열·네트워크·비즈니스 에러는 화면별(ViewModel) 처리
-        }
+    /** 공통으로 알릴 실패인지는 앱이 정하고, 문구는 서버가 준 것을 먼저 쓴다. */
+    private fun ApiException.toCommonMessage(): UserMessage? {
+        val fallback =
+            when (rawCode) {
+                401 -> UserMessage.SessionExpired
+                404 -> UserMessage.UnsupportedFeature
+                in 500..599 -> UserMessage.TemporaryUnavailable
+                else -> return null // 403/409/400 계열·네트워크·비즈니스 에러는 화면별(ViewModel) 처리
+            }
+        return serverMessage?.let(UserMessage::ServerNotice) ?: fallback
+    }
 }
