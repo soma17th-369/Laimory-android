@@ -22,20 +22,23 @@ import java.time.ZoneId
  * 수집 [SourceItem] 을 초안 요청의 [SourceItemDto] 로 투영한다.
  *
  * 서버 payload 계약은 수집 저장 포맷과 다르므로(HEALTH 표시문자열, NOTIFICATION packageName 제외,
- * PHOTO filename=업로드 결과 등) 여기서 타입별로 맞춘다. `startAt`/`endAt` 은 아이템의 시간대 기준
- * 오프셋 없는 로컬 datetime 으로 렌더한다.
+ * PHOTO filename=업로드 결과 등) 여기서 타입별로 맞춘다. `startAt`/`endAt` 은 [recordZone] 기준
+ * 오프셋 없는 로컬 datetime 으로 렌더한다 — 서버가 아이템 시각을 요청의 `recordTimeZone` 하나로 읽기 때문이다.
+ * 아이템별 `timeZoneId` 로 렌더하면 그 시간대가 기록 시간대와 다를 때 시차만큼 틀어진다(#504).
  *
+ * @param recordZone 요청의 `recordTimeZone` 과 같은 시간대.
  * @param uploadedPhotoFilename PHOTO 일 때 업로드로 받은 서버 파일명. 없으면 발급/매핑 누락이라 실패시킨다.
  */
 internal fun SourceItem.toSourceItemDto(
     json: Json,
+    recordZone: ZoneId,
     uploadedPhotoFilename: String?,
 ): SourceItemDto =
     SourceItemDto(
         itemType = itemType.name,
         rawId = rawId,
-        startAt = localDateTime(startAt, timeZoneId),
-        endAt = endAt?.let { localDateTime(it, timeZoneId) },
+        startAt = localDateTime(startAt, recordZone),
+        endAt = endAt?.let { localDateTime(it, recordZone) },
         payload = payload.toPayloadJson(json, uploadedPhotoFilename),
     )
 

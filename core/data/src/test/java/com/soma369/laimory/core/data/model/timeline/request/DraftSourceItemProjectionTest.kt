@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.model.timeline.request
 
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.GeoPoint
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
@@ -22,6 +23,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -63,7 +65,7 @@ class DraftSourceItemProjectionTest {
                     longitude = 127.0,
                     description = null,
                 ),
-            ).toSourceItemDto(json, uploadedPhotoFilename = "server-abc.jpg")
+            ).toSourceItemDto(json, zone, uploadedPhotoFilename = "server-abc.jpg")
 
         assertEquals("PHOTO", dto.itemType)
         assertEquals("raw-1", dto.rawId)
@@ -81,7 +83,7 @@ class DraftSourceItemProjectionTest {
         val e =
             runCatching {
                 item(PhotoPayload("f.jpg", "content://f", null, null, null))
-                    .toSourceItemDto(json, uploadedPhotoFilename = null)
+                    .toSourceItemDto(json, zone, uploadedPhotoFilename = null)
             }.exceptionOrNull()
         assertTrue(e is ApiException)
     }
@@ -90,9 +92,48 @@ class DraftSourceItemProjectionTest {
     fun `startAt 은 시간대 로컬 datetime(오프셋 없음), endAt 없으면 null`() {
         val dto =
             item(PhotoPayload("f.jpg", "content://f", null, null, null))
-                .toSourceItemDto(json, "s.jpg")
+                .toSourceItemDto(json, zone, "s.jpg")
         assertEquals("2026-07-08T21:30", dto.startAt)
         assertNull(dto.endAt)
+    }
+
+    @Test
+    fun `아이템 시간대가 기록 시간대와 달라도 기록 시간대 시각으로 렌더한다`() {
+        // 싱가포르 시간대 일정 12:30 ~ 14:00 KST(03:30 ~ 05:00 UTC). 싱가포르 기준(11:30)으로 보내면 1시간 틀어진다(#504).
+        val dto =
+            SourceItem(
+                rawId = "raw-sg",
+                startAt = Instant.parse("2026-10-16T03:30:00Z"),
+                endAt = Instant.parse("2026-10-16T05:00:00Z"),
+                timeZoneId = ZoneId.of("Asia/Singapore"),
+                payload = CalendarPayload("점심", null, null, allDay = false),
+                sourceName = SourceName.CALENDAR_PROVIDER,
+                sourceKey = "1:1",
+                collectedAt = start,
+            ).toSourceItemDto(json, zone, null)
+
+        assertEquals("2026-10-16T12:30", dto.startAt)
+        assertEquals("2026-10-16T14:00", dto.endAt)
+    }
+
+    @Test
+    fun `종일 일정은 D 00시부터 D+1 00시로 렌더한다`() {
+        val day = LocalDate.of(2026, 10, 15)
+        val dto =
+            SourceItem(
+                rawId = "raw-all-day",
+                startAt = day.atStartOfDay(zone).toInstant(),
+                endAt = day.plusDays(1).atStartOfDay(zone).toInstant(),
+                timeZoneId = zone,
+                payload = CalendarPayload("휴가", null, null, allDay = true),
+                sourceName = SourceName.CALENDAR_PROVIDER,
+                sourceKey = "2:1",
+                collectedAt = start,
+            ).toSourceItemDto(json, zone, null)
+
+        assertEquals("2026-10-15T00:00", dto.startAt)
+        assertEquals("2026-10-16T00:00", dto.endAt)
+        assertEquals("true", dto.payload.str("allDay"))
     }
 
     @Test
@@ -101,7 +142,7 @@ class DraftSourceItemProjectionTest {
             item(
                 StayPayload(latitude = 37.5431787, longitude = 126.9498206, address = "서울특별시 마포구"),
                 end = start.plusSeconds(3_600),
-            ).toSourceItemDto(json, null)
+            ).toSourceItemDto(json, zone, null)
 
         assertEquals("STAY", dto.itemType)
         assertEquals("37.5431787", dto.payload.str("latitude"))
@@ -113,7 +154,7 @@ class DraftSourceItemProjectionTest {
     fun `HEALTH STEPS 는 표시 문자열 value 로 보낸다`() {
         val dto =
             item(HealthPayload(HealthPayload.Metric.STEPS, 8421.0, "step"))
-                .toSourceItemDto(json, null)
+                .toSourceItemDto(json, zone, null)
         assertEquals("STEPS", dto.payload.str("metric"))
         assertEquals("8421보", dto.payload.str("value"))
     }
@@ -128,7 +169,7 @@ class DraftSourceItemProjectionTest {
                     distanceMeters = 58137.2,
                     transports = MovementPayload.Transport.IN_VEHICLE,
                 ),
-            ).toSourceItemDto(json, null)
+            ).toSourceItemDto(json, zone, null)
 
         assertEquals("MOVEMENT", dto.itemType)
         val p = dto.payload
@@ -155,7 +196,7 @@ class DraftSourceItemProjectionTest {
                     text = "본문",
                     collectReason = NotificationPayload.CollectReason.ALL,
                 ),
-            ).toSourceItemDto(json, null)
+            ).toSourceItemDto(json, zone, null)
         val p = dto.payload
         assertEquals("카톡", p.str("appName"))
         assertFalse("packageName 은 서버 projection 에서 제외", p.containsKey("packageName"))
