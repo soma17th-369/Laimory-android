@@ -21,6 +21,11 @@ class GetDraftTaskStatusUseCaseTest {
     private class ThrowingRepository(
         private val exception: ApiException,
     ) : TimelineDraftRepository {
+        override suspend fun isCreatable(
+            items: List<SourceItem>,
+            zone: ZoneId,
+        ): Boolean = error("사용하지 않음")
+
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = throw exception
 
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> = error("사용하지 않음")

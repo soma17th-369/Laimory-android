@@ -2,15 +2,22 @@ package com.soma369.laimory.core.data.repository
 
 import com.soma369.laimory.core.data.datasource.remote.TimelineDraftRemoteDataSource
 import com.soma369.laimory.core.data.model.timeline.request.CreateDraftTaskRequest
+import com.soma369.laimory.core.data.model.timeline.request.DraftCreatableCheckItemDto
+import com.soma369.laimory.core.data.model.timeline.request.DraftCreatableCheckRequest
 import com.soma369.laimory.core.data.model.timeline.request.PhotoUploadCreateRequest
 import com.soma369.laimory.core.data.model.timeline.response.CreateDraftTaskResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
+import com.soma369.laimory.core.data.model.timeline.response.DraftCreatableCheckResponse
 import com.soma369.laimory.core.data.model.timeline.response.DraftTaskStatusResponse
 import com.soma369.laimory.core.data.model.timeline.response.PhotoUploadCreateResponse
 import com.soma369.laimory.core.data.model.timeline.response.PhotoUploadEntry
 import com.soma369.laimory.core.data.network.s3.PhotoMeta
 import com.soma369.laimory.core.data.network.s3.PhotoMetaResolver
 import com.soma369.laimory.core.data.network.s3.S3PhotoUploader
+import com.soma369.laimory.core.domain.model.collection.NotificationPayload
+import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReport
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelectionReporter
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskStatus
@@ -19,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -60,7 +68,9 @@ class TimelineDraftRepositoryImplTest {
         private val statusResponse: DraftTaskStatusResponse = DraftTaskStatusResponse(status = "PROCESSING"),
         /** 채우면 응답 전에 그만큼 멈춘다. 무응답을 만든다. */
         private val responseDelay: Duration = Duration.ZERO,
+        private val checkResult: Boolean = true,
     ) : TimelineDraftRemoteDataSource {
+        val checkRequests = mutableListOf<DraftCreatableCheckRequest>()
         var lastPhotoUploadRequest: PhotoUploadCreateRequest? = null
         var lastDraftRequest: CreateDraftTaskRequest? = null
 
@@ -77,6 +87,11 @@ class TimelineDraftRepositoryImplTest {
         }
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskStatusResponse = statusResponse
+
+        override suspend fun checkCreatable(request: DraftCreatableCheckRequest): DraftCreatableCheckResponse {
+            checkRequests += request
+            return DraftCreatableCheckResponse(creatable = checkResult)
+        }
     }
 
     private class RecordingSelectionReporter : DraftSourceItemSelectionReporter {
@@ -305,6 +320,57 @@ class TimelineDraftRepositoryImplTest {
                 )
 
             assertEquals("t", handle.taskId)
+        }
+
+    @Test
+    fun `isCreatable - 종류와 기록 시간대 시각만 보내고 서버 판정을 그대로 돌려준다`() =
+        runTest {
+            val remote = FakeRemote(PhotoUploadCreateResponse(uploads = emptyList()), checkResult = false)
+            val repository = TimelineDraftRepositoryImpl(resolver, remote, RecordingS3Uploader(), Json)
+            val zone = ZoneId.of("Asia/Seoul")
+            val start = LocalDateTime.of(2026, 10, 7, 12, 0).atZone(zone).toInstant()
+            val stay =
+                SourceItem(
+                    rawId = "stay-1",
+                    startAt = start,
+                    endAt = start.plusSeconds(1_800),
+                    timeZoneId = zone,
+                    payload = StayPayload(latitude = 37.5, longitude = 126.9, address = "서울특별시 마포구"),
+                    sourceName = SourceName.LOCATION_PROVIDER,
+                    sourceKey = "stay-1",
+                    collectedAt = start,
+                )
+            val notification =
+                stay.copy(
+                    rawId = "noti-1",
+                    endAt = null,
+                    payload =
+                        NotificationPayload(
+                            appName = "카톡",
+                            packageName = "com.kakao.talk",
+                            title = "제목",
+                            text = "본문",
+                            collectReason = NotificationPayload.CollectReason.ALL,
+                        ),
+                )
+
+            // 아이템은 서울 시각이지만 기록 시간대(UTC)로 렌더한다 — 초안 요청과 같은 기준.
+            val creatable = repository.isCreatable(listOf(stay, notification), ZoneId.of("UTC"))
+
+            assertFalse(creatable)
+            val request = remote.checkRequests.single()
+            assertEquals(
+                listOf(
+                    DraftCreatableCheckItemDto(itemType = "STAY", startAt = "2026-10-07T03:00", endAt = "2026-10-07T03:30"),
+                    DraftCreatableCheckItemDto(itemType = "NOTIFICATION", startAt = "2026-10-07T03:00", endAt = null),
+                ),
+                request.sourceItems,
+            )
+            // 판정에 쓰지 않는 개인정보는 싣지 않는다.
+            val body = Json.encodeToString(DraftCreatableCheckRequest.serializer(), request)
+            assertFalse(body.contains("payload"))
+            assertFalse(body.contains("rawId"))
+            assertFalse(body.contains("본문"))
         }
 
     private fun window(

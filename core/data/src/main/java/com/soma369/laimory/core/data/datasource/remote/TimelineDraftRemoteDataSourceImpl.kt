@@ -1,8 +1,10 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.timeline.request.CreateDraftTaskRequest
+import com.soma369.laimory.core.data.model.timeline.request.DraftCreatableCheckRequest
 import com.soma369.laimory.core.data.model.timeline.request.PhotoUploadCreateRequest
 import com.soma369.laimory.core.data.model.timeline.response.CreateDraftTaskResponse
+import com.soma369.laimory.core.data.model.timeline.response.DraftCreatableCheckResponse
 import com.soma369.laimory.core.data.model.timeline.response.DraftTaskStatusResponse
 import com.soma369.laimory.core.data.model.timeline.response.PhotoUploadCreateResponse
 import com.soma369.laimory.core.data.network.api.TimelineDraftApi
@@ -21,4 +23,7 @@ class TimelineDraftRemoteDataSourceImpl
             safeApiCall { api.createDraft(request) }
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskStatusResponse = safeApiCall { api.getDraftStatus(taskId) }
+
+        override suspend fun checkCreatable(request: DraftCreatableCheckRequest): DraftCreatableCheckResponse =
+            safeApiCall { api.checkCreatable(request) }
     }

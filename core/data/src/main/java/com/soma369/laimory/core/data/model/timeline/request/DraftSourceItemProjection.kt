@@ -42,6 +42,17 @@ internal fun SourceItem.toSourceItemDto(
         payload = payload.toPayloadJson(json, uploadedPhotoFilename),
     )
 
+/**
+ * 생성 가능 확인용 투영. 시각은 [toSourceItemDto] 와 같이 [recordZone] 으로 렌더한다 — 확인이 본 목록과 실제로
+ * 나갈 목록의 위치 시간 합이 어긋나면 안 된다.
+ */
+internal fun SourceItem.toCreatableCheckItemDto(recordZone: ZoneId): DraftCreatableCheckItemDto =
+    DraftCreatableCheckItemDto(
+        itemType = itemType.name,
+        startAt = localDateTime(startAt, recordZone),
+        endAt = endAt?.let { localDateTime(it, recordZone) },
+    )
+
 private fun SourceItemPayload.toPayloadJson(
     json: Json,
     uploadedPhotoFilename: String?,

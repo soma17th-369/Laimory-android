@@ -39,6 +39,7 @@ import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
 import com.soma369.laimory.core.domain.navigation.PastRecordsPage
 import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
+import com.soma369.laimory.core.domain.usecase.CheckTimelineCreatableUseCase
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
@@ -95,6 +96,8 @@ import com.soma369.laimory.feature.home.state.toCreateConfirm
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -127,6 +130,7 @@ class HomeViewModel
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val getTimelineCredit: GetTimelineCreditUseCase,
+        private val checkTimelineCreatable: CheckTimelineCreatableUseCase,
         private val loadingSessionStore: DraftLoadingSessionStore,
         private val submissionStore: DraftSubmissionStore,
         private val termsCoordinator: TermsAgreementCoordinator,
@@ -993,13 +997,28 @@ class HomeViewModel
          *
          * **보낼 것이 없어도 띄운다.** 처음부터 없었든 사용자가 모두 뺐든, 스낵바 한 줄로 끝내면 무엇을 하면 되는지
          * 모른 채 홈에 남는다. 빈 다이얼로그는 `만들기` 를 끄고 `사진 고르기` 로 이어 갈 길을 보여 준다.
+         *
+         * **기록이 너무 적은 날도 `만들기` 를 끈다.** 판정은 서버의 생성 가능 확인이 한다. 보낼 목록이 바뀌면 다이얼로그가
+         * 이 함수로 다시 뜨므로(사진을 바꾸고 돌아올 때 등) 그때마다 새 목록으로 다시 묻는다.
          */
         private suspend fun showCreateConfirm() {
             val preparation = draftConsentSessionStore.preparation.value ?: return
             val accountSession = draftConsentSessionStore.accountSession.value
-            // 크레딧을 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌어, 누르려던 것과
-            // 다른 버튼을 누르게 된다. 못 받으면 줄 없이 띄운다(판정은 서버의 -1021). 빈 다이얼로그는 만들 수 없어 받지 않는다.
-            val credit = if (submissionOf(preparation).hasCreatableItems()) getTimelineCredit() else null
+            // 확인한 목록 그대로 보여 주고 제출한다. 기다리는 사이 목록이 바뀌면 아래에서 새 목록으로 다시 묻는다.
+            val submission = submissionOf(preparation)
+            // 크레딧 · 생성 가능 여부를 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌거나
+            // 꺼져, 누르려던 것과 다른 버튼을 누르게 된다. 둘 다 못 받으면 막지 않는 쪽으로 띄운다(판정은 서버의 -1021 · 생성 요청).
+            // 빈 다이얼로그는 어차피 만들 수 없어 묻지 않는다 — 서버도 만들 수 없다고 한다.
+            val (credit, isCreatable) =
+                if (submission.hasCreatableItems()) {
+                    coroutineScope {
+                        val credit = async { getTimelineCredit() }
+                        val isCreatable = async { checkTimelineCreatable(submission.items, preparation.zone) }
+                        credit.await() to isCreatable.await()
+                    }
+                } else {
+                    null to false
+                }
             // 기다리는 동안(최대 3초) 홈 입력은 잠기지 않는다. 그사이 날짜 · 범위를 바꿨거나 계정이 바뀌었으면 이 시도는
             // 낡았다 — 띄우면 홈에 보이는 날짜와 다른 날짜로 제출되거나 이전 계정의 확인창이 되살아난다.
             if (!isStillCurrent(preparation, accountSession)) {
@@ -1008,14 +1027,18 @@ class HomeViewModel
                 }
                 return
             }
-            val submission = submissionOf(preparation)
+            // 기다리는 사이 상세에서 항목을 빼거나 위치 전송을 껐을 수 있다. 바뀌기 전 목록을 띄우면 방금 뺀 것이 제출되고,
+            // 판정도 바뀐 목록의 것이 아니다. 새 목록으로 처음부터 다시 묻는다.
+            if (submissionOf(preparation).items != submission.items) return showCreateConfirm()
             val recordDate = preparation.recordDate
             val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
-            val emptyReason = emptyReasonOf(preparation, submission)
+            val emptyReason =
+                emptyReasonOf(preparation, submission)
+                    ?: DraftCreateEmptyReason.INSUFFICIENT_DATA.takeUnless { isCreatable }
             if (emptyReason != null) {
                 // 중단은 닫을 때 남긴다([dismissCreateConfirm]). 여기서 남기면 사진을 골라 이어 간 사용자도 중단으로 센다.
                 confirmedSubmission = submission
-                updateState { copy(createConfirm = submission.toCreateConfirm(emptyReason = emptyReason)) }
+                updateState { copy(createConfirm = submission.toCreateConfirm(credit, emptyReason)) }
                 return
             }
             // 사진도 센다(스펙의 "최초 snapshot 수"). 사진은 여기서 뺄 수 없어 뺀 수에는 영향이 없고, 자동 수집만의
@@ -1045,8 +1068,8 @@ class HomeViewModel
         /** 확인 다이얼로그의 `만들기`. 다이얼로그가 보여 준 목록을 그대로 제출한다. */
         private suspend fun confirmCreateDraft() {
             val submission = confirmedSubmission ?: return
-            // 빈 다이얼로그는 버튼이 꺼져 있다. 눌림이 새어 들어와도 보내지 않는다.
-            if (!submission.hasCreatableItems()) return
+            // 만들 수 없는 다이얼로그는 버튼이 꺼져 있다. 눌림이 새어 들어와도 보내지 않는다.
+            if (state.value.createConfirm?.isEmpty != false) return
             closeCreateConfirm()
             val preparation = draftConsentSessionStore.preparation.value ?: return
             analyticsHelper.log(
@@ -1121,16 +1144,19 @@ class HomeViewModel
          * 취소 한 번에 빼려던 일정·알림이 되살아나면 안 된다.
          */
         private suspend fun dismissCreateConfirm() {
-            val submission = confirmedSubmission ?: return
+            if (confirmedSubmission == null) return
+            // 다이얼로그가 보여 준 이유를 쓴다. 서버 판정(기록이 너무 적음)은 목록만 봐서는 다시 알 수 없다.
+            val emptyReason = state.value.createConfirm?.emptyReason
             closeCreateConfirm()
             val preparation = draftConsentSessionStore.preparation.value ?: return
             analyticsHelper.log(
                 AnalyticsEvent.TimelineCreateStopped(
-                    // 빈 다이얼로그를 닫은 것은 보낼 것이 없어 그만둔 것이다.
-                    when (emptyReasonOf(preparation, submission)) {
+                    // 만들 수 없는 다이얼로그를 닫은 것은 그 이유로 그만둔 것이다.
+                    when (emptyReason) {
                         null -> AnalyticsCreateStopReason.CANCELLED
                         DraftCreateEmptyReason.NO_DATA -> AnalyticsCreateStopReason.NO_DATA
                         DraftCreateEmptyReason.ALL_EXCLUDED -> AnalyticsCreateStopReason.ALL_EXCLUDED
+                        DraftCreateEmptyReason.INSUFFICIENT_DATA -> AnalyticsCreateStopReason.INSUFFICIENT_DATA
                     },
                     AnalyticsRecordDayRelation.of(preparation.recordDate, clock),
                     preparation.recordDate,

@@ -74,6 +74,7 @@ import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.source.PhotoSource
+import com.soma369.laimory.core.domain.usecase.CheckTimelineCreatableUseCase
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
@@ -298,6 +299,56 @@ class HomeViewModelTest {
 
             assertNull(viewModel.state.value.createConfirm)
             assertNull(sessionStore.preparation.value)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
+    fun `확인을 기다리는 사이 항목을 빼면 뺀 목록으로 다시 묻고 그 목록을 제출한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기다리는 동안 홈 입력은 잠기지 않는다. 바뀌기 전 목록을 띄우면 방금 뺀 일정이 제출된다.
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("a"), todayItem("b"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertNull(viewModel.state.value.createConfirm)
+
+            sessionStore.toggleExcluded("a")
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            val confirm = viewModel.state.value.createConfirm!!
+            assertEquals(1, confirm.counts.single { it.group == DraftConsentTypeGroup.CALENDAR }.count)
+            assertEquals(listOf("b"), draftRepository.checkedItems.last().map { it.rawId })
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(listOf("b"), draftRepository.createdItems.map { it.rawId })
+        }
+
+    @Test
+    fun `확인을 기다리는 사이 모두 빼면 모두 뺐다는 빈 다이얼로그를 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("a"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            sessionStore.toggleExcluded("a")
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(DraftCreateEmptyReason.ALL_EXCLUDED, viewModel.state.value.createConfirm!!.emptyReason)
             assertEquals(0, draftRepository.createCount)
         }
 
@@ -556,6 +607,108 @@ class HomeViewModelTest {
                 listOf("TimelineCreateStarted", "TimelineEventReviewStarted"),
                 analyticsHelper.logged.map { it::class.simpleName },
             )
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(1, draftRepository.createCount)
+        }
+
+    @Test
+    fun `서버가 기록이 너무 적다고 하면 건수는 그대로 두고 만들기를 끈다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("a"))
+            draftRepository.creatable = { false }
+            // 크레딧이 모자라도 `충전하러 가기` 로 보내지 않는다. 충전해도 만들 수 없다.
+            creditRepository.remaining = 0
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            val confirm = viewModel.state.value.createConfirm!!
+            assertEquals(DraftCreateEmptyReason.INSUFFICIENT_DATA, confirm.emptyReason)
+            assertEquals(1, confirm.counts.single { it.group == DraftConsentTypeGroup.CALENDAR }.count)
+            assertNotNull(confirm.credit)
+            assertFalse(confirm.isCreditShort)
+            assertEquals(listOf(listOf("a")), draftRepository.checkedItems.map { items -> items.map { it.rawId } })
+            // 아직 만들 수 있는 다이얼로그를 본 적이 없다. 검토 시작은 남기지 않는다.
+            assertEquals(listOf("TimelineCreateStarted"), analyticsHelper.logged.map { it::class.simpleName })
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(0, draftRepository.createCount)
+            assertNotNull(viewModel.state.value.createConfirm)
+        }
+
+    @Test
+    fun `기록이 너무 적어 꺼진 다이얼로그를 닫으면 데이터 부족으로 중단을 기록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("a"))
+            draftRepository.creatable = { false }
+            confirmDialog.answer = ConfirmAnswer.CANCEL
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            val stopped = analyticsHelper.logged.last() as AnalyticsEvent.TimelineCreateStopped
+            assertEquals(AnalyticsCreateStopReason.INSUFFICIENT_DATA, stopped.reason)
+            assertNull(viewModel.state.value.createConfirm)
+        }
+
+    @Test
+    fun `보낼 것이 없으면 생성 가능 확인을 묻지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertEquals(DraftCreateEmptyReason.NO_DATA, viewModel.state.value.createConfirm!!.emptyReason)
+            assertTrue(draftRepository.checkedItems.isEmpty())
+        }
+
+    @Test
+    fun `생성 가능 확인에 실패하면 만들기를 막지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("a"))
+            draftRepository.creatable = { throw ApiException.ClientException(rawCode = 404) }
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertNull(confirmDialog.shown.single().emptyReason)
+            assertEquals(1, draftRepository.createCount)
+        }
+
+    @Test
+    fun `기록이 적어 꺼진 다이얼로그에서 사진을 골라 돌아오면 새 목록으로 다시 묻고 만들기가 켜진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("a"))
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            draftRepository.creatable = { items -> items.any { it.itemType == ItemType.PHOTO } }
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            createDraft(viewModel)
+            assertEquals(DraftCreateEmptyReason.INSUFFICIENT_DATA, viewModel.state.value.createConfirm!!.emptyReason)
+
+            viewModel.sendIntent(HomeUiIntent.PickPhotosForCreate)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(mediaStoreId = 1L))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            assertEquals(2, draftRepository.checkedItems.size)
+            assertTrue(draftRepository.checkedItems.last().any { it.itemType == ItemType.PHOTO })
+            val confirm = viewModel.state.value.createConfirm!!
+            assertNull(confirm.emptyReason)
 
             viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
             runCurrent()
@@ -2219,6 +2372,7 @@ class HomeViewModelTest {
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
             createTimelineDraftUseCase = CreateTimelineDraftUseCase(draftRepository, NoOpMessageHelper),
             getTimelineCredit = GetTimelineCreditUseCase(creditRepository),
+            checkTimelineCreatable = CheckTimelineCreatableUseCase(draftRepository),
             loadingSessionStore = loadingSessionStore,
             submissionStore = submissionStore,
             termsCoordinator = termsCoordinator,
@@ -2281,6 +2435,18 @@ class HomeViewModelTest {
 
         /** 값을 넣으면 그때까지 `createDraft` 가 응답하지 않는다. 제출 대기 구간을 재현한다. */
         var createGate: CompletableDeferred<Unit>? = null
+
+        /** 서버 생성 가능 확인. 기본은 만들 수 있다. */
+        var creatable: (List<SourceItem>) -> Boolean = { true }
+        val checkedItems = mutableListOf<List<SourceItem>>()
+
+        override suspend fun isCreatable(
+            items: List<SourceItem>,
+            zone: ZoneId,
+        ): Boolean {
+            checkedItems += items
+            return creatable(items)
+        }
 
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> =
             clientPhotoUris.mapIndexed { index, _ -> "uploaded-$index.jpg" }
