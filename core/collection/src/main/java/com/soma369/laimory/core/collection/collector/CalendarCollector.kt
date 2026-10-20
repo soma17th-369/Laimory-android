@@ -31,7 +31,12 @@ import javax.inject.Inject
  * 뒤의 null 커서도 실제 조회 실패로 본다([resolveCalendarQuery]) — 빈 목록으로 바꾸면 자동 수집이
  * "성공 0건" 으로 확정하고 최신성까지 갱신해, 실패 안내 없이 옛 데이터를 계속 쓴다.
  *
+ * 시각은 캘린더 앱에 보이는 그대로(기기 시간대 기준) 둔다. 시간 지정 일정은 BEGIN/END 를 실제 시각으로 쓰고,
+ * 일정의 원본 시간대(EVENT_TIMEZONE)는 쓰지 않는다. 종일 일정은 날짜 표기인 BEGIN/END 를
+ * [CalendarAllDayPolicy] 로 기기 시간대 자정으로 바꾼다. `timeZoneId` 는 모두 기기 시간대다.
+ *
  * sourceKey 는 `eventId:begin` 으로 인스턴스마다 유일해, 반복 일정도 인스턴스별로 dedupe 된다.
+ * `begin` 은 캘린더 원본값(종일 일정이면 UTC 자정)을 그대로 쓴다 — 바꾸면 기존 저장분과 키가 달라져 중복 저장된다.
  * 조회는 blocking I/O 이므로 [Dispatchers.IO] 에서 수행한다.
  */
 internal class CalendarCollector
@@ -50,7 +55,7 @@ internal class CalendarCollector
                 val collectedAt = Instant.now()
                 val startMillis = LocalDate.now(zone).minusMonths(COLLECTION_MONTHS).atStartOfDay(zone).toInstant().toEpochMilli()
                 val endMillis = collectedAt.toEpochMilli()
-                queryInstances(startMillis, endMillis, calendarIds, collectedAt)
+                queryInstances(startMillis, endMillis, calendarIds, zone, collectedAt)
             }
 
         /** owner-access(사용자 소유) 캘린더의 id 만 모은다. 구독/공휴일/공유 캘린더는 접근 레벨이 낮아 제외된다. */
@@ -80,6 +85,7 @@ internal class CalendarCollector
             startMillis: Long,
             endMillis: Long,
             calendarIds: List<Long>,
+            zone: ZoneId,
             collectedAt: Instant,
         ): List<SourceItem> {
             val uri =
@@ -105,11 +111,12 @@ internal class CalendarCollector
                         },
                 ) ?: return emptyList()
 
-            return cursor.use { readInstances(it, collectedAt) }
+            return cursor.use { readInstances(it, zone, collectedAt) }
         }
 
         private fun readInstances(
             cursor: Cursor,
+            zone: ZoneId,
             collectedAt: Instant,
         ): List<SourceItem> {
             val eventIdColumn = cursor.getColumnIndexOrThrow(CalendarContract.Instances.EVENT_ID)
@@ -119,7 +126,6 @@ internal class CalendarCollector
             val descriptionColumn = cursor.getColumnIndexOrThrow(CalendarContract.Instances.DESCRIPTION)
             val locationColumn = cursor.getColumnIndexOrThrow(CalendarContract.Instances.EVENT_LOCATION)
             val allDayColumn = cursor.getColumnIndexOrThrow(CalendarContract.Instances.ALL_DAY)
-            val timeZoneColumn = cursor.getColumnIndexOrThrow(CalendarContract.Instances.EVENT_TIMEZONE)
 
             val items = ArrayList<SourceItem>(cursor.count)
             while (cursor.moveToNext()) {
@@ -129,9 +135,9 @@ internal class CalendarCollector
                 items.add(
                     SourceItem(
                         rawId = UUID.randomUUID().toString(),
-                        startAt = Instant.ofEpochMilli(begin),
-                        endAt = Instant.ofEpochMilli(end),
-                        timeZoneId = cursor.getString(timeZoneColumn).toZoneIdOrDefault(allDay),
+                        startAt = toInstant(begin, allDay, zone),
+                        endAt = toInstant(end, allDay, zone),
+                        timeZoneId = zone,
                         payload =
                             CalendarPayload(
                                 title = cursor.getString(titleColumn).orEmpty(),
@@ -149,13 +155,12 @@ internal class CalendarCollector
             return items
         }
 
-        /** 종일 일정의 BEGIN/END 는 UTC 자정 기준이므로 UTC 로 둔다. 그 외는 이벤트 타임존, 파싱 실패/부재 시 기기 시간대. */
-        private fun String?.toZoneIdOrDefault(allDay: Boolean): ZoneId =
-            when {
-                allDay -> ZoneId.of("UTC")
-                isNullOrBlank() -> ZoneId.systemDefault()
-                else -> runCatching { ZoneId.of(this) }.getOrDefault(ZoneId.systemDefault())
-            }
+        /** 시간 지정 일정의 BEGIN/END 는 실제 시각 그대로, 종일 일정은 날짜 표기라 [zone] 자정으로 바꾼다. */
+        private fun toInstant(
+            millis: Long,
+            allDay: Boolean,
+            zone: ZoneId,
+        ): Instant = if (allDay) CalendarAllDayPolicy.toZonedMidnight(millis, zone) else Instant.ofEpochMilli(millis)
 
         private companion object {
             /** 오늘 기준 조회 구간(개월). 라이프로그라 과거 구간을 본다 — 미래로 바꾸려면 이 창을 조정한다. */
@@ -170,7 +175,6 @@ internal class CalendarCollector
                     CalendarContract.Instances.DESCRIPTION,
                     CalendarContract.Instances.EVENT_LOCATION,
                     CalendarContract.Instances.ALL_DAY,
-                    CalendarContract.Instances.EVENT_TIMEZONE,
                 )
         }
     }

@@ -95,6 +95,24 @@ class RecordDateWindowTest {
     }
 
     @Test
+    fun `종일 일정은 그 날짜 자정 구간으로 06시 시작 창과의 겹침만으로 포함이 정해진다`() {
+        // 수집 시 기기 시간대 자정으로 바꾼 15일 종일 일정: 15일 00:00 ~ 16일 00:00 (#504).
+        val day = LocalDate.of(2026, 10, 15)
+        val allDay =
+            ranged(
+                start = at(0, 0, day),
+                end = at(0, 0, day.plusDays(1)),
+                payload = CalendarPayload("휴가", null, null, allDay = true),
+            )
+
+        fun windowFrom(start: LocalDate) = RecordDateWindow(start = at(6, 0, start), end = at(6, 0, start.plusDays(1)))
+
+        assertTrue("14일 06:00 ~ 15일 06:00 과 6시간 겹친다", windowFrom(day.minusDays(1)).contains(allDay))
+        assertTrue("15일 06:00 ~ 16일 06:00 과 18시간 겹친다", windowFrom(day).contains(allDay))
+        assertFalse("16일 06:00 ~ 17일 06:00 과는 겹치지 않는다", windowFrom(day.plusDays(1)).contains(allDay))
+    }
+
+    @Test
     fun `창을 완전히 벗어난 아이템은 제외`() {
         val yesterday = point(at(10, 0, date.minusDays(1)))
         val tomorrow = ranged(start = at(9, 0, date.plusDays(1)), end = at(10, 0, date.plusDays(1)))

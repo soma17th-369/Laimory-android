@@ -12,7 +12,8 @@ import java.time.ZoneId
  *
  * - [rawId]: 아이템 식별자. 수집기가 생성하며 저장 후 변하지 않는다.
  * - [startAt]/[endAt]: 이벤트 시각의 source of truth 는 UTC instant 다.
- *   업로드 포맷의 local datetime 문자열은 [timeZoneId] 로 렌더링해서 만든다.
+ *   업로드 포맷의 local datetime 문자열은 요청의 `recordTimeZone` 으로 렌더링해서 만든다.
+ *   종일 일정처럼 날짜만 있는 원천도 수집 시점에 실제 시각(기기 시간대 자정)으로 바꿔 둔다.
  * - [endAt]: 단일 시점 이벤트(사진, 알림)는 null 을 허용한다.
  * - [sourceName]/[sourceKey]: 재스캔 중복 방지용 자연키. 같은 원천 이벤트는 항상 같은 값이
  *   나오도록 수집기가 원천 식별자(MediaStore ID, Calendar instance ID 등)에서 파생한다.

@@ -83,7 +83,7 @@ class TimelineDraftRepositoryImpl
                             startTime = LocalDateTime.ofInstant(window.start, zone).toString(),
                             endTime = LocalDateTime.ofInstant(window.end, zone).toString(),
                         ),
-                    sourceItems = items.map { it.toSourceItemDto(json, uploadedPhotoFilenames[it.rawId]) },
+                    sourceItems = items.map { it.toSourceItemDto(json, zone, uploadedPhotoFilenames[it.rawId]) },
                 )
             if (selectionReporter.isEnabled) {
                 val utf8ByteCount =

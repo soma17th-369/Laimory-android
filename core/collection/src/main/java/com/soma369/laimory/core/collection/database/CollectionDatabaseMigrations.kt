@@ -2,6 +2,12 @@ package com.soma369.laimory.core.collection.database
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.soma369.laimory.core.collection.collector.CalendarAllDayPolicy
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.time.ZoneId
 
 /**
  * v1 → v2: 체류 itemType 을 `LOCATION` 에서 서버 초안 계약과 같은 `STAY` 로 통일한다.
@@ -35,3 +41,55 @@ internal val MIGRATION_2_3 =
             )
         }
     }
+
+/**
+ * v3 → v4: 저장된 캘린더 일정 시각을 캘린더 앱에 보이는 시각으로 정정한다(#504).
+ *
+ * 스키마는 그대로고 값만 바꾼다. 기기 시간대는 마이그레이션이 도는 시점의 값이다.
+ */
+internal val MIGRATION_3_4 =
+    object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            migrateCalendarTimes(db, ZoneId.systemDefault())
+        }
+    }
+
+/**
+ * [MIGRATION_3_4] 의 본체. 시간대를 받아 테스트에서 고정할 수 있게 분리했다.
+ *
+ * - 종일 일정: UTC 자정으로 저장된 시각을 [zone] 자정으로 바꾼다([CalendarAllDayPolicy]).
+ * - 모든 캘린더 행: `timeZoneId` 를 [zone] 으로 맞춘다(새 수집분과 같은 기준).
+ * - `sourceKey` 는 캘린더 원본 BEGIN 이라 손대지 않는다 — 새 수집분과 키가 같아 중복 저장되지 않는다.
+ */
+internal fun migrateCalendarTimes(
+    db: SupportSQLiteDatabase,
+    zone: ZoneId,
+) {
+    val allDayRows =
+        db.query("SELECT rawId, startAtUtc, endAtUtc, payloadJson FROM source_item WHERE itemType = 'CALENDAR'").use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    if (!cursor.getString(3).isAllDayPayload()) continue
+                    val endAtUtc = if (cursor.isNull(2)) null else cursor.getLong(2)
+                    add(Triple(cursor.getString(0), cursor.getLong(1), endAtUtc))
+                }
+            }
+        }
+    allDayRows.forEach { (rawId, startAtUtc, endAtUtc) ->
+        db.execSQL(
+            "UPDATE source_item SET startAtUtc = ?, endAtUtc = ? WHERE rawId = ?",
+            arrayOf<Any?>(
+                CalendarAllDayPolicy.toZonedMidnight(startAtUtc, zone).toEpochMilli(),
+                endAtUtc?.let { CalendarAllDayPolicy.toZonedMidnight(it, zone).toEpochMilli() },
+                rawId,
+            ),
+        )
+    }
+    db.execSQL("UPDATE source_item SET timeZoneId = ? WHERE itemType = 'CALENDAR'", arrayOf<Any?>(zone.id))
+}
+
+/** 캘린더 payload 의 `allDay` 가 true 인지. 읽을 수 없는 payload 는 시간 지정 일정으로 보고 시각을 두지 않는다. */
+private fun String.isAllDayPayload(): Boolean =
+    runCatching {
+        Json.parseToJsonElement(this).jsonObject["allDay"]?.jsonPrimitive?.booleanOrNull
+    }.getOrNull() == true

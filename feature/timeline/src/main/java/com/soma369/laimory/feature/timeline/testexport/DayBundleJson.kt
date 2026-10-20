@@ -20,7 +20,7 @@ import java.time.ZoneId
  *
  * 절단면: `recordDate` / `recordTimeZone` / `sourceItems[]`.
  * 각 아이템은 `rawId` / `itemType` / `startAt` / `endAt` / `payload` 로 표현하고,
- * `startAt`·`endAt` 은 아이템의 `timeZoneId` 기준 로컬 datetime(오프셋 없음)으로 렌더한다.
+ * `startAt`·`endAt` 은 초안 요청과 같이 `recordTimeZone` 기준 로컬 datetime(오프셋 없음)으로 렌더한다.
  * 서버 계약(#120)이 확정되면 그 스키마에 맞춰 갱신한다.
  */
 internal object DayBundleJson {
@@ -39,7 +39,7 @@ internal object DayBundleJson {
                 put("recordDate", date.toString())
                 put("recordTimeZone", zone.id)
                 val arr = JSONArray()
-                items.forEach { item -> arr.put(itemJson(item, photoFileName(item))) }
+                items.forEach { item -> arr.put(itemJson(item, zone, photoFileName(item))) }
                 put("sourceItems", arr)
             }
         return root.toString(2)
@@ -47,13 +47,14 @@ internal object DayBundleJson {
 
     private fun itemJson(
         item: SourceItem,
+        zone: ZoneId,
         photoFile: String?,
     ): JSONObject =
         JSONObject().apply {
             put("rawId", item.rawId)
             put("itemType", item.itemType.name)
-            put("startAt", localDateTime(item.startAt, item.timeZoneId))
-            put("endAt", item.endAt?.let { localDateTime(it, item.timeZoneId) } ?: JSONObject.NULL)
+            put("startAt", localDateTime(item.startAt, zone))
+            put("endAt", item.endAt?.let { localDateTime(it, zone) } ?: JSONObject.NULL)
             put("payload", payloadJson(item.payload, photoFile))
         }
 
