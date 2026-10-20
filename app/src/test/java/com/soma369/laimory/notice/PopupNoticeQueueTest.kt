@@ -1,7 +1,5 @@
 package com.soma369.laimory.notice
 
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.model.notice.Notice
 import com.soma369.laimory.core.domain.model.notice.PopupNotice
@@ -21,13 +19,7 @@ import java.time.LocalDateTime
 class PopupNoticeQueueTest {
     private val popupRepository = FakePopupNoticeRepository()
     private val noticeRepository = FakeNoticeRepository()
-    private val queue =
-        PopupNoticeQueue(
-            getPopupNotices = GetPopupNoticesUseCase(popupRepository),
-            getContentUrl = GetPopupNoticeContentUrlUseCase(popupRepository),
-            markPopupNoticeSeen = MarkPopupNoticeSeenUseCase(popupRepository),
-            markPopupNoticeOpened = MarkPopupNoticeOpenedUseCase(noticeRepository),
-        )
+    private val queue = newQueue()
 
     @Test
     fun `다시 보지 않기 한 것을 빼고 최신 순 목록으로 내놓는다`() =
@@ -68,14 +60,14 @@ class PopupNoticeQueueTest {
         }
 
     @Test
-    fun `닫은 공지는 앱 안에서 홈에 돌아와도 다시 뜨지 않는다`() =
+    fun `닫은 공지는 홈에 돌아오거나 앱을 잠깐 내렸다 와도 다시 뜨지 않는다`() =
         runTest {
             popupRepository.popups = listOf(popup(12), popup(9))
             queue.refresh()
             queue.close(popup(12))
             queue.close(popup(9))
 
-            // 그사이 새 공지가 올라왔다. 홈 진입 확인은 새 공지만 잡는다.
+            // 그사이 새 공지가 올라왔다. 홈 진입 · 앱 복귀 확인은 새 공지만 잡는다.
             popupRepository.popups = listOf(popup(15), popup(12), popup(9))
             queue.refresh()
 
@@ -83,17 +75,44 @@ class PopupNoticeQueueTest {
         }
 
     @Test
-    fun `앱을 나갔다 다시 열면 닫은 공지가 다시 뜨고 다시 보지 않기 한 것은 안 뜬다`() =
+    fun `프로세스가 살아 있어도 앱 화면을 새로 띄우면 닫은 공지가 다시 뜬다`() =
         runTest {
             popupRepository.popups = listOf(popup(12), popup(9))
             queue.refresh()
             queue.dismissForever(popup(12))
             queue.close(popup(9))
 
-            queue.onStop(ProcessOwner)
+            queue.onAppLaunched()
             queue.refresh()
 
             assertEquals(listOf(9L), queue.ids())
+        }
+
+    @Test
+    fun `시트를 띄운 채 앱 화면을 새로 띄우면 닫은 공지까지 서버 순서대로 다시 받는다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
+            queue.refresh()
+            queue.close(popup(12))
+
+            queue.onAppLaunched()
+            queue.refresh()
+
+            assertEquals(listOf(12L, 9L, 5L), queue.ids())
+        }
+
+    @Test
+    fun `프로세스를 새로 띄우면 닫은 공지가 다시 뜨고 다시 보지 않기 한 것은 안 뜬다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+            queue.dismissForever(popup(12))
+            queue.close(popup(9))
+
+            val restarted = newQueue()
+            restarted.refresh()
+
+            assertEquals(listOf(9L), restarted.ids())
         }
 
     @Test
@@ -110,9 +129,9 @@ class PopupNoticeQueueTest {
             queue.refresh()
             assertTrue(queue.notices.value.isEmpty())
 
-            queue.onStop(ProcessOwner)
-            queue.refresh()
-            assertEquals(listOf(9L, 5L), queue.ids())
+            val restarted = newQueue()
+            restarted.refresh()
+            assertEquals(listOf(9L, 5L), restarted.ids())
         }
 
     @Test
@@ -166,6 +185,15 @@ class PopupNoticeQueueTest {
             assertNull(queue.contentUrlOf(popup(9)))
         }
 
+    /** 대기열은 앱 프로세스마다 하나다. 새로 만들면 프로세스가 새로 뜬 것이고, 기기 기록(저장소)은 그대로다. */
+    private fun newQueue() =
+        PopupNoticeQueue(
+            getPopupNotices = GetPopupNoticesUseCase(popupRepository),
+            getContentUrl = GetPopupNoticeContentUrlUseCase(popupRepository),
+            markPopupNoticeSeen = MarkPopupNoticeSeenUseCase(popupRepository),
+            markPopupNoticeOpened = MarkPopupNoticeOpenedUseCase(noticeRepository),
+        )
+
     private fun PopupNoticeQueue.ids(): List<Long> = notices.value.map(PopupNotice::id)
 
     private class FakePopupNoticeRepository : PopupNoticeRepository {
@@ -206,11 +234,6 @@ class PopupNoticeQueueTest {
             read.retainAll(keepIds)
             read += noticeId
         }
-    }
-
-    /** 앱 프로세스 수명 자리. 대기열은 소유자를 읽지 않는다. */
-    private object ProcessOwner : LifecycleOwner {
-        override val lifecycle: Lifecycle get() = error("읽지 않는다")
     }
 
     private companion object {

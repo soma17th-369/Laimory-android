@@ -1,7 +1,5 @@
 package com.soma369.laimory.notice
 
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import com.soma369.laimory.core.domain.model.notice.PopupNotice
 import com.soma369.laimory.core.domain.usecase.notice.GetPopupNoticeContentUrlUseCase
 import com.soma369.laimory.core.domain.usecase.notice.GetPopupNoticesUseCase
@@ -21,10 +19,12 @@ import javax.inject.Singleton
  *
  * 공지는 사용자가 봐야 하는 것이라 `다시 보지 않기` 를 고르기 전까지는 다시 알린다.
  * - `다시 보지 않기`: 그 공지 한 건만 기기에 남겨 다시는 띄우지 않는다.
- * - `닫기` · 원문 열기 · 시트 내리기: 기록하지 않는다. 이번 앱 사용 동안([closedIds])만 다시 띄우지 않고, 앱을 나갔다
- *   다시 열면 또 띄운다. 앱 안에서 홈으로 돌아올 때마다 같은 공지가 다시 뜨지 않게 하려는 것이다.
+ * - `닫기` · 원문 열기 · 시트 내리기: 기록하지 않는다. 앱을 새로 켤 때까지([closedIds])만 다시 띄우지 않고, 새로 켜면
+ *   또 띄운다. 홈으로 돌아오거나 앱을 잠깐 내렸다 오는 것(사진 선택기 · 원문 Custom Tab 포함)만으로는 같은 공지가 다시
+ *   뜨지 않게 하려는 것이다.
  *
- * 앱을 나갔는지는 프로세스 수명([onStop])으로 본다 — 화면 회전처럼 Activity 만 다시 만들어지는 것은 나간 것이 아니다.
+ * 앱을 새로 켰는지는 프로세스가 아니라 앱 화면으로 본다([onAppLaunched]). 위치 수집 포그라운드 서비스가 프로세스를 붙잡고
+ * 있어, 최근 앱에서 지워도 프로세스는 살아 있기 때문이다.
  */
 @Singleton
 class PopupNoticeQueue
@@ -34,7 +34,7 @@ class PopupNoticeQueue
         private val getContentUrl: GetPopupNoticeContentUrlUseCase,
         private val markPopupNoticeSeen: MarkPopupNoticeSeenUseCase,
         private val markPopupNoticeOpened: MarkPopupNoticeOpenedUseCase,
-    ) : DefaultLifecycleObserver {
+    ) {
         private val _notices = MutableStateFlow<List<PopupNotice>>(emptyList())
 
         /** 아직 처리하지 않은 팝업 공지, 서버 순서(최신 순). 처리한 카드는 빠진다. 비면 띄우지 않는다. */
@@ -42,7 +42,7 @@ class PopupNoticeQueue
 
         private val refreshing = Mutex()
 
-        /** 이번 앱 사용 동안 `닫기` 한 공지. 앱을 나가면 비운다. */
+        /** `닫기` 한 공지. 앱을 새로 켜면([onAppLaunched]) 비운다. */
         private val closedIds = mutableSetOf<Long>()
 
         /**
@@ -70,7 +70,7 @@ class PopupNoticeQueue
             markPopupNoticeOpened(notice.id)
         }
 
-        /** `닫기`. [notice] 를 대기열에서 빼고, 이번 앱 사용 동안만 다시 띄우지 않는다. */
+        /** `닫기`. [notice] 를 대기열에서 빼고, 앱을 새로 켤 때까지 다시 띄우지 않는다. */
         fun close(notice: PopupNotice) {
             synchronized(closedIds) { closedIds += notice.id }
             _notices.update { notices -> notices.filterNot { it.id == notice.id } }
@@ -79,21 +79,27 @@ class PopupNoticeQueue
         /**
          * `다시 보지 않기`. [notice] 를 대기열에서 빼고 다시는 띄우지 않는다고 기기에 남긴다.
          *
-         * 저장이 끝나기 전 홈 진입으로 다시 받아도 뜨지 않게 이번 앱 사용 동안의 기록에도 넣는다.
+         * 저장이 끝나기 전 홈 진입으로 다시 받아도 뜨지 않게 닫은 기록에도 넣는다.
          */
         suspend fun dismissForever(notice: PopupNotice) {
             close(notice)
             markPopupNoticeSeen(notice.id)
         }
 
+        /**
+         * 앱 화면을 처음부터 새로 띄웠다(최근 앱에서 지운 뒤 · 강제 중지 · 재부팅 뒤 열기). 닫은 공지를 다시 띄운다.
+         *
+         * 시트를 띄운 채 앱을 지웠으면 남은 카드도 버려, 홈 진입 확인이 닫은 공지까지 서버 순서대로 다시 받게 한다.
+         * 화면 회전처럼 이전 상태를 되살려 다시 만드는 것은 새로 켠 것이 아니라 부르지 않는다.
+         */
+        fun onAppLaunched() {
+            synchronized(closedIds) { closedIds.clear() }
+            _notices.value = emptyList()
+        }
+
         /** 시트를 쓸어내리거나 바깥을 누르거나 뒤로 갔다. 남은 카드를 모두 [close] 한 것과 같다. */
         fun closeAll() {
             val remaining = _notices.getAndUpdate { emptyList() }
             synchronized(closedIds) { remaining.mapTo(closedIds, PopupNotice::id) }
-        }
-
-        /** 앱을 나갔다. 닫은 공지는 다음에 앱을 열 때 다시 띄운다. */
-        override fun onStop(owner: LifecycleOwner) {
-            synchronized(closedIds) { closedIds.clear() }
         }
     }
