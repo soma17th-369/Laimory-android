@@ -103,8 +103,13 @@ class TimelineDraftRepositoryImpl
 
         override suspend fun getDraftStatus(taskId: String): DraftTaskSnapshot = remote.getDraftStatus(taskId).toDomain()
 
-        override suspend fun isCreatable(items: List<SourceItem>): Boolean =
-            remote.checkCreatable(DraftCreatableCheckRequest(sourceItems = items.map { it.toCreatableCheckItemDto() })).creatable
+        override suspend fun isCreatable(
+            items: List<SourceItem>,
+            zone: ZoneId,
+        ): Boolean =
+            remote
+                .checkCreatable(DraftCreatableCheckRequest(sourceItems = items.map { it.toCreatableCheckItemDto(zone) }))
+                .creatable
 
         /**
          * 초안 요청 한 단계(업로드 URL 발급 · 초안 생성 POST)에 상한을 건다. 둘 다 오가는 데이터가 작아 요청 전체가

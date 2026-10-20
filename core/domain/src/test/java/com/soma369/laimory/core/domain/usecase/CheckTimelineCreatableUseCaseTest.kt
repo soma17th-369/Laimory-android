@@ -18,13 +18,13 @@ class CheckTimelineCreatableUseCaseTest {
     @Test
     fun `서버가 만들 수 없다고 하면 false 다`() =
         runTest {
-            assertFalse(CheckTimelineCreatableUseCase(FakeRepository { false })(emptyList()))
+            assertFalse(CheckTimelineCreatableUseCase(FakeRepository { false })(emptyList(), ZONE))
         }
 
     @Test
     fun `서버가 만들 수 있다고 하면 true 다`() =
         runTest {
-            assertTrue(CheckTimelineCreatableUseCase(FakeRepository { true })(emptyList()))
+            assertTrue(CheckTimelineCreatableUseCase(FakeRepository { true })(emptyList(), ZONE))
         }
 
     @Test
@@ -32,13 +32,13 @@ class CheckTimelineCreatableUseCaseTest {
         runTest {
             val repository = FakeRepository { throw ApiException.ClientException(rawCode = 404) }
 
-            assertTrue(CheckTimelineCreatableUseCase(repository)(emptyList()))
+            assertTrue(CheckTimelineCreatableUseCase(repository)(emptyList(), ZONE))
         }
 
     @Test
     fun `끊기면 막지 않는다`() =
         runTest {
-            assertTrue(CheckTimelineCreatableUseCase(FakeRepository { throw ApiException.NetworkException() })(emptyList()))
+            assertTrue(CheckTimelineCreatableUseCase(FakeRepository { throw ApiException.NetworkException() })(emptyList(), ZONE))
         }
 
     @Test
@@ -50,13 +50,20 @@ class CheckTimelineCreatableUseCaseTest {
                     false
                 }
 
-            assertTrue(CheckTimelineCreatableUseCase(repository)(emptyList()))
+            assertTrue(CheckTimelineCreatableUseCase(repository)(emptyList(), ZONE))
         }
+
+    private companion object {
+        val ZONE: ZoneId = ZoneId.of("Asia/Seoul")
+    }
 
     private class FakeRepository(
         private val creatable: suspend () -> Boolean,
     ) : TimelineDraftRepository {
-        override suspend fun isCreatable(items: List<SourceItem>): Boolean = creatable()
+        override suspend fun isCreatable(
+            items: List<SourceItem>,
+            zone: ZoneId,
+        ): Boolean = creatable()
 
         override suspend fun uploadPhotos(clientPhotoUris: List<String>): List<String> = error("사용하지 않음")
 

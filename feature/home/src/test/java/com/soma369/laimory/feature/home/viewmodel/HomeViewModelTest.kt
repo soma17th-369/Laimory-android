@@ -2390,7 +2390,10 @@ class HomeViewModelTest {
         var creatable: (List<SourceItem>) -> Boolean = { true }
         val checkedItems = mutableListOf<List<SourceItem>>()
 
-        override suspend fun isCreatable(items: List<SourceItem>): Boolean {
+        override suspend fun isCreatable(
+            items: List<SourceItem>,
+            zone: ZoneId,
+        ): Boolean {
             checkedItems += items
             return creatable(items)
         }

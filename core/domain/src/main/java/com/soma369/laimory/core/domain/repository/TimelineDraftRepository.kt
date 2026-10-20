@@ -42,6 +42,10 @@ interface TimelineDraftRepository {
      * [items] 로 타임라인을 만들 수 있는지 서버에 묻는다. 기준은 서버가 갖는다(기록이 너무 적은 날은 false).
      *
      * 판정에 쓰는 종류·시각만 보내고 payload 는 보내지 않는다. 생성 요청은 이 판정을 강제하지 않는다 — 버튼을 끌지 정하는 힌트다.
+     * 시각은 [createDraft] 와 같이 기록 시간대 [zone] 으로 렌더한다.
      */
-    suspend fun isCreatable(items: List<SourceItem>): Boolean
+    suspend fun isCreatable(
+        items: List<SourceItem>,
+        zone: ZoneId,
+    ): Boolean
 }

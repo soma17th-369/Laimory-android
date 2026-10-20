@@ -3,6 +3,7 @@ package com.soma369.laimory.core.domain.usecase
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import kotlinx.coroutines.withTimeoutOrNull
+import java.time.ZoneId
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -20,9 +21,13 @@ class CheckTimelineCreatableUseCase
     constructor(
         private val repository: TimelineDraftRepository,
     ) {
-        suspend operator fun invoke(items: List<SourceItem>): Boolean =
+        /** @param zone 기록 시간대. 초안 요청의 `recordTimeZone` 과 같아야 한다. */
+        suspend operator fun invoke(
+            items: List<SourceItem>,
+            zone: ZoneId,
+        ): Boolean =
             try {
-                withTimeoutOrNull(TIMEOUT_MILLIS) { repository.isCreatable(items) } ?: true
+                withTimeoutOrNull(TIMEOUT_MILLIS) { repository.isCreatable(items, zone) } ?: true
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

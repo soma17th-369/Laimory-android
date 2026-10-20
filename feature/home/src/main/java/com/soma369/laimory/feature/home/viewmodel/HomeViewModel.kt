@@ -1013,7 +1013,7 @@ class HomeViewModel
                 if (submission.hasCreatableItems()) {
                     coroutineScope {
                         val credit = async { getTimelineCredit() }
-                        val isCreatable = async { checkTimelineCreatable(submission.items) }
+                        val isCreatable = async { checkTimelineCreatable(submission.items, preparation.zone) }
                         credit.await() to isCreatable.await()
                     }
                 } else {

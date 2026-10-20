@@ -323,7 +323,7 @@ class TimelineDraftRepositoryImplTest {
         }
 
     @Test
-    fun `isCreatable - 종류와 시각만 보내고 서버 판정을 그대로 돌려준다`() =
+    fun `isCreatable - 종류와 기록 시간대 시각만 보내고 서버 판정을 그대로 돌려준다`() =
         runTest {
             val remote = FakeRemote(PhotoUploadCreateResponse(uploads = emptyList()), checkResult = false)
             val repository = TimelineDraftRepositoryImpl(resolver, remote, RecordingS3Uploader(), Json)
@@ -354,14 +354,15 @@ class TimelineDraftRepositoryImplTest {
                         ),
                 )
 
-            val creatable = repository.isCreatable(listOf(stay, notification))
+            // 아이템은 서울 시각이지만 기록 시간대(UTC)로 렌더한다 — 초안 요청과 같은 기준.
+            val creatable = repository.isCreatable(listOf(stay, notification), ZoneId.of("UTC"))
 
             assertFalse(creatable)
             val request = remote.checkRequests.single()
             assertEquals(
                 listOf(
-                    DraftCreatableCheckItemDto(itemType = "STAY", startAt = "2026-10-07T12:00", endAt = "2026-10-07T12:30"),
-                    DraftCreatableCheckItemDto(itemType = "NOTIFICATION", startAt = "2026-10-07T12:00", endAt = null),
+                    DraftCreatableCheckItemDto(itemType = "STAY", startAt = "2026-10-07T03:00", endAt = "2026-10-07T03:30"),
+                    DraftCreatableCheckItemDto(itemType = "NOTIFICATION", startAt = "2026-10-07T03:00", endAt = null),
                 ),
                 request.sourceItems,
             )
