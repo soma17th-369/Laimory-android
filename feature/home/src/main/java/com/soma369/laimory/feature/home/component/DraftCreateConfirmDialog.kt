@@ -266,7 +266,7 @@ private fun DraftCreateEmptyReason.guideMessage(): String =
     when (this) {
         DraftCreateEmptyReason.NO_DATA -> "아직 모인 기록이 없어요. 사진을 고르면 바로 만들 수 있어요"
         DraftCreateEmptyReason.ALL_EXCLUDED -> "보낼 기록을 모두 뺐어요. 사진을 고르거나 홈에서 다시 선택해 주세요"
-        DraftCreateEmptyReason.INSUFFICIENT_DATA -> "쌓인 데이터가 부족해요"
+        DraftCreateEmptyReason.INSUFFICIENT_DATA -> "쌓인 데이터가 충분하지 않아요"
     }
 
 /** 사진 시트로 가는 글자 버튼. 안내 칸(64) 안에 들어가야 해서 버튼 최소 높이를 쓰지 않는다. */
