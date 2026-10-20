@@ -17,7 +17,6 @@ import com.soma369.laimory.crash.CrashlyticsCrashReporter
 import com.soma369.laimory.crash.SignedInCrashKeyObserver
 import com.soma369.laimory.crash.isUnexpectedFailure
 import com.soma369.laimory.draft.DraftTaskProcessLifecycleObserver
-import com.soma369.laimory.notice.PopupNoticeQueue
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
 import com.soma369.laimory.push.PushRegistrationSessionObserver
 import com.soma369.laimory.retention.SourceItemRetentionScheduler
@@ -67,9 +66,6 @@ class LaimoryApp :
     lateinit var backgroundStateCrashKeyObserver: BackgroundStateCrashKeyObserver
 
     @Inject
-    lateinit var popupNoticeQueue: PopupNoticeQueue
-
-    @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
     override val workManagerConfiguration: Configuration
@@ -91,7 +87,6 @@ class LaimoryApp :
         ProcessLifecycleOwner.get().lifecycle.addObserver(autoCollectionProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(locationTrackingProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(backgroundStateCrashKeyObserver)
-        ProcessLifecycleOwner.get().lifecycle.addObserver(popupNoticeQueue)
         pushRegistrationSessionObserver.start()
         signedInCrashKeyObserver.start()
         backgroundStateCrashKeyObserver.start()
