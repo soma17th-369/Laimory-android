@@ -75,7 +75,34 @@ class PopupNoticeQueueTest {
         }
 
     @Test
-    fun `앱을 새로 시작하면 닫은 공지가 다시 뜨고 다시 보지 않기 한 것은 안 뜬다`() =
+    fun `프로세스가 살아 있어도 앱 화면을 새로 띄우면 닫은 공지가 다시 뜬다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+            queue.dismissForever(popup(12))
+            queue.close(popup(9))
+
+            queue.onAppLaunched()
+            queue.refresh()
+
+            assertEquals(listOf(9L), queue.ids())
+        }
+
+    @Test
+    fun `시트를 띄운 채 앱 화면을 새로 띄우면 닫은 공지까지 서버 순서대로 다시 받는다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
+            queue.refresh()
+            queue.close(popup(12))
+
+            queue.onAppLaunched()
+            queue.refresh()
+
+            assertEquals(listOf(12L, 9L, 5L), queue.ids())
+        }
+
+    @Test
+    fun `프로세스를 새로 띄우면 닫은 공지가 다시 뜨고 다시 보지 않기 한 것은 안 뜬다`() =
         runTest {
             popupRepository.popups = listOf(popup(12), popup(9))
             queue.refresh()
@@ -158,7 +185,7 @@ class PopupNoticeQueueTest {
             assertNull(queue.contentUrlOf(popup(9)))
         }
 
-    /** 대기열은 앱 프로세스마다 하나다. 새로 만들면 앱을 새로 시작한 것이고, 기기 기록(저장소)은 그대로다. */
+    /** 대기열은 앱 프로세스마다 하나다. 새로 만들면 프로세스가 새로 뜬 것이고, 기기 기록(저장소)은 그대로다. */
     private fun newQueue() =
         PopupNoticeQueue(
             getPopupNotices = GetPopupNoticesUseCase(popupRepository),

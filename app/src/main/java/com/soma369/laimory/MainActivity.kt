@@ -191,6 +191,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) { appUpdateGate.refreshIfStale() }
         }
+        // 이전 상태 없이 만들어졌으면 앱을 새로 켠 것이다. 프로세스는 위치 수집 서비스로 살아 있을 수 있어 화면으로 본다.
+        if (savedInstanceState == null) popupNoticeQueue.onAppLaunched()
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
