@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
+import com.soma369.laimory.core.domain.exception.displayMessage
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
@@ -94,12 +95,7 @@ class TimelineViewModel
          */
         override fun handleFailure(e: Throwable) {
             if (e is HandledException) return
-            val message =
-                when (e) {
-                    is ApiException.NetworkException -> ApiException.NETWORK_ERROR
-                    is ApiException -> e.message
-                    else -> ApiException.UNKNOWN_ERROR
-                }
+            val message = (e as? ApiException)?.displayMessage ?: ApiException.UNKNOWN_ERROR
             sendEffect(TimelineUiSideEffect.ShowSnackbar(message))
         }
 

@@ -19,11 +19,21 @@ sealed interface UpdateDailyRecordEmotionOutcome {
      *
      * DRAFT 의 최초 감정은 작성 완료([CompleteDailyRecordUseCase])가 정하므로 이 경로로 오면 안 된다.
      * 화면이 진입을 막는 것이 1차 방어이고, 그래도 도달했을 때 조용히 성공으로 보이지 않게 구분해 둔다.
+     *
+     * @property serverMessage 서버가 준 안내 문구. 화면이 앱 문구보다 먼저 쓴다.
      */
-    data object NotSaved : UpdateDailyRecordEmotionOutcome
+    data class NotSaved(
+        val serverMessage: String? = null,
+    ) : UpdateDailyRecordEmotionOutcome
 
-    /** `-404` — 해당 날짜의 하루 기록이 더 이상 존재하지 않는다. */
-    data object RecordUnavailable : UpdateDailyRecordEmotionOutcome
+    /**
+     * `-404` — 해당 날짜의 하루 기록이 더 이상 존재하지 않는다.
+     *
+     * @property serverMessage 서버가 준 안내 문구. 화면이 앱 문구보다 먼저 쓴다.
+     */
+    data class RecordUnavailable(
+        val serverMessage: String? = null,
+    ) : UpdateDailyRecordEmotionOutcome
 }
 
 /**
@@ -52,8 +62,8 @@ class UpdateDailyRecordEmotionUseCase
                     UpdateDailyRecordEmotionOutcome.Updated
                 } catch (exception: ApiException) {
                     when (exception.errorCode) {
-                        RECORD_NOT_SAVED_ERROR_CODE -> UpdateDailyRecordEmotionOutcome.NotSaved
-                        RECORD_UNAVAILABLE_ERROR_CODE -> UpdateDailyRecordEmotionOutcome.RecordUnavailable
+                        RECORD_NOT_SAVED_ERROR_CODE -> UpdateDailyRecordEmotionOutcome.NotSaved(exception.serverMessage)
+                        RECORD_UNAVAILABLE_ERROR_CODE -> UpdateDailyRecordEmotionOutcome.RecordUnavailable(exception.serverMessage)
                         else -> throw exception
                     }
                 }

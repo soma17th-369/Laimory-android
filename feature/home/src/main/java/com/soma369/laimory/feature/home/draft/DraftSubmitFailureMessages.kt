@@ -1,6 +1,11 @@
 package com.soma369.laimory.feature.home.draft
 
-/** 초안 생성 요청 실패 안내 문구. 로딩 화면 안내와 홈 스낵바가 같은 말을 쓴다. */
+/**
+ * 초안 생성 요청 실패 안내 문구. 로딩 화면 안내와 홈 스낵바가 같은 말을 쓴다.
+ *
+ * 서버가 응답한 실패(약관·새 항목 없음·크레딧·그 밖)는 서버 문구가 먼저이고 이 값은 서버 문구가 없을 때만 쓴다.
+ * 사진 접근·상한·시간 초과·연결 없음은 서버 응답이 없는 실패라 늘 이 값이다.
+ */
 internal object DraftSubmitFailureMessages {
     const val TERMS_REQUIRED = "타임라인을 만들려면 약관 동의가 필요해요."
     const val NO_NEW_ITEMS = "이미 기록에 들어간 것뿐이라 새로 더할 게 없어요."

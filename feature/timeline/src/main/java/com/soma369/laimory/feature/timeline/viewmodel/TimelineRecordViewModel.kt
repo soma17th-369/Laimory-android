@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
@@ -424,11 +425,11 @@ class TimelineRecordViewModel
                     when (outcome) {
                         UpdateDailyRecordEmotionOutcome.Updated -> applyEmotion(sheet.selected)
                         // 화면이 DRAFT 진입을 막으므로 여기 오면 화면과 서버가 어긋난 것이다.
-                        UpdateDailyRecordEmotionOutcome.NotSaved ->
-                            showSnackbar("먼저 하루 기록을 저장해 주세요.")
+                        is UpdateDailyRecordEmotionOutcome.NotSaved ->
+                            showSnackbar(outcome.serverMessage ?: "먼저 하루 기록을 저장해 주세요.")
 
-                        UpdateDailyRecordEmotionOutcome.RecordUnavailable ->
-                            showSnackbar("이 기록을 찾을 수 없어요.")
+                        is UpdateDailyRecordEmotionOutcome.RecordUnavailable ->
+                            showSnackbar(outcome.serverMessage ?: "이 기록을 찾을 수 없어요.")
                     }
                     finishEmotionUpdate()
                 }
@@ -517,8 +518,10 @@ class TimelineRecordViewModel
                     messageHelper.send(UserMessage.DailyRecordSaved)
                     navigationHelper.navigateToBack()
                 }
-                CompleteDailyRecordOutcome.RecordUnavailable ->
-                    sendEffect(TimelineRecordUiSideEffect.ShowSnackbar("이미 삭제됐거나 접근할 수 없는 기록이에요."))
+                is CompleteDailyRecordOutcome.RecordUnavailable ->
+                    sendEffect(
+                        TimelineRecordUiSideEffect.ShowSnackbar(outcome.serverMessage ?: "이미 삭제됐거나 접근할 수 없는 기록이에요."),
+                    )
             }
         }
 
@@ -554,7 +557,7 @@ class TimelineRecordViewModel
                 if (error is ApiException.NetworkException) {
                     "네트워크 상태를 확인한 뒤 다시 저장해주세요."
                 } else {
-                    "저장하지 못했어요. 잠시 후 다시 시도해주세요."
+                    error.serverMessageOr("저장하지 못했어요. 잠시 후 다시 시도해주세요.")
                 }
             sendEffect(TimelineRecordUiSideEffect.ShowSnackbar(message))
         }
@@ -577,7 +580,7 @@ class TimelineRecordViewModel
                 when (outcome) {
                     CompleteDailyRecordOutcome.Completed -> AnalyticsCompletionOutcome.TRANSITIONED
                     CompleteDailyRecordOutcome.AlreadySaved -> AnalyticsCompletionOutcome.RECOVERED
-                    CompleteDailyRecordOutcome.RecordUnavailable -> return
+                    is CompleteDailyRecordOutcome.RecordUnavailable -> return
                 }
             analyticsHelper.logOnce(
                 // 홈을 거쳐 들어오므로 대개 회원 정보는 이미 받아 있다. 없으면 설치 단위로 가른다.
@@ -1038,13 +1041,13 @@ class TimelineRecordViewModel
                 TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE -> {
                     latestMemoCommits -= timelineEventId
                     failedMemoCommits -= timelineEventId
-                    showSnackbar("이미 삭제됐거나 접근할 수 없는 이벤트예요.")
+                    showSnackbar(error.serverMessageOr("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
                     requestedRecordDate?.let(::loadRecord)
                 }
                 // 같은 값을 다시 보내도 같은 답이 온다. 재시도를 권하지 않는다 — 고쳐 써야 풀린다.
                 TimelineEventUpdateException.Reason.INVALID_REQUEST -> {
                     failedMemoCommits += timelineEventId
-                    showSnackbar("메모 내용을 다시 확인해 주세요.")
+                    showSnackbar(error.serverMessageOr("메모 내용을 다시 확인해 주세요."))
                 }
                 // 메모 수정이 내는 사유는 위 둘뿐이다(`UpdateTimelineEventMemoUseCase`).
                 // 나머지는 네트워크·서버 실패와 같은 자리에 둔다 — 다시 보내면 될 수 있는 것들이다.

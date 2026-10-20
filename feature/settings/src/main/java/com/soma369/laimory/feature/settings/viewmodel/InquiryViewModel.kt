@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.settings.viewmodel
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.InquiryAttachmentException
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
@@ -103,7 +104,7 @@ class InquiryViewModel
                 when (error) {
                     is InquiryAttachmentException -> "첨부한 사진을 읽지 못했어요. 사진을 빼고 다시 골라 주세요."
                     is ApiException.NetworkException -> "인터넷 연결을 확인하고 다시 보내 주세요."
-                    else -> "문의를 보내지 못했어요. 잠시 후 다시 시도해 주세요."
+                    else -> error.serverMessageOr("문의를 보내지 못했어요. 잠시 후 다시 시도해 주세요.")
                 }
             sendEffect(InquiryUiSideEffect.ShowSnackbar(message))
         }

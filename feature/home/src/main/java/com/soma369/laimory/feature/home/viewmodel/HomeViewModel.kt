@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.home.viewmodel
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
@@ -1291,12 +1292,14 @@ class HomeViewModel
 
                 // 이미 그 날짜 기록에 들어간 항목만 다시 보낸 경우다. 실패로만 보이면 이유를 알 수 없다.
                 DraftSubmitFailureKind.NO_NEW_ITEMS ->
-                    if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(NO_NEW_ITEMS_MESSAGE))
+                    if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(error.serverMessageOr(NO_NEW_ITEMS_MESSAGE)))
 
                 // 다이얼로그가 크레딧을 못 받았거나 그사이 다른 생성이 끝나 잔액이 줄었다. 서버가 아무것도 만들기 전에
                 // 거절하므로 기록을 다시 읽을 필요가 없다.
                 DraftSubmitFailureKind.INSUFFICIENT_CREDIT ->
-                    if (!announced) sendEffect(HomeUiSideEffect.ShowSnackbar(DraftSubmitFailureMessages.INSUFFICIENT_CREDIT))
+                    if (!announced) {
+                        sendEffect(HomeUiSideEffect.ShowSnackbar(error.serverMessageOr(DraftSubmitFailureMessages.INSUFFICIENT_CREDIT)))
+                    }
 
                 // 스냅샷 확정 뒤 사진이 삭제되거나 권한이 바뀐 경우 — 같은 사진으로는 복구되지
                 // 않으므로 고르는 자리를 다시 연다.
@@ -1404,7 +1407,7 @@ class HomeViewModel
                 copy(
                     draftStatus = DraftCreationStatus.FAILED,
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                    draftMessage = DraftSubmitFailureMessages.OTHER,
+                    draftMessage = error.serverMessageOr(DraftSubmitFailureMessages.OTHER),
                 )
             }
             // 로딩 화면이 이미 알렸으면 공통 오류 안내를 또 띄우지 않는다.

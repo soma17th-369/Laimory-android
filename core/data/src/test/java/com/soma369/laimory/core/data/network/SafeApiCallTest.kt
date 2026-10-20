@@ -118,6 +118,48 @@ class SafeApiCallTest {
             assertTrue(error is ApiException.UnauthorizedException)
             assertEquals(-2003, (error as ApiException).errorCode)
             assertEquals("다시 로그인해 주세요", error.message)
+            assertEquals("다시 로그인해 주세요", error.serverMessage)
+        }
+
+    @Test
+    fun `2xx 실패 헤더의 message는 서버 문구로 보존한다`() =
+        runTest {
+            mockWebServer.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody("""{"header":{"code":-2001,"message":"권한이 없습니다"},"body":null}"""),
+            )
+
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() as ApiException
+
+            assertEquals("권한이 없습니다", error.serverMessage)
+        }
+
+    @Test
+    fun `레거시 필드만 있는 실패 응답은 서버 문구로 보지 않는다`() =
+        runTest {
+            // Spring 기본 오류 본문. 사용자 문구가 아니라서 화면은 앱 문구로 대신해야 한다.
+            mockWebServer.enqueue(
+                MockResponse().setResponseCode(404).setBody("""{"status":404,"error":"Not Found"}"""),
+            )
+
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() as ApiException
+
+            assertEquals("Not Found", error.message)
+            assertEquals(null, error.serverMessage)
+        }
+
+    @Test
+    fun `빈 header message는 서버 문구로 보지 않는다`() =
+        runTest {
+            mockWebServer.enqueue(
+                MockResponse().setResponseCode(500).setBody("""{"header":{"code":-500,"message":" "},"body":null}"""),
+            )
+
+            val error = runCatching { safeApiCall { api.getTest() } }.exceptionOrNull() as ApiException
+
+            assertEquals(-500, error.errorCode)
+            assertEquals(null, error.serverMessage)
         }
 
     @Test

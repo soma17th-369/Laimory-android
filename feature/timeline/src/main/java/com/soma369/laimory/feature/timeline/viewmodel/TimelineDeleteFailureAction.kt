@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.timeline.viewmodel
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineRecordDeleteException
+import com.soma369.laimory.core.domain.exception.serverMessageOr
 
 internal sealed interface TimelineDeleteFailureAction {
     data object TargetUnavailable : TimelineDeleteFailureAction
@@ -14,6 +15,7 @@ internal sealed interface TimelineDeleteFailureAction {
     ) : TimelineDeleteFailureAction
 }
 
+/** 재시도 안내 문구는 서버가 준 것을 먼저 쓴다. 상수는 서버 문구가 없을 때의 대체다. */
 internal fun Throwable.toTimelineDeleteFailureAction(): TimelineDeleteFailureAction =
     when (this) {
         is TimelineRecordDeleteException ->
@@ -21,13 +23,13 @@ internal fun Throwable.toTimelineDeleteFailureAction(): TimelineDeleteFailureAct
                 TimelineRecordDeleteException.Reason.TARGET_UNAVAILABLE ->
                     TimelineDeleteFailureAction.TargetUnavailable
                 TimelineRecordDeleteException.Reason.DATE_OPERATION_IN_PROGRESS ->
-                    TimelineDeleteFailureAction.Retryable(DATE_OPERATION_MESSAGE)
+                    TimelineDeleteFailureAction.Retryable(serverMessageOr(DATE_OPERATION_MESSAGE))
                 TimelineRecordDeleteException.Reason.PHOTO_DELETE_FAILED ->
-                    TimelineDeleteFailureAction.Retryable(PHOTO_DELETE_MESSAGE)
+                    TimelineDeleteFailureAction.Retryable(serverMessageOr(PHOTO_DELETE_MESSAGE))
             }
         is HandledException -> TimelineDeleteFailureAction.AlreadyHandled
         is ApiException.NetworkException -> TimelineDeleteFailureAction.Retryable(NETWORK_MESSAGE)
-        else -> TimelineDeleteFailureAction.Retryable(GENERIC_MESSAGE)
+        else -> TimelineDeleteFailureAction.Retryable(serverMessageOr(GENERIC_MESSAGE))
     }
 
 private const val DATE_OPERATION_MESSAGE = "같은 날짜의 작업이 진행 중이에요. 잠시 후 다시 시도해주세요."

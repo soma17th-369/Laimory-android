@@ -25,6 +25,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * - 네트워크 오류([IOException]) → [ApiException.NetworkException]
  * - HTTP 4xx/5xx → [ApiException.fromCode] (errorBody의 message/error를 예외 메시지로 전달)
  * - HTTP 2xx + `header.code != SUCCESS_CODE` → header의 code/message로 [ApiException] (errorCode 보존)
+ * - 봉투의 `header.message` 는 [ApiException.serverMessage] 로도 따로 담는다 — 화면이 사용자 문구로 먼저 쓴다.
+ *   레거시 필드(`message`·`error`)는 Spring 기본 오류(`"Not Found"`)일 수 있어 서버 문구로 보지 않는다.
  * - 성공 → `body` 반환
  *
  * 성공인데 `body`가 없는 무바디(204형) 응답은 현재 없으므로 다루지 않는다. 실제로 생기면 별도 처리.
@@ -62,13 +64,17 @@ private suspend fun <T> executeApiCall(call: suspend () -> Response<ApiResponse<
     if (!response.isSuccessful) {
         val error = response.parseErrorEnvelope()
         error?.code?.let { code -> Logger.w(LogDomain.NETWORK, "${response.logLabel()} → 헤더 코드 $code") }
-        throw ApiException.fromCode(response.code(), error?.message, error?.code)
+        throw ApiException.fromCode(response.code(), error?.message, error?.code, error?.headerMessage)
     }
 
     val header = response.body()?.header ?: throw unknownResponse(response, "응답 봉투 없음")
     if (header.code != SUCCESS_CODE) {
         Logger.w(LogDomain.NETWORK, "${response.logLabel()} → 헤더 코드 ${header.code}")
-        throw ApiException.UnknownException(header.message, errorCode = header.code)
+        throw ApiException.UnknownException(
+            message = header.message,
+            errorCode = header.code,
+            serverMessage = header.message?.takeIf { it.isNotBlank() },
+        )
     }
     return response
 }
@@ -90,6 +96,8 @@ private val errorBodyJson = Json { ignoreUnknownKeys = true }
 private data class ErrorEnvelope(
     val code: Int?,
     val message: String?,
+    /** 공통 봉투가 준 사용자 문구. 레거시 필드에서 읽은 [message] 와 달리 사용자에게 보여도 되는 값이다. */
+    val headerMessage: String?,
 )
 
 /** HTTP 실패 응답에서 공통 envelope의 에러 코드·메시지를 보존하고 레거시 필드도 지원한다. */
@@ -98,12 +106,14 @@ private fun Response<*>.parseErrorEnvelope(): ErrorEnvelope? =
         errorBody()?.string()?.takeIf { it.isNotBlank() }?.let { raw ->
             val obj = errorBodyJson.parseToJsonElement(raw) as? JsonObject
             val header = obj?.get("header") as? JsonObject
+            val headerMessage = header?.get("message")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
             ErrorEnvelope(
                 code = header?.get("code")?.jsonPrimitive?.intOrNull,
                 message =
-                    header?.get("message")?.jsonPrimitive?.contentOrNull
+                    headerMessage
                         ?: obj?.get("message")?.jsonPrimitive?.contentOrNull
                         ?: obj?.get("error")?.jsonPrimitive?.contentOrNull,
+                headerMessage = headerMessage,
             )
         }
     } catch (_: Exception) {
