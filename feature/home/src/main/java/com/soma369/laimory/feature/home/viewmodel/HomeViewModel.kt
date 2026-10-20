@@ -1004,7 +1004,7 @@ class HomeViewModel
         private suspend fun showCreateConfirm() {
             val preparation = draftConsentSessionStore.preparation.value ?: return
             val accountSession = draftConsentSessionStore.accountSession.value
-            // 확인과 표시가 같은 목록을 본다. 기다리는 사이 다시 읽으면 확인하지 않은 목록에 판정을 붙이게 된다.
+            // 확인한 목록 그대로 보여 주고 제출한다. 기다리는 사이 목록이 바뀌면 아래에서 새 목록으로 다시 묻는다.
             val submission = submissionOf(preparation)
             // 크레딧 · 생성 가능 여부를 받은 **뒤에** 띄운다. 먼저 띄우고 나중에 채우면 `만들기` 가 `충전하러 가기` 로 바뀌거나
             // 꺼져, 누르려던 것과 다른 버튼을 누르게 된다. 둘 다 못 받으면 막지 않는 쪽으로 띄운다(판정은 서버의 -1021 · 생성 요청).
@@ -1027,6 +1027,9 @@ class HomeViewModel
                 }
                 return
             }
+            // 기다리는 사이 상세에서 항목을 빼거나 위치 전송을 껐을 수 있다. 바뀌기 전 목록을 띄우면 방금 뺀 것이 제출되고,
+            // 판정도 바뀐 목록의 것이 아니다. 새 목록으로 처음부터 다시 묻는다.
+            if (submissionOf(preparation).items != submission.items) return showCreateConfirm()
             val recordDate = preparation.recordDate
             val dayRelation = AnalyticsRecordDayRelation.of(recordDate, clock)
             val emptyReason =

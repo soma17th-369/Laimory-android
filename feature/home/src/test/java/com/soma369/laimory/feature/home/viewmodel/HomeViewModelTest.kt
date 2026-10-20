@@ -303,6 +303,56 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `확인을 기다리는 사이 항목을 빼면 뺀 목록으로 다시 묻고 그 목록을 제출한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기다리는 동안 홈 입력은 잠기지 않는다. 바뀌기 전 목록을 띄우면 방금 뺀 일정이 제출된다.
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("a"), todayItem("b"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+            assertNull(viewModel.state.value.createConfirm)
+
+            sessionStore.toggleExcluded("a")
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            val confirm = viewModel.state.value.createConfirm!!
+            assertEquals(1, confirm.counts.single { it.group == DraftConsentTypeGroup.CALENDAR }.count)
+            assertEquals(listOf("b"), draftRepository.checkedItems.last().map { it.rawId })
+
+            viewModel.sendIntent(HomeUiIntent.ConfirmCreateDraft)
+            runCurrent()
+
+            assertEquals(listOf("b"), draftRepository.createdItems.map { it.rawId })
+        }
+
+    @Test
+    fun `확인을 기다리는 사이 모두 빼면 모두 뺐다는 빈 다이얼로그를 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            creditRepository.gate = gate
+            sourceRepository.items.value = listOf(todayItem("a"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.CreateDraft)
+            runCurrent()
+
+            sessionStore.toggleExcluded("a")
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertEquals(DraftCreateEmptyReason.ALL_EXCLUDED, viewModel.state.value.createConfirm!!.emptyReason)
+            assertEquals(0, draftRepository.createCount)
+        }
+
+    @Test
     fun `크레딧을 기다리는 사이 계정이 바뀌면 이전 계정의 확인창을 띄우지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val gate = CompletableDeferred<Unit>()
