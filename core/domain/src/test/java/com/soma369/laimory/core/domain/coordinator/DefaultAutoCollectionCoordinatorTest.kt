@@ -6,7 +6,6 @@ import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.provider.CollectionAvailabilityProvider
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
-import com.soma369.laimory.core.domain.usecase.CollectCalendarUseCase
 import com.soma369.laimory.core.domain.usecase.CollectHealthUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,16 +26,23 @@ import java.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultAutoCollectionCoordinatorTest {
     @Test
-    fun `권한이 있으면 두 유형을 수집한다`() =
+    fun `권한이 있으면 건강을 수집한다`() =
         runTest(UnconfinedTestDispatcher()) {
             val repository = RecordingRepository()
             val coordinator = coordinator(repository = repository)
 
             val result = coordinator.refresh()
 
-            assertEquals(AutoCollectionOutcome.Collected(1), result.outcomes[ItemType.CALENDAR])
             assertEquals(AutoCollectionOutcome.Collected(1), result.outcomes[ItemType.HEALTH])
             assertFalse(result.isIncomplete)
+        }
+
+    @Test
+    fun `일정은 저장하지 않고 볼 때마다 읽으므로 자동 수집하지 않는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val result = coordinator().refresh()
+
+            assertEquals(setOf(ItemType.HEALTH), result.outcomes.keys)
         }
 
     @Test
@@ -44,12 +50,12 @@ class DefaultAutoCollectionCoordinatorTest {
         runTest(UnconfinedTestDispatcher()) {
             // 수집기 계약이 권한 없음도 빈 목록으로 흡수해서, 호출 경계가 따로 판정해야 구분된다.
             val repository = RecordingRepository()
-            val coordinator = coordinator(availability = FakeAvailability(calendar = false), repository = repository)
+            val coordinator = coordinator(availability = FakeAvailability(health = false), repository = repository)
 
             val result = coordinator.refresh()
 
-            assertEquals(AutoCollectionOutcome.PermissionDenied, result.outcomes[ItemType.CALENDAR])
-            assertEquals(0, repository.addAllCalls)
+            assertEquals(AutoCollectionOutcome.PermissionDenied, result.outcomes[ItemType.HEALTH])
+            assertEquals(0, repository.saveCalls)
         }
 
     @Test
@@ -63,14 +69,13 @@ class DefaultAutoCollectionCoordinatorTest {
         }
 
     @Test
-    fun `한 유형이 실패해도 다른 유형은 수집한다`() =
+    fun `수집이 실패하면 최신 확보 실패로 알린다`() =
         runTest(UnconfinedTestDispatcher()) {
-            val coordinator = coordinator(repository = RecordingRepository(failCalendar = true))
+            val coordinator = coordinator(repository = RecordingRepository(fails = true))
 
             val result = coordinator.refresh()
 
-            assertEquals(AutoCollectionOutcome.Failed, result.outcomes[ItemType.CALENDAR])
-            assertEquals(AutoCollectionOutcome.Collected(1), result.outcomes[ItemType.HEALTH])
+            assertEquals(AutoCollectionOutcome.Failed, result.outcomes[ItemType.HEALTH])
             assertTrue(result.isIncomplete)
         }
 
@@ -85,21 +90,21 @@ class DefaultAutoCollectionCoordinatorTest {
 
             assertTrue(second.outcomes.isEmpty())
             assertFalse(second.isIncomplete)
-            assertEquals(1, repository.addAllCalls)
+            assertEquals(1, repository.saveCalls)
         }
 
     @Test
-    fun `실패한 유형만 곧바로 다시 시도한다`() =
+    fun `실패한 유형은 곧바로 다시 시도한다`() =
         runTest(UnconfinedTestDispatcher()) {
-            // 완료 시각을 하나로 두면 성공한 유형까지 5분마다 다시 긁거나, 실패한 유형이 5분간 묶인다.
-            val repository = RecordingRepository(failCalendar = true)
+            // 실패를 캐시하면 실패한 유형이 5분간 묶인다.
+            val repository = RecordingRepository(fails = true)
             val coordinator = coordinator(repository = repository)
             coordinator.refresh()
 
             val second = coordinator.refresh()
 
-            assertEquals(setOf(ItemType.CALENDAR), second.outcomes.keys)
-            assertEquals(2, repository.addAllAttempts)
+            assertEquals(setOf(ItemType.HEALTH), second.outcomes.keys)
+            assertEquals(2, repository.saveAttempts)
         }
 
     @Test
@@ -107,17 +112,17 @@ class DefaultAutoCollectionCoordinatorTest {
         runTest(UnconfinedTestDispatcher()) {
             // 권한은 사용자가 설정에서 바꾸는 값이라 "재시도해도 같은 답" 이 아니다.
             // 캐시하면 권한을 켜고 돌아와도 창이 닫힐 때까지 수집이 건너뛰어진다.
-            val availability = MutableAvailability(calendar = false)
+            val availability = MutableAvailability(health = false)
             val repository = RecordingRepository()
             val coordinator = coordinator(availability = availability, repository = repository)
             coordinator.refresh()
-            assertEquals(0, repository.addAllCalls)
+            assertEquals(0, repository.saveCalls)
 
-            availability.calendar = true
+            availability.health = true
             val second = coordinator.refresh()
 
-            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.CALENDAR])
-            assertEquals(1, repository.addAllCalls)
+            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.HEALTH])
+            assertEquals(1, repository.saveCalls)
         }
 
     @Test
@@ -150,7 +155,7 @@ class DefaultAutoCollectionCoordinatorTest {
 
             // 이전 세션 결과가 캐시됐다면 여기서 건너뛴다.
             val second = coordinator.refresh()
-            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.CALENDAR])
+            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.HEALTH])
         }
 
     @Test
@@ -166,7 +171,7 @@ class DefaultAutoCollectionCoordinatorTest {
 
             first.await()
             second.await()
-            assertEquals(1, repository.addAllCalls)
+            assertEquals(1, repository.saveCalls)
         }
 
     @Test
@@ -193,8 +198,8 @@ class DefaultAutoCollectionCoordinatorTest {
             repository.gate?.complete(Unit)
             val second = coordinator.refresh()
 
-            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.CALENDAR])
-            assertEquals(1, repository.addAllCalls)
+            assertEquals(AutoCollectionOutcome.Collected(1), second.outcomes[ItemType.HEALTH])
+            assertEquals(1, repository.saveCalls)
         }
 
     @Test
@@ -221,7 +226,7 @@ class DefaultAutoCollectionCoordinatorTest {
             runCurrent()
             coordinator.refresh()
 
-            assertEquals(2, repository.addAllCalls)
+            assertEquals(2, repository.saveCalls)
         }
 
     @Test
@@ -232,14 +237,14 @@ class DefaultAutoCollectionCoordinatorTest {
             val repository = RecordingRepository()
             val coordinator = coordinator(repository = repository)
             coordinator.refresh()
-            assertEquals(1, repository.addAllCalls)
+            assertEquals(1, repository.saveCalls)
 
             coordinator.discard()
             val afterDiscard = coordinator.refresh()
 
             // 이전 세션 캐시를 보고 건너뛰면 여기가 비어 있다.
-            assertEquals(AutoCollectionOutcome.Collected(1), afterDiscard.outcomes[ItemType.CALENDAR])
-            assertEquals(2, repository.addAllCalls)
+            assertEquals(AutoCollectionOutcome.Collected(1), afterDiscard.outcomes[ItemType.HEALTH])
+            assertEquals(2, repository.saveCalls)
         }
 
     @Test
@@ -253,7 +258,7 @@ class DefaultAutoCollectionCoordinatorTest {
             val started = coordinator.refresh()
             advanceUntilIdle()
 
-            assertEquals(AutoCollectionOutcome.Collected(1), started.outcomes[ItemType.CALENDAR])
+            assertEquals(AutoCollectionOutcome.Collected(1), started.outcomes[ItemType.HEALTH])
             // 정리가 새 작업을 취소했다면 다음 호출이 캐시를 못 찾아 다시 수집한다.
             val next = coordinator.refresh()
             assertTrue(next.outcomes.isEmpty())
@@ -264,31 +269,24 @@ class DefaultAutoCollectionCoordinatorTest {
         repository: RecordingRepository = RecordingRepository(),
     ) = DefaultAutoCollectionCoordinator(
         availability = availability,
-        collectCalendar = CollectCalendarUseCase(mapOf(ItemType.CALENDAR to FakeCollector(ItemType.CALENDAR)), repository),
         collectHealth = CollectHealthUseCase(mapOf(ItemType.HEALTH to FakeCollector(ItemType.HEALTH)), repository),
         applicationScope = backgroundScope,
     )
 
     /** 실행 중에 권한·지원 상태가 바뀌는 경우를 만든다. */
     private class MutableAvailability(
-        var calendar: Boolean = true,
         var healthAvailable: Boolean = true,
         var health: Boolean = true,
     ) : CollectionAvailabilityProvider {
-        override fun canCollectCalendar(): Boolean = calendar
-
         override fun isHealthConnectAvailable(): Boolean = healthAvailable
 
         override suspend fun canCollectHealth(): Boolean = health
     }
 
     private class FakeAvailability(
-        private val calendar: Boolean = true,
         private val healthAvailable: Boolean = true,
         private val health: Boolean = true,
     ) : CollectionAvailabilityProvider {
-        override fun canCollectCalendar(): Boolean = calendar
-
         override fun isHealthConnectAvailable(): Boolean = healthAvailable
 
         override suspend fun canCollectHealth(): Boolean = health
@@ -300,27 +298,25 @@ class DefaultAutoCollectionCoordinatorTest {
         override suspend fun collect(): List<SourceItem> = emptyList()
     }
 
+    /** 건강 수집은 [upsertAll] 로 저장한다. */
     private class RecordingRepository(
-        private val failCalendar: Boolean = false,
+        private val fails: Boolean = false,
         val gate: CompletableDeferred<Unit>? = null,
     ) : SourceItemRepository {
-        var addAllCalls = 0
+        var saveCalls = 0
             private set
 
         /** 실패해도 시도 자체는 센다 — 재시도 여부를 보려면 성공 횟수만으로는 알 수 없다. */
-        var addAllAttempts = 0
+        var saveAttempts = 0
             private set
 
-        override suspend fun addAll(items: List<SourceItem>): Int {
-            addAllAttempts++
-            gate?.await()
-            if (failCalendar) throw IllegalStateException("calendar")
-            addAllCalls++
-            return 1
-        }
+        override suspend fun addAll(items: List<SourceItem>): Int = 0
 
         override suspend fun upsertAll(items: List<SourceItem>): Int {
+            saveAttempts++
             gate?.await()
+            if (fails) throw IllegalStateException("health")
+            saveCalls++
             return 1
         }
 

@@ -5,7 +5,6 @@ import com.soma369.laimory.core.domain.model.collection.AutoCollectionOutcome
 import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.provider.CollectionAvailabilityProvider
-import com.soma369.laimory.core.domain.usecase.CollectCalendarUseCase
 import com.soma369.laimory.core.domain.usecase.CollectHealthUseCase
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -26,8 +25,10 @@ import javax.inject.Singleton
  * 작업을 애플리케이션 scope 의 [Deferred] 하나로 들고 있어, 여러 호출자가 같은 수집을 공유하고
  * 호출자가 취소돼도 수집은 이어진다 — `await` 취소는 그 호출자만 떠나게 한다.
  *
- * 유형별 마지막 **성공** 시각을 따로 둔다. 캘린더는 성공하고 건강은 실패한 경우 건강만 다시
- * 시도해야 하는데, 완료 시각을 하나로 두면 둘 다 5분간 묶이거나 둘 다 매번 다시 긁는다.
+ * 유형별 마지막 **성공** 시각을 따로 둔다. 지금 자동 수집 유형은 건강 하나지만, 유형이 늘면 한 유형만
+ * 실패한 경우 그 유형만 다시 시도해야 한다 — 완료 시각을 하나로 두면 모두 5분간 묶이거나 모두 매번 다시 긁는다.
+ *
+ * 캘린더는 여기서 수집하지 않는다. 저장하지 않고 볼 때마다 시스템 캘린더에서 읽으므로 최신성을 조율할 필요가 없다.
  *
  * 성공이 아닌 결과는 캐시하지 않는다 — 권한을 켜고 돌아온 사용자가 창이 닫힐 때까지 기다리게 된다.
  *
@@ -39,7 +40,6 @@ class DefaultAutoCollectionCoordinator
     @Inject
     constructor(
         private val availability: CollectionAvailabilityProvider,
-        private val collectCalendar: CollectCalendarUseCase,
         private val collectHealth: CollectHealthUseCase,
         @ApplicationCoroutineScope private val applicationScope: CoroutineScope,
     ) : AutoCollectionCoordinator {
@@ -117,7 +117,6 @@ class DefaultAutoCollectionCoordinator
             val outcomes =
                 types.associateWith { type ->
                     when (type) {
-                        ItemType.CALENDAR -> calendarOutcome()
                         ItemType.HEALTH -> healthOutcome()
                         else -> AutoCollectionOutcome.Failed
                     }
@@ -135,15 +134,6 @@ class DefaultAutoCollectionCoordinator
             return outcomes
         }
 
-        private suspend fun calendarOutcome(): AutoCollectionOutcome =
-            runOutcome {
-                if (!availability.canCollectCalendar()) {
-                    AutoCollectionOutcome.PermissionDenied
-                } else {
-                    AutoCollectionOutcome.Collected(collectCalendar())
-                }
-            }
-
         private suspend fun healthOutcome(): AutoCollectionOutcome =
             runOutcome {
                 when {
@@ -160,7 +150,7 @@ class DefaultAutoCollectionCoordinator
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                // 예외 메시지에 일정 제목·건강 값이 실릴 수 있어 값으로만 올리고 여기서 기록하지 않는다.
+                // 예외 메시지에 건강 값이 실릴 수 있어 값으로만 올리고 여기서 기록하지 않는다.
                 AutoCollectionOutcome.Failed
             }
 
@@ -171,7 +161,7 @@ class DefaultAutoCollectionCoordinator
         )
 
         private companion object {
-            val AUTO_COLLECTED_TYPES = listOf(ItemType.CALENDAR, ItemType.HEALTH)
+            val AUTO_COLLECTED_TYPES = listOf(ItemType.HEALTH)
 
             /** 이 시간 안에 결과가 나온 유형은 다시 긁지 않는다. */
             val FRESHNESS_WINDOW: Duration = Duration.ofMinutes(5)

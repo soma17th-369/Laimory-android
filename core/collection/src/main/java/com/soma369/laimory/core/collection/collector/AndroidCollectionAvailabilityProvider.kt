@@ -6,7 +6,6 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import com.soma369.laimory.core.domain.provider.CollectionAvailabilityProvider
-import com.soma369.laimory.core.util.permission.CalendarPermission
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,8 +25,6 @@ internal class AndroidCollectionAvailabilityProvider
     constructor(
         @ApplicationContext private val context: Context,
     ) : CollectionAvailabilityProvider {
-        override fun canCollectCalendar(): Boolean = CalendarPermission.isGranted(context)
-
         override fun isHealthConnectAvailable(): Boolean = HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE
 
         /**

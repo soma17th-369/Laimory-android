@@ -22,7 +22,7 @@ import javax.inject.Singleton
  * 인증 여부를 보지 않는다 — 수집은 기기 단위이고 저장은 로컬이며, 부팅 복원도 같은 규칙이다.
  * 여기서만 세션을 보면 로그인 전후로 켜졌다 꺼졌다 한다.
  *
- * `AutoCollectionProcessLifecycleObserver` 와 자리는 같지만 분리한다. 그쪽은 계정에 매인 일정·건강
+ * `AutoCollectionProcessLifecycleObserver` 와 자리는 같지만 분리한다. 그쪽은 계정에 매인 건강
  * 수집이고 이쪽은 기기에 매인 서비스 구동이라, 조건도 실패의 의미도 서로 다르다.
  */
 @Singleton
