@@ -1,7 +1,6 @@
 package com.soma369.laimory.core.collection.di
 
 import com.soma369.laimory.core.collection.collector.AndroidCollectionAvailabilityProvider
-import com.soma369.laimory.core.collection.collector.CalendarCollector
 import com.soma369.laimory.core.collection.collector.HealthCollector
 import com.soma369.laimory.core.collection.collector.PhotoCollector
 import com.soma369.laimory.core.domain.collector.Collector
@@ -24,11 +23,6 @@ internal abstract class CollectorModule {
     @IntoMap
     @ItemTypeKey(ItemType.PHOTO)
     abstract fun bindPhotoCollector(collector: PhotoCollector): Collector
-
-    @Binds
-    @IntoMap
-    @ItemTypeKey(ItemType.CALENDAR)
-    abstract fun bindCalendarCollector(collector: CalendarCollector): Collector
 
     @Binds
     @IntoMap

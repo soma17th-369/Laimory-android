@@ -1,62 +1,102 @@
-package com.soma369.laimory.core.collection.collector
+package com.soma369.laimory.core.collection.source
 
 import android.content.ContentUris
 import android.content.Context
+import android.database.ContentObserver
 import android.database.Cursor
 import android.provider.CalendarContract
-import com.soma369.laimory.core.domain.collector.Collector
+import com.soma369.laimory.core.collection.collector.CalendarAllDayPolicy
+import com.soma369.laimory.core.collection.collector.CalendarDescriptionPolicy
+import com.soma369.laimory.core.collection.collector.CalendarInstanceIdentity
+import com.soma369.laimory.core.collection.collector.resolveCalendarQuery
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
-import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceName
+import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import com.soma369.laimory.core.domain.source.CalendarSource
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.withContext
+import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
-import java.util.UUID
 import javax.inject.Inject
 
 /**
- * CalendarContract 기반 개인 일정 수집기.
+ * CalendarContract 기반 개인 일정 조회([CalendarSource] 구현).
  *
  * 사용자가 소유한(owner-access) 캘린더의 일정만 대상으로 한다 — 구독/공휴일/공유 읽기전용 캘린더는 제외한다.
- * 오늘 기준 최근 [COLLECTION_MONTHS]개월 구간의 인스턴스를 수집하며, 반복 일정은 인스턴스 단위로 펼쳐진다.
+ * 반복 일정은 인스턴스 단위로 펼쳐진다.
  *
- * 권한(READ_CALENDAR) 확인/요청은 수집기 밖(UI 계층)의 책임이다([Collector] 계약) — 권한이 없어
- * `SecurityException` 이 나면 빈 목록을 반환한다. 그 밖의 실패는 삼키지 않고 올린다. 권한 확인을 통과한
- * 뒤의 null 커서도 실제 조회 실패로 본다([resolveCalendarQuery]) — 빈 목록으로 바꾸면 자동 수집이
- * "성공 0건" 으로 확정하고 최신성까지 갱신해, 실패 안내 없이 옛 데이터를 계속 쓴다.
+ * 권한이 없어 `SecurityException` 이 나면 빈 목록을 반환한다. 그 밖의 실패는 삼키지 않고 올린다. 권한 확인을
+ * 통과한 뒤의 null 커서도 실제 조회 실패로 본다([resolveCalendarQuery]).
  *
  * 시각은 캘린더 앱에 보이는 그대로(기기 시간대 기준) 둔다. 시간 지정 일정은 BEGIN/END 를 실제 시각으로 쓰고,
  * 일정의 원본 시간대(EVENT_TIMEZONE)는 쓰지 않는다. 종일 일정은 날짜 표기인 BEGIN/END 를
  * [CalendarAllDayPolicy] 로 기기 시간대 자정으로 바꾼다. `timeZoneId` 는 모두 기기 시간대다.
  *
- * sourceKey 는 `eventId:begin` 으로 인스턴스마다 유일해, 반복 일정도 인스턴스별로 dedupe 된다.
- * `begin` 은 캘린더 원본값(종일 일정이면 UTC 자정)을 그대로 쓴다 — 바꾸면 기존 저장분과 키가 달라져 중복 저장된다.
  * 조회는 blocking I/O 이므로 [Dispatchers.IO] 에서 수행한다.
  */
-internal class CalendarCollector
+internal class CalendarProviderSource
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
-    ) : Collector {
-        override val itemType: ItemType = ItemType.CALENDAR
-
-        override suspend fun collect(): List<SourceItem> =
+    ) : CalendarSource {
+        /**
+         * Instances 조회 구간은 [window] 를 앞뒤로 [QUERY_MARGIN] 만큼 넓힌다.
+         *
+         * 종일 일정의 BEGIN/END 는 UTC 자정 날짜 표기라 provider 는 그 값으로 구간을 비교한다. 기기 시간대
+         * 자정으로 바꾼 뒤에야 창과 겹치는 일정(KST 15일 종일 = 원본 15일 09:00 KST 시작)이 창 끝(15일 06:00)에서
+         * 잘려 나간다. 넓혀 읽고 바꾼 시각으로 [RecordDateWindow.contains] 를 다시 거른다.
+         */
+        override suspend fun eventsIn(window: RecordDateWindow): List<SourceItem> =
             withContext(Dispatchers.IO) {
                 val calendarIds = queryPersonalCalendarIds()
                 if (calendarIds.isEmpty()) return@withContext emptyList()
 
                 val zone = ZoneId.systemDefault()
-                val collectedAt = Instant.now()
-                val startMillis = LocalDate.now(zone).minusMonths(COLLECTION_MONTHS).atStartOfDay(zone).toInstant().toEpochMilli()
-                val endMillis = collectedAt.toEpochMilli()
-                queryInstances(startMillis, endMillis, calendarIds, zone, collectedAt)
+                queryInstances(
+                    startMillis = window.start.minus(QUERY_MARGIN).toEpochMilli(),
+                    endMillis = window.end.plus(QUERY_MARGIN).toEpochMilli(),
+                    calendarIds = calendarIds,
+                    zone = zone,
+                    readAt = Instant.now(),
+                ).filter(window::contains)
             }
+
+        /**
+         * provider 는 일정·캘린더가 바뀌면 [CalendarContract.CONTENT_URI] 로 알린다. 동기화가 한꺼번에 여러 번
+         * 알릴 수 있어 처리 중에 쌓인 신호는 하나로 합친다.
+         *
+         * 등록이 거부되면(권한 없이 provider 를 볼 수 없는 기기 등) 신호 없이 끝난다. 갱신은 복귀·권한 변화로도 오므로
+         * 화면을 막지 않는다.
+         */
+        override fun changes(): Flow<Unit> =
+            callbackFlow {
+                val observer =
+                    object : ContentObserver(null) {
+                        override fun onChange(selfChange: Boolean) {
+                            trySend(Unit)
+                        }
+                    }
+                val isRegistered =
+                    runCatching {
+                        context.contentResolver.registerContentObserver(CalendarContract.CONTENT_URI, true, observer)
+                    }.onFailure { e ->
+                        Logger.w(LogDomain.COLLECTION, "캘린더 변경 관찰 등록 실패: ${e::class.simpleName}")
+                    }.isSuccess
+                if (!isRegistered) {
+                    close()
+                    return@callbackFlow
+                }
+                awaitClose { context.contentResolver.unregisterContentObserver(observer) }
+            }.conflate()
 
         /** owner-access(사용자 소유) 캘린더의 id 만 모은다. 구독/공휴일/공유 캘린더는 접근 레벨이 낮아 제외된다. */
         private fun queryPersonalCalendarIds(): List<Long> {
@@ -86,7 +126,7 @@ internal class CalendarCollector
             endMillis: Long,
             calendarIds: List<Long>,
             zone: ZoneId,
-            collectedAt: Instant,
+            readAt: Instant,
         ): List<SourceItem> {
             val uri =
                 CalendarContract.Instances.CONTENT_URI
@@ -111,13 +151,13 @@ internal class CalendarCollector
                         },
                 ) ?: return emptyList()
 
-            return cursor.use { readInstances(it, zone, collectedAt) }
+            return cursor.use { readInstances(it, zone, readAt) }
         }
 
         private fun readInstances(
             cursor: Cursor,
             zone: ZoneId,
-            collectedAt: Instant,
+            readAt: Instant,
         ): List<SourceItem> {
             val eventIdColumn = cursor.getColumnIndexOrThrow(CalendarContract.Instances.EVENT_ID)
             val beginColumn = cursor.getColumnIndexOrThrow(CalendarContract.Instances.BEGIN)
@@ -129,12 +169,13 @@ internal class CalendarCollector
 
             val items = ArrayList<SourceItem>(cursor.count)
             while (cursor.moveToNext()) {
+                val eventId = cursor.getLong(eventIdColumn)
                 val begin = cursor.getLong(beginColumn)
                 val end = cursor.getLong(endColumn)
                 val allDay = cursor.getInt(allDayColumn) == 1
                 items.add(
                     SourceItem(
-                        rawId = UUID.randomUUID().toString(),
+                        rawId = CalendarInstanceIdentity.rawIdOf(eventId, begin),
                         startAt = toInstant(begin, allDay, zone),
                         endAt = toInstant(end, allDay, zone),
                         timeZoneId = zone,
@@ -146,9 +187,8 @@ internal class CalendarCollector
                                 allDay = allDay,
                             ),
                         sourceName = SourceName.CALENDAR_PROVIDER,
-                        // 인스턴스 단위 키 — 반복 일정도 발생 시각별로 유일하게 dedupe 된다.
-                        sourceKey = "${cursor.getLong(eventIdColumn)}:$begin",
-                        collectedAt = collectedAt,
+                        sourceKey = CalendarInstanceIdentity.sourceKeyOf(eventId, begin),
+                        collectedAt = readAt,
                     ),
                 )
             }
@@ -163,8 +203,8 @@ internal class CalendarCollector
         ): Instant = if (allDay) CalendarAllDayPolicy.toZonedMidnight(millis, zone) else Instant.ofEpochMilli(millis)
 
         private companion object {
-            /** 오늘 기준 조회 구간(개월). 라이프로그라 과거 구간을 본다 — 미래로 바꾸려면 이 창을 조정한다. */
-            const val COLLECTION_MONTHS = 1L
+            /** 종일 일정의 UTC 자정 표기와 기기 시간대 자정 사이의 차이(최대 ±14시간)를 덮는 조회 여유. */
+            val QUERY_MARGIN: Duration = Duration.ofDays(1)
 
             val INSTANCE_PROJECTION =
                 arrayOf(
@@ -178,28 +218,3 @@ internal class CalendarCollector
                 )
         }
     }
-
-/**
- * 캘린더 조회 결과를 권한 없음과 실제 실패로 가른다.
- *
- * - `SecurityException`: 권한 미허용. 수집기 계약대로 빈 결과(null)로 돌아간다.
- * - `null` 값: `ContentResolver.query` 는 provider 가 null 을 돌려주거나 죽었을 때도 null 을 낸다.
- *   권한 확인을 통과한 뒤의 null 은 **실제 조회 실패**라 예외로 올린다. 빈 목록으로 바꾸면 자동
- *   수집이 "성공 0건" 으로 확정하고 최신성까지 갱신해, 실패 안내 없이 옛 데이터를 계속 쓴다.
- * - 그 밖의 예외: 그대로 올린다.
- *
- * 로그에는 일정 제목이 실릴 수 있는 예외 메시지를 남기지 않는다.
- *
- * `Cursor` 를 다루지 않는 순수 판정이라 JVM 테스트로 검증한다 — 커서를 만들려면 계측 환경이 필요하다.
- */
-internal fun <T> resolveCalendarQuery(
-    label: String,
-    result: Result<T?>,
-): T? {
-    val failure = result.exceptionOrNull()
-    if (failure is SecurityException) {
-        Logger.w(LogDomain.COLLECTION, "$label 읽기 권한 없음")
-        return null
-    }
-    return result.getOrThrow() ?: error("$label 조회가 결과를 반환하지 않았습니다.")
-}
