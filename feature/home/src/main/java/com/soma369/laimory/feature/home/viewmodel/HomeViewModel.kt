@@ -41,11 +41,13 @@ import com.soma369.laimory.core.domain.navigation.StageTermsPage
 import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.usecase.CheckTimelineCreatableUseCase
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.GetCalendarEventsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveCalendarChangesUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
@@ -97,11 +99,16 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onStart
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -128,6 +135,8 @@ class HomeViewModel
         private val globalLoadingHelper: GlobalLoadingHelper,
         private val autoCollectionCoordinator: AutoCollectionCoordinator,
         private val getSourceItemsInWindowUseCase: GetSourceItemsInWindowUseCase,
+        private val getCalendarEventsInWindow: GetCalendarEventsInWindowUseCase,
+        private val observeCalendarChanges: ObserveCalendarChangesUseCase,
         private val createTimelineDraftUseCase: CreateTimelineDraftUseCase,
         private val getTimelineCredit: GetTimelineCreditUseCase,
         private val checkTimelineCreatable: CheckTimelineCreatableUseCase,
@@ -155,7 +164,19 @@ class HomeViewModel
         ) {
         /** 기록 창을 자를 시간대. 기기 시간대가 바뀔 수 있어 [HomeUiIntent.RefreshToday] 마다 다시 읽는다. */
         private var zone: ZoneId = ZoneId.systemDefault()
+
+        /** 로컬 DB 에 저장된 수집 항목. 일정은 여기 없고 [calendarItems] 로 따로 읽는다. */
         private var sourceItems: List<SourceItem> = emptyList()
+
+        /** 기록 창에서 캘린더로부터 마지막으로 읽은 일정. 저장하지 않으므로 [observeCalendar] 의 계기마다 다시 읽는다. */
+        private var calendarItems: List<SourceItem> = emptyList()
+
+        /** 홈 요약이 세는 전체 항목 — 저장된 것과 캘린더에서 읽은 것을 합친다. */
+        private val summaryItems: List<SourceItem> get() = sourceItems + calendarItems
+
+        /** 일정을 다시 읽어 달라는 요청. 읽는 중에 여러 번 와도 한 번이면 된다. */
+        private val calendarRefreshRequests =
+            MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
         /** 날짜 피커가 이미 받아 온 달. 같은 달을 두 번 부르지 않는다. */
         private val loadedRecordMonths = mutableSetOf<YearMonth>()
@@ -217,6 +238,7 @@ class HomeViewModel
 
         init {
             observeSummary()
+            observeCalendar()
             observeDraftTask()
             observeAccountSession()
             observeSubmissionExclusions()
@@ -252,7 +274,7 @@ class HomeViewModel
             if (hasUserRange || current.datePicker != null || current.recordRange == range) return
             updateState {
                 copy(startTime = range.startTime, endDay = range.endDay(), endTime = range.endTime)
-                    .withSourceSummary(sourceItems, photoCandidates)
+                    .withSourceSummary(summaryItems, photoCandidates)
             }
             onRecordWindowChanged()
         }
@@ -279,7 +301,7 @@ class HomeViewModel
                     draftConsentSessionStore.isLocationSendEnabled,
                 ) { excluded, isLocationEnabled -> excluded to isLocationEnabled }
                     .drop(1)
-                    .collect { updateState { withSourceSummary(sourceItems, photoCandidates) } }
+                    .collect { updateState { withSourceSummary(summaryItems, photoCandidates) } }
             }
 
         /**
@@ -375,12 +397,51 @@ class HomeViewModel
             safeLaunch {
                 observeSourceItemsUseCase().collect { items ->
                     sourceItems = items
-                    updateState { withSourceSummary(items, photoCandidates) }
+                    updateState { withSourceSummary(summaryItems, photoCandidates) }
                     // 복귀 시점의 동의 판정만으로는 늦다 — 그때는 수집이 아직 안 실려 머문 곳이
                     // 없고, 실려 들어온 뒤에는 다시 물을 계기가 없어 주소가 영영 안 채워진다.
                     if (state.value.isLocationConsentGranted) resolveStayPlaceAddress()
                 }
             }
+
+        /**
+         * 기록 창의 일정을 캘린더에서 다시 읽는다.
+         *
+         * 일정은 저장하지 않으므로 계기마다 읽는다 — 캘린더 내용 변화, 기록 창 변화, 캘린더 권한 변화, 홈 복귀(시간이
+         * 흘러 일정이 시작된 경우). 이 ViewModel 은 Activity 범위라 유형 상세가 떠 있는 동안에도 관찰이 이어져, 상세가
+         * 보는 스냅샷도 함께 갱신된다.
+         *
+         * 새 계기가 오면 읽던 것을 버린다. 버리지 않으면 늦게 끝난 이전 창의 결과가 새 창 위에 앉는다.
+         */
+        private fun observeCalendar() =
+            safeLaunch {
+                merge(calendarRefreshRequests, observeCalendarChanges())
+                    .onStart { emit(Unit) }
+                    .collectLatest { loadCalendarItems() }
+            }
+
+        /**
+         * 읽기에 실패하면 받아 둔 일정을 그대로 둔다. 실패를 알리지 않는다 — 카드는 다음 계기에 다시 읽고, 만들기는
+         * 이 값을 쓰지 않고 그때 다시 읽어 실패를 알린다([readCalendarForSubmission]).
+         */
+        private suspend fun loadCalendarItems() {
+            val window = state.value.recordDateWindow(zone) ?: return
+            calendarItems =
+                try {
+                    getCalendarEventsInWindow(window)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // 예외 메시지에 일정 제목이 실릴 수 있어 종류만 남긴다.
+                    Logger.w(LogDomain.COLLECTION, "홈 일정 조회 실패: ${e::class.simpleName}")
+                    return
+                }
+            updateState { withSourceSummary(summaryItems, photoCandidates) }
+        }
+
+        private fun requestCalendarRefresh() {
+            calendarRefreshRequests.tryEmit(Unit)
+        }
 
         private fun observeDraftTask() =
             safeLaunch {
@@ -533,7 +594,7 @@ class HomeViewModel
                     draftStatus = DraftCreationStatus.IDLE,
                     draftRetryMode = null,
                     draftMessage = null,
-                ).withSourceSummary(sourceItems, photoCandidates)
+                ).withSourceSummary(summaryItems, photoCandidates)
             }
             resumeCreateAfterPhotoSheet()
         }
@@ -661,7 +722,7 @@ class HomeViewModel
                         draftRetryMode = null,
                         draftMessage = null,
                         selectedRecord = if (isDateChanged) cachedRecordState(session.date) else selectedRecord,
-                    ).withSourceSummary(sourceItems, photoCandidates)
+                    ).withSourceSummary(summaryItems, photoCandidates)
                 if (isDateChanged) next.withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value) else next
             }
             if (!isDateChanged && !isRangeChanged) return
@@ -814,7 +875,7 @@ class HomeViewModel
                         selectedRecord = cachedRecordState(date),
                     )
                 next
-                    .withSourceSummary(sourceItems, photoCandidates)
+                    .withSourceSummary(summaryItems, photoCandidates)
                     .withDraftTrackingForSelectedDate(draftTaskCoordinator.state.value)
             }
             onRecordWindowChanged()
@@ -839,6 +900,8 @@ class HomeViewModel
             zone = currentZone
             val now = LocalDateTime.now(clock.withZone(zone))
             updateState { if (today == now.toLocalDate()) this else copy(today = now.toLocalDate()) }
+            // 떠나 있는 동안 시작된 일정은 캘린더 내용 변화가 아니라 신호가 오지 않는다. 복귀마다 다시 읽는다.
+            requestCalendarRefresh()
 
             val current = state.value
             val defaultDate = HomeDefaultDate.of(now)
@@ -966,14 +1029,19 @@ class HomeViewModel
                         analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
                         isReviewStartPending = true
                     }
-                    awaitAutoCollection()
+                    val isAutoCollectionIncomplete = awaitAutoCollection()
                     val selectedPhotoItems = prepareSelectedPhotos(current) ?: return@safeLaunch
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
+                    // 일정도 카드가 받아 둔 값 대신 지금 다시 읽는다. 카드는 읽기 실패를 알리지 않고 이전 값을 들고 있다.
+                    val calendarEvents = readCalendarForSubmission(window)
+                    if (isAutoCollectionIncomplete || calendarEvents == null) {
+                        sendEffect(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요."))
+                    }
                     val selection =
                         prepareTimelineDraftSelectionUseCase(
                             window,
-                            collected + selectedPhotoItems,
+                            collected + calendarEvents.orEmpty() + selectedPhotoItems,
                         ).getOrElse {
                             handleDraftCreationFailure(it)
                             return@safeLaunch
@@ -1352,17 +1420,31 @@ class HomeViewModel
          * 그래도 첫 실행처럼 아직 한 번도 못 긁은 경우가 있어 상한을 두고 기다린다.
          *
          * 상한을 넘기거나 일부 유형이 실패하면 **기존 저장 데이터로 계속한다.** 수집 때문에 생성
-         * 자체가 막히면 안 된다. 다만 최신이 아닐 수 있다는 것은 알려 준다.
+         * 자체가 막히면 안 된다. 다만 최신이 아닐 수 있다는 것은 알려 준다 — 일정 조회 실패와 묶어 한 번만
+         * 알리도록 결과만 돌려준다.
+         *
+         * @return 일부 유형을 최신으로 만들지 못했는지
          */
-        private suspend fun awaitAutoCollection() {
-            val result =
-                globalLoadingHelper.withLoading(AUTO_COLLECTION_LOADING_KEY) {
+        private suspend fun awaitAutoCollection(): Boolean =
+            globalLoadingHelper
+                .withLoading(AUTO_COLLECTION_LOADING_KEY) {
                     autoCollectionCoordinator.refresh(AUTO_COLLECTION_TIMEOUT_MILLIS)
-                }
-            if (result.isIncomplete) {
-                sendEffect(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요."))
+                }.isIncomplete
+
+        /**
+         * 제출할 일정을 캘린더에서 읽는다. 실패하면 null 이다.
+         *
+         * 실패해도 일정 없이 계속한다 — 자동 수집 실패와 같은 기준이다. 일정 하나 때문에 생성 자체가 막히면 안 된다.
+         */
+        private suspend fun readCalendarForSubmission(window: RecordDateWindow): List<SourceItem>? =
+            try {
+                getCalendarEventsInWindow(window)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(LogDomain.COLLECTION, "제출 일정 조회 실패: ${e::class.simpleName}")
+                null
             }
-        }
 
         private suspend fun prepareSelectedPhotos(current: HomeUiState): List<SourceItem>? {
             val selectedIds =
@@ -1403,7 +1485,7 @@ class HomeViewModel
                     draftRetryMode = DraftRetryMode.NEW_DRAFT,
                     draftMessage = message,
                     isPhotoSheetVisible = true,
-                ).withSourceSummary(sourceItems, photoCandidates)
+                ).withSourceSummary(summaryItems, photoCandidates)
             }
             sendEffect(HomeUiSideEffect.ShowSnackbar(message))
         }
@@ -1449,7 +1531,7 @@ class HomeViewModel
                 photoCandidatesJob = null
                 requestedPhotoWindow = null
                 updateState {
-                    withSourceSummary(sourceItems, photoCandidates)
+                    withSourceSummary(summaryItems, photoCandidates)
                         .copy(isPhotoLoading = false, hasLoadedPhotoCandidates = true)
                 }
                 return
@@ -1478,7 +1560,7 @@ class HomeViewModel
                             cache.ids.all(availableIds::contains)
                         }
                     updateState {
-                        withSourceSummary(sourceItems, candidates)
+                        withSourceSummary(summaryItems, candidates)
                             .copy(isPhotoLoading = false, hasLoadedPhotoCandidates = true)
                     }
                 }
@@ -1486,8 +1568,9 @@ class HomeViewModel
 
         private fun onRecordWindowChanged() {
             preparedPhotoCache = null
+            requestCalendarRefresh()
             // 새 창의 후보를 받기 전이다. 받아 둔 게 없다고 "사진이 없다" 고 말하지 않게 한다.
-            updateState { withSourceSummary(sourceItems, photoCandidates).copy(hasLoadedPhotoCandidates = false) }
+            updateState { withSourceSummary(summaryItems, photoCandidates).copy(hasLoadedPhotoCandidates = false) }
             loadPhotoCandidates(force = false)
         }
 
@@ -1504,7 +1587,7 @@ class HomeViewModel
                     hasLoadedPhotoCandidates = false,
                     isPhotoSheetVisible = false,
                     isPhotoAccessLimited = false,
-                ).withSourceSummary(sourceItems, emptyList())
+                ).withSourceSummary(summaryItems, emptyList())
             }
         }
 
@@ -1559,6 +1642,8 @@ class HomeViewModel
             }
 
         private fun refreshSourcePermissions(intent: HomeUiIntent.RefreshSourcePermissions) {
+            // 권한을 켜거나 끈 것은 캘린더 내용 변화가 아니라 관찰 신호가 오지 않는다. 끄면 카드가 바로 비어야 한다.
+            if (intent.calendar != state.value.permissions.calendar) requestCalendarRefresh()
             updateState {
                 copy(
                     permissions =
@@ -1633,7 +1718,7 @@ class HomeViewModel
             val alignedState =
                 if (trackingTask != null && trackingTask.recordDate != selectedDate) {
                     copy(selectedDate = trackingTask.recordDate)
-                        .withSourceSummary(sourceItems, photoCandidates)
+                        .withSourceSummary(summaryItems, photoCandidates)
                 } else {
                     this
                 }

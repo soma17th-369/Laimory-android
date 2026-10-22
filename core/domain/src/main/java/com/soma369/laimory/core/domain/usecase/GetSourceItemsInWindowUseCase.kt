@@ -11,6 +11,8 @@ import javax.inject.Singleton
  *
  * 자동 수집을 마친 직후 전송 스냅샷을 확정할 때 쓴다. 화면이 들고 있던 관찰 결과는 수집이
  * 반영되기 전 값일 수 있어, 확정 시점에는 저장소를 직접 다시 본다.
+ *
+ * 일정은 저장하지 않으므로 여기 없다 — [GetCalendarEventsInWindowUseCase] 로 함께 읽는다.
  */
 @Singleton
 class GetSourceItemsInWindowUseCase

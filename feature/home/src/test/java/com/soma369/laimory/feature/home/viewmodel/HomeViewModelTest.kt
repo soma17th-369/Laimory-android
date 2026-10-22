@@ -73,14 +73,17 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
+import com.soma369.laimory.core.domain.source.CalendarSource
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.CheckTimelineCreatableUseCase
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.GetCalendarEventsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetMonthlyDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.GetPhotosInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
+import com.soma369.laimory.core.domain.usecase.ObserveCalendarChangesUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareSelectedPhotosUseCase
 import com.soma369.laimory.core.domain.usecase.PrepareTimelineDraftSelectionUseCase
@@ -112,6 +115,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -150,6 +154,7 @@ class HomeViewModelTest {
     private var isNetworkConnected = true
     private val recordRepository = FakeTimelineRecordRepository()
     private val photoSource = FakePhotoSource()
+    private val calendarSource = FakeCalendarSource()
     private val sessionStore = DraftConsentSessionStore()
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
@@ -2299,6 +2304,75 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `일정은 저장소가 아니라 캘린더에서 읽어 카드와 제출에 함께 싣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            calendarSource.events = listOf(todayCalendarEvent("cal-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+
+            createDraft(viewModel)
+
+            assertEquals(listOf("cal-1"), draftRepository.createdItems.map(SourceItem::rawId))
+        }
+
+    @Test
+    fun `캘린더에서 일정을 지우면 다시 읽어 카드에서 뺀다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            calendarSource.events = listOf(todayCalendarEvent("cal-1"))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+
+            calendarSource.events = emptyList()
+            calendarSource.changes.emit(Unit)
+            runCurrent()
+
+            assertEquals(0, viewModel.state.value.summary.calendar.candidate)
+        }
+
+    @Test
+    fun `캘린더 권한이 바뀌면 관찰 신호가 없어도 다시 읽는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            val before = calendarSource.requestedWindows.size
+
+            // 권한을 끄면 provider 가 빈 목록을 준다. 끄는 것은 캘린더 내용 변화가 아니라 신호가 오지 않는다.
+            calendarSource.events = listOf(todayCalendarEvent("cal-1"))
+            viewModel.sendIntent(
+                HomeUiIntent.RefreshSourcePermissions(
+                    photo = DataSourceStatus.DENIED,
+                    calendar = DataSourceStatus.GRANTED,
+                    location = DataSourceStatus.DENIED,
+                    notification = DataSourceStatus.DENIED,
+                ),
+            )
+            runCurrent()
+
+            assertTrue(calendarSource.requestedWindows.size > before)
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+        }
+
+    @Test
+    fun `일정 조회에 실패하면 알리되 일정 없이 생성을 이어 간다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("stored-1"))
+            val viewModel = createViewModel()
+            val effects = mutableListOf<HomeUiSideEffect>()
+            backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
+            runCurrent()
+
+            calendarSource.failure = IllegalStateException("provider")
+            createDraft(viewModel)
+
+            assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
+            assertEquals(listOf("stored-1"), draftRepository.createdItems.map(SourceItem::rawId))
+            assertTrue(effects.contains(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요.")))
+        }
+
+    @Test
     fun `최신 확보에 실패하면 알리되 기존 데이터로 생성을 이어 간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sourceRepository.items.value = listOf(todayItem("cal-1"))
@@ -2370,6 +2444,8 @@ class HomeViewModelTest {
             globalLoadingHelper = NoOpGlobalLoadingHelper,
             autoCollectionCoordinator = autoCollectionCoordinator,
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
+            getCalendarEventsInWindow = GetCalendarEventsInWindowUseCase(calendarSource, clock),
+            observeCalendarChanges = ObserveCalendarChangesUseCase(calendarSource),
             createTimelineDraftUseCase = CreateTimelineDraftUseCase(draftRepository, NoOpMessageHelper),
             getTimelineCredit = GetTimelineCreditUseCase(creditRepository),
             checkTimelineCreatable = CheckTimelineCreatableUseCase(draftRepository),
@@ -3191,6 +3267,22 @@ class HomeViewModelTest {
         )
     }
 
+    /** 오늘 09:00 일정. 테스트 시계(정오)보다 앞이라 지금까지만 읽는 조회에도 들어온다. */
+    private fun todayCalendarEvent(id: String): SourceItem {
+        val zone = ZoneId.systemDefault()
+        val start = LocalDate.now(zone).atTime(9, 0).atZone(zone).toInstant()
+        return SourceItem(
+            rawId = id,
+            startAt = start,
+            endAt = start.plusSeconds(3_600),
+            timeZoneId = zone,
+            payload = CalendarPayload("회의", null, null, false),
+            sourceName = SourceName.CALENDAR_PROVIDER,
+            sourceKey = id,
+            collectedAt = start,
+        )
+    }
+
     private fun todayHealthItem(
         id: String,
         metric: HealthPayload.Metric,
@@ -3291,6 +3383,21 @@ class HomeViewModelTest {
         override suspend fun deleteExpired(cutoff: Instant): Int = 0
 
         override suspend fun clear(itemType: ItemType) = Unit
+    }
+
+    private class FakeCalendarSource : CalendarSource {
+        var events: List<SourceItem> = emptyList()
+        var failure: Throwable? = null
+        val requestedWindows = mutableListOf<RecordDateWindow>()
+        val changes = MutableSharedFlow<Unit>()
+
+        override suspend fun eventsIn(window: RecordDateWindow): List<SourceItem> {
+            requestedWindows += window
+            failure?.let { throw it }
+            return events.filter(window::contains)
+        }
+
+        override fun changes(): Flow<Unit> = changes
     }
 
     private class FakePhotoSource : PhotoSource {
