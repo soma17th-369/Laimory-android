@@ -93,3 +93,16 @@ private fun String.isAllDayPayload(): Boolean =
     runCatching {
         Json.parseToJsonElement(this).jsonObject["allDay"]?.jsonPrimitive?.booleanOrNull
     }.getOrNull() == true
+
+/**
+ * v4 → v5: 저장된 캘린더 일정을 지운다.
+ *
+ * 일정은 이제 저장하지 않고 볼 때마다 시스템 캘린더에서 읽는다. 남겨 두면 새로 읽은 일정과 겹쳐 두 번 세고
+ * 두 번 보낸다 — 예전 행은 무작위 rawId 라 새로 읽은 것과 키가 다르다. 스키마는 그대로다.
+ */
+internal val MIGRATION_4_5 =
+    object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("DELETE FROM source_item WHERE itemType = 'CALENDAR'")
+        }
+    }
