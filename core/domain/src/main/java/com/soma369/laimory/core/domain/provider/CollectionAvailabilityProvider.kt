@@ -10,9 +10,6 @@ package com.soma369.laimory.core.domain.provider
  * 띄우면 안 된다 — 요청은 온보딩 화면의 몫이다.
  */
 interface CollectionAvailabilityProvider {
-    /** 캘린더 읽기 권한이 이미 허용돼 있는지. */
-    fun canCollectCalendar(): Boolean
-
     /** Health Connect 를 쓸 수 있는지(설치·버전). 권한과 별개다. */
     fun isHealthConnectAvailable(): Boolean
 

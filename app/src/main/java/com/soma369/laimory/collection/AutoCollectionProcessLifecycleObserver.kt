@@ -17,7 +17,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * 앱이 전경으로 올라올 때 일정·건강 자동 수집을 시작한다.
+ * 앱이 전경으로 올라올 때 건강 자동 수집을 시작한다. 일정은 저장하지 않고 볼 때마다 읽어 여기서 다루지 않는다.
  *
  * `DraftTaskProcessLifecycleObserver` 와 자리는 같지만 책임이 달라 분리한다 — 초안 작업 추적과
  * 수집은 실패해도 서로를 막지 않아야 하고, 한쪽 수정이 다른 쪽 수명주기를 건드리면 안 된다.

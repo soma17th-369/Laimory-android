@@ -11,7 +11,7 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [SourceItemEntity::class, OngoingLocationSegmentEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 internal abstract class CollectionDatabase : RoomDatabase() {

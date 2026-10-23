@@ -51,13 +51,29 @@ class LogPermissionEventUseCaseTest {
         }
 
     @Test
-    fun `사진 거부나 다른 권한 허용은 준비로 보지 않는다`() =
+    fun `캘린더 권한이 허용되면 생성 재료가 준비된 것으로 기록한다`() =
         runTest {
-            useCase.settled(AnalyticsPermissionType.PHOTO, AnalyticsPermissionState.DENIED, AnalyticsPromptContext.HOME)
+            // 일정도 저장하지 않고 볼 때마다 읽어, 저장 항목 경로로는 일정만 쓰는 사용자가 준비됨이 되지 않는다.
             useCase.settled(AnalyticsPermissionType.CALENDAR, AnalyticsPermissionState.GRANTED, AnalyticsPromptContext.HOME)
 
+            assertEquals(
+                listOf(
+                    AnalyticsDedupeKeys.DATA_COLLECTION_READY to
+                        AnalyticsEvent.DataCollectionReady(AnalyticsReadyTrigger.CALENDAR_PERMISSION),
+                ),
+                helper.loggedOnce,
+            )
+        }
+
+    @Test
+    fun `거부나 사진·캘린더 밖 권한 허용은 준비로 보지 않는다`() =
+        runTest {
+            useCase.settled(AnalyticsPermissionType.PHOTO, AnalyticsPermissionState.DENIED, AnalyticsPromptContext.HOME)
+            useCase.settled(AnalyticsPermissionType.CALENDAR, AnalyticsPermissionState.DENIED, AnalyticsPromptContext.HOME)
+            useCase.settled(AnalyticsPermissionType.NOTIFICATION_LISTENER, AnalyticsPermissionState.GRANTED, AnalyticsPromptContext.HOME)
+
             assertTrue(helper.loggedOnce.isEmpty())
-            assertEquals(2, helper.logged.size)
+            assertEquals(3, helper.logged.size)
         }
 
     private class RecordingAnalyticsHelper : AnalyticsHelper {

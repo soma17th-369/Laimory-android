@@ -354,6 +354,7 @@ class AnalyticsEventMapperTest {
             mapOf(
                 AnalyticsReadyTrigger.STORED_ITEM to "stored_item",
                 AnalyticsReadyTrigger.PHOTO_PERMISSION to "photo_permission",
+                AnalyticsReadyTrigger.CALENDAR_PERMISSION to "calendar_permission",
             ),
             AnalyticsReadyTrigger.entries,
             "ready_trigger",

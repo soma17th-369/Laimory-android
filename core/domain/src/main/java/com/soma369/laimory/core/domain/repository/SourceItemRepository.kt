@@ -14,7 +14,7 @@ import java.time.Instant
 interface SourceItemRepository {
     /**
      * 아이템을 저장한다. `sourceKey` 가 이미 존재하는 아이템은 무시한다(멱등).
-     * 사진·일정처럼 값이 변하지 않는 불변 이벤트에 쓴다.
+     * 위치·알림처럼 값이 변하지 않는 불변 이벤트에 쓴다. 일정은 저장하지 않고 볼 때마다 읽는다.
      *
      * @return 실제로 새로 저장된 아이템 수
      */

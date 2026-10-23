@@ -6,7 +6,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 /**
  * 카테고리별 수집 실행 계약.
  *
- * 각 카테고리 수집기(PhotoCollector, CalendarCollector 등)는 이 인터페이스를 구현하고,
+ * 각 카테고리 수집기(PhotoCollector, HealthCollector 등)는 이 인터페이스를 구현하고,
  * 수집 결과를 [SourceItem] 목록으로 반환한다. 저장은 수집기의 책임이 아니다 —
  * 호출자가 SourceItemRepository 를 통해 저장한다.
  *

@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,7 +42,8 @@ import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 
 /**
- * 수집 실험실의 "일정" 탭. 개인(owner-access) 캘린더의 최근 한 달 일정을 수집해 스테이징 목록으로 확인한다.
+ * 수집 실험실의 "일정" 탭. 개인(owner-access) 캘린더의 최근 한 달 일정을 읽어 확인한다.
+ * 일정은 저장하지 않고 홈·전송도 볼 때마다 같은 경로로 읽으므로, 여기서 보이는 것이 곧 보낼 후보다.
  * 화면 인셋은 컨테이너([CollectionLabRoute])가 소유하므로 이 탭은 슬롯을 채우고 자체 여백만 준다.
  */
 @Composable
@@ -79,18 +79,18 @@ private fun CalendarCollectionContent(
         }
     }
 
-    // 일정 조회는 READ_CALENDAR 가 필요하다. 수집 트리거 전에 권한을 먼저 확보한다(Collector 는 권한 무지성).
+    // 일정 조회는 READ_CALENDAR 가 필요하다. 조회 전에 권한을 먼저 확보한다(조회 포트는 권한 무지성).
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             if (CalendarPermission.isGranted(result)) {
-                onIntent(CalendarUiIntent.Collect)
+                onIntent(CalendarUiIntent.Load)
             } else {
                 scope.launch { snackbarHostState.showSnackbar("캘린더 접근 권한이 필요합니다.") }
             }
         }
-    val onCollect: () -> Unit = {
+    val onLoad: () -> Unit = {
         if (CalendarPermission.isGranted(context)) {
-            onIntent(CalendarUiIntent.Collect)
+            onIntent(CalendarUiIntent.Load)
         } else {
             permissionLauncher.launch(CalendarPermission.required())
         }
@@ -98,24 +98,15 @@ private fun CalendarCollectionContent(
 
     CalendarCollectionScreen(
         state = state,
-        onCollect = onCollect,
-        onClear = { onIntent(CalendarUiIntent.ClearStaged) },
+        onLoad = onLoad,
     )
 }
 
 @Composable
 private fun CalendarCollectionScreen(
     state: CalendarUiState,
-    onCollect: () -> Unit,
-    onClear: () -> Unit,
+    onLoad: () -> Unit,
 ) {
-    if (state.isLoading) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
     Column(
         modifier =
             Modifier
@@ -127,37 +118,33 @@ private fun CalendarCollectionScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Button(onClick = onCollect, enabled = !state.isBusy) { Text("개인 일정 수집 (최근 한 달)") }
+            Button(onClick = onLoad, enabled = !state.isBusy) { Text("개인 일정 조회 (최근 한 달)") }
             if (state.isBusy) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp))
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "스테이징 일정 (${state.stagedEvents.size}건)",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            OutlinedButton(onClick = onClear, enabled = state.stagedEvents.isNotEmpty() && !state.isBusy) {
-                Text("일괄 삭제")
-            }
-        }
+        Text(
+            text = "조회한 일정 (${state.events.size}건)",
+            style = MaterialTheme.typography.titleMedium,
+        )
 
-        if (state.stagedEvents.isEmpty()) {
+        if (state.events.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "스테이징된 일정이 없습니다.\n개인 캘린더 일정을 수집하세요.",
+                    text =
+                        if (state.hasLoaded) {
+                            "최근 한 달에 일정이 없습니다."
+                        } else {
+                            "개인 캘린더 일정을 조회하세요.\n저장하지 않고 캘린더에서 바로 읽습니다."
+                        },
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(state.stagedEvents, key = { it.rawId }) { item -> CalendarEventItem(item) }
+                items(state.events, key = { it.rawId }) { item -> CalendarEventItem(item) }
             }
         }
     }

@@ -399,6 +399,7 @@ private val AnalyticsReadyTrigger.paramValue: String
         when (this) {
             AnalyticsReadyTrigger.STORED_ITEM -> "stored_item"
             AnalyticsReadyTrigger.PHOTO_PERMISSION -> "photo_permission"
+            AnalyticsReadyTrigger.CALENDAR_PERMISSION -> "calendar_permission"
         }
 
 private val AnalyticsRecordDayRelation.paramValue: String

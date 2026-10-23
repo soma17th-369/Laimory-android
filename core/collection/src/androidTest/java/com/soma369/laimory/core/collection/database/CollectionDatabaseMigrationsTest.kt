@@ -90,7 +90,7 @@ internal class CollectionDatabaseMigrationsTest {
             val database =
                 Room
                     .databaseBuilder(context, CollectionDatabase::class.java, TEST_DB)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
             try {
                 // 미변환 행이 남아 있으면 ItemType.valueOf("LOCATION") 에서 실패한다.
@@ -168,6 +168,24 @@ internal class CollectionDatabaseMigrationsTest {
             assertEquals("시간 지정 일정 시각은 그대로", timedBegin, cursor.getLong(1))
             assertEquals(timedEnd, cursor.getLong(2))
             assertEquals("Asia/Seoul", cursor.getString(3))
+        }
+    }
+
+    @Test
+    fun v4에서_v5로_이동하면_저장된_일정만_지운다() {
+        val begin = Instant.parse("2026-10-16T03:30:00Z").toEpochMilli()
+        helper.createDatabase(TEST_DB, 4).apply {
+            insertCalendarRow("raw-calendar", begin, begin + 3_600_000, "Asia/Seoul", TIMED_PAYLOAD, "2:$begin")
+            insertV1Row(rawId = "raw-stay", itemType = "STAY", payloadJson = STAY_PAYLOAD, sourceKey = "STAY:1000")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 5, true, MIGRATION_4_5)
+
+        db.query("SELECT rawId FROM source_item").use { cursor ->
+            cursor.moveToFirst()
+            assertEquals("일정은 볼 때마다 읽으므로 저장분을 남기지 않는다", 1, cursor.count)
+            assertEquals("raw-stay", cursor.getString(0))
         }
     }
 
