@@ -1,8 +1,11 @@
 package com.soma369.laimory.core.domain.usecase
 
 import com.soma369.laimory.core.domain.model.collection.SourceItem
+import com.soma369.laimory.core.domain.model.timeline.CalendarAllDayRecordPolicy
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.source.CalendarSource
+import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,5 +23,19 @@ class GetCalendarEventsInWindowUseCase
     constructor(
         private val calendarSource: CalendarSource,
     ) {
+        /**
+         * [recordDate] 기록에 넣을 일정. 시간 지정 일정은 [window] 와 겹치면, 종일 일정은 그 날짜면 들어간다
+         * ([CalendarAllDayRecordPolicy]). 기록 창은 늘 [recordDate] 당일에 시작하므로 그날 종일 일정은 창과도 겹친다.
+         */
+        suspend operator fun invoke(
+            window: RecordDateWindow,
+            recordDate: LocalDate,
+            zone: ZoneId,
+        ): List<SourceItem> =
+            calendarSource
+                .eventsIn(window)
+                .filter { CalendarAllDayRecordPolicy.belongsTo(it, recordDate, zone) }
+
+        /** 기록 날짜가 없는 조회(수집 실험실의 최근 한 달). 종일 일정도 겹침으로만 거른다. */
         suspend operator fun invoke(window: RecordDateWindow): List<SourceItem> = calendarSource.eventsIn(window)
     }

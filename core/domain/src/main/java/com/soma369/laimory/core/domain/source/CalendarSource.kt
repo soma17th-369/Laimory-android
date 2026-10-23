@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 interface CalendarSource {
     /**
      * [window] 와 겹치는 개인 캘린더 일정 인스턴스를 시작 시각 순으로 읽는다. 포함 규칙은 [RecordDateWindow.contains] 다.
+     * 종일 일정을 기록 날짜로 거르는 것은 호출자 몫이다([com.soma369.laimory.core.domain.model.timeline.CalendarAllDayRecordPolicy]).
      *
      * - 권한이 없으면 빈 목록이다. 카드의 허용 안내는 화면이 판정한 권한 상태로 가른다.
      * - 그 밖의 조회 실패는 예외로 올린다. 빈 목록으로 바꾸면 "일정이 없는 날" 과 구별되지 않는다.

@@ -23,6 +23,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.timeline.CalendarAllDayRecordPolicy
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
@@ -443,10 +444,11 @@ class HomeViewModel
          * 그때 다시 읽어 실패를 알린다([readCalendarForSubmission]).
          */
         private suspend fun loadCalendarItems() {
-            val window = state.value.recordDateWindow(zone) ?: return
+            val current = state.value
+            val window = current.recordDateWindow(zone) ?: return
             calendarItems =
                 try {
-                    getCalendarEventsInWindow(window)
+                    getCalendarEventsInWindow(window, current.selectedDate, zone)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -854,9 +856,12 @@ class HomeViewModel
          * 가지면 다른 쪽이 못 본다.
          */
         private fun HomeUiState.withSourceSummary(
-            items: List<SourceItem>,
+            allItems: List<SourceItem>,
             photoCandidates: List<PhotoCandidate>,
         ): HomeUiState {
+            // 받아 둔 일정은 조회가 실패하면 이전 날짜의 것으로 남는다. 시간 지정 일정은 아래 창 판정이 거르지만
+            // 종일 일정은 날짜로 거르므로 여기서 이 날짜 기준으로 다시 거른다.
+            val items = allItems.inRecordOf(selectedDate)
             val window = recordDateWindow(zone)
             val selection =
                 window?.let { prepareTimelineDraftSelectionUseCase(it, items, reportsMeasurement = false).getOrNull() }
@@ -878,6 +883,10 @@ class HomeViewModel
                 excludedRawIds = selection?.let(draftConsentSessionStore::excludedRawIdsFor).orEmpty(),
             )
         }
+
+        /** [recordDate] 기록에 넣을 수 없는 종일 일정을 뺀다([CalendarAllDayRecordPolicy]). */
+        private fun List<SourceItem>.inRecordOf(recordDate: LocalDate): List<SourceItem> =
+            filter { CalendarAllDayRecordPolicy.belongsTo(it, recordDate, zone) }
 
         private fun moveToDate(date: LocalDate) {
             updateState {
@@ -1052,13 +1061,14 @@ class HomeViewModel
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
                     // 일정도 카드가 받아 둔 값 대신 지금 다시 읽는다. 카드는 읽기 실패를 알리지 않고 이전 값을 들고 있다.
-                    val freshCalendarEvents = readCalendarForSubmission(window)
+                    val freshCalendarEvents = readCalendarForSubmission(window, recordDate)
                     if (isAutoCollectionIncomplete || freshCalendarEvents == null) {
                         sendEffect(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요."))
                     }
                     // 읽지 못하면 카드가 마지막으로 읽어 둔 일정으로 계속한다. 일정을 빼고 준비하면 스토어가 목록에서
                     // 사라진 항목을 제외 집합에서도 걷어 내, 한 번의 조회 실패로 사용자가 뺀 일정이 다음 시도에 되살아난다.
-                    val calendarEvents = freshCalendarEvents ?: calendarItems
+                    // 받아 둔 일정은 다른 날짜로 읽은 것일 수 있어 이 날짜의 종일 규칙으로 다시 거른다.
+                    val calendarEvents = freshCalendarEvents ?: calendarItems.inRecordOf(recordDate)
                     val selection =
                         prepareTimelineDraftSelectionUseCase(
                             window,
@@ -1458,9 +1468,12 @@ class HomeViewModel
          * 실패해도 생성을 막지 않고 카드가 마지막으로 읽어 둔 일정으로 계속한다 — 자동 수집 실패 때 기존 데이터로
          * 계속하는 것과 같은 기준이다.
          */
-        private suspend fun readCalendarForSubmission(window: RecordDateWindow): List<SourceItem>? =
+        private suspend fun readCalendarForSubmission(
+            window: RecordDateWindow,
+            recordDate: LocalDate,
+        ): List<SourceItem>? =
             try {
-                getCalendarEventsInWindow(window)
+                getCalendarEventsInWindow(window, recordDate, zone)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
