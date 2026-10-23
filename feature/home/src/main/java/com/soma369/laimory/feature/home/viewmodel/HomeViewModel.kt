@@ -102,12 +102,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import java.time.Clock
 import java.time.LocalDate
@@ -177,6 +177,9 @@ class HomeViewModel
         /** 일정을 다시 읽어 달라는 요청. 읽는 중에 여러 번 와도 한 번이면 된다. */
         private val calendarRefreshRequests =
             MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+        /** 화면이 넘긴 캘린더 권한. 바뀔 때마다 캘린더 변경 관찰을 다시 등록한다([watchCalendarChanges]). */
+        private val calendarPermission = MutableStateFlow(state.value.permissions.calendar)
 
         /** 날짜 피커가 이미 받아 온 달. 같은 달을 두 번 부르지 않는다. */
         private val loadedRecordMonths = mutableSetOf<YearMonth>()
@@ -413,16 +416,31 @@ class HomeViewModel
          *
          * 새 계기가 오면 읽던 것을 버린다. 버리지 않으면 늦게 끝난 이전 창의 결과가 새 창 위에 앉는다.
          */
-        private fun observeCalendar() =
+        private fun observeCalendar() {
             safeLaunch {
-                merge(calendarRefreshRequests, observeCalendarChanges())
+                calendarRefreshRequests
                     .onStart { emit(Unit) }
                     .collectLatest { loadCalendarItems() }
+            }
+            watchCalendarChanges()
+        }
+
+        /**
+         * 캘린더 내용이 바뀌면 다시 읽어 달라고 요청한다. **권한이 바뀔 때마다 관찰을 새로 등록한다.**
+         *
+         * 권한 없이 등록하면 provider 가 거부해 관찰이 그대로 끝난다. 권한을 끌 때는 시스템이 프로세스를 내려 다시
+         * 시작되지만, 켤 때는 프로세스가 그대로라 한 번만 등록하면 허용한 뒤의 수정·삭제를 놓친다.
+         */
+        private fun watchCalendarChanges() =
+            safeLaunch {
+                calendarPermission.collectLatest {
+                    observeCalendarChanges().collect { requestCalendarRefresh() }
+                }
             }
 
         /**
          * 읽기에 실패하면 받아 둔 일정을 그대로 둔다. 실패를 알리지 않는다 — 카드는 다음 계기에 다시 읽고, 만들기는
-         * 이 값을 쓰지 않고 그때 다시 읽어 실패를 알린다([readCalendarForSubmission]).
+         * 그때 다시 읽어 실패를 알린다([readCalendarForSubmission]).
          */
         private suspend fun loadCalendarItems() {
             val window = state.value.recordDateWindow(zone) ?: return
@@ -1034,14 +1052,17 @@ class HomeViewModel
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
                     // 일정도 카드가 받아 둔 값 대신 지금 다시 읽는다. 카드는 읽기 실패를 알리지 않고 이전 값을 들고 있다.
-                    val calendarEvents = readCalendarForSubmission(window)
-                    if (isAutoCollectionIncomplete || calendarEvents == null) {
+                    val freshCalendarEvents = readCalendarForSubmission(window)
+                    if (isAutoCollectionIncomplete || freshCalendarEvents == null) {
                         sendEffect(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요."))
                     }
+                    // 읽지 못하면 카드가 마지막으로 읽어 둔 일정으로 계속한다. 일정을 빼고 준비하면 스토어가 목록에서
+                    // 사라진 항목을 제외 집합에서도 걷어 내, 한 번의 조회 실패로 사용자가 뺀 일정이 다음 시도에 되살아난다.
+                    val calendarEvents = freshCalendarEvents ?: calendarItems
                     val selection =
                         prepareTimelineDraftSelectionUseCase(
                             window,
-                            collected + calendarEvents.orEmpty() + selectedPhotoItems,
+                            collected + calendarEvents + selectedPhotoItems,
                         ).getOrElse {
                             handleDraftCreationFailure(it)
                             return@safeLaunch
@@ -1434,7 +1455,8 @@ class HomeViewModel
         /**
          * 제출할 일정을 캘린더에서 읽는다. 실패하면 null 이다.
          *
-         * 실패해도 일정 없이 계속한다 — 자동 수집 실패와 같은 기준이다. 일정 하나 때문에 생성 자체가 막히면 안 된다.
+         * 실패해도 생성을 막지 않고 카드가 마지막으로 읽어 둔 일정으로 계속한다 — 자동 수집 실패 때 기존 데이터로
+         * 계속하는 것과 같은 기준이다.
          */
         private suspend fun readCalendarForSubmission(window: RecordDateWindow): List<SourceItem>? =
             try {
@@ -1644,6 +1666,7 @@ class HomeViewModel
         private fun refreshSourcePermissions(intent: HomeUiIntent.RefreshSourcePermissions) {
             // 권한을 켜거나 끈 것은 캘린더 내용 변화가 아니라 관찰 신호가 오지 않는다. 끄면 카드가 바로 비어야 한다.
             if (intent.calendar != state.value.permissions.calendar) requestCalendarRefresh()
+            calendarPermission.value = intent.calendar
             updateState {
                 copy(
                     permissions =

@@ -2356,9 +2356,10 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `일정 조회에 실패하면 알리되 일정 없이 생성을 이어 간다`() =
+    fun `일정 조회에 실패하면 알리되 카드가 마지막으로 읽은 일정으로 생성을 이어 간다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            sourceRepository.items.value = listOf(todayItem("stored-1"))
+            sourceRepository.items.value = listOf(todayStay("stay-1"))
+            calendarSource.events = listOf(todayCalendarEvent("cal-1"))
             val viewModel = createViewModel()
             val effects = mutableListOf<HomeUiSideEffect>()
             backgroundScope.launch { viewModel.sideEffect.collect { effects += it } }
@@ -2368,8 +2369,59 @@ class HomeViewModelTest {
             createDraft(viewModel)
 
             assertEquals(listOf<Page>(DraftLoadingPage), navigationHelper.destinations)
-            assertEquals(listOf("stored-1"), draftRepository.createdItems.map(SourceItem::rawId))
+            // 카드에 보이던 일정이 확인창에서 사라지지 않는다.
+            assertEquals(setOf("cal-1", "stay-1"), draftRepository.createdItems.map(SourceItem::rawId).toSet())
             assertTrue(effects.contains(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요.")))
+        }
+
+    @Test
+    fun `일정 조회가 한 번 실패해도 사용자가 뺀 일정은 다음 시도에서도 빠진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 실패한 조회로 일정이 빠진 목록을 준비하면 스토어가 제외 집합에서 그 일정을 걷어 내 선택이 풀린다.
+            sourceRepository.items.value = listOf(todayStay("stay-1"))
+            calendarSource.events = listOf(todayCalendarEvent("cal-excluded"))
+            val viewModel = createViewModel()
+            runCurrent()
+            sessionStore.toggleExcluded("cal-excluded")
+
+            calendarSource.failure = IllegalStateException("provider")
+            confirmDialog.answer = ConfirmAnswer.CANCEL
+            createDraft(viewModel)
+
+            calendarSource.failure = null
+            confirmDialog.answer = ConfirmAnswer.CREATE
+            createDraft(viewModel)
+
+            assertEquals(listOf("stay-1"), draftRepository.createdItems.map(SourceItem::rawId))
+        }
+
+    @Test
+    fun `권한 없이 시작했다가 허용하면 캘린더 변경 관찰을 다시 등록한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 권한 없이 등록하면 provider 가 거부해 관찰이 끝난다. 허용해도 프로세스는 그대로라 다시 등록해야 한다.
+            calendarSource.isObservable = false
+            val viewModel = createViewModel()
+            runCurrent()
+
+            calendarSource.isObservable = true
+            calendarSource.events = listOf(todayCalendarEvent("cal-1"))
+            viewModel.sendIntent(
+                HomeUiIntent.RefreshSourcePermissions(
+                    photo = DataSourceStatus.DENIED,
+                    calendar = DataSourceStatus.GRANTED,
+                    location = DataSourceStatus.DENIED,
+                    notification = DataSourceStatus.DENIED,
+                ),
+            )
+            runCurrent()
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+
+            // 허용한 뒤의 수정·삭제는 복귀 없이 관찰 신호만으로 반영돼야 한다.
+            calendarSource.events = emptyList()
+            calendarSource.changes.emit(Unit)
+            runCurrent()
+
+            assertEquals(0, viewModel.state.value.summary.calendar.candidate)
         }
 
     @Test
@@ -3391,13 +3443,19 @@ class HomeViewModelTest {
         val requestedWindows = mutableListOf<RecordDateWindow>()
         val changes = MutableSharedFlow<Unit>()
 
+        /** false 면 권한 없이 등록한 것처럼 관찰이 신호 없이 곧장 끝난다. */
+        var isObservable = true
+
         override suspend fun eventsIn(window: RecordDateWindow): List<SourceItem> {
             requestedWindows += window
             failure?.let { throw it }
             return events.filter(window::contains)
         }
 
-        override fun changes(): Flow<Unit> = changes
+        override fun changes(): Flow<Unit> =
+            flow {
+                if (isObservable) emitAll(changes)
+            }
     }
 
     private class FakePhotoSource : PhotoSource {
