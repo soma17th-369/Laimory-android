@@ -417,11 +417,12 @@ private data class CreditPackage(
  */
 private val CREDIT_PACKAGES =
     listOf(
+        CreditPackage(amount = 1, period = "하루 치", price = "200원"),
         CreditPackage(amount = 7, period = "일주일 치", price = "1,000원"),
         CreditPackage(amount = 30, period = "한 달 치", price = "3,500원"),
     )
 
-/** 두 상품의 가격 칩 폭을 맞춘다. 글자 길이를 따르면 줄마다 칩 끝이 어긋난다. */
+/** 상품마다 가격 칩 폭을 맞춘다. 글자 길이를 따르면 줄마다 칩 끝이 어긋난다. */
 private val PRICE_CHIP_MIN_WIDTH = 88.dp
 
 private val BALANCE_PROGRESS_SIZE = 28.dp
