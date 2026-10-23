@@ -50,6 +50,8 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.settings.model.toCreditCount
+import com.soma369.laimory.feature.settings.model.toWon
+import com.soma369.laimory.feature.settings.model.unitPriceLabel
 import com.soma369.laimory.feature.settings.state.CreditUiIntent
 import com.soma369.laimory.feature.settings.state.CreditUiSideEffect
 import com.soma369.laimory.feature.settings.state.CreditUiState
@@ -330,8 +332,11 @@ private fun PackageSection(onPackageClick: (Int) -> Unit) {
 }
 
 /**
- * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격은 결제 버튼 자리의 토널 칩이고, 아직 살 수 없다는 것은 그 왼쪽
- * `준비 중` 이 알린다.
+ * 충전 상품 한 줄(Figma `CreditPackageRow` 3317:378). 가격은 버튼이 아니라 글자로 오른쪽 열에 세운다 — 줄마다 `원` 끝이 한
+ * 세로줄에 서서 가격표처럼 읽힌다. 누를 수 있다는 것은 끝의 화살표가 알린다.
+ *
+ * 아직 살 수 없다는 것은 위 배너 한 곳에서만 알린다. 줄마다 `준비 중` 을 붙이면 같은 말이 세 번 반복되고, 개당 가격이 들어갈
+ * 자리도 모자란다.
  *
  * 충전을 열지 않았어도 누를 수 있다 — 누르면 준비 중이라고 알린다. 비활성으로 두면 왜 안 눌리는지 알 수 없다. 결제를 열면 같은
  * 줄을 누를 때 곧바로 Play 결제 창이 뜬다(상품 상세 화면은 두지 않는다).
@@ -367,7 +372,7 @@ private fun PackageRow(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = item.period,
+                text = listOfNotNull(item.period, unitPriceLabel(item.amount, item.price)).joinToString(" · "),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -377,40 +382,27 @@ private fun PackageRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "준비 중",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = item.price.toWon(),
+                modifier = Modifier.widthIn(min = PRICE_MIN_WIDTH),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.End,
             )
-            PriceChip(price = item.price)
+            Icon(
+                painter = painterResource(CoreUiR.drawable.ico_default_caret_right),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
-}
-
-/**
- * 결제 버튼 자리의 가격(Figma `Price button`). 누를 수 있는 버튼처럼 토널 칩으로 둔다 — 아직 살 수 없다는 것은 왼쪽 `준비 중`
- * 과 위 배너가 알린다. 눌림은 줄 전체가 맡는다. 결제를 열면 `준비 중` 만 뺀다.
- *
- * 가격은 칩 안에서 오른쪽에 붙인다. 칩 폭이 같으니 줄마다 `원` 끝이 한 세로줄에 서서 가격을 견주기 쉽다.
- */
-@Composable
-private fun PriceChip(price: String) {
-    Text(
-        text = price,
-        modifier =
-            Modifier
-                .widthIn(min = PRICE_CHIP_MIN_WIDTH)
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
-                .padding(horizontal = Spacing.large, vertical = Spacing.small),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onPrimaryContainer,
-        textAlign = TextAlign.End,
-    )
 }
 
 private data class CreditPackage(
     val amount: Int,
     val period: String,
-    val price: String,
+    /** 원 단위 예정 가격. */
+    val price: Int,
 )
 
 /**
@@ -419,13 +411,13 @@ private data class CreditPackage(
  */
 private val CREDIT_PACKAGES =
     listOf(
-        CreditPackage(amount = 1, period = "하루 치", price = "200원"),
-        CreditPackage(amount = 7, period = "일주일 치", price = "1,000원"),
-        CreditPackage(amount = 30, period = "한 달 치", price = "3,500원"),
+        CreditPackage(amount = 1, period = "하루 치", price = 200),
+        CreditPackage(amount = 7, period = "일주일 치", price = 1_000),
+        CreditPackage(amount = 30, period = "한 달 치", price = 3_500),
     )
 
-/** 상품마다 가격 칩 폭을 맞춘다. 글자 길이를 따르면 줄마다 칩 끝이 어긋난다. */
-private val PRICE_CHIP_MIN_WIDTH = 88.dp
+/** 가격 열의 최소 폭. 글자 길이를 따르면 짧은 가격의 줄만 화살표가 오른쪽으로 붙어 열이 흔들린다. */
+private val PRICE_MIN_WIDTH = 72.dp
 
 private val BALANCE_PROGRESS_SIZE = 28.dp
 
