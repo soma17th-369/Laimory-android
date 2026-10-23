@@ -34,7 +34,7 @@ class CalendarCollectionViewModel
                 sendEffect(CalendarUiSideEffect.ShowMessage("일정 조회 완료 — ${events.size}건"))
             }
 
-        /** 오늘 기준 최근 [RECENT_MONTHS]개월. 끝은 내일 자정이지만 조회가 지금으로 자른다. */
+        /** 오늘 기준 최근 [RECENT_MONTHS]개월. 끝은 내일 자정이라 아직 시작하지 않은 오늘 일정까지 보인다. */
         private fun recentWindow(): RecordDateWindow {
             val zone = ZoneId.systemDefault()
             val today = LocalDate.now(zone)

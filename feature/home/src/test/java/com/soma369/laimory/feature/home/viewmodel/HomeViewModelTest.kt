@@ -2318,6 +2318,21 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `아직 시작하지 않은 오늘 일정도 기록 창 안이면 카드와 제출에 싣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 시계는 12:00 이고 일정은 20:00 에 시작한다.
+            calendarSource.events = listOf(todayCalendarEvent("cal-evening", hour = 20))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+
+            createDraft(viewModel)
+
+            assertEquals(listOf("cal-evening"), draftRepository.createdItems.map(SourceItem::rawId))
+        }
+
+    @Test
     fun `캘린더에서 일정을 지우면 다시 읽어 카드에서 뺀다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             calendarSource.events = listOf(todayCalendarEvent("cal-1"))
@@ -2496,7 +2511,7 @@ class HomeViewModelTest {
             globalLoadingHelper = NoOpGlobalLoadingHelper,
             autoCollectionCoordinator = autoCollectionCoordinator,
             getSourceItemsInWindowUseCase = GetSourceItemsInWindowUseCase(sourceRepository),
-            getCalendarEventsInWindow = GetCalendarEventsInWindowUseCase(calendarSource, clock),
+            getCalendarEventsInWindow = GetCalendarEventsInWindowUseCase(calendarSource),
             observeCalendarChanges = ObserveCalendarChangesUseCase(calendarSource),
             createTimelineDraftUseCase = CreateTimelineDraftUseCase(draftRepository, NoOpMessageHelper),
             getTimelineCredit = GetTimelineCreditUseCase(creditRepository),
@@ -3320,9 +3335,12 @@ class HomeViewModelTest {
     }
 
     /** 오늘 09:00 일정. 테스트 시계(정오)보다 앞이라 지금까지만 읽는 조회에도 들어온다. */
-    private fun todayCalendarEvent(id: String): SourceItem {
+    private fun todayCalendarEvent(
+        id: String,
+        hour: Int = 9,
+    ): SourceItem {
         val zone = ZoneId.systemDefault()
-        val start = LocalDate.now(zone).atTime(9, 0).atZone(zone).toInstant()
+        val start = LocalDate.now(zone).atTime(hour, 0).atZone(zone).toInstant()
         return SourceItem(
             rawId = id,
             startAt = start,
