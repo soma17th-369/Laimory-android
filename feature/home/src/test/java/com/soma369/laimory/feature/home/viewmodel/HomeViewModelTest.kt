@@ -135,6 +135,7 @@ import org.junit.Test
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -2407,6 +2408,33 @@ class HomeViewModelTest {
             // 카드에 보이던 일정이 확인창에서 사라지지 않는다.
             assertEquals(setOf("cal-1", "stay-1"), draftRepository.createdItems.map(SourceItem::rawId).toSet())
             assertTrue(effects.contains(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요.")))
+        }
+
+    @Test
+    fun `날짜를 바꾼 뒤 일정 조회에 실패해도 받아 둔 다른 날짜의 종일 일정은 카드와 제출에 싣지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 오늘 종일 일정을 받아 둔 뒤 조회가 실패한다. 어제 기록(어제 06:00 ~ 오늘 06:00)은 오늘 00:00 ~ 06:00 이
+            // 겹치지만 종일 일정은 날짜로 넣으므로 빠져야 한다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val yesterdayStay =
+                todayStay("stay-yesterday").let {
+                    it.copy(startAt = it.startAt.minus(Duration.ofDays(1)), endAt = it.endAt?.minus(Duration.ofDays(1)))
+                }
+            sourceRepository.items.value = listOf(yesterdayStay)
+            calendarSource.events = listOf(calendarAllDayEvent("all-day-today", today))
+            val viewModel = createViewModel()
+            runCurrent()
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+
+            calendarSource.failure = IllegalStateException("provider")
+            viewModel.selectDate(today.minusDays(1))
+            runCurrent()
+
+            assertEquals(0, viewModel.state.value.summary.calendar.candidate)
+
+            createDraft(viewModel)
+
+            assertEquals(listOf("stay-yesterday"), draftRepository.createdItems.map(SourceItem::rawId))
         }
 
     @Test

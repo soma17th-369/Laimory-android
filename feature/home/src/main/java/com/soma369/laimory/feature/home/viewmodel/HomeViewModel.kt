@@ -23,6 +23,7 @@ import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.settings.DefaultRecordRange
 import com.soma369.laimory.core.domain.model.terms.TermStage
+import com.soma369.laimory.core.domain.model.timeline.CalendarAllDayRecordPolicy
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
@@ -855,9 +856,12 @@ class HomeViewModel
          * 가지면 다른 쪽이 못 본다.
          */
         private fun HomeUiState.withSourceSummary(
-            items: List<SourceItem>,
+            allItems: List<SourceItem>,
             photoCandidates: List<PhotoCandidate>,
         ): HomeUiState {
+            // 받아 둔 일정은 조회가 실패하면 이전 날짜의 것으로 남는다. 시간 지정 일정은 아래 창 판정이 거르지만
+            // 종일 일정은 날짜로 거르므로 여기서 이 날짜 기준으로 다시 거른다.
+            val items = allItems.inRecordOf(selectedDate)
             val window = recordDateWindow(zone)
             val selection =
                 window?.let { prepareTimelineDraftSelectionUseCase(it, items, reportsMeasurement = false).getOrNull() }
@@ -879,6 +883,10 @@ class HomeViewModel
                 excludedRawIds = selection?.let(draftConsentSessionStore::excludedRawIdsFor).orEmpty(),
             )
         }
+
+        /** [recordDate] 기록에 넣을 수 없는 종일 일정을 뺀다([CalendarAllDayRecordPolicy]). */
+        private fun List<SourceItem>.inRecordOf(recordDate: LocalDate): List<SourceItem> =
+            filter { CalendarAllDayRecordPolicy.belongsTo(it, recordDate, zone) }
 
         private fun moveToDate(date: LocalDate) {
             updateState {
@@ -1059,7 +1067,8 @@ class HomeViewModel
                     }
                     // 읽지 못하면 카드가 마지막으로 읽어 둔 일정으로 계속한다. 일정을 빼고 준비하면 스토어가 목록에서
                     // 사라진 항목을 제외 집합에서도 걷어 내, 한 번의 조회 실패로 사용자가 뺀 일정이 다음 시도에 되살아난다.
-                    val calendarEvents = freshCalendarEvents ?: calendarItems
+                    // 받아 둔 일정은 다른 날짜로 읽은 것일 수 있어 이 날짜의 종일 규칙으로 다시 거른다.
+                    val calendarEvents = freshCalendarEvents ?: calendarItems.inRecordOf(recordDate)
                     val selection =
                         prepareTimelineDraftSelectionUseCase(
                             window,
