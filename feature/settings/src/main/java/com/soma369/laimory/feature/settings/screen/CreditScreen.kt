@@ -389,6 +389,8 @@ private fun PackageRow(
 /**
  * 결제 버튼 자리의 가격(Figma `Price button`). 누를 수 있는 버튼처럼 토널 칩으로 둔다 — 아직 살 수 없다는 것은 왼쪽 `준비 중`
  * 과 위 배너가 알린다. 눌림은 줄 전체가 맡는다. 결제를 열면 `준비 중` 만 뺀다.
+ *
+ * 가격은 칩 안에서 오른쪽에 붙인다. 칩 폭이 같으니 줄마다 `원` 끝이 한 세로줄에 서서 가격을 견주기 쉽다.
  */
 @Composable
 private fun PriceChip(price: String) {
@@ -401,7 +403,7 @@ private fun PriceChip(price: String) {
                 .padding(horizontal = Spacing.large, vertical = Spacing.small),
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.onPrimaryContainer,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.End,
     )
 }
 
