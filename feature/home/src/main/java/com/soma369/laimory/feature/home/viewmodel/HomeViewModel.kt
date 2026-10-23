@@ -443,10 +443,11 @@ class HomeViewModel
          * 그때 다시 읽어 실패를 알린다([readCalendarForSubmission]).
          */
         private suspend fun loadCalendarItems() {
-            val window = state.value.recordDateWindow(zone) ?: return
+            val current = state.value
+            val window = current.recordDateWindow(zone) ?: return
             calendarItems =
                 try {
-                    getCalendarEventsInWindow(window)
+                    getCalendarEventsInWindow(window, current.selectedDate, zone)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -1052,7 +1053,7 @@ class HomeViewModel
                     // 화면이 들고 있던 관찰 결과 대신 저장소를 다시 읽어 수집분이 반영된 값을 쓴다.
                     val collected = getSourceItemsInWindowUseCase(window).filter { it.payload !is PhotoPayload }
                     // 일정도 카드가 받아 둔 값 대신 지금 다시 읽는다. 카드는 읽기 실패를 알리지 않고 이전 값을 들고 있다.
-                    val freshCalendarEvents = readCalendarForSubmission(window)
+                    val freshCalendarEvents = readCalendarForSubmission(window, recordDate)
                     if (isAutoCollectionIncomplete || freshCalendarEvents == null) {
                         sendEffect(HomeUiSideEffect.ShowSnackbar("일부 데이터를 최신 상태로 불러오지 못했어요."))
                     }
@@ -1458,9 +1459,12 @@ class HomeViewModel
          * 실패해도 생성을 막지 않고 카드가 마지막으로 읽어 둔 일정으로 계속한다 — 자동 수집 실패 때 기존 데이터로
          * 계속하는 것과 같은 기준이다.
          */
-        private suspend fun readCalendarForSubmission(window: RecordDateWindow): List<SourceItem>? =
+        private suspend fun readCalendarForSubmission(
+            window: RecordDateWindow,
+            recordDate: LocalDate,
+        ): List<SourceItem>? =
             try {
-                getCalendarEventsInWindow(window)
+                getCalendarEventsInWindow(window, recordDate, zone)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -2333,6 +2333,26 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `종일 일정은 그 날짜 기록에만 싣고 내일 종일 일정은 창과 겹쳐도 뺀다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 기본 창은 오늘 06:00 ~ 내일 06:00 이라 내일 종일 일정(내일 00:00 ~)과 겹친다.
+            val today = LocalDate.now(ZoneId.systemDefault())
+            calendarSource.events =
+                listOf(
+                    calendarAllDayEvent("all-day-today", today),
+                    calendarAllDayEvent("all-day-tomorrow", today.plusDays(1)),
+                )
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(1, viewModel.state.value.summary.calendar.candidate)
+
+            createDraft(viewModel)
+
+            assertEquals(listOf("all-day-today"), draftRepository.createdItems.map(SourceItem::rawId))
+        }
+
+    @Test
     fun `캘린더에서 일정을 지우면 다시 읽어 카드에서 뺀다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             calendarSource.events = listOf(todayCalendarEvent("cal-1"))
@@ -3347,6 +3367,24 @@ class HomeViewModelTest {
             endAt = start.plusSeconds(3_600),
             timeZoneId = zone,
             payload = CalendarPayload("회의", null, null, false),
+            sourceName = SourceName.CALENDAR_PROVIDER,
+            sourceKey = id,
+            collectedAt = start,
+        )
+    }
+
+    private fun calendarAllDayEvent(
+        id: String,
+        date: LocalDate,
+    ): SourceItem {
+        val zone = ZoneId.systemDefault()
+        val start = date.atStartOfDay(zone).toInstant()
+        return SourceItem(
+            rawId = id,
+            startAt = start,
+            endAt = date.plusDays(1).atStartOfDay(zone).toInstant(),
+            timeZoneId = zone,
+            payload = CalendarPayload("휴가", null, null, true),
             sourceName = SourceName.CALENDAR_PROVIDER,
             sourceKey = id,
             collectedAt = start,
