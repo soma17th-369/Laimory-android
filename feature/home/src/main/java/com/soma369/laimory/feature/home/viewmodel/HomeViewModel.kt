@@ -410,8 +410,8 @@ class HomeViewModel
         /**
          * 기록 창의 일정을 캘린더에서 다시 읽는다.
          *
-         * 일정은 저장하지 않으므로 계기마다 읽는다 — 캘린더 내용 변화, 기록 창 변화, 캘린더 권한 변화, 홈 복귀(시간이
-         * 흘러 일정이 시작된 경우). 이 ViewModel 은 Activity 범위라 유형 상세가 떠 있는 동안에도 관찰이 이어져, 상세가
+         * 일정은 저장하지 않으므로 계기마다 읽는다 — 캘린더 내용 변화, 기록 창 변화, 캘린더 권한 변화, 홈 복귀(변경
+         * 신호를 놓친 경우). 이 ViewModel 은 Activity 범위라 유형 상세가 떠 있는 동안에도 관찰이 이어져, 상세가
          * 보는 스냅샷도 함께 갱신된다.
          *
          * 새 계기가 오면 읽던 것을 버린다. 버리지 않으면 늦게 끝난 이전 창의 결과가 새 창 위에 앉는다.
@@ -918,7 +918,7 @@ class HomeViewModel
             zone = currentZone
             val now = LocalDateTime.now(clock.withZone(zone))
             updateState { if (today == now.toLocalDate()) this else copy(today = now.toLocalDate()) }
-            // 떠나 있는 동안 시작된 일정은 캘린더 내용 변화가 아니라 신호가 오지 않는다. 복귀마다 다시 읽는다.
+            // 변경 신호는 provider 마다 알리는 방식이 달라 놓칠 수 있다. 복귀마다 다시 읽어 맞춘다.
             requestCalendarRefresh()
 
             val current = state.value
