@@ -40,6 +40,14 @@ class PopupNoticeQueue
         /** 아직 처리하지 않은 팝업 공지, 서버 순서(최신 순). 처리한 카드는 빠진다. 비면 띄우지 않는다. */
         val notices: StateFlow<List<PopupNotice>> = _notices.asStateFlow()
 
+        private val _total = MutableStateFlow(0)
+
+        /**
+         * 이번에 띄운 공지 건수. 받을 때 정하고, 카드를 처리해 [notices] 가 줄어도 그대로다 — 시트가 `n / N` 으로 몇 번째인지
+         * 보여 주는 데 쓴다. 모두 닫거나 앱을 새로 켜면 0 이다.
+         */
+        val total: StateFlow<Int> = _total.asStateFlow()
+
         private val refreshing = Mutex()
 
         /** `닫기` 한 공지. 앱을 새로 켜면([onAppLaunched]) 비운다. */
@@ -56,7 +64,10 @@ class PopupNoticeQueue
             try {
                 val loaded = getPopupNotices()
                 val closed = synchronized(closedIds) { closedIds.toSet() }
-                _notices.value = loaded.filterNot { it.id in closed }
+                val pending = loaded.filterNot { it.id in closed }
+                // 건수를 먼저 정한다. 시트는 대기열이 차는 순간 그려지므로 그때 건수가 맞아 있어야 한다.
+                _total.value = pending.size
+                _notices.value = pending
             } finally {
                 refreshing.unlock()
             }
@@ -95,11 +106,13 @@ class PopupNoticeQueue
         fun onAppLaunched() {
             synchronized(closedIds) { closedIds.clear() }
             _notices.value = emptyList()
+            _total.value = 0
         }
 
         /** 시트를 쓸어내리거나 바깥을 누르거나 뒤로 갔다. 남은 카드를 모두 [close] 한 것과 같다. */
         fun closeAll() {
             val remaining = _notices.getAndUpdate { emptyList() }
             synchronized(closedIds) { remaining.mapTo(closedIds, PopupNotice::id) }
+            _total.value = 0
         }
     }

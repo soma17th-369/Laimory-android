@@ -41,9 +41,53 @@ class PopupNoticeQueueTest {
             queue.close(popup(12))
             assertEquals(listOf(9L, 5L), queue.ids())
 
-            // 점을 눌러 가운데가 아닌 카드를 처리해도 그 카드만 빠진다.
+            // 첫 장이 아닌 카드를 처리해도 그 카드만 빠진다.
             queue.dismissForever(popup(5))
             assertEquals(listOf(9L), queue.ids())
+        }
+
+    @Test
+    fun `카드를 처리해도 이번에 띄운 건수는 그대로다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9), popup(5))
+            popupRepository.seen += 9
+            queue.refresh()
+            assertEquals(2, queue.total.value)
+
+            queue.close(popup(12))
+
+            assertEquals(2, queue.total.value)
+            assertEquals(listOf(5L), queue.ids())
+        }
+
+    @Test
+    fun `다시 받으면 그때 띄울 건수로 바뀐다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+            queue.close(popup(12))
+            queue.close(popup(9))
+
+            popupRepository.popups = listOf(popup(15), popup(12), popup(9))
+            queue.refresh()
+
+            assertEquals(1, queue.total.value)
+        }
+
+    @Test
+    fun `모두 닫거나 앱 화면을 새로 띄우면 건수를 비운다`() =
+        runTest {
+            popupRepository.popups = listOf(popup(12), popup(9))
+            queue.refresh()
+            queue.closeAll()
+            assertEquals(0, queue.total.value)
+
+            queue.onAppLaunched()
+            queue.refresh()
+            assertEquals(2, queue.total.value)
+
+            queue.onAppLaunched()
+            assertEquals(0, queue.total.value)
         }
 
     @Test
