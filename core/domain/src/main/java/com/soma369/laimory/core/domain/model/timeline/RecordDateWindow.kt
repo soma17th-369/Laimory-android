@@ -14,7 +14,8 @@ import java.time.ZoneId
  * 홈/타임라인 요약과 초안 생성 입력(#120)이 같은 창을 공유하므로 창 구성은 [ofDate] 한 곳에서 만든다.
  *
  * 포함 판정([contains])은 구간이 겹치기만 하면 참이라, 자정을 걸친 수면·일정처럼
- * 창 경계를 넘나드는 아이템도 그날 데이터로 딸려 들어온다.
+ * 창 경계를 넘나드는 아이템도 그날 데이터로 딸려 들어온다. 종일 일정만은 겹침이 아니라 날짜로 넣는다
+ * ([CalendarAllDayRecordPolicy]).
  */
 data class RecordDateWindow(
     val start: Instant,
