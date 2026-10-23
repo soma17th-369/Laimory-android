@@ -208,6 +208,7 @@ class MainActivity : ComponentActivity() {
             val recommendation by appUpdateGate.recommendation.collectAsStateWithLifecycle()
             val activeDialog by messageHelper.activeDialog.collectAsStateWithLifecycle()
             val popupNotices by popupNoticeQueue.notices.collectAsStateWithLifecycle()
+            val popupNoticeTotal by popupNoticeQueue.total.collectAsStateWithLifecycle()
             var currentPath by remember { mutableStateOf<String?>(null) }
             val isOnHome = currentPath == HomePage.PATH
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -279,6 +280,7 @@ class MainActivity : ComponentActivity() {
                         // 홈이 아니면 기다렸다가 띄운다.
                         PopupNoticeHost(
                             notices = popupNotices,
+                            total = popupNoticeTotal,
                             isVisible =
                                 isOnHome &&
                                     gateState != AppUpdateGateState.BLOCKED &&

@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
@@ -51,13 +50,13 @@ import com.soma369.laimory.core.ui.component.sheet.LaimorySheetDragHandle
 import com.soma369.laimory.core.ui.theme.Spacing
 
 /**
- * 홈 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트 — 썸네일형` 3204:2663 의 3204:2664 · 2685 · 2709). 처리하지 않은
- * 팝업 공지를 카드로 한 장씩 보여 준다.
+ * 홈 팝업 공지 시트(Figma `확정 / 팝업 공지 카드 시트 — 썸네일형` 3204:2663 의 3204:2664 · 2685 · 3425:378 · 3204:2709).
+ * 처리하지 않은 팝업 공지를 카드로 한 장씩 보여 준다.
  *
- * 카드마다 `다시 보지 않기`([onDismissForever]) | `닫기`([onClose]) 로 처리한다. 처리한 카드는 [notices] 에서 빠지고
- * 남은 카드의 첫 장이 보인다. 늘 첫 장부터 차례로 처리하고, 쓸어 넘기거나 점을 눌러 건너뛸 수 없다 — 공지는 하나씩 다
- * 봐야 하는 것이다. 아래 점은 남은 건수와 지금 차례만 보여 주는 표시다(1건이어도 점 하나). 카드를 누르면 원문을
- * 연다([onOpen]) — 시트와 카드는 그대로다.
+ * 카드마다 `다시 보지 않기`([onDismissForever]) | `다음`([onClose]) 으로 처리한다. 마지막 장에서는 `다음` 이 `닫기` 가
+ * 된다 — 동작은 같다. 처리한 카드는 [notices] 에서 빠지고 남은 카드의 첫 장이 보인다. 늘 첫 장부터 차례로 처리하고, 쓸어
+ * 넘겨 건너뛸 수 없다 — 공지는 하나씩 다 봐야 하는 것이다. 넘길 수 있어 보이는 점 인디케이터 대신 제목 줄 오른쪽에
+ * `n / N` 으로 몇 번째인지 보여 준다(1건이면 숨김). 카드를 누르면 원문을 연다([onOpen]) — 시트와 카드는 그대로다.
  *
  * 헤더 X 는 없다. 손잡이 · 제목 줄로 쓸어내리기 · 바깥 누름 · 뒤로가기는 남은 카드를 모두 닫는다([onCloseAll]). 본문을
  * 끌어서는 시트가 움직이지 않는다.
@@ -67,12 +66,14 @@ import com.soma369.laimory.core.ui.theme.Spacing
  * 공용 Dialog 자리(`GlobalDialogHost`)와 따로 둔다. 그쪽은 한 번에 하나만 보여 줘 다른 Dialog 가 뜨면 밀려 사라지고,
  * 계정 경계에서 통째 비워진다. 띄울지는 [isVisible] 로 받는다.
  *
+ * @param total 이번에 띄운 공지 건수(`n / N` 의 N). 카드를 처리해 [notices] 가 줄어도 그대로다.
  * @param isVisible 홈이 보이고 강제 업데이트 · 권장 업데이트 안내 · 다른 전역 Dialog 가 없을 때만 참.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PopupNoticeHost(
     notices: List<PopupNotice>,
+    total: Int,
     isVisible: Boolean,
     onOpen: (PopupNotice) -> Unit,
     onDismissForever: (PopupNotice) -> Unit,
@@ -84,6 +85,10 @@ fun PopupNoticeHost(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // 늘 대기열의 첫 장이다. 처리한 카드가 빠지면 다음 차례가 첫 장이 된다.
     val notice = notices.first()
+    // 대기열과 건수는 따로 오므로 어긋난 순간에도 숫자가 뒤집히지 않게 남은 건수를 하한으로 둔다.
+    val count = maxOf(total, notices.size)
+    val position = count - notices.size + 1
+    val isLast = notices.size == 1
     ModalBottomSheet(
         onDismissRequest = onCloseAll,
         sheetState = sheetState,
@@ -92,12 +97,26 @@ fun PopupNoticeHost(
         dragHandle = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 LaimorySheetDragHandle(topPadding = Spacing.medium, bottomPadding = Spacing.small)
-                Text(
-                    text = "공지사항",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "공지사항",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (count > 1) {
+                        // 화면 읽기 도구에는 카드가 "N건 중 n번째"로 읽히므로 숫자는 따로 읽지 않는다.
+                        Text(
+                            text = "$position / $count",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clearAndSetSemantics { },
+                        )
+                    }
+                }
             }
         },
     ) {
@@ -111,15 +130,14 @@ fun PopupNoticeHost(
                     .padding(top = Spacing.large, bottom = Spacing.extraLarge2),
             verticalArrangement = Arrangement.spacedBy(Spacing.extraLarge),
         ) {
-            // 점 · 버튼은 먼저 자리를 잡고, 카드는 남은 높이 안에서만 그린다. 짧은 창(분할 화면 · 가로)에서도 버튼이 밀려나지
+            // 버튼은 먼저 자리를 잡고, 카드는 남은 높이 안에서만 그린다. 짧은 창(분할 화면 · 가로)에서도 버튼이 밀려나지
             // 않게 하려는 것이다 — 본문은 스크롤도 끌기도 없어 밀려난 버튼에 닿을 방법이 없다.
             NoticeCard(
                 notice = notice,
-                position = "${notices.size}건 중 1번째",
+                position = "${count}건 중 ${position}번째",
                 onClick = { onOpen(notice) },
                 modifier = Modifier.weight(1f, fill = false),
             )
-            PageIndicator(count = notices.size, modifier = Modifier.align(Alignment.CenterHorizontally))
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.small),
@@ -148,7 +166,7 @@ fun PopupNoticeHost(
                         ),
                 ) {
                     Text(
-                        text = "닫기",
+                        text = if (isLast) "닫기" else "다음",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         maxLines = 1,
                     )
@@ -250,33 +268,6 @@ private fun NoticeThumbnail(
     }
 }
 
-/**
- * 남은 건수만큼 점, 지금 차례(늘 첫 칸)는 길쭉한 점. 누를 수 없는 표시다. 화면 읽기 도구에는 카드가 "N건 중 1번째"로
- * 읽히므로 점은 따로 읽지 않는다.
- */
-@Composable
-private fun PageIndicator(
-    count: Int,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.clearAndSetSemantics { },
-        horizontalArrangement = Arrangement.spacedBy(DotGap),
-    ) {
-        repeat(count) { index ->
-            val isCurrent = index == 0
-            Box(
-                modifier =
-                    Modifier
-                        .width(if (isCurrent) CurrentDotWidth else DotSize)
-                        .height(DotSize)
-                        .clip(RoundedCornerShape(DotSize / 2))
-                        .background(if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-            )
-        }
-    }
-}
-
 private val SheetCornerRadius = 24.dp
 
 private const val THUMBNAIL_ASPECT_RATIO = 1f
@@ -288,8 +279,5 @@ private const val BACKDROP_SCALE = 1.4f
 private val WordmarkWidth = 140.dp
 
 private val CardGap = 14.dp
-private val DotSize = 6.dp
-private val CurrentDotWidth = 18.dp
-private val DotGap = 6.dp
 private val ButtonHeight = 52.dp
 private val ButtonCornerRadius = 16.dp
