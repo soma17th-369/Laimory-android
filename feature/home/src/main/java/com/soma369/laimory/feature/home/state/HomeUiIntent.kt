@@ -202,6 +202,17 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object OpenHealthDetail : HomeUiIntent
 
+    /** 추천 날짜 시트에서 날을 골랐다. 날짜 피커에서 고른 것처럼 그 날과 기본 범위로 홈을 옮긴다. */
+    data class PickRecommendedDate(
+        val date: LocalDate,
+    ) : HomeUiIntent
+
+    /** 추천 날짜 시트의 `다른 날 직접 고르기`. 시트를 닫고 날짜 피커를 연다. */
+    data object PickOtherRecommendedDate : HomeUiIntent
+
+    /** 추천 날짜 시트의 `건너뛰기` · 바깥 누름 · 뒤로가기. 홈 튜토리얼을 다시 띄우지 않는다. */
+    data object SkipDateRecommendation : HomeUiIntent
+
     /** 홈 카드에서 연 권한 요청과 그 결과. 분석에 기록한다. */
     data class PermissionEvent(
         val event: DataPermissionEvent,

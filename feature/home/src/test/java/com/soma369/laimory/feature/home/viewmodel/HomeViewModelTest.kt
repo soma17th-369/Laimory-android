@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
@@ -59,6 +60,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
@@ -73,6 +75,7 @@ import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import com.soma369.laimory.core.domain.repository.StayAddressRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
+import com.soma369.laimory.core.domain.repository.TutorialRepository
 import com.soma369.laimory.core.domain.source.CalendarSource
 import com.soma369.laimory.core.domain.source.PhotoSource
 import com.soma369.laimory.core.domain.usecase.CheckTimelineCreatableUseCase
@@ -92,6 +95,9 @@ import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCa
 import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
 import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.RecommendTutorialDatesUseCase
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
@@ -169,6 +175,10 @@ class HomeViewModelTest {
     private val analyticsHelper = RecordingAnalyticsHelper()
     private val retentionDays = 30
     private val defaultRangeRepository = FakeDefaultRecordRangeRepository()
+
+    /** 기본은 이미 본 상태다. 튜토리얼 시트가 다른 시험의 흐름에 끼어들지 않게 한다. */
+    private val tutorialRepository = FakeTutorialRepository(seen = true)
+    private val homeOverlayTurn = HomeOverlayTurn()
 
     /** 기본은 오늘 정오다. 06:00 기본 날짜 규칙이 기존 테스트의 '오늘'을 흔들지 않게 한다. */
     private val clock = MutableClock(LocalDate.now(ZoneId.systemDefault()).atTime(12, 0))
@@ -2526,6 +2536,189 @@ class HomeViewModelTest {
             assertTrue(navigationHelper.destinations.isEmpty())
         }
 
+    @Test
+    fun `보지 않았으면 사진을 많이 찍은 날을 추천하는 시트를 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val today = LocalDate.now(ZoneId.systemDefault())
+            photoSource.captured = capturedPhotosOn(today.minusDays(3), count = 2) + capturedPhotosOn(today.minusDays(5), count = 4)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            val recommendation = viewModel.state.value.dateRecommendation
+            assertNotNull(recommendation)
+            assertEquals(listOf(today.minusDays(5), today.minusDays(3)), recommendation!!.dates.map { it.date })
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `이미 봤으면 추천 시트를 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(1), count = 1)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertNull(viewModel.state.value.dateRecommendation)
+            assertFalse(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `찍은 사진이 없어도 직접 고르기를 할 수 있게 빈 추천 시트를 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(emptyList<Any>(), viewModel.state.value.dateRecommendation?.dates)
+        }
+
+    @Test
+    fun `처리하지 않은 팝업 공지가 있으면 공지를 마칠 때까지 추천 시트를 미룬다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            homeOverlayTurn.setPendingNotices(true)
+            val viewModel = createViewModel()
+            runCurrent()
+            assertNull(viewModel.state.value.dateRecommendation)
+
+            homeOverlayTurn.setPendingNotices(false)
+            runCurrent()
+
+            assertNotNull(viewModel.state.value.dateRecommendation)
+        }
+
+    @Test
+    fun `이미 기록이 있는 날은 추천하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val recorded = today.minusDays(2)
+            photoSource.captured = capturedPhotosOn(recorded, count = 5) + capturedPhotosOn(today.minusDays(4), count = 1)
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(recorded) to listOf(MonthlyDailyRecord(recorded, DailyRecordStatus.SAVED, null)))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            assertEquals(listOf(today.minusDays(4)), viewModel.state.value.dateRecommendation?.dates?.map { it.date })
+        }
+
+    @Test
+    fun `추천한 날을 고르면 그 날과 기본 범위로 홈을 옮기고 다시 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val picked = today.minusDays(3)
+            photoSource.captured = capturedPhotosOn(picked, count = 2)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.dateRecommendation)
+            assertEquals(picked, state.selectedDate)
+            assertEquals(DefaultRecordRange.INITIAL, state.recordRange)
+            assertTrue(tutorialRepository.seen.value)
+            assertFalse(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `추천한 날을 고른 뒤에는 기본 날짜가 바뀌어도 그 날에 머문다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val today = LocalDate.now(ZoneId.systemDefault())
+            val picked = today.minusDays(3)
+            photoSource.captured = capturedPhotosOn(picked, count = 2)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshToday)
+            runCurrent()
+
+            assertEquals(picked, viewModel.state.value.selectedDate)
+        }
+
+    @Test
+    fun `다른 날 직접 고르기는 시트를 닫고 날짜 피커를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickOtherRecommendedDate)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.dateRecommendation)
+            assertNotNull(state.datePicker)
+            assertTrue(tutorialRepository.seen.value)
+        }
+
+    @Test
+    fun `건너뛰면 날짜를 옮기지 않고 다시 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(1), count = 1)
+            val viewModel = createViewModel()
+            runCurrent()
+            val before = viewModel.state.value.selectedDate
+
+            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation)
+            runCurrent()
+
+            assertNull(viewModel.state.value.dateRecommendation)
+            assertEquals(before, viewModel.state.value.selectedDate)
+            assertTrue(tutorialRepository.seen.value)
+            assertFalse(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `튜토리얼을 초기화하면 추천 시트를 다시 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation)
+            runCurrent()
+
+            tutorialRepository.resetAll()
+            runCurrent()
+
+            assertNotNull(viewModel.state.value.dateRecommendation)
+        }
+
+    @Test
+    fun `다른 창이 떠 있으면 닫힐 때까지 추천 시트를 미룬다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+
+            tutorialRepository.resetAll()
+            runCurrent()
+            assertNull(viewModel.state.value.dateRecommendation)
+
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+
+            assertNotNull(viewModel.state.value.dateRecommendation)
+        }
+
+    private fun capturedPhotosOn(
+        date: LocalDate,
+        count: Int,
+    ): List<PhotoCandidate> {
+        val zone = ZoneId.systemDefault()
+        return List(count) { index ->
+            val id = date.toEpochDay() * 100 + index
+            PhotoCandidate(id = id, contentUri = "content://captured/$id", takenAt = date.atTime(12, index).atZone(zone).toInstant())
+        }
+    }
+
     private fun createViewModel(): HomeViewModel =
         HomeViewModel(
             observeSourceItemsUseCase = ObserveSourceItemsUseCase(sourceRepository),
@@ -2572,10 +2765,30 @@ class HomeViewModelTest {
             logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
             observeDefaultRecordRange = ObserveDefaultRecordRangeUseCase(defaultRangeRepository),
             setDefaultRecordRange = SetDefaultRecordRangeUseCase(defaultRangeRepository),
+            observeTutorialSeen = ObserveTutorialSeenUseCase(tutorialRepository),
+            markTutorialSeen = MarkTutorialSeenUseCase(tutorialRepository),
+            recommendTutorialDates = RecommendTutorialDatesUseCase(photoSource, calendarSource),
+            homeOverlayTurn = homeOverlayTurn,
             clock = clock,
             retentionConfig = SourceItemRetentionConfig(retentionDays),
             collectionLabAccessGate = { isCollectionLabAccessible },
         )
+
+    private class FakeTutorialRepository(
+        seen: Boolean,
+    ) : TutorialRepository {
+        val seen = MutableStateFlow(seen)
+
+        override fun observeSeen(tutorial: Tutorial): Flow<Boolean> = this.seen
+
+        override suspend fun markSeen(tutorial: Tutorial) {
+            seen.value = true
+        }
+
+        override suspend fun resetAll() {
+            seen.value = false
+        }
+    }
 
     private class FakeDefaultRecordRangeRepository : DefaultRecordRangeRepository {
         val saved = MutableStateFlow(DefaultRecordRange.INITIAL)

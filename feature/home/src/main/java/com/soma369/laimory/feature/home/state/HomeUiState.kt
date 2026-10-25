@@ -114,6 +114,8 @@ data class HomeUiState(
      * 재료가 이미 지워져 만들어도 빈 초안이 된다. null 이면 제한하지 않는다(미리보기·상태 시험).
      */
     val retentionDays: Int? = null,
+    /** 홈 튜토리얼의 추천 날짜 시트. 홈 첫 진입에 한 번 뜬다([HomeDateRecommendation]). null 이면 닫혀 있다. */
+    val dateRecommendation: HomeDateRecommendation? = null,
 ) : UiState {
     /**
      * 지금 설정으로 만들어지는 기록 창. 정책을 벗어나면 null 이라 초안 생성이 막힌다.

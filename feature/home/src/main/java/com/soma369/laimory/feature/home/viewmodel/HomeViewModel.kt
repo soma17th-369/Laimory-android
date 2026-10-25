@@ -2,6 +2,7 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
@@ -33,6 +34,7 @@ import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
+import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.navigation.CollectionPage
 import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
@@ -57,6 +59,9 @@ import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCa
 import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
 import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.RecommendTutorialDatesUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -75,6 +80,7 @@ import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.DraftWindowPolicy
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
+import com.soma369.laimory.feature.home.state.HomeDateRecommendation
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeRecordState
@@ -108,6 +114,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import java.time.Clock
@@ -149,6 +156,10 @@ class HomeViewModel
         private val logPermissionEvent: LogPermissionEventUseCase,
         private val observeDefaultRecordRange: ObserveDefaultRecordRangeUseCase,
         private val setDefaultRecordRange: SetDefaultRecordRangeUseCase,
+        private val observeTutorialSeen: ObserveTutorialSeenUseCase,
+        private val markTutorialSeen: MarkTutorialSeenUseCase,
+        private val recommendTutorialDates: RecommendTutorialDatesUseCase,
+        private val homeOverlayTurn: HomeOverlayTurn,
         /** UTC 기준이다. 현지 날짜는 [zone] 으로 옮겨서 얻는다. */
         private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
@@ -249,6 +260,7 @@ class HomeViewModel
             observeSelectionLock()
             observeDefaultRange()
             observeSubmission()
+            observeTutorial()
         }
 
         /**
@@ -377,6 +389,9 @@ class HomeViewModel
                 HomeUiIntent.ChargeCredits, HomeUiIntent.OpenCredits -> openCredits()
                 HomeUiIntent.PickPhotosForCreate -> pickPhotosForCreate()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
+                is HomeUiIntent.PickRecommendedDate -> pickRecommendedDate(intent.date)
+                HomeUiIntent.PickOtherRecommendedDate -> pickOtherRecommendedDate()
+                HomeUiIntent.SkipDateRecommendation -> finishDateRecommendation()
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
@@ -641,6 +656,97 @@ class HomeViewModel
             if (!resumesCreateAfterPhotoSheet) return
             resumesCreateAfterPhotoSheet = false
             prepareDraftConsent(isResume = true)
+        }
+
+        /**
+         * 홈 튜토리얼을 띄울 때를 기다린다. 보지 않았고 처리하지 않은 팝업 공지가 없으면 추천 날짜 시트를 띄운다.
+         *
+         * 공지가 먼저 와 있으면 공지를 모두 처리한 뒤에 띄운다([HomeOverlayTurn]). debug 초기화로 보지 않은 상태가 되면 다시
+         * 띄운다 — 이 ViewModel 은 Activity 범위라 수집 실험실에 가 있어도 관찰이 이어지고, 시트는 홈이 그릴 때 보인다.
+         */
+        private fun observeTutorial() =
+            safeLaunch {
+                combine(observeTutorialSeen(Tutorial.HOME), homeOverlayTurn.hasPendingNotices) { seen, hasPendingNotices ->
+                    !seen && !hasPendingNotices
+                }.distinctUntilChanged()
+                    .collectLatest { canStart -> if (canStart) showDateRecommendation() }
+            }
+
+        /**
+         * 추천을 계산해 시트를 띄운다. 실패하면 띄우지 않는다 — 튜토리얼 때문에 홈이 막히면 안 된다.
+         *
+         * 다른 창(사진 시트·날짜 피커·확인 다이얼로그)이 떠 있거나 만드는 중이면 닫힐 때까지 기다린다. 고르는 도중에 날짜를
+         * 옮기면 안 된다. 이미 기록이 있는 날은 추천하지 않으므로 최근 한 달의 기록 상태부터 받는다 — 못 받은 달은 거르지 않는다.
+         */
+        private suspend fun showDateRecommendation() {
+            try {
+                state.first { it.dateRecommendation == null && it.canShowTutorial }
+                // 공지를 기다리는 사이 이미 끝낸 시도가 다시 불릴 수 있다. 저장된 값으로 한 번 더 본다.
+                if (observeTutorialSeen(Tutorial.HOME).first()) return
+                val today = LocalDate.now(clock.withZone(zone))
+                recommendationMonths(today).forEach { month ->
+                    try {
+                        fetchMonthlyRecords(month)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // 기록이 있는 날을 다 거르지 못할 뿐이다. 그 날을 고르면 홈이 기존 기록을 보여 준다.
+                    }
+                }
+                val current = state.value
+                val dates =
+                    recommendTutorialDates(
+                        today = today,
+                        zone = zone,
+                        range = current.defaultRange,
+                        retentionDays = current.retentionDays,
+                        excludedDates = current.savedRecordDates + current.draftRecordDates,
+                    )
+                // 계산하는 사이 다른 창이 떴으면 처음부터 다시 기다린다.
+                if (!state.value.canShowTutorial) return showDateRecommendation()
+                homeOverlayTurn.setTutorialActive(true)
+                updateState { copy(dateRecommendation = HomeDateRecommendation(dates)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(LogDomain.MVI, "튜토리얼 추천 날짜를 만들지 못함: ${e::class.simpleName}")
+            }
+        }
+
+        /** 추천이 거슬러 보는 날짜(어제부터 29일 전)가 걸친 달. */
+        private fun recommendationMonths(today: LocalDate): List<YearMonth> =
+            listOf(
+                today.minusDays(RecommendTutorialDatesUseCase.LOOKBACK_DAYS - 1L),
+                today.minusDays(1),
+            ).map(YearMonth::from).distinct()
+
+        /** 추천한 날을 골랐다. 날짜 피커에서 다른 날을 고른 것과 같다 — 그 날과 기본 범위로 확정한다. */
+        private fun pickRecommendedDate(date: LocalDate) {
+            if (!finishDateRecommendation()) return
+            val current = state.value
+            if (current.isDateLocked) return
+            if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), current.retentionDays)) return
+            val range = current.defaultRange
+            commitDatePicker(
+                HomeDatePickerSession(date = date, startTime = range.startTime, endDay = range.endDay(), endTime = range.endTime),
+            )
+        }
+
+        private fun pickOtherRecommendedDate() {
+            if (finishDateRecommendation()) showDatePicker()
+        }
+
+        /**
+         * 추천 시트를 닫고 홈 튜토리얼을 본 것으로 남긴다. 고르든 건너뛰든 다시 띄우지 않는다.
+         *
+         * @return 시트가 떠 있어 닫았는지. 이미 닫힌 뒤 늦게 온 입력은 무시한다.
+         */
+        private fun finishDateRecommendation(): Boolean {
+            if (state.value.dateRecommendation == null) return false
+            updateState { copy(dateRecommendation = null) }
+            homeOverlayTurn.setTutorialActive(false)
+            safeLaunch { markTutorialSeen(Tutorial.HOME) }
+            return true
         }
 
         /**
@@ -1837,6 +1943,16 @@ class HomeViewModel
             val ids: Set<Long>,
             val items: List<SourceItem>,
         )
+
+        /** 튜토리얼을 띄워도 되는지. 다른 창이 떠 있거나 만드는 중이면 기다린다. */
+        private val HomeUiState.canShowTutorial: Boolean
+            get() =
+                !isInputLocked &&
+                    !isDateLocked &&
+                    datePicker == null &&
+                    timeSheet == null &&
+                    !isPhotoSheetVisible &&
+                    createConfirm == null
 
         /** 지금 고른 날짜가 어디서 왔는지. 기본 날짜만 [refreshToday] 가 옮긴다. */
         private enum class DateSource {
