@@ -8,4 +8,7 @@ package com.soma369.laimory.core.domain.model.tutorial
 enum class Tutorial {
     /** 홈 첫 진입. 사진을 많이 찍은 날을 추천해 첫 타임라인을 만들어 보게 한다. */
     HOME,
+
+    /** 초안 타임라인에 처음 도착. 이벤트 고치기 · 메모 · 이벤트 더하기 · 저장을 짚는다. */
+    TIMELINE,
 }

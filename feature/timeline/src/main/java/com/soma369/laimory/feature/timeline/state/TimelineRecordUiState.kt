@@ -25,6 +25,8 @@ data class TimelineRecordUiState(
     val eventDeleteDialogState: TimelineEventDeleteDialogState = TimelineEventDeleteDialogState.Hidden,
     val emotionSheet: TimelineEmotionSheetState? = null,
     val isSavingRecord: Boolean = false,
+    /** 타임라인 첫 도착 코치마크가 짚고 있는 단계. null 이면 띄우지 않는다. */
+    val coachmark: TimelineCoachmarkStep? = null,
 ) : UiState {
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
@@ -68,6 +70,22 @@ data class TimelineRecordUiState(
             !isSavingRecord &&
                 deleteDialogState == TimelineDeleteDialogState.Hidden &&
                 eventDeleteDialogState == TimelineEventDeleteDialogState.Hidden
+
+    /**
+     * 타임라인 튜토리얼 코치마크를 시작해도 되는지 — 내용 있는 초안을 편집 화면으로 보고 있고, 메모를 쓰거나 다른 창이 떠 있지
+     * 않을 때다.
+     */
+    val canStartCoachmark: Boolean
+        get() {
+            val record = (content as? TimelineRecordUiContent.Record)?.value ?: return false
+            return coachmark == null &&
+                !record.isSaved &&
+                record.events.isNotEmpty() &&
+                mode.isEditing &&
+                memoEditor == null &&
+                emotionSheet == null &&
+                isModeSwitchable
+        }
 }
 
 /**

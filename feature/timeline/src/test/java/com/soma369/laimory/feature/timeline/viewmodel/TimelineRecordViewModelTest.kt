@@ -31,6 +31,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
@@ -38,6 +39,7 @@ import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.repository.AnalyticsTimelineEditLogRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
+import com.soma369.laimory.core.domain.repository.TutorialRepository
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteDailyRecordUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventUseCase
@@ -48,7 +50,10 @@ import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
+import com.soma369.laimory.feature.timeline.state.TimelineCoachmarkStep
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
@@ -57,6 +62,7 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiSideEffect
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -89,6 +95,9 @@ class TimelineRecordViewModelTest {
     private val draftTaskCoordinator = FakeDraftTaskCoordinator()
     private val navigationHelper = RecordingNavigationHelper()
     private val messageHelper = RecordingUserMessageHelper()
+
+    /** 기본은 이미 본 상태다. 코치마크가 다른 시험의 흐름에 끼어들지 않게 한다. */
+    private val tutorialRepository = FakeTutorialRepository(seen = true)
 
     @Test
     fun `단건 조회 성공은 기록을 세션에 저장하고 nullable 필드까지 화면에 전달한다`() =
@@ -1764,6 +1773,8 @@ class TimelineRecordViewModelTest {
             recordTimelineEditUseCase = RecordTimelineEditUseCase(editLogRepository),
             takeTimelineEditLogUseCase = TakeTimelineEditLogUseCase(editLogRepository),
             observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
+            observeTutorialSeen = ObserveTutorialSeenUseCase(tutorialRepository),
+            markTutorialSeen = MarkTutorialSeenUseCase(tutorialRepository),
             clock = clock,
         )
 
@@ -2134,6 +2145,100 @@ class TimelineRecordViewModelTest {
         viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 1L, value = memo))
         viewModel.sendIntent(TimelineRecordUiIntent.CommitMemoEdit(timelineEventId = 1L))
         advanceUntilIdle()
+    }
+
+    @Test
+    fun `보지 않았으면 내용 있는 초안에 처음 도착할 때 코치마크를 시작한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+
+            val viewModel = createLoadedViewModel()
+
+            assertEquals(TimelineCoachmarkStep.entries.first(), viewModel.state.value.coachmark)
+        }
+
+    @Test
+    fun `이미 봤으면 코치마크를 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            assertNull(viewModel.state.value.coachmark)
+        }
+
+    @Test
+    fun `저장한 기록과 빈 초안에는 코치마크를 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+
+            val saved = createLoadedViewModel(record = timeline(status = DailyRecordStatus.SAVED))
+            assertNull(saved.state.value.coachmark)
+
+            val empty = createLoadedViewModel(record = timeline(events = emptyList()))
+            assertNull(empty.state.value.coachmark)
+        }
+
+    @Test
+    fun `코치마크를 끝까지 넘기면 다시 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createLoadedViewModel()
+
+            val visited = mutableListOf<TimelineCoachmarkStep>()
+            repeat(TimelineCoachmarkStep.entries.size) {
+                viewModel.state.value.coachmark?.let(visited::add)
+                viewModel.sendIntent(TimelineRecordUiIntent.NextCoachmark)
+                advanceUntilIdle()
+            }
+
+            assertEquals(TimelineCoachmarkStep.entries, visited)
+            assertNull(viewModel.state.value.coachmark)
+            assertTrue(tutorialRepository.seen.value)
+        }
+
+    @Test
+    fun `코치마크를 건너뛰면 다시 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.SkipCoachmark)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.coachmark)
+            assertTrue(tutorialRepository.seen.value)
+        }
+
+    @Test
+    fun `화면을 떠나면 코치마크를 거두고 다음에 열 때 다시 짚는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Leave)
+            advanceUntilIdle()
+            assertNull(viewModel.state.value.coachmark)
+            assertEquals(false, tutorialRepository.seen.value)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
+            advanceUntilIdle()
+
+            assertEquals(TimelineCoachmarkStep.entries.first(), viewModel.state.value.coachmark)
+        }
+
+    private class FakeTutorialRepository(
+        seen: Boolean,
+    ) : TutorialRepository {
+        val seen = MutableStateFlow(seen)
+
+        override fun observeSeen(tutorial: Tutorial): Flow<Boolean> = this.seen
+
+        override suspend fun markSeen(tutorial: Tutorial) {
+            seen.value = true
+        }
+
+        override suspend fun resetAll() {
+            seen.value = false
+        }
     }
 
     private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {

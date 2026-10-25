@@ -19,6 +19,12 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object NavigateBack : TimelineRecordUiIntent
 
+    /** 코치마크의 다음 단계. 마지막 단계에서 보내면 타임라인 튜토리얼을 마친다. */
+    data object NextCoachmark : TimelineRecordUiIntent
+
+    /** 코치마크의 `건너뛰기` · 뒤로가기. 타임라인 튜토리얼을 마친다. */
+    data object SkipCoachmark : TimelineRecordUiIntent
+
     /** 저장 CTA — 곧바로 저장하지 않고 감정 선택 시트를 연다. */
     data object RequestSave : TimelineRecordUiIntent
 
