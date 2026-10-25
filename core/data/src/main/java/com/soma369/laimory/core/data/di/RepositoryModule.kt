@@ -19,6 +19,7 @@ import com.soma369.laimory.core.data.repository.TermsRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineDraftRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordRepositoryImpl
 import com.soma369.laimory.core.data.repository.TimelineRecordSessionRepositoryImpl
+import com.soma369.laimory.core.data.repository.TutorialRepositoryImpl
 import com.soma369.laimory.core.data.repository.UserRepositoryImpl
 import com.soma369.laimory.core.domain.repository.ActiveDraftTaskRepository
 import com.soma369.laimory.core.domain.repository.AppThemeRepository
@@ -39,6 +40,7 @@ import com.soma369.laimory.core.domain.repository.TermsRepository
 import com.soma369.laimory.core.domain.repository.TimelineDraftRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
+import com.soma369.laimory.core.domain.repository.TutorialRepository
 import com.soma369.laimory.core.domain.repository.UserRepository
 import dagger.Binds
 import dagger.Module
@@ -88,6 +90,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindDefaultRecordRangeRepository(impl: DefaultRecordRangeRepositoryImpl): DefaultRecordRangeRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindTutorialRepository(impl: TutorialRepositoryImpl): TutorialRepository
 
     @Binds
     @Singleton
