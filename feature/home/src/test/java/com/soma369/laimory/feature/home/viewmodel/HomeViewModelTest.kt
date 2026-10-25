@@ -3555,6 +3555,12 @@ class HomeViewModelTest {
             return response.filter { it.takenAt >= window.start && it.takenAt < window.end }
         }
 
+        /** 튜토리얼 추천이 읽는 직접 찍은 사진. 사진 카드가 읽는 [candidates] 와 따로 둔다. */
+        var captured: List<PhotoCandidate> = emptyList()
+
+        override suspend fun capturedPhotosIn(window: RecordDateWindow): List<PhotoCandidate> =
+            captured.filter { it.takenAt >= window.start && it.takenAt < window.end }.sortedByDescending { it.takenAt }
+
         override suspend fun collect(ids: List<Long>): List<SourceItem> {
             collectedRequests += ids
             val zone = ZoneId.systemDefault()

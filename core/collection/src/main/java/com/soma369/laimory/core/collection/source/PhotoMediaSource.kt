@@ -3,7 +3,9 @@ package com.soma369.laimory.core.collection.source
 import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
+import android.os.Build
 import android.provider.MediaStore
+import com.soma369.laimory.core.collection.collector.CapturedPhotoPolicy
 import com.soma369.laimory.core.collection.collector.PhotoExifFailureTally
 import com.soma369.laimory.core.collection.collector.PhotoExifLocationReader
 import com.soma369.laimory.core.collection.collector.PhotoMediaRow
@@ -52,6 +54,17 @@ internal class PhotoMediaSource
                 )
             }
 
+        /** [photosIn] 과 같은 구간·시각 규칙으로 읽되, [CapturedPhotoPolicy] 가 직접 찍은 사진으로 보는 것만 남긴다. */
+        override suspend fun capturedPhotosIn(window: RecordDateWindow): List<PhotoCandidate> =
+            withContext(Dispatchers.IO) {
+                queryCandidates(
+                    startMillis = window.start.toEpochMilli(),
+                    endMillis = window.end.toEpochMilli(),
+                    projection = CAPTURED_PROJECTION,
+                    rowFilterOf = ::capturedRowFilter,
+                )
+            }
+
         override suspend fun collect(ids: List<Long>): List<SourceItem> =
             withContext(Dispatchers.IO) {
                 if (ids.isEmpty()) return@withContext emptyList()
@@ -66,9 +79,12 @@ internal class PhotoMediaSource
                 }
             }
 
+        /** @param rowFilterOf 커서의 컬럼 위치를 한 번 잡아 행마다 남길지 정하는 판정을 만든다. 없으면 모두 남긴다. */
         private fun queryCandidates(
             startMillis: Long,
             endMillis: Long,
+            projection: Array<String> = CANDIDATE_PROJECTION,
+            rowFilterOf: ((Cursor) -> (Cursor) -> Boolean)? = null,
         ): List<PhotoCandidate> {
             // DATE_ADDED 는 seconds 단위이므로 범위 경계의 epoch millis 를 seconds 로 환산한다.
             val startSeconds = startMillis / MILLIS_PER_SECOND
@@ -77,7 +93,7 @@ internal class PhotoMediaSource
                 runCatching {
                     context.contentResolver.query(
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        CANDIDATE_PROJECTION,
+                        projection,
                         CANDIDATE_SELECTION,
                         arrayOf(
                             startMillis.toString(),
@@ -95,16 +111,20 @@ internal class PhotoMediaSource
 
             // 유효 시각(DATE_TAKEN·DATE_ADDED fallback) 기준 최신순 정렬은 커서 SQL 대신 메모리에서 한다
             // (초안 범위로 제한되어 작고, MediaStore 가 정렬 표현식을 제한하는 경우를 피한다).
-            return cursor.use { readCandidates(it) }.sortedByDescending { it.takenAt }
+            return cursor.use { readCandidates(it, rowFilterOf?.invoke(it)) }.sortedByDescending { it.takenAt }
         }
 
-        private fun readCandidates(cursor: Cursor): List<PhotoCandidate> {
+        private fun readCandidates(
+            cursor: Cursor,
+            rowFilter: ((Cursor) -> Boolean)?,
+        ): List<PhotoCandidate> {
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val dateTakenColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
 
             val candidates = ArrayList<PhotoCandidate>(cursor.count)
             while (cursor.moveToNext()) {
+                if (rowFilter != null && !rowFilter(cursor)) continue
                 val dateTakenMillis = if (cursor.isNull(dateTakenColumn)) null else cursor.getLong(dateTakenColumn)
                 val dateAddedSeconds = if (cursor.isNull(dateAddedColumn)) null else cursor.getLong(dateAddedColumn)
                 // 저장(toSourceItem)과 같은 규칙으로 유효 시각을 정한다. 쿼리에서 걸러지지만 방어적으로 무효면 건너뛴다.
@@ -122,6 +142,20 @@ internal class PhotoMediaSource
                 )
             }
             return candidates
+        }
+
+        /** [CAPTURED_PROJECTION] 으로 읽은 커서의 행이 직접 찍은 사진인지 판정한다. */
+        private fun capturedRowFilter(cursor: Cursor): (Cursor) -> Boolean {
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+            val pathColumn = cursor.getColumnIndexOrThrow(PATH_COLUMN)
+            val captureInfoColumns = CAPTURE_INFO_COLUMNS.map(cursor::getColumnIndexOrThrow)
+            return { row ->
+                CapturedPhotoPolicy.isCaptured(
+                    displayName = row.getString(nameColumn),
+                    path = row.getString(pathColumn),
+                    hasCaptureInfo = captureInfoColumns.takeIf { it.isNotEmpty() }?.any { !row.isNull(it) },
+                )
+            }
         }
 
         /**
@@ -205,6 +239,25 @@ internal class PhotoMediaSource
                     MediaStore.Images.Media.DATE_TAKEN,
                     MediaStore.Images.Media.DATE_ADDED,
                 )
+
+            /**
+             * 사진이 놓인 경로. API 29 부터 `RELATIVE_PATH`(`DCIM/Camera/`)이고, 그 전에는 파일 전체 경로(`DATA`)뿐이다.
+             * API 28 의 `DATA` 는 읽기만 하므로 저장소 정책과 무관하다.
+             */
+            @Suppress("DEPRECATION")
+            val PATH_COLUMN: String =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.MediaColumns.RELATIVE_PATH else MediaStore.MediaColumns.DATA
+
+            /** 촬영 정보 컬럼(API 30+). 하나라도 값이 있으면 카메라가 찍은 사진으로 본다. 그 전에는 없다. */
+            val CAPTURE_INFO_COLUMNS: List<String> =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    listOf(MediaStore.Images.Media.ISO, MediaStore.Images.Media.EXPOSURE_TIME)
+                } else {
+                    emptyList()
+                }
+
+            val CAPTURED_PROJECTION: Array<String> =
+                CANDIDATE_PROJECTION + MediaStore.Images.Media.DISPLAY_NAME + PATH_COLUMN + CAPTURE_INFO_COLUMNS
 
             val ROW_PROJECTION =
                 arrayOf(
