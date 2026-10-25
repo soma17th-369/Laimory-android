@@ -57,6 +57,7 @@ import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
+import com.soma369.laimory.core.ui.component.coachmark.CoachmarkHoleShape
 import com.soma369.laimory.core.ui.component.coachmark.CoachmarkState
 import com.soma369.laimory.core.ui.component.coachmark.LaimoryCoachmark
 import com.soma369.laimory.core.ui.component.coachmark.coachmarkTarget
@@ -282,6 +283,8 @@ private fun HomeContent(
             total = HomeCoachmarkStep.entries.size,
             onNext = { onIntent(HomeUiIntent.NextCoachmark) },
             onSkip = { onIntent(HomeUiIntent.SkipCoachmark) },
+            // 지난 기록은 둥근 아이콘이라 원으로 뚫는다.
+            holeShape = if (step == HomeCoachmarkStep.PAST_RECORDS) CoachmarkHoleShape.CIRCLE else CoachmarkHoleShape.ROUNDED_RECT,
         )
     }
 

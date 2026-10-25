@@ -59,6 +59,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
  * 말풍선은 구멍이 화면 위쪽에 있으면 그 아래, 아래쪽에 있으면 그 위에 둔다.
  *
  * @param targetKeys 짚을 자리. 여럿이면 모두를 덮는 사각형 하나로 뚫는다.
+ * @param holeShape 구멍 모양. 둥근 버튼은 [CoachmarkHoleShape.CIRCLE] 로 뚫는다.
  * @param position 이 단계의 순번(1부터). [total] 과 함께 `n / N` 으로 보인다.
  */
 @Composable
@@ -70,6 +71,7 @@ fun LaimoryCoachmark(
     total: Int,
     onNext: () -> Unit,
     onSkip: () -> Unit,
+    holeShape: CoachmarkHoleShape = CoachmarkHoleShape.ROUNDED_RECT,
 ) {
     LaunchedEffect(targetKeys) { state.bringIntoView(targetKeys) }
     Dialog(
@@ -108,14 +110,25 @@ fun LaimoryCoachmark(
             ) {
                 drawRect(scrim)
                 hole?.let { rect ->
-                    val radius = HoleCornerRadius.toPx()
-                    drawRoundRect(
-                        color = Color.Black,
-                        topLeft = rect.topLeft,
-                        size = rect.size,
-                        cornerRadius = CornerRadius(radius, radius),
-                        blendMode = BlendMode.Clear,
-                    )
+                    when (holeShape) {
+                        CoachmarkHoleShape.ROUNDED_RECT -> {
+                            val radius = HoleCornerRadius.toPx()
+                            drawRoundRect(
+                                color = Color.Black,
+                                topLeft = rect.topLeft,
+                                size = rect.size,
+                                cornerRadius = CornerRadius(radius, radius),
+                                blendMode = BlendMode.Clear,
+                            )
+                        }
+                        CoachmarkHoleShape.CIRCLE ->
+                            drawCircle(
+                                color = Color.Black,
+                                radius = rect.maxDimension / 2,
+                                center = rect.center,
+                                blendMode = BlendMode.Clear,
+                            )
+                    }
                 }
             }
             CoachmarkBubbleLayout(hole = hole) {
