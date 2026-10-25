@@ -72,6 +72,7 @@ import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItemStyle
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.component.coachmark.CoachmarkHoleShape
 import com.soma369.laimory.core.ui.component.coachmark.CoachmarkState
 import com.soma369.laimory.core.ui.component.coachmark.LaimoryCoachmark
 import com.soma369.laimory.core.ui.component.coachmark.coachmarkTarget
@@ -195,6 +196,8 @@ private fun TimelineRecordContent(
             total = TimelineCoachmarkStep.entries.size,
             onNext = { onIntent(TimelineRecordUiIntent.NextCoachmark) },
             onSkip = { onIntent(TimelineRecordUiIntent.SkipCoachmark) },
+            // 이벤트 더하기는 둥근 떠 있는 버튼이라 원으로 뚫는다.
+            holeShape = if (step == TimelineCoachmarkStep.ADD_EVENT) CoachmarkHoleShape.CIRCLE else CoachmarkHoleShape.ROUNDED_RECT,
         )
     }
 
@@ -615,10 +618,12 @@ private fun SaveRecordButton(
     Button(
         onClick = onClick,
         enabled = enabled,
+        // 바깥 여백 안쪽에 붙인다. 코치마크가 여백까지 짚으면 버튼보다 큰 구멍이 화면 끝까지 뚫린다.
         modifier =
-            modifier
+            Modifier
                 .fillMaxWidth()
                 .padding(horizontal = Spacing.large, vertical = Spacing.medium)
+                .then(modifier)
                 .height(52.dp),
         shape = MaterialTheme.shapes.medium,
     ) {
