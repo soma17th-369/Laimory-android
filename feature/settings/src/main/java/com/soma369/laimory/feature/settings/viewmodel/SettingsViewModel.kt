@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.settings.viewmodel
 
 import androidx.lifecycle.viewModelScope
+import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
@@ -11,13 +12,17 @@ import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
 import com.soma369.laimory.core.domain.navigation.CreditPage
+import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
 import com.soma369.laimory.core.domain.navigation.NotificationSettingsPage
 import com.soma369.laimory.core.domain.navigation.ThemeSettingsPage
+import com.soma369.laimory.core.domain.navigation.TimelinePage
+import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
@@ -26,6 +31,7 @@ import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCas
 import com.soma369.laimory.core.domain.usecase.credit.GetRemainingCreditsUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.ResetTutorialsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
@@ -37,6 +43,7 @@ import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiSideEffect
 import com.soma369.laimory.feature.settings.state.SettingsUiState
+import com.soma369.laimory.feature.settings.state.UsageGuideTimelineTarget
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -64,6 +71,9 @@ class SettingsViewModel
         private val getRemainingCredits: GetRemainingCreditsUseCase,
         private val creditBalanceStore: CreditBalanceStore,
         private val analyticsHelper: AnalyticsHelper,
+        private val resetTutorials: ResetTutorialsUseCase,
+        private val tutorialReplayRequests: TutorialReplayRequests,
+        private val getDailyRecords: GetDailyRecordsUseCase,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
         private var logoutConfirmJob: Job? = null
         private var accountDeleteConfirmJob: Job? = null
@@ -169,6 +179,11 @@ class SettingsViewModel
                     navigationHelper.navigateTo(ThemeSettingsPage)
                 SettingsUiIntent.NoticesClicked -> navigationHelper.navigateTo(NoticesPage)
                 SettingsUiIntent.InquiryClicked -> navigationHelper.navigateTo(InquiryPage)
+                SettingsUiIntent.UsageGuideClicked -> openUsageGuide()
+                SettingsUiIntent.UsageGuideDismissed -> updateState { copy(usageGuide = null) }
+                SettingsUiIntent.ReplayFullTutorial -> replayFullTutorial()
+                SettingsUiIntent.ReplayHomeTutorial -> replayHomeTutorial()
+                SettingsUiIntent.ReplayTimelineTutorial -> replayTimelineTutorial()
                 SettingsUiIntent.RefreshNoticeBadge -> refreshNoticeBadge()
                 SettingsUiIntent.RefreshCredits -> refreshCredits()
                 SettingsUiIntent.CreditsClicked -> navigationHelper.navigateTo(CreditPage)
@@ -179,6 +194,59 @@ class SettingsViewModel
                 SettingsUiIntent.AccountDeleteClicked -> requestAccountDeleteConfirm()
                 SettingsUiIntent.AccountDeleteDismissed -> Unit
                 SettingsUiIntent.AccountDeleteConfirmed -> withdrawAccount()
+            }
+        }
+
+        /** `사용 방법` 시트를 연다. 타임라인 편집 둘러보기가 열 기록을 함께 받는다. */
+        private fun openUsageGuide() {
+            updateState { copy(usageGuide = UsageGuideTimelineTarget.Loading) }
+            loadUsageGuideTarget()
+        }
+
+        /**
+         * 이벤트가 있는 가장 최근 기록을 찾는다. 코치마크는 실제 이벤트 · 메모를 짚으므로 빈 기록은 열지 않는다.
+         *
+         * 시트가 그사이 닫혔으면 결과를 버린다.
+         */
+        private fun loadUsageGuideTarget() =
+            safeLaunch(onError = { updateUsageGuide(UsageGuideTimelineTarget.Failed) }) {
+                val records = getDailyRecords().getOrThrow()
+                val latest = records.filter { it.events.isNotEmpty() }.maxByOrNull { it.recordDate }
+                updateUsageGuide(
+                    latest?.let { UsageGuideTimelineTarget.Available(it.recordDate) } ?: UsageGuideTimelineTarget.Unavailable,
+                )
+            }
+
+        private fun updateUsageGuide(target: UsageGuideTimelineTarget) {
+            updateState { if (usageGuide == null) this else copy(usageGuide = target) }
+        }
+
+        /** 봤다는 기록을 모두 지우고 홈으로 간다. 홈이 기록을 관찰하고 있어 추천 날짜 시트부터 다시 띄운다. */
+        private suspend fun replayFullTutorial() {
+            updateState { copy(usageGuide = null) }
+            resetTutorials()
+            navigationHelper.replaceRoot(HomePage)
+        }
+
+        private fun replayHomeTutorial() {
+            updateState { copy(usageGuide = null) }
+            tutorialReplayRequests.request(Tutorial.HOME)
+            navigationHelper.replaceRoot(HomePage)
+        }
+
+        private fun replayTimelineTutorial() {
+            when (val target = state.value.usageGuide) {
+                is UsageGuideTimelineTarget.Available -> {
+                    updateState { copy(usageGuide = null) }
+                    tutorialReplayRequests.request(Tutorial.TIMELINE)
+                    navigationHelper.navigateTo(TimelinePage(target.recordDate))
+                }
+                UsageGuideTimelineTarget.Failed -> {
+                    updateState { copy(usageGuide = UsageGuideTimelineTarget.Loading) }
+                    loadUsageGuideTarget()
+                }
+                // 받는 중이거나 기록이 없으면 항목이 막혀 있다.
+                UsageGuideTimelineTarget.Loading, UsageGuideTimelineTarget.Unavailable, null -> Unit
             }
         }
 

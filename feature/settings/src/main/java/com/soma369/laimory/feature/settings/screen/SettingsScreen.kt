@@ -72,6 +72,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.ui.theme.laimoryColors
 import com.soma369.laimory.feature.settings.component.DataSourceSheet
 import com.soma369.laimory.feature.settings.component.NewNoticeDot
+import com.soma369.laimory.feature.settings.component.UsageGuideSheet
 import com.soma369.laimory.feature.settings.model.DataSourceUiModel
 import com.soma369.laimory.feature.settings.model.needsAttention
 import com.soma369.laimory.feature.settings.model.toCreditCount
@@ -135,6 +136,16 @@ private fun SettingsContent(
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
         onIntent = onIntent,
     )
+
+    state.usageGuide?.let { target ->
+        UsageGuideSheet(
+            timelineTarget = target,
+            onFull = { onIntent(SettingsUiIntent.ReplayFullTutorial) },
+            onHome = { onIntent(SettingsUiIntent.ReplayHomeTutorial) },
+            onTimeline = { onIntent(SettingsUiIntent.ReplayTimelineTutorial) },
+            onDismiss = { onIntent(SettingsUiIntent.UsageGuideDismissed) },
+        )
+    }
 
     sheetSource?.let { source ->
         DataSourceSheet(
@@ -265,6 +276,13 @@ private fun SettingsScreen(
                     SettingsGroup(
                         items =
                             listOf(
+                                // 튜토리얼을 다시 본다. 처음 한 번 보고 건너뛰면 다시 뜨지 않아 여기 말고는 볼 길이 없다.
+                                SettingsItem(
+                                    iconRes = CoreUiR.drawable.ico_setting_info,
+                                    title = "사용 방법",
+                                    showChevron = true,
+                                    onClick = { onIntent(SettingsUiIntent.UsageGuideClicked) },
+                                ),
                                 SettingsItem(
                                     iconRes = CoreUiR.drawable.ico_setting_notice,
                                     title = "공지사항",

@@ -27,6 +27,20 @@ sealed interface SettingsUiIntent : UiIntent {
     /** `지원 > 문의하기`. */
     data object InquiryClicked : SettingsUiIntent
 
+    /** `지원 > 사용 방법`. 다시 볼 튜토리얼을 고르는 시트를 연다. */
+    data object UsageGuideClicked : SettingsUiIntent
+
+    data object UsageGuideDismissed : SettingsUiIntent
+
+    /** `처음부터 따라 하기`. 봤다는 기록을 지우고 홈으로 간다 — 추천 날짜 시트부터 다시 뜬다. */
+    data object ReplayFullTutorial : SettingsUiIntent
+
+    /** `홈 화면 둘러보기`. 홈으로 가서 지금 날짜 그대로 코치마크만 짚는다. */
+    data object ReplayHomeTutorial : SettingsUiIntent
+
+    /** `타임라인 편집 둘러보기`. 이벤트가 있는 가장 최근 기록을 열어 짚는다. 받지 못했으면 다시 받는다. */
+    data object ReplayTimelineTutorial : SettingsUiIntent
+
     /**
      * 화면 진입·복귀. 새 공지 표시를 다시 판정한다.
      *

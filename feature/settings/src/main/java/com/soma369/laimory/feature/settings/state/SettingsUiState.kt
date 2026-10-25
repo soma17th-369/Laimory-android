@@ -26,6 +26,10 @@ data class SettingsUiState(
      * `-`(못 받음)가 비쳤다 로딩으로 바뀌지 않게.
      */
     val isCreditsLoading: Boolean = true,
+    /**
+     * `사용 방법` 시트. 떠 있는 동안 `타임라인 편집 둘러보기` 가 열 기록을 함께 든다. null 이면 닫혀 있다.
+     */
+    val usageGuide: UsageGuideTimelineTarget? = null,
 ) : UiState {
     /** 계정 관련 동작 하나가 진행 중이면 나머지 항목도 잠근다. */
     val isAccountActionInProgress: Boolean get() = isLoggingOut || isWithdrawing

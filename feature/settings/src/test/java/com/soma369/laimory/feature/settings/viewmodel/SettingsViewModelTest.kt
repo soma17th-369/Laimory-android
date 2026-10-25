@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.settings.viewmodel
 
+import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
@@ -25,12 +26,23 @@ import com.soma369.laimory.core.domain.model.notice.Notice
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
+import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
+import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
+import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
+import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
+import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
+import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.model.user.UserProfile
 import com.soma369.laimory.core.domain.navigation.CreditPage
+import com.soma369.laimory.core.domain.navigation.HomePage
 import com.soma369.laimory.core.domain.navigation.InquiryPage
 import com.soma369.laimory.core.domain.navigation.LoginPage
 import com.soma369.laimory.core.domain.navigation.NoticesPage
 import com.soma369.laimory.core.domain.navigation.Page
+import com.soma369.laimory.core.domain.navigation.TimelinePage
 import com.soma369.laimory.core.domain.provider.PushInstallationIdProvider
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.CreditRepository
@@ -38,7 +50,10 @@ import com.soma369.laimory.core.domain.repository.LocationTrackingRepository
 import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.PushRegistrationRepository
 import com.soma369.laimory.core.domain.repository.TermsRepository
+import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
+import com.soma369.laimory.core.domain.repository.TutorialRepository
 import com.soma369.laimory.core.domain.repository.UserRepository
+import com.soma369.laimory.core.domain.usecase.GetDailyRecordsUseCase
 import com.soma369.laimory.core.domain.usecase.ObserveLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SetLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
@@ -49,6 +64,7 @@ import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.ResetTutorialsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RequestAccountWithdrawalUseCase
@@ -57,6 +73,7 @@ import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
 import com.soma369.laimory.feature.settings.state.CreditUiIntent
 import com.soma369.laimory.feature.settings.state.SettingsUiIntent
+import com.soma369.laimory.feature.settings.state.UsageGuideTimelineTarget
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -65,6 +82,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -73,8 +91,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.io.IOException
 import java.time.Clock
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -93,6 +114,9 @@ class SettingsViewModelTest {
     private val noticeRepository = FakeNoticeRepository()
     private val creditRepository = FakeCreditRepository()
     private val creditBalanceStore = CreditBalanceStore()
+    private val tutorialRepository = FakeTutorialRepository()
+    private val tutorialReplayRequests = TutorialReplayRequests()
+    private val recordRepository = FakeTimelineRecordRepository()
 
     @Test
     fun `읽지 않은 최근 공지가 있으면 공지사항 줄에 표시를 띄우고, 읽고 돌아오면 지운다`() =
@@ -556,6 +580,9 @@ class SettingsViewModelTest {
             analyticsHelper = analyticsHelper,
             getRemainingCredits = GetRemainingCreditsUseCase(creditRepository),
             creditBalanceStore = creditBalanceStore,
+            resetTutorials = ResetTutorialsUseCase(tutorialRepository),
+            tutorialReplayRequests = tutorialReplayRequests,
+            getDailyRecords = GetDailyRecordsUseCase(recordRepository, messageHelper),
         )
 
     /** 같은 잔액 저장소를 쓰는 크레딧 화면. 두 화면의 조회가 겹치는 경우를 만든다. */
@@ -942,6 +969,188 @@ class SettingsViewModelTest {
             withdrawalCount++
             withdrawalError?.let { throw it }
         }
+    }
+
+    @Test
+    fun `사용 방법을 열면 이벤트가 있는 가장 최근 기록을 타임라인 편집 둘러보기 대상으로 잡는다`() =
+        runTest {
+            recordRepository.records =
+                listOf(
+                    record(LocalDate.of(2026, 10, 20), hasEvents = false),
+                    record(LocalDate.of(2026, 10, 16), hasEvents = true),
+                    record(LocalDate.of(2026, 10, 9), hasEvents = true),
+                )
+            val viewModel = createViewModel()
+
+            viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
+            runCurrent()
+
+            assertEquals(UsageGuideTimelineTarget.Available(LocalDate.of(2026, 10, 16)), viewModel.state.value.usageGuide)
+        }
+
+    @Test
+    fun `이벤트가 있는 기록이 없으면 타임라인 편집 둘러보기를 막는다`() =
+        runTest {
+            recordRepository.records = listOf(record(LocalDate.of(2026, 10, 20), hasEvents = false))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.ReplayTimelineTutorial)
+            runCurrent()
+
+            assertEquals(UsageGuideTimelineTarget.Unavailable, viewModel.state.value.usageGuide)
+            assertTrue(navigationHelper.navigatedTo.isEmpty())
+            assertNull(tutorialReplayRequests.pending.value)
+        }
+
+    @Test
+    fun `기록을 받지 못했으면 타임라인 편집 둘러보기를 누를 때 다시 받는다`() =
+        runTest {
+            recordRepository.failure = IOException("network")
+            val viewModel = createViewModel()
+            viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
+            runCurrent()
+            assertEquals(UsageGuideTimelineTarget.Failed, viewModel.state.value.usageGuide)
+
+            recordRepository.failure = null
+            recordRepository.records = listOf(record(LocalDate.of(2026, 10, 16), hasEvents = true))
+            viewModel.sendIntent(SettingsUiIntent.ReplayTimelineTutorial)
+            runCurrent()
+
+            assertEquals(UsageGuideTimelineTarget.Available(LocalDate.of(2026, 10, 16)), viewModel.state.value.usageGuide)
+        }
+
+    @Test
+    fun `타임라인 편집 둘러보기는 그 기록을 열고 다시 보기를 요청한다`() =
+        runTest {
+            recordRepository.records = listOf(record(LocalDate.of(2026, 10, 16), hasEvents = true))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.ReplayTimelineTutorial)
+            runCurrent()
+
+            assertNull(viewModel.state.value.usageGuide)
+            assertEquals(Tutorial.TIMELINE, tutorialReplayRequests.pending.value)
+            assertEquals(listOf<Page>(TimelinePage(LocalDate.of(2026, 10, 16))), navigationHelper.navigatedTo)
+        }
+
+    @Test
+    fun `홈 화면 둘러보기는 봤다는 기록을 두고 홈으로 가며 다시 보기를 요청한다`() =
+        runTest {
+            tutorialRepository.resetCount = 0
+            val viewModel = createViewModel()
+            viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.ReplayHomeTutorial)
+            runCurrent()
+
+            assertNull(viewModel.state.value.usageGuide)
+            assertEquals(Tutorial.HOME, tutorialReplayRequests.pending.value)
+            assertEquals(HomePage, navigationHelper.replacedRoot)
+            assertEquals(0, tutorialRepository.resetCount)
+        }
+
+    @Test
+    fun `처음부터 따라 하기는 봤다는 기록을 지우고 홈으로 간다`() =
+        runTest {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
+            runCurrent()
+
+            viewModel.sendIntent(SettingsUiIntent.ReplayFullTutorial)
+            runCurrent()
+
+            assertNull(viewModel.state.value.usageGuide)
+            assertEquals(1, tutorialRepository.resetCount)
+            assertEquals(HomePage, navigationHelper.replacedRoot)
+            assertNull(tutorialReplayRequests.pending.value)
+        }
+
+    private fun record(
+        date: LocalDate,
+        hasEvents: Boolean,
+    ) = DailyTimeline(
+        dailyRecordId = date.toEpochDay(),
+        recordDate = date,
+        emotion = null,
+        events =
+            if (hasEvents) {
+                listOf(
+                    TimelineEvent(
+                        timelineEventId = date.toEpochDay(),
+                        eventType = TimelineEventType.WORK,
+                        startAt = date.atTime(9, 0),
+                        endAt = null,
+                        title = "업무",
+                        subtitle = null,
+                        memo = null,
+                        question = null,
+                        items = emptyList(),
+                    ),
+                )
+            } else {
+                emptyList()
+            },
+        status = DailyRecordStatus.DRAFT,
+    )
+
+    private class FakeTutorialRepository : TutorialRepository {
+        var resetCount = 0
+
+        override fun observeSeen(tutorial: Tutorial): Flow<Boolean> = flowOf(true)
+
+        override suspend fun markSeen(tutorial: Tutorial) = Unit
+
+        override suspend fun resetAll() {
+            resetCount++
+        }
+    }
+
+    /** 사용 방법이 기록 목록만 읽는다. 나머지는 부르지 않는다. */
+    private class FakeTimelineRecordRepository : TimelineRecordRepository {
+        var records: List<DailyTimeline> = emptyList()
+        var failure: Exception? = null
+
+        override suspend fun getDailyRecords(): List<DailyTimeline> {
+            failure?.let { throw it }
+            return records
+        }
+
+        override suspend fun getDailyRecord(recordDate: LocalDate): DailyTimeline = error("not used")
+
+        override suspend fun createEvent(command: CreateTimelineEventCommand): TimelineEvent = error("not used")
+
+        override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("not used")
+
+        override suspend fun updateEventMemo(
+            timelineEventId: Long,
+            memo: String?,
+        ): TimelineEvent = error("not used")
+
+        override suspend fun deleteEvent(timelineEventId: Long) = error("not used")
+
+        override suspend fun deleteEventPhoto(
+            timelineEventId: Long,
+            timelineItemId: Long,
+        ) = error("not used")
+
+        override suspend fun deleteDailyRecord(recordDate: LocalDate) = error("not used")
+
+        override suspend fun getMonthlyDailyRecords(month: YearMonth): List<MonthlyDailyRecord> = error("not used")
+
+        override suspend fun updateDailyRecordEmotion(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = error("not used")
+
+        override suspend fun saveDailyRecord(
+            recordDate: LocalDate,
+            emotion: TimelineEmotion,
+        ) = error("not used")
     }
 
     private class FakeNavigationHelper : NavigationHelper {
