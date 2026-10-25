@@ -202,16 +202,22 @@ sealed interface HomeUiIntent : UiIntent {
      */
     data object OpenHealthDetail : HomeUiIntent
 
-    /** 추천 날짜 시트에서 날을 골랐다. 날짜 피커에서 고른 것처럼 그 날과 기본 범위로 홈을 옮긴다. */
+    /** 추천 날짜 시트에서 날을 골랐다. 날짜 피커에서 고른 것처럼 그 날과 기본 범위로 홈을 옮기고 코치마크를 시작한다. */
     data class PickRecommendedDate(
         val date: LocalDate,
     ) : HomeUiIntent
 
-    /** 추천 날짜 시트의 `다른 날 직접 고르기`. 시트를 닫고 날짜 피커를 연다. */
+    /** 추천 날짜 시트의 `다른 날 직접 고르기`. 시트를 닫고 날짜 피커를 연다. 피커를 닫으면 코치마크를 시작한다. */
     data object PickOtherRecommendedDate : HomeUiIntent
 
-    /** 추천 날짜 시트의 `건너뛰기` · 바깥 누름 · 뒤로가기. 홈 튜토리얼을 다시 띄우지 않는다. */
+    /** 추천 날짜 시트의 `건너뛰기` · 바깥 누름 · 뒤로가기. 코치마크 없이 홈 튜토리얼을 마치고 다시 띄우지 않는다. */
     data object SkipDateRecommendation : HomeUiIntent
+
+    /** 코치마크의 다음 단계. 마지막 단계에서 보내면 홈 튜토리얼을 마친다. */
+    data object NextCoachmark : HomeUiIntent
+
+    /** 코치마크의 `건너뛰기` · 뒤로가기. 홈 튜토리얼을 마친다. */
+    data object SkipCoachmark : HomeUiIntent
 
     /** 홈 카드에서 연 권한 요청과 그 결과. 분석에 기록한다. */
     data class PermissionEvent(

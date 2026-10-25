@@ -110,6 +110,7 @@ import com.soma369.laimory.feature.home.state.DraftCreateConfirm
 import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.HomeCoachmarkStep
 import com.soma369.laimory.feature.home.state.HomeRecommendationPhotoAccess
 import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
@@ -2624,7 +2625,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `추천한 날을 고르면 그 날과 기본 범위로 홈을 옮기고 다시 띄우지 않는다`() =
+    fun `추천한 날을 고르면 그 날과 기본 범위로 홈을 옮기고 코치마크를 시작한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             tutorialRepository.seen.value = false
             val today = LocalDate.now(ZoneId.systemDefault())
@@ -2640,6 +2641,51 @@ class HomeViewModelTest {
             assertNull(state.dateRecommendation)
             assertEquals(picked, state.selectedDate)
             assertEquals(DefaultRecordRange.INITIAL, state.recordRange)
+            assertEquals(HomeCoachmarkStep.entries.first(), state.homeCoachmark)
+            // 코치마크를 마칠 때까지는 튜토리얼이 이어진다 — 팝업 공지도 기다린다.
+            assertFalse(tutorialRepository.seen.value)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `코치마크를 끝까지 넘기면 홈 튜토리얼을 마친다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
+            photoSource.captured = capturedPhotosOn(picked, count = 1)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            runCurrent()
+
+            val visited = mutableListOf<HomeCoachmarkStep>()
+            repeat(HomeCoachmarkStep.entries.size) {
+                viewModel.state.value.homeCoachmark?.let(visited::add)
+                viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+                runCurrent()
+            }
+
+            assertEquals(HomeCoachmarkStep.entries, visited)
+            assertNull(viewModel.state.value.homeCoachmark)
+            assertTrue(tutorialRepository.seen.value)
+            assertFalse(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `코치마크를 건너뛰면 홈 튜토리얼을 마친다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
+            photoSource.captured = capturedPhotosOn(picked, count = 1)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark)
+            runCurrent()
+
+            assertNull(viewModel.state.value.homeCoachmark)
             assertTrue(tutorialRepository.seen.value)
             assertFalse(homeOverlayTurn.isTutorialActive.value)
         }
@@ -2663,24 +2709,31 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `다른 날 직접 고르기는 시트를 내리고 날짜 피커를 열며 튜토리얼은 이어진다`() =
+    fun `다른 날 직접 고르기는 날짜 피커를 열고 고른 뒤 코치마크를 시작한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(4)
             val viewModel = createViewModel()
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.PickOtherRecommendedDate)
             runCurrent()
+            assertNull(viewModel.state.value.dateRecommendation)
+            assertNotNull(viewModel.state.value.datePicker)
+            // 피커에서 고르는 동안에는 짚지 않는다.
+            assertNull(viewModel.state.value.homeCoachmark)
 
-            val state = viewModel.state.value
-            assertNull(state.dateRecommendation)
-            assertNotNull(state.datePicker)
+            viewModel.sendIntent(HomeUiIntent.PickDate(picked))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            assertEquals(picked, viewModel.state.value.selectedDate)
+            assertEquals(HomeCoachmarkStep.entries.first(), viewModel.state.value.homeCoachmark)
             assertFalse(tutorialRepository.seen.value)
-            assertTrue(homeOverlayTurn.isTutorialActive.value)
         }
 
     @Test
-    fun `다른 날 피커를 확정 없이 닫으면 추천 시트로 돌아온다`() =
+    fun `다른 날 피커를 확정 없이 닫으면 코치마크 없이 추천 시트로 돌아온다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             tutorialRepository.seen.value = false
             photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(2), count = 3)
@@ -2697,30 +2750,23 @@ class HomeViewModelTest {
             val state = viewModel.state.value
             assertEquals(recommendation, state.dateRecommendation)
             assertNull(state.datePicker)
+            assertNull(state.homeCoachmark)
             assertEquals(before, state.selectedDate)
             assertFalse(tutorialRepository.seen.value)
             assertTrue(homeOverlayTurn.isTutorialActive.value)
         }
 
     @Test
-    fun `다른 날 피커에서 날짜를 확정하면 그 날로 옮기고 튜토리얼을 마친다`() =
+    fun `직접 연 날짜 피커는 코치마크를 띄우지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            tutorialRepository.seen.value = false
-            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(5)
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.PickOtherRecommendedDate)
+
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.PickDate(picked))
-            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
-            runCurrent()
-
-            val state = viewModel.state.value
-            assertNull(state.dateRecommendation)
-            assertEquals(picked, state.selectedDate)
-            assertTrue(tutorialRepository.seen.value)
-            assertFalse(homeOverlayTurn.isTutorialActive.value)
+            assertNull(viewModel.state.value.homeCoachmark)
         }
 
     @Test
@@ -2776,7 +2822,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `건너뛰면 날짜를 옮기지 않고 다시 띄우지 않는다`() =
+    fun `추천 시트를 건너뛰면 코치마크 없이 마치고 다시 띄우지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             tutorialRepository.seen.value = false
             photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(1), count = 1)
@@ -2788,6 +2834,7 @@ class HomeViewModelTest {
             runCurrent()
 
             assertNull(viewModel.state.value.dateRecommendation)
+            assertNull(viewModel.state.value.homeCoachmark)
             assertEquals(before, viewModel.state.value.selectedDate)
             assertTrue(tutorialRepository.seen.value)
             assertFalse(homeOverlayTurn.isTutorialActive.value)

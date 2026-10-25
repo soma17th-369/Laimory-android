@@ -79,6 +79,7 @@ import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftRetryMode
 import com.soma369.laimory.feature.home.state.DraftWindowPolicy
+import com.soma369.laimory.feature.home.state.HomeCoachmarkStep
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.HomeDateRecommendation
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
@@ -256,7 +257,10 @@ class HomeViewModel
          */
         private var hasUserRange = false
 
-        /** 추천 시트의 `다른 날 직접 고르기` 로 피커를 열며 잠시 내린 추천. 피커를 그냥 닫으면 이 추천으로 돌아온다. */
+        /**
+         * 추천 시트의 `다른 날 직접 고르기` 로 피커를 열며 잠시 내린 추천. 피커에서 확정하면 코치마크를 시작하고, 그냥 닫으면
+         * 이 추천으로 돌아온다.
+         */
         private var recommendationBehindPicker: HomeDateRecommendation? = null
 
         init {
@@ -399,7 +403,9 @@ class HomeViewModel
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 is HomeUiIntent.PickRecommendedDate -> pickRecommendedDate(intent.date)
                 HomeUiIntent.PickOtherRecommendedDate -> pickOtherRecommendedDate()
-                HomeUiIntent.SkipDateRecommendation -> finishDateRecommendation()
+                HomeUiIntent.SkipDateRecommendation -> skipDateRecommendation()
+                HomeUiIntent.NextCoachmark -> nextCoachmark()
+                HomeUiIntent.SkipCoachmark -> finishHomeTutorial()
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
@@ -769,20 +775,27 @@ class HomeViewModel
                 today.minusDays(1),
             ).map(YearMonth::from).distinct()
 
-        /** 추천한 날을 골랐다. 날짜 피커에서 다른 날을 고른 것과 같다 — 그 날과 기본 범위로 확정한다. */
+        /**
+         * 추천한 날을 골랐다. 날짜 피커에서 다른 날을 고른 것과 같다 — 그 날과 기본 범위로 확정한다. 그 날 위에서 코치마크를
+         * 시작한다.
+         */
         private fun pickRecommendedDate(date: LocalDate) {
-            if (!finishDateRecommendation()) return
+            if (!closeDateRecommendation()) return
             val current = state.value
-            if (current.isDateLocked) return
-            if (!isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), current.retentionDays)) return
-            val range = current.defaultRange
-            commitDatePicker(
-                HomeDatePickerSession(date = date, startTime = range.startTime, endDay = range.endDay(), endTime = range.endTime),
-            )
+            val canMove =
+                !current.isDateLocked &&
+                    isSelectableRecordDate(date, LocalDate.now(clock.withZone(zone)), current.retentionDays)
+            if (canMove) {
+                val range = current.defaultRange
+                commitDatePicker(
+                    HomeDatePickerSession(date = date, startTime = range.startTime, endDay = range.endDay(), endTime = range.endTime),
+                )
+            }
+            startHomeCoachmark()
         }
 
         /**
-         * `다른 날 직접 고르기`. 추천 시트를 내리고 날짜 피커를 연다. 튜토리얼은 이어진다 — 피커에서 날짜를 확정해야 마치고,
+         * `다른 날 직접 고르기`. 추천 시트를 내리고 날짜 피커를 연다. 피커에서 날짜를 확정하면 그 날 위에서 코치마크를 시작하고,
          * 그냥 닫으면 추천 시트로 돌아온다. 튜토리얼을 끝내는 길은 건너뛰기뿐이다.
          */
         private fun pickOtherRecommendedDate() {
@@ -801,21 +814,47 @@ class HomeViewModel
             updateState { copy(dateRecommendation = recommendation) }
         }
 
+        /** 추천 시트의 `건너뛰기`. 코치마크 없이 홈 튜토리얼을 마친다. 튜토리얼을 끝내는 길은 이것뿐이다. */
+        private fun skipDateRecommendation() {
+            if (closeDateRecommendation()) finishHomeTutorial()
+        }
+
         /**
-         * 추천 시트를 닫고 홈 튜토리얼을 마친다.
+         * 추천 시트를 닫는다. 홈 튜토리얼은 아직 이어진다 — 팝업 공지는 코치마크까지 마칠 때까지 기다린다.
          *
          * @return 시트가 떠 있어 닫았는지. 이미 닫힌 뒤 늦게 온 입력은 무시한다.
          */
-        private fun finishDateRecommendation(): Boolean {
+        private fun closeDateRecommendation(): Boolean {
             if (state.value.dateRecommendation == null) return false
             updateState { copy(dateRecommendation = null) }
-            finishHomeTutorial()
             return true
         }
 
-        /** 홈 튜토리얼을 본 것으로 남긴다. 고르든 건너뛰든 다시 띄우지 않는다. 기다리던 팝업 공지가 이제 뜬다. */
+        /** `다른 날 직접 고르기` 로 연 피커에서 날짜를 확정했다. 그 날 위에서 코치마크를 시작한다. */
+        private fun startCoachmarkAfterPicker() {
+            if (recommendationBehindPicker == null) return
+            recommendationBehindPicker = null
+            startHomeCoachmark()
+        }
+
+        private fun startHomeCoachmark() {
+            updateState { copy(homeCoachmark = HomeCoachmarkStep.entries.first()) }
+        }
+
+        private fun nextCoachmark() {
+            val step = state.value.homeCoachmark ?: return
+            val next = HomeCoachmarkStep.entries.getOrNull(step.ordinal + 1)
+            if (next == null) finishHomeTutorial() else updateState { copy(homeCoachmark = next) }
+        }
+
+        /**
+         * 홈 튜토리얼을 마치고 본 것으로 남긴다. 끝까지 봤든 중간에 건너뛰었든 다시 띄우지 않는다. 기다리던 팝업 공지가 이제 뜬다.
+         *
+         * 마치기 전에 앱을 내리면 기록이 남지 않아 다음에 추천 시트부터 다시 뜬다.
+         */
         private fun finishHomeTutorial() {
             recommendationBehindPicker = null
+            updateState { copy(dateRecommendation = null, homeCoachmark = null) }
             homeOverlayTurn.setTutorialActive(false)
             safeLaunch { markTutorialSeen(Tutorial.HOME) }
         }
@@ -882,7 +921,7 @@ class HomeViewModel
             // 다이얼로그만 남으므로 세션을 버린다.
             if (current.isDateLocked) return dismissDatePicker()
             commitDatePicker(session)
-            if (recommendationBehindPicker != null) finishHomeTutorial()
+            startCoachmarkAfterPicker()
         }
 
         /**
@@ -2029,7 +2068,8 @@ class HomeViewModel
                     datePicker == null &&
                     timeSheet == null &&
                     !isPhotoSheetVisible &&
-                    createConfirm == null
+                    createConfirm == null &&
+                    homeCoachmark == null
 
         /** 지금 고른 날짜가 어디서 왔는지. 기본 날짜만 [refreshToday] 가 옮긴다. */
         private enum class DateSource {
