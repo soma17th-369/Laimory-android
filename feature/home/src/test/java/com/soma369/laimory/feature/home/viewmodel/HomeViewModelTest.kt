@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
@@ -181,6 +182,7 @@ class HomeViewModelTest {
     /** 기본은 이미 본 상태다. 튜토리얼 시트가 다른 시험의 흐름에 끼어들지 않게 한다. */
     private val tutorialRepository = FakeTutorialRepository(seen = true)
     private val homeOverlayTurn = HomeOverlayTurn()
+    private val tutorialReplayRequests = TutorialReplayRequests()
 
     /** 기본은 오늘 정오다. 06:00 기본 날짜 규칙이 기존 테스트의 '오늘'을 흔들지 않게 한다. */
     private val clock = MutableClock(LocalDate.now(ZoneId.systemDefault()).atTime(12, 0))
@@ -2873,6 +2875,64 @@ class HomeViewModelTest {
             assertNotNull(viewModel.state.value.dateRecommendation)
         }
 
+    @Test
+    fun `홈 화면 둘러보기는 추천 시트 없이 지금 날짜로 코치마크만 짚는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            val before = viewModel.state.value.selectedDate
+
+            tutorialReplayRequests.request(Tutorial.HOME)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.dateRecommendation)
+            assertEquals(before, state.selectedDate)
+            assertEquals(HomeCoachmarkStep.entries.first(), state.homeCoachmark)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+            assertNull(tutorialReplayRequests.pending.value)
+        }
+
+    @Test
+    fun `홈 화면 둘러보기는 처리하지 않은 공지와 다른 창이 끝날 때까지 기다린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            homeOverlayTurn.setPendingNotices(true)
+            viewModel.sendIntent(HomeUiIntent.ShowDatePicker)
+            runCurrent()
+
+            tutorialReplayRequests.request(Tutorial.HOME)
+            runCurrent()
+            assertNull(viewModel.state.value.homeCoachmark)
+
+            homeOverlayTurn.setPendingNotices(false)
+            runCurrent()
+            assertNull(viewModel.state.value.homeCoachmark)
+
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+            assertEquals(HomeCoachmarkStep.entries.first(), viewModel.state.value.homeCoachmark)
+        }
+
+    @Test
+    fun `다시 본 홈 코치마크를 마쳐도 봤다는 기록은 그대로다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            tutorialReplayRequests.request(Tutorial.HOME)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark)
+            runCurrent()
+
+            assertNull(viewModel.state.value.homeCoachmark)
+            assertTrue(tutorialRepository.seen.value)
+            assertFalse(homeOverlayTurn.isTutorialActive.value)
+            // 추천 시트가 다시 뜨지 않는다.
+            assertNull(viewModel.state.value.dateRecommendation)
+        }
+
     private fun capturedPhotosOn(
         date: LocalDate,
         count: Int,
@@ -2934,6 +2994,7 @@ class HomeViewModelTest {
             markTutorialSeen = MarkTutorialSeenUseCase(tutorialRepository),
             recommendTutorialDates = RecommendTutorialDatesUseCase(photoSource, calendarSource),
             homeOverlayTurn = homeOverlayTurn,
+            tutorialReplayRequests = tutorialReplayRequests,
             clock = clock,
             retentionConfig = SourceItemRetentionConfig(retentionDays),
             collectionLabAccessGate = { isCollectionLabAccessible },

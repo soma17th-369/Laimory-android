@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.coordinator.AutoCollectionCoordinator
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
@@ -116,6 +117,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -162,6 +164,7 @@ class HomeViewModel
         private val markTutorialSeen: MarkTutorialSeenUseCase,
         private val recommendTutorialDates: RecommendTutorialDatesUseCase,
         private val homeOverlayTurn: HomeOverlayTurn,
+        private val tutorialReplayRequests: TutorialReplayRequests,
         /** UTC 기준이다. 현지 날짜는 [zone] 으로 옮겨서 얻는다. */
         private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
@@ -273,6 +276,7 @@ class HomeViewModel
             observeDefaultRange()
             observeSubmission()
             observeTutorial()
+            observeTutorialReplay()
         }
 
         /**
@@ -767,6 +771,23 @@ class HomeViewModel
                     if (state.value.dateRecommendation != null) updateState { copy(dateRecommendation = refreshed) }
                 }
         }
+
+        /**
+         * 설정 `사용 방법 › 홈 화면 둘러보기`. 추천 시트 없이 **지금 날짜 그대로** 코치마크만 짚는다.
+         *
+         * 처음 볼 때와 같이 다른 창 · 만드는 중 · 처리하지 않은 팝업 공지가 있으면 기다린다. 봤다는 기록은 건드리지 않는다.
+         */
+        private fun observeTutorialReplay() =
+            safeLaunch {
+                tutorialReplayRequests.pending.filter { it == Tutorial.HOME }.collectLatest {
+                    combine(state, homeOverlayTurn.hasPendingNotices) { current, hasPendingNotices ->
+                        !hasPendingNotices && current.dateRecommendation == null && current.canShowTutorial
+                    }.first { it }
+                    if (!tutorialReplayRequests.consume(Tutorial.HOME)) return@collectLatest
+                    homeOverlayTurn.setTutorialActive(true)
+                    startHomeCoachmark()
+                }
+            }
 
         /** 추천이 거슬러 보는 날짜(어제부터 29일 전)가 걸친 달. */
         private fun recommendationMonths(today: LocalDate): List<YearMonth> =

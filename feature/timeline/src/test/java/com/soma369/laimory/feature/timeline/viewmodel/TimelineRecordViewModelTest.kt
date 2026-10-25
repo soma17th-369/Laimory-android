@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.coordinator.UserProfileCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
@@ -98,6 +99,7 @@ class TimelineRecordViewModelTest {
 
     /** 기본은 이미 본 상태다. 코치마크가 다른 시험의 흐름에 끼어들지 않게 한다. */
     private val tutorialRepository = FakeTutorialRepository(seen = true)
+    private val tutorialReplayRequests = TutorialReplayRequests()
 
     @Test
     fun `단건 조회 성공은 기록을 세션에 저장하고 nullable 필드까지 화면에 전달한다`() =
@@ -1775,6 +1777,7 @@ class TimelineRecordViewModelTest {
             observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
             observeTutorialSeen = ObserveTutorialSeenUseCase(tutorialRepository),
             markTutorialSeen = MarkTutorialSeenUseCase(tutorialRepository),
+            tutorialReplayRequests = tutorialReplayRequests,
             clock = clock,
         )
 
@@ -2246,6 +2249,67 @@ class TimelineRecordViewModelTest {
 
             assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
             assertNull(viewModel.state.value.coachmark)
+        }
+
+    @Test
+    fun `저장한 기록을 다시 보면 편집 모드로 바꿔 저장하기를 뺀 단계를 짚는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialReplayRequests.request(Tutorial.TIMELINE)
+
+            val viewModel = createLoadedViewModel(record = timeline(status = DailyRecordStatus.SAVED))
+
+            val state = viewModel.state.value
+            assertEquals(TimelineRecordMode.EDIT, state.mode)
+            assertEquals(TimelineCoachmarkStep.entries.first(), state.coachmark)
+            assertEquals(TimelineCoachmarkStep.entries - TimelineCoachmarkStep.SAVE, state.coachmarkSteps)
+            assertNull(tutorialReplayRequests.pending.value)
+        }
+
+    @Test
+    fun `초안을 다시 보면 모든 단계를 짚고 마쳐도 봤다는 기록은 그대로다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialReplayRequests.request(Tutorial.TIMELINE)
+            val viewModel = createLoadedViewModel()
+            assertEquals(TimelineCoachmarkStep.entries, viewModel.state.value.coachmarkSteps)
+
+            val visited = mutableListOf<TimelineCoachmarkStep>()
+            repeat(TimelineCoachmarkStep.entries.size) {
+                viewModel.state.value.coachmark?.let(visited::add)
+                viewModel.sendIntent(TimelineRecordUiIntent.NextCoachmark)
+                advanceUntilIdle()
+            }
+
+            assertEquals(TimelineCoachmarkStep.entries, visited)
+            assertNull(viewModel.state.value.coachmark)
+            assertTrue(tutorialRepository.seen.value)
+        }
+
+    @Test
+    fun `저장한 기록을 다시 볼 때 마지막 단계에서 넘기면 마친다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialReplayRequests.request(Tutorial.TIMELINE)
+            val viewModel = createLoadedViewModel(record = timeline(status = DailyRecordStatus.SAVED))
+
+            repeat(TimelineCoachmarkStep.entries.size - 1) {
+                viewModel.sendIntent(TimelineRecordUiIntent.NextCoachmark)
+                advanceUntilIdle()
+            }
+
+            assertNull(viewModel.state.value.coachmark)
+        }
+
+    @Test
+    fun `떠날 때 받아 가지 못한 다시 보기 요청은 버린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = emptyList()))
+            tutorialReplayRequests.request(Tutorial.TIMELINE)
+            advanceUntilIdle()
+            assertNull(viewModel.state.value.coachmark)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Leave)
+            advanceUntilIdle()
+
+            assertNull(tutorialReplayRequests.pending.value)
         }
 
     private class FakeTutorialRepository(

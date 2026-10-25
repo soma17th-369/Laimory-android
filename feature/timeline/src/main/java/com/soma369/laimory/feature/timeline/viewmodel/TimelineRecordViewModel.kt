@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
@@ -66,6 +67,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
@@ -93,6 +95,7 @@ class TimelineRecordViewModel
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val observeTutorialSeen: ObserveTutorialSeenUseCase,
         private val markTutorialSeen: MarkTutorialSeenUseCase,
+        private val tutorialReplayRequests: TutorialReplayRequests,
         private val clock: Clock,
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
@@ -165,6 +168,7 @@ class TimelineRecordViewModel
 
         init {
             observeTutorial()
+            observeTutorialReplay()
             safeLaunch {
                 observeTimelineRecordUseCase().collect { timeline ->
                     val requestedDate = requestedRecordDate ?: return@collect
@@ -252,16 +256,38 @@ class TimelineRecordViewModel
                         combine(state, isScreenVisible, hasFinishedTutorial) { current, isVisible, hasFinished ->
                             isVisible && !hasFinished && current.isRequestedRecord() && current.canStartCoachmark
                         }.first { it }
-                        updateState { copy(coachmark = TimelineCoachmarkStep.entries.first()) }
+                        updateState {
+                            copy(coachmark = TimelineCoachmarkStep.entries.first(), coachmarkSteps = TimelineCoachmarkStep.entries)
+                        }
                         // 화면을 떠나 거뒀으면 다음에 열 때 다시 짚는다. 마치면 위 막음이 다시 시작하지 않게 한다.
                         state.first { it.coachmark == null }
                     }
                 }
             }
 
+        /**
+         * 설정 `사용 방법 › 타임라인 편집 둘러보기`. 설정이 연 기록을 편집 모드로 바꿔 짚는다. 봤다는 기록은 건드리지 않는다.
+         *
+         * 저장한 기록에는 `저장하기` 버튼이 없어 그 단계를 뺀다.
+         */
+        private fun observeTutorialReplay() =
+            safeLaunch {
+                tutorialReplayRequests.pending.filter { it == Tutorial.TIMELINE }.collectLatest {
+                    combine(state, isScreenVisible) { current, isVisible -> isVisible && current.canReplayCoachmark }
+                        .first { it }
+                    if (!tutorialReplayRequests.consume(Tutorial.TIMELINE)) return@collectLatest
+                    val isSaved = state.value.record()?.isSaved == true
+                    switchMode(TimelineRecordMode.EDIT)
+                    val steps =
+                        if (isSaved) TimelineCoachmarkStep.entries - TimelineCoachmarkStep.SAVE else TimelineCoachmarkStep.entries
+                    updateState { copy(coachmark = steps.first(), coachmarkSteps = steps) }
+                }
+            }
+
         private fun nextCoachmark() {
-            val step = state.value.coachmark ?: return
-            val next = TimelineCoachmarkStep.entries.getOrNull(step.ordinal + 1)
+            val current = state.value
+            val step = current.coachmark ?: return
+            val next = current.coachmarkSteps.getOrNull(current.coachmarkSteps.indexOf(step) + 1)
             if (next == null) finishTutorial() else updateState { copy(coachmark = next) }
         }
 
@@ -278,6 +304,8 @@ class TimelineRecordViewModel
          */
         private suspend fun leave() {
             isScreenVisible.value = false
+            // 기록을 못 불러와 받아 가지 못한 다시 보기 요청이 다음에 연 다른 기록에서 뜨지 않게 버린다.
+            tutorialReplayRequests.consume(Tutorial.TIMELINE)
             updateState { copy(coachmark = null) }
             flushMemoSaved()
         }

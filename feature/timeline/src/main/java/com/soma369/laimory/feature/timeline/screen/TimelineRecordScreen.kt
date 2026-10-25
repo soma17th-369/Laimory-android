@@ -192,8 +192,8 @@ private fun TimelineRecordContent(
             state = coachmarkState,
             targetKeys = listOf(step.targetKey),
             message = step.message,
-            position = step.ordinal + 1,
-            total = TimelineCoachmarkStep.entries.size,
+            position = state.coachmarkSteps.indexOf(step) + 1,
+            total = state.coachmarkSteps.size,
             onNext = { onIntent(TimelineRecordUiIntent.NextCoachmark) },
             onSkip = { onIntent(TimelineRecordUiIntent.SkipCoachmark) },
             // 이벤트 더하기는 둥근 떠 있는 버튼이라 원으로 뚫는다.
