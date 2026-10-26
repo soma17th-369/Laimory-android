@@ -278,7 +278,7 @@ private fun HomeContent(
         LaimoryCoachmark(
             state = coachmarkState,
             targetKeys = step.targetKeys,
-            message = step.message,
+            message = step.messageFor(hasRecord = state.timelineButtonStatus == DraftCreationStatus.SUCCESS),
             position = step.ordinal + 1,
             total = HomeCoachmarkStep.entries.size,
             onNext = { onIntent(HomeUiIntent.NextCoachmark) },
