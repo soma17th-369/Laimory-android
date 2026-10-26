@@ -250,7 +250,7 @@ class TimelineRecordViewModel
                     hasFinishedTutorial.value = false
                     while (true) {
                         combine(state, isScreenVisible, hasFinishedTutorial) { current, isVisible, hasFinished ->
-                            isVisible && !hasFinished && current.canStartCoachmark
+                            isVisible && !hasFinished && current.isRequestedRecord() && current.canStartCoachmark
                         }.first { it }
                         updateState { copy(coachmark = TimelineCoachmarkStep.entries.first()) }
                         // 화면을 떠나 거뒀으면 다음에 열 때 다시 짚는다. 마치면 위 막음이 다시 시작하지 않게 한다.
@@ -282,16 +282,20 @@ class TimelineRecordViewModel
             flushMemoSaved()
         }
 
+        /**
+         * 화면이 떴다. **이전 기록을 걷어 낸 뒤에** 화면이 보인다고 알린다 — 먼저 알리면 튜토리얼이 아직 남아 있는 이전
+         * 기록(다른 날짜의 초안)을 짚고, 새 기록이 저장한 기록으로 들어와도 그 코치마크가 남는다.
+         */
         private fun initialize(
             recordDate: LocalDate?,
             entryPoint: AnalyticsEntryPoint,
         ) {
-            isScreenVisible.value = true
             this.entryPoint = entryPoint
             if (recordDate == null) {
                 loadJob?.cancel()
                 requestedRecordDate = null
-                updateState { copy(content = TimelineRecordUiContent.Unavailable, memoEditor = null) }
+                updateState { copy(content = TimelineRecordUiContent.Unavailable, memoEditor = null, coachmark = null) }
+                isScreenVisible.value = true
                 return
             }
             // Record가 표시 중일 때만 재조회를 생략한다 — 저장 종결(Unavailable) 뒤 재진입이나
@@ -299,15 +303,21 @@ class TimelineRecordViewModel
             val isAlreadyPresented =
                 requestedRecordDate == recordDate &&
                     state.value.content is TimelineRecordUiContent.Record
-            if (isAlreadyPresented) return
+            if (isAlreadyPresented) {
+                isScreenVisible.value = true
+                return
+            }
             // 같은 날짜의 재조회는 그대로 둔다 — 날아가는 중인 커밋이 이 기록의 것이다.
             if (requestedRecordDate != recordDate) {
                 // 다른 기록으로 넘어가기 전에 앞 기록의 것을 꺼낸다. 보내는 것은 뒤에서 해도 된다.
                 val memoSaves = takeMemoSavedEvents()
                 if (memoSaves.isNotEmpty()) safeLaunch { memoSaves.forEach { analyticsHelper.log(it) } }
                 resetMemoCommitState()
+                // 조회는 뒤에서 돌아 그사이 이전 기록이 화면 상태로 남는다. 여기서 바로 걷어 낸다.
+                updateState { copy(content = TimelineRecordUiContent.Loading, memoEditor = null, coachmark = null) }
             }
             requestedRecordDate = recordDate
+            isScreenVisible.value = true
             loadRecord(recordDate)
         }
 
@@ -1137,6 +1147,9 @@ class TimelineRecordViewModel
         }
 
         private fun TimelineRecordUiState.record() = (content as? TimelineRecordUiContent.Record)?.value
+
+        /** 보이는 기록이 이 화면이 연 날짜의 것인지. 다른 날짜로 넘어가는 중에 남은 이전 기록을 짚지 않게 한다. */
+        private fun TimelineRecordUiState.isRequestedRecord(): Boolean = record()?.recordDate == requestedRecordDate
 
         private fun TimelineRecordUiState.completionSnapshot(): List<AnalyticsTimelineEventSnapshot> =
             record()

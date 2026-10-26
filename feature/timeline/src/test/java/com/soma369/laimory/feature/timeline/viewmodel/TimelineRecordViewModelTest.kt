@@ -2225,6 +2225,29 @@ class TimelineRecordViewModelTest {
             assertEquals(TimelineCoachmarkStep.entries.first(), viewModel.state.value.coachmark)
         }
 
+    @Test
+    fun `튜토리얼을 마치지 않은 초안을 떠나 다른 날짜의 저장한 기록을 열면 이전 초안을 짚지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createLoadedViewModel()
+            assertEquals(TimelineCoachmarkStep.entries.first(), viewModel.state.value.coachmark)
+            viewModel.sendIntent(TimelineRecordUiIntent.Leave)
+            advanceUntilIdle()
+
+            // 새 기록 조회를 붙잡아 이전 초안이 남아 있을 틈을 만든다.
+            val gate = CompletableDeferred<DailyTimeline>()
+            recordRepository.dailyRecordGate = gate
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(OTHER_RECORD_DATE))
+            advanceUntilIdle()
+            assertNull(viewModel.state.value.coachmark)
+
+            gate.complete(timeline(status = DailyRecordStatus.SAVED).copy(dailyRecordId = 99L, recordDate = OTHER_RECORD_DATE))
+            advanceUntilIdle()
+
+            assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
+            assertNull(viewModel.state.value.coachmark)
+        }
+
     private class FakeTutorialRepository(
         seen: Boolean,
     ) : TutorialRepository {
