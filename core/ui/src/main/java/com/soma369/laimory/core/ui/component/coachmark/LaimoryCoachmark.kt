@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.ui.component.coachmark
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +32,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -92,7 +95,11 @@ fun LaimoryCoachmark(
             origin?.let { screenOrigin ->
                 state.boundsOf(targetKeys)?.translate(-screenOrigin)?.inflate(HolePadding.value)
             }
-        val scrim = MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM_ALPHA)
+        // 다크 테마는 덮는 색(scrim)이 배경색과 같아(Neutral950) 64% 로는 구멍과 덮인 곳의 차이가 거의 없다. 순수 검정으로
+        // 더 진하게 덮고, 구멍 둘레에 강조색 테두리를 그려 경계를 직접 보여 준다.
+        val isDark = MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE
+        val scrim = if (isDark) Color.Black.copy(alpha = DARK_SCRIM_ALPHA) else MaterialTheme.colorScheme.scrim.copy(alpha = SCRIM_ALPHA)
+        val ringColor = MaterialTheme.colorScheme.primary
         Box(
             modifier =
                 Modifier
@@ -110,24 +117,24 @@ fun LaimoryCoachmark(
             ) {
                 drawRect(scrim)
                 hole?.let { rect ->
+                    val ring = Stroke(width = HoleRingWidth.toPx())
                     when (holeShape) {
                         CoachmarkHoleShape.ROUNDED_RECT -> {
-                            val radius = HoleCornerRadius.toPx()
+                            val radius = CornerRadius(HoleCornerRadius.toPx(), HoleCornerRadius.toPx())
                             drawRoundRect(
                                 color = Color.Black,
                                 topLeft = rect.topLeft,
                                 size = rect.size,
-                                cornerRadius = CornerRadius(radius, radius),
+                                cornerRadius = radius,
                                 blendMode = BlendMode.Clear,
                             )
+                            drawRoundRect(color = ringColor, topLeft = rect.topLeft, size = rect.size, cornerRadius = radius, style = ring)
                         }
-                        CoachmarkHoleShape.CIRCLE ->
-                            drawCircle(
-                                color = Color.Black,
-                                radius = rect.maxDimension / 2,
-                                center = rect.center,
-                                blendMode = BlendMode.Clear,
-                            )
+                        CoachmarkHoleShape.CIRCLE -> {
+                            val radius = rect.maxDimension / 2
+                            drawCircle(color = Color.Black, radius = radius, center = rect.center, blendMode = BlendMode.Clear)
+                            drawCircle(color = ringColor, radius = radius, center = rect.center, style = ring)
+                        }
                     }
                 }
             }
@@ -174,10 +181,13 @@ private fun CoachmarkBubble(
     onSkip: () -> Unit,
 ) {
     val isLast = position >= total
+    // 다크 테마에서는 그림자가 어두운 배경에 묻혀 말풍선 가장자리가 보이지 않는다. 얇은 테두리로 잡아 준다.
+    val isDark = MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = BubbleElevation,
+        border = if (isDark) BorderStroke(BubbleBorderWidth, MaterialTheme.colorScheme.outlineVariant) else null,
     ) {
         Column(
             modifier = Modifier.padding(start = Spacing.large, end = Spacing.large, top = Spacing.large, bottom = Spacing.small),
@@ -213,6 +223,14 @@ private fun CoachmarkBubble(
 }
 
 private const val SCRIM_ALPHA = 0.64f
+
+/** 다크 테마의 덮는 농도. 배경이 이미 검정에 가까워, 밝은 카드와 구멍 안의 차이를 키우려면 더 진해야 한다. */
+private const val DARK_SCRIM_ALPHA = 0.8f
+
+/** 배경 밝기가 이보다 낮으면 다크 테마로 본다. 앱 테마 설정을 따르므로 시스템 설정 대신 배경색으로 가른다. */
+private const val DARK_LUMINANCE = 0.5f
+private val HoleRingWidth = 2.dp
+private val BubbleBorderWidth = 1.dp
 private val HolePadding = 6.dp
 private val HoleCornerRadius = 16.dp
 private val BubbleMargin = 16.dp
