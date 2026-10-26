@@ -2894,6 +2894,41 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `저장한 기록이 있는 날짜에서도 홈 화면 둘러보기를 시작한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(today) to listOf(MonthlyDailyRecord(today, DailyRecordStatus.SAVED, null)))
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today).copy(status = DailyRecordStatus.SAVED))
+            val viewModel = createViewModel()
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+
+            tutorialReplayRequests.request(Tutorial.HOME)
+            runCurrent()
+
+            assertEquals(HomeCoachmarkStep.entries.first(), viewModel.state.value.homeCoachmark)
+            assertNull(tutorialReplayRequests.pending.value)
+        }
+
+    @Test
+    fun `홈 화면 둘러보기는 만드는 중이면 끝날 때까지 기다린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            runCurrent()
+            draftTaskCoordinator.emitProcessing(viewModel.state.value.selectedDate)
+            runCurrent()
+
+            tutorialReplayRequests.request(Tutorial.HOME)
+            runCurrent()
+
+            assertNull(viewModel.state.value.homeCoachmark)
+            assertEquals(Tutorial.HOME, tutorialReplayRequests.pending.value)
+        }
+
+    @Test
     fun `홈 화면 둘러보기는 처리하지 않은 공지와 다른 창이 끝날 때까지 기다린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createViewModel()

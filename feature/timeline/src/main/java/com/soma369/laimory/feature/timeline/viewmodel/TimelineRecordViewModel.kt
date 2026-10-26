@@ -273,8 +273,9 @@ class TimelineRecordViewModel
         private fun observeTutorialReplay() =
             safeLaunch {
                 tutorialReplayRequests.pending.filter { it == Tutorial.TIMELINE }.collectLatest {
-                    combine(state, isScreenVisible) { current, isVisible -> isVisible && current.canReplayCoachmark }
-                        .first { it }
+                    combine(state, isScreenVisible) { current, isVisible ->
+                        isVisible && current.isRequestedRecord() && current.canReplayCoachmark
+                    }.first { it }
                     if (!tutorialReplayRequests.consume(Tutorial.TIMELINE)) return@collectLatest
                     val isSaved = state.value.record()?.isSaved == true
                     switchMode(TimelineRecordMode.EDIT)
