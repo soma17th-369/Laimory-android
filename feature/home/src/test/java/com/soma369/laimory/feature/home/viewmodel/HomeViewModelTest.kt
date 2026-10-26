@@ -2552,6 +2552,26 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `지금 날짜에 저장한 기록이 있어도 추천 시트를 띄운다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val today = LocalDate.now(ZoneId.systemDefault())
+            recordRepository.monthlyRecords =
+                mapOf(YearMonth.from(today) to listOf(MonthlyDailyRecord(today, DailyRecordStatus.SAVED, null)))
+            recordRepository.dailyRecordByDate =
+                mapOf(today to pastTimeline(dailyRecordId = 1L, date = today).copy(status = DailyRecordStatus.SAVED))
+            photoSource.captured = capturedPhotosOn(today.minusDays(2), count = 1)
+            val viewModel = createViewModel()
+            viewModel.sendIntent(HomeUiIntent.RefreshRecordState)
+            runCurrent()
+            assertEquals(DraftCreationStatus.SUCCESS, viewModel.state.value.timelineButtonStatus)
+
+            tutorialRepository.seen.value = false
+            runCurrent()
+
+            assertEquals(listOf(today.minusDays(2)), viewModel.state.value.dateRecommendation?.dates?.map { it.date })
+        }
+
+    @Test
     fun `이미 봤으면 추천 시트를 띄우지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(1), count = 1)

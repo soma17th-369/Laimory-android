@@ -1944,11 +1944,15 @@ class HomeViewModel
             val items: List<SourceItem>,
         )
 
-        /** 튜토리얼을 띄워도 되는지. 다른 창이 떠 있거나 만드는 중이면 기다린다. */
+        /**
+         * 튜토리얼을 띄워도 되는지. 다른 창이 떠 있거나 제출 · 생성 중이면 기다린다.
+         *
+         * 기록이 있는 날의 입력 잠금([isInputLocked])으로는 막지 않는다 — 그 잠금은 만들 것이 없다는 뜻일 뿐이라, 오늘 기록이
+         * 있는 사람에게 튜토리얼이 영영 뜨지 않게 된다. 추천에서 날을 고르면 그 날로 옮겨 가므로 지금 날짜의 기록과 무관하다.
+         */
         private val HomeUiState.canShowTutorial: Boolean
             get() =
-                !isInputLocked &&
-                    !isDateLocked &&
+                !isDateLocked &&
                     datePicker == null &&
                     timeSheet == null &&
                     !isPhotoSheetVisible &&
