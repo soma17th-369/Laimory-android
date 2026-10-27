@@ -85,12 +85,12 @@ class RecommendTutorialDatesUseCase
         ): RecommendedRecordDate? {
             // 최신순으로 오므로 첫 장이 그 날 마지막으로 찍은 사진이다.
             val dayPhotos = photos.filter { it.takenAt >= window.start && it.takenAt < window.end }
-            val cover = dayPhotos.firstOrNull() ?: return null
+            if (dayPhotos.isEmpty()) return null
             return RecommendedRecordDate(
                 date = date,
                 capturedPhotoCount = dayPhotos.size,
                 calendarEventCount = events.count { window.contains(it) && CalendarAllDayRecordPolicy.belongsTo(it, date, zone) },
-                coverPhotoUri = cover.contentUri,
+                photoUris = dayPhotos.take(RecommendedRecordDate.PREVIEW_PHOTO_COUNT).map(PhotoCandidate::contentUri),
             )
         }
 

@@ -130,6 +130,18 @@ class RecommendTutorialDatesUseCaseTest {
         }
 
     @Test
+    fun `미리 보기 사진은 그 날 마지막으로 찍은 것부터 다섯 장까지다`() =
+        runTest {
+            val date = today.minusDays(1)
+            photoSource.photos = (1L..7L).map { photo(it, date.atTime(9, 0).plusMinutes(it)) }
+
+            val result = recommend().single()
+
+            assertEquals(7, result.capturedPhotoCount)
+            assertEquals((7L downTo 3L).map { "content://photo/$it" }, result.photoUris)
+        }
+
+    @Test
     fun `종일 일정은 그 날짜 기록에만 센다`() =
         runTest {
             val date = today.minusDays(2)
