@@ -119,26 +119,27 @@ class RecommendTutorialDatesUseCaseTest {
         }
 
     @Test
-    fun `대표 사진은 그 날 마지막으로 찍은 사진이다`() =
+    fun `미리 보기 사진은 찍은 차례대로 담는다`() =
         runTest {
             val date = today.minusDays(1)
-            photoSource.photos = listOf(photo(1, date.atTime(9, 0)), photo(2, date.atTime(21, 0)))
-
-            val result = recommend()
-
-            assertEquals("content://photo/2", result.single().coverPhotoUri)
-        }
-
-    @Test
-    fun `미리 보기 사진은 그 날 마지막으로 찍은 것부터 다섯 장까지다`() =
-        runTest {
-            val date = today.minusDays(1)
-            photoSource.photos = (1L..7L).map { photo(it, date.atTime(9, 0).plusMinutes(it)) }
+            // 사진 원천은 최신순으로 준다.
+            photoSource.photos = (3L downTo 1L).map { photo(it, date.atTime(9, 0).plusMinutes(it)) }
 
             val result = recommend().single()
 
-            assertEquals(7, result.capturedPhotoCount)
-            assertEquals((7L downTo 3L).map { "content://photo/$it" }, result.photoUris)
+            assertEquals((1L..3L).map { "content://photo/$it" }, result.photoUris)
+        }
+
+    @Test
+    fun `상한보다 많이 찍은 날은 하루 전체에서 고르게 뽑는다`() =
+        runTest {
+            val date = today.minusDays(1)
+            photoSource.photos = (48L downTo 1L).map { photo(it, date.atTime(8, 0).plusMinutes(it * 10)) }
+
+            val result = recommend().single()
+
+            assertEquals(48, result.capturedPhotoCount)
+            assertEquals((1L..47L step 2).map { "content://photo/$it" }, result.photoUris)
         }
 
     @Test

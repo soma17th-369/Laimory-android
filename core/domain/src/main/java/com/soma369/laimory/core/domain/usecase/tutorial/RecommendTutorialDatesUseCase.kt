@@ -83,16 +83,22 @@ class RecommendTutorialDatesUseCase
             events: List<SourceItem>,
             zone: ZoneId,
         ): RecommendedRecordDate? {
-            // 최신순으로 오므로 첫 장이 그 날 마지막으로 찍은 사진이다.
             val dayPhotos = photos.filter { it.takenAt >= window.start && it.takenAt < window.end }
             if (dayPhotos.isEmpty()) return null
             return RecommendedRecordDate(
                 date = date,
                 capturedPhotoCount = dayPhotos.size,
                 calendarEventCount = events.count { window.contains(it) && CalendarAllDayRecordPolicy.belongsTo(it, date, zone) },
-                photoUris = dayPhotos.take(RecommendedRecordDate.PREVIEW_PHOTO_COUNT).map(PhotoCandidate::contentUri),
+                photoUris =
+                    dayPhotos
+                        .sortedBy(PhotoCandidate::takenAt)
+                        .evenlySampled(RecommendedRecordDate.PREVIEW_PHOTO_COUNT)
+                        .map(PhotoCandidate::contentUri),
             )
         }
+
+        /** 차례를 지킨 채 [count] 장을 고르게 뽑는다. 앞쪽 몇 장만 자르면 많이 찍은 날의 아침만 보인다. */
+        private fun <T> List<T>.evenlySampled(count: Int): List<T> = if (size <= count) this else List(count) { this[it * size / count] }
 
         /** [date] 에 범위를 얹은 기록 창. 범위가 깨져 시작이 종료보다 늦으면 null — 그 날은 추천하지 않는다. */
         private fun DefaultRecordRange.windowOn(

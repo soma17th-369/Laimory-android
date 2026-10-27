@@ -74,7 +74,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DraftCreateConfirmDialog
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
-import com.soma369.laimory.feature.home.component.HomeDateRecommendationSheet
+import com.soma369.laimory.feature.home.component.HomeDateRecommendationOverlay
 import com.soma369.laimory.feature.home.component.HomePhotoGrid
 import com.soma369.laimory.feature.home.component.HomeRotatingContent
 import com.soma369.laimory.feature.home.component.HomeSourceCard
@@ -286,7 +286,7 @@ private fun HomeContent(
     }
 
     state.dateRecommendation?.let { recommendation ->
-        HomeDateRecommendationSheet(
+        HomeDateRecommendationOverlay(
             recommendation = recommendation,
             onPickDate = { onIntent(HomeUiIntent.PickRecommendedDate(it)) },
             onPickOtherDate = { onIntent(HomeUiIntent.PickOtherRecommendedDate) },
