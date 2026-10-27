@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -70,6 +71,7 @@ import com.soma369.laimory.core.domain.model.tutorial.RecommendedRecordDate
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.HomeDateRecommendation
+import com.soma369.laimory.feature.home.state.HomeRecommendationPhotoAccess
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -84,8 +86,9 @@ import java.util.Locale
  * 왼쪽으로 넘기면 왼쪽 위로 기울며 비켜나고 다음 카드가 앞으로 온다. 오른쪽으로 넘기면 앞서 본 카드가 돌아온다. 카드를 누르면 그
  * 날을 고른다.
  *
- * 추천은 날짜까지만 하고, 사진은 그 날 홈 사진 카드에서 사용자가 고른다. 추천이 없으면(권한 없음 · 찍은 사진 없음) 그 사실과
- * `다른 날 직접 고르기` · `건너뛰기` 만 남는다. 화면 전체가 덮개라 빈 곳을 눌러 닫지 않는다 — 넘기다 빗나간 손가락에 튜토리얼이
+ * 추천은 날짜까지만 하고, 사진은 그 날 홈 사진 카드에서 사용자가 고른다. 추천이 없으면 그 사실과 `다른 날 직접 고르기` ·
+ * `건너뛰기` 만 남는다. 사진을 못 읽어 비었으면(권한 없음 · 일부만 허용) 허용 버튼을 앞에 둔다 — 허용하고 돌아오면 이 화면
+ * 그대로 추천이 채워진다. 화면 전체가 덮개라 빈 곳을 눌러 닫지 않는다 — 넘기다 빗나간 손가락에 튜토리얼이
  * 끝나면 안 된다. 뒤로가기는 건너뛰기와 같다.
  */
 @Composable
@@ -93,6 +96,7 @@ internal fun HomeDateRecommendationOverlay(
     recommendation: HomeDateRecommendation,
     onPickDate: (LocalDate) -> Unit,
     onPickOtherDate: () -> Unit,
+    onRequestPhotoAccess: () -> Unit,
     onSkip: () -> Unit,
 ) {
     Dialog(
@@ -119,6 +123,7 @@ internal fun HomeDateRecommendationOverlay(
                 recommendation = recommendation,
                 onPickDate = onPickDate,
                 onPickOtherDate = onPickOtherDate,
+                onRequestPhotoAccess = onRequestPhotoAccess,
                 onSkip = onSkip,
             )
         }
@@ -130,8 +135,10 @@ private fun HomeDateRecommendationContent(
     recommendation: HomeDateRecommendation,
     onPickDate: (LocalDate) -> Unit,
     onPickOtherDate: () -> Unit,
+    onRequestPhotoAccess: () -> Unit,
     onSkip: () -> Unit,
 ) {
+    val suggestedAccess = recommendation.suggestedPhotoAccess
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -149,6 +156,10 @@ private fun HomeDateRecommendationContent(
             Text(
                 text =
                     when {
+                        suggestedAccess == HomeRecommendationPhotoAccess.NONE ->
+                            "사진 권한을 허용하면 최근 한 달 중 사진을 많이 찍은 날을 골라 드려요."
+                        suggestedAccess == HomeRecommendationPhotoAccess.LIMITED ->
+                            "허용한 사진 중에는 최근 한 달에 찍은 사진이 없어요. 사진을 더 허용하면 많이 찍은 날을 골라 드려요."
                         recommendation.dates.isEmpty() -> "최근 한 달 동안 찍은 사진을 찾지 못했어요. 만들어 볼 날을 직접 골라 주세요."
                         recommendation.dates.size == 1 -> "최근 한 달 중 사진을 가장 많이 찍은 날이에요. 눌러서 골라 주세요."
                         else -> "최근 한 달 중 사진을 많이 찍은 날이에요. 넘겨 보고 눌러서 골라 주세요."
@@ -162,7 +173,22 @@ private fun HomeDateRecommendationContent(
             RecommendedDateDeck(dates = recommendation.dates, onPickDate = onPickDate)
         }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Spacing.small),
+        ) {
+            if (suggestedAccess != null) {
+                Button(
+                    onClick = onRequestPhotoAccess,
+                    modifier = Modifier.fillMaxWidth().height(ButtonHeight),
+                    shape = RoundedCornerShape(ButtonCornerRadius),
+                ) {
+                    Text(
+                        text = if (suggestedAccess == HomeRecommendationPhotoAccess.LIMITED) "사진 더 허용하기" else "사진 권한 허용하기",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
             OutlinedButton(
                 onClick = onPickOtherDate,
                 modifier = Modifier.fillMaxWidth().height(ButtonHeight),
@@ -190,7 +216,8 @@ private fun RecommendedDateDeck(
     dates: List<RecommendedRecordDate>,
     onPickDate: (LocalDate) -> Unit,
 ) {
-    var current by rememberSaveable { mutableIntStateOf(0) }
+    // 권한을 허용하고 다시 센 추천은 다른 날들이다. 처음 카드부터 보여 준다.
+    var current by rememberSaveable(dates.map { it.date }) { mutableIntStateOf(0) }
     val dragX = remember { Animatable(0f) }
     val dragY = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
@@ -557,7 +584,7 @@ private val PreviewDates =
 @Composable
 private fun HomeDateRecommendationLightPreview() {
     LaimoryTheme {
-        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), {}, {}, {})
+        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), {}, {}, {}, {})
     }
 }
 
@@ -565,7 +592,7 @@ private fun HomeDateRecommendationLightPreview() {
 @Composable
 private fun HomeDateRecommendationDarkPreview() {
     LaimoryTheme(darkTheme = true) {
-        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), {}, {}, {})
+        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), {}, {}, {}, {})
     }
 }
 
@@ -573,6 +600,14 @@ private fun HomeDateRecommendationDarkPreview() {
 @Composable
 private fun HomeDateRecommendationEmptyPreview() {
     LaimoryTheme {
-        HomeDateRecommendationContent(HomeDateRecommendation(emptyList()), {}, {}, {})
+        HomeDateRecommendationContent(HomeDateRecommendation(emptyList()), {}, {}, {}, {})
+    }
+}
+
+@Preview(name = "추천 날짜 - 사진 권한 없음", showBackground = true, backgroundColor = 0xFF333333)
+@Composable
+private fun HomeDateRecommendationNoAccessPreview() {
+    LaimoryTheme {
+        HomeDateRecommendationContent(HomeDateRecommendation(emptyList(), HomeRecommendationPhotoAccess.NONE), {}, {}, {}, {})
     }
 }

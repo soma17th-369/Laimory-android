@@ -83,6 +83,7 @@ import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.HomeDateRecommendation
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomePhotoItem
+import com.soma369.laimory.feature.home.state.HomeRecommendationPhotoAccess
 import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeSourcePermissions
@@ -198,6 +199,10 @@ class HomeViewModel
 
         private var photoCandidates: List<PhotoCandidate> = emptyList()
         private var photoAccessGranted = false
+
+        /** 마지막으로 받은 사진 접근. 홈이 처음 보이기 전에는 모른다(null) — 그때 계산한 추천은 허용을 권하지 않는다. */
+        private var photoAccess: HomeRecommendationPhotoAccess? = null
+        private var recommendationRefreshJob: Job? = null
         private var photoCandidatesJob: Job? = null
 
         /** 층위를 채우러 이미 물어본 체류. 같은 항목을 반복해서 묻지 않는다. */
@@ -541,6 +546,7 @@ class HomeViewModel
             limited: Boolean,
         ) {
             photoAccessGranted = granted
+            updatePhotoAccess(granted, limited)
             if (!granted) {
                 // 거부됐다고 시트를 안 열면 초안 만들기를 눌렀는데 아무 일도 일어나지 않는다.
                 // 열어서 왜 비었는지 알리고 설정으로 나가거나 사진 없이 이어 가게 둔다.
@@ -571,6 +577,7 @@ class HomeViewModel
             limited: Boolean,
         ) {
             photoAccessGranted = hasAccess
+            updatePhotoAccess(hasAccess, limited)
             if (!hasAccess) {
                 clearPhotoCandidates()
                 return
@@ -686,34 +693,73 @@ class HomeViewModel
                 state.first { it.dateRecommendation == null && it.canShowTutorial }
                 // 공지를 기다리는 사이 이미 끝낸 시도가 다시 불릴 수 있다. 저장된 값으로 한 번 더 본다.
                 if (observeTutorialSeen(Tutorial.HOME).first()) return
-                val today = LocalDate.now(clock.withZone(zone))
-                recommendationMonths(today).forEach { month ->
-                    try {
-                        fetchMonthlyRecords(month)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        // 기록이 있는 날을 다 거르지 못할 뿐이다. 그 날을 고르면 홈이 기존 기록을 보여 준다.
-                    }
-                }
-                val current = state.value
-                val dates =
-                    recommendTutorialDates(
-                        today = today,
-                        zone = zone,
-                        range = current.defaultRange,
-                        retentionDays = current.retentionDays,
-                        excludedDates = current.savedRecordDates + current.draftRecordDates,
-                    )
+                val recommendation = recommendDates()
                 // 계산하는 사이 다른 창이 떴으면 처음부터 다시 기다린다.
                 if (!state.value.canShowTutorial) return showDateRecommendation()
                 homeOverlayTurn.setTutorialActive(true)
-                updateState { copy(dateRecommendation = HomeDateRecommendation(dates)) }
+                updateState { copy(dateRecommendation = recommendation) }
+                // 계산하는 사이 사진 접근이 바뀌었으면 바뀐 접근으로 다시 센다.
+                if (photoAccess != null && photoAccess != recommendation.photoAccess) refreshRecommendation()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Logger.w(LogDomain.MVI, "튜토리얼 추천 날짜를 만들지 못함: ${e::class.simpleName}")
             }
+        }
+
+        /** 최근 한 달의 기록 상태를 받고 추천을 계산한다. 계산을 시작할 때의 사진 접근을 함께 싣는다. */
+        private suspend fun recommendDates(): HomeDateRecommendation {
+            val access = photoAccess ?: HomeRecommendationPhotoAccess.FULL
+            val today = LocalDate.now(clock.withZone(zone))
+            recommendationMonths(today).forEach { month ->
+                try {
+                    fetchMonthlyRecords(month)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // 기록이 있는 날을 다 거르지 못할 뿐이다. 그 날을 고르면 홈이 기존 기록을 보여 준다.
+                }
+            }
+            val current = state.value
+            val dates =
+                recommendTutorialDates(
+                    today = today,
+                    zone = zone,
+                    range = current.defaultRange,
+                    retentionDays = current.retentionDays,
+                    excludedDates = current.savedRecordDates + current.draftRecordDates,
+                )
+            return HomeDateRecommendation(dates = dates, photoAccess = access)
+        }
+
+        /**
+         * 사진 접근을 받았다(복귀 · 권한 요청 결과). 추천 화면이 떠 있으면 그 자리에서 다시 센다 — 허용하고 돌아오면 닫지
+         * 않고 바로 카드가 보여야 한다. 일부 허용은 접근이 그대로여도 사진을 더 골랐을 수 있어 다시 센다.
+         */
+        private fun updatePhotoAccess(
+            granted: Boolean,
+            limited: Boolean,
+        ) {
+            val access =
+                when {
+                    !granted -> HomeRecommendationPhotoAccess.NONE
+                    limited -> HomeRecommendationPhotoAccess.LIMITED
+                    else -> HomeRecommendationPhotoAccess.FULL
+                }
+            photoAccess = access
+            val shown = state.value.dateRecommendation ?: return
+            if (access == shown.photoAccess && access != HomeRecommendationPhotoAccess.LIMITED) return
+            refreshRecommendation()
+        }
+
+        private fun refreshRecommendation() {
+            recommendationRefreshJob?.cancel()
+            recommendationRefreshJob =
+                safeLaunch {
+                    val refreshed = recommendDates()
+                    // 계산하는 사이 고르거나 건너뛰었으면 다시 띄우지 않는다.
+                    if (state.value.dateRecommendation != null) updateState { copy(dateRecommendation = refreshed) }
+                }
         }
 
         /** 추천이 거슬러 보는 날짜(어제부터 29일 전)가 걸친 달. */

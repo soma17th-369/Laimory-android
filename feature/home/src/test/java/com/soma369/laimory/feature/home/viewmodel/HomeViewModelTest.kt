@@ -110,6 +110,7 @@ import com.soma369.laimory.feature.home.state.DraftCreateConfirm
 import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
+import com.soma369.laimory.feature.home.state.HomeRecommendationPhotoAccess
 import com.soma369.laimory.feature.home.state.HomeRecordState
 import com.soma369.laimory.feature.home.state.HomeSourceKind
 import com.soma369.laimory.feature.home.state.HomeTimeField
@@ -2720,6 +2721,58 @@ class HomeViewModelTest {
             assertEquals(picked, state.selectedDate)
             assertTrue(tutorialRepository.seen.value)
             assertFalse(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `사진 권한이 없으면 추천 화면이 허용을 권한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = false))
+            runCurrent()
+
+            val recommendation = viewModel.state.value.dateRecommendation
+            assertEquals(HomeRecommendationPhotoAccess.NONE, recommendation?.suggestedPhotoAccess)
+        }
+
+    @Test
+    fun `사진 권한을 허용하고 돌아오면 추천 화면을 닫지 않고 다시 센다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
+            val viewModel = createViewModel()
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = false))
+            runCurrent()
+            assertTrue(viewModel.state.value.dateRecommendation!!.dates.isEmpty())
+
+            photoSource.captured = capturedPhotosOn(picked, count = 4)
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true))
+            runCurrent()
+
+            val recommendation = viewModel.state.value.dateRecommendation!!
+            assertEquals(listOf(picked), recommendation.dates.map { it.date })
+            assertNull(recommendation.suggestedPhotoAccess)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `일부만 허용해 추천이 비면 더 허용을 권하고, 사진을 더 고르고 돌아오면 다시 센다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(3)
+            val viewModel = createViewModel()
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true, limited = true))
+            runCurrent()
+            assertEquals(HomeRecommendationPhotoAccess.LIMITED, viewModel.state.value.dateRecommendation?.suggestedPhotoAccess)
+
+            // 접근은 그대로 일부 허용이지만 고른 사진이 늘었다.
+            photoSource.captured = capturedPhotosOn(picked, count = 2)
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = true, limited = true))
+            runCurrent()
+
+            assertEquals(listOf(picked), viewModel.state.value.dateRecommendation?.dates?.map { it.date })
         }
 
     @Test
