@@ -23,6 +23,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
+import kotlinx.coroutines.delay
 
 /**
  * 화면을 어둡게 덮고 한 자리만 뚫어 무엇을 누르면 되는지 알려 주는 코치마크 한 단계.
@@ -77,6 +79,18 @@ fun LaimoryCoachmark(
     holeShape: CoachmarkHoleShape = CoachmarkHoleShape.ROUNDED_RECT,
 ) {
     LaunchedEffect(targetKeys) { state.bringIntoView(targetKeys) }
+    // 열리거나 단계가 바뀐 직후의 누름은 버린다. 앞 화면(시트 항목 등)을 누른 손이나 빠른 연타가 막 뜬 단계를 읽기도 전에 넘기는
+    // 일이 있었다(실기기에서 첫 단계를 건너뛰고 2 / N 으로 시작). 뒤로가기는 의도한 동작이라 막지 않는다.
+    var acceptsTap by remember { mutableStateOf(false) }
+    LaunchedEffect(position) {
+        acceptsTap = false
+        delay(TAP_GUARD_MILLIS)
+        acceptsTap = true
+    }
+    val currentOnNext by rememberUpdatedState(onNext)
+    val currentOnSkip by rememberUpdatedState(onSkip)
+    val guardedNext = { if (acceptsTap) currentOnNext() }
+    val guardedSkip = { if (acceptsTap) currentOnSkip() }
     Dialog(
         onDismissRequest = onSkip,
         properties =
@@ -105,7 +119,7 @@ fun LaimoryCoachmark(
                 Modifier
                     .fillMaxSize()
                     .onGloballyPositioned { origin = it.positionOnScreen() }
-                    .pointerInput(onNext) { detectTapGestures { onNext() } },
+                    .pointerInput(Unit) { detectTapGestures { guardedNext() } },
         ) {
             Canvas(
                 modifier =
@@ -139,7 +153,7 @@ fun LaimoryCoachmark(
                 }
             }
             CoachmarkBubbleLayout(hole = hole) {
-                CoachmarkBubble(message = message, position = position, total = total, onNext = onNext, onSkip = onSkip)
+                CoachmarkBubble(message = message, position = position, total = total, onNext = guardedNext, onSkip = guardedSkip)
             }
         }
     }
@@ -223,6 +237,9 @@ private fun CoachmarkBubble(
 }
 
 private const val SCRIM_ALPHA = 0.64f
+
+/** 열리거나 단계가 바뀐 직후 누름을 받지 않는 시간. 읽기 시작하기 전이라 사람이 일부러 누를 수 없는 짧은 틈이다. */
+private const val TAP_GUARD_MILLIS = 300L
 
 /** 다크 테마의 덮는 농도. 배경이 이미 검정에 가까워, 밝은 카드와 구멍 안의 차이를 키우려면 더 진해야 한다. */
 private const val DARK_SCRIM_ALPHA = 0.8f
