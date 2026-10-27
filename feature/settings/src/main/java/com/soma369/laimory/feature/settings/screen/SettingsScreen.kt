@@ -278,7 +278,7 @@ private fun SettingsScreen(
                             listOf(
                                 // 튜토리얼을 다시 본다. 처음 한 번 보고 건너뛰면 다시 뜨지 않아 여기 말고는 볼 길이 없다.
                                 SettingsItem(
-                                    iconRes = CoreUiR.drawable.ico_setting_info,
+                                    iconRes = CoreUiR.drawable.ico_setting_question,
                                     title = "사용 방법",
                                     showChevron = true,
                                     onClick = { onIntent(SettingsUiIntent.UsageGuideClicked) },
