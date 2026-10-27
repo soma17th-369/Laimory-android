@@ -102,13 +102,14 @@ internal fun TimelineMemo(
     onClick: () -> Unit,
     onValueChange: (String) -> Unit,
     onCommit: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val bubbleQuestion = timelineMemoQuestion(question = question, isEditable = isEditable)
     val display = timelineMemoDisplay(memo = memo, isEditable = isEditable)
     if (bubbleQuestion == null && display == null && editor == null) return
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(QUESTION_GAP),
     ) {
         bubbleQuestion?.let { MemoQuestionBubble(question = it) }

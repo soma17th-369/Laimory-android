@@ -57,6 +57,11 @@ import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
+import com.soma369.laimory.core.ui.component.coachmark.CoachmarkHoleShape
+import com.soma369.laimory.core.ui.component.coachmark.CoachmarkState
+import com.soma369.laimory.core.ui.component.coachmark.LaimoryCoachmark
+import com.soma369.laimory.core.ui.component.coachmark.coachmarkTarget
+import com.soma369.laimory.core.ui.component.coachmark.rememberCoachmarkState
 import com.soma369.laimory.core.ui.component.snackbar.LocalSnackbarAnchor
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
 import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
@@ -74,6 +79,7 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.core.util.permission.PhotoPermission
 import com.soma369.laimory.feature.home.component.DraftCreateConfirmDialog
 import com.soma369.laimory.feature.home.component.HomeDatePickerDialog
+import com.soma369.laimory.feature.home.component.HomeDateRecommendationOverlay
 import com.soma369.laimory.feature.home.component.HomePhotoGrid
 import com.soma369.laimory.feature.home.component.HomeRotatingContent
 import com.soma369.laimory.feature.home.component.HomeSourceCard
@@ -88,6 +94,7 @@ import com.soma369.laimory.feature.home.component.photoEmptyMessage
 import com.soma369.laimory.feature.home.state.DraftCreationStatus
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeCalendarItem
+import com.soma369.laimory.feature.home.state.HomeCoachmarkStep
 import com.soma369.laimory.feature.home.state.HomeDefaultDate
 import com.soma369.laimory.feature.home.state.HomeNotificationApp
 import com.soma369.laimory.feature.home.state.HomeSourceKind
@@ -258,12 +265,28 @@ private fun HomeContent(
         )
     }
 
+    val coachmarkState = rememberCoachmarkState()
     HomeScreen(
         innerPadding = innerPadding,
         state = state,
         onIntent = onIntent,
         onRequestPermission = onRequestPermission,
+        coachmarkState = coachmarkState,
     )
+
+    state.homeCoachmark?.let { step ->
+        LaimoryCoachmark(
+            state = coachmarkState,
+            targetKeys = step.targetKeys,
+            message = step.messageFor(hasRecord = state.timelineButtonStatus == DraftCreationStatus.SUCCESS),
+            position = step.ordinal + 1,
+            total = HomeCoachmarkStep.entries.size,
+            onNext = { onIntent(HomeUiIntent.NextCoachmark) },
+            onSkip = { onIntent(HomeUiIntent.SkipCoachmark) },
+            // 지난 기록은 둥근 아이콘이라 원으로 뚫는다.
+            holeShape = if (step == HomeCoachmarkStep.PAST_RECORDS) CoachmarkHoleShape.CIRCLE else CoachmarkHoleShape.ROUNDED_RECT,
+        )
+    }
 
     if (state.isPhotoSheetVisible) {
         PhotoSelectionSheet(
@@ -281,6 +304,18 @@ private fun HomeContent(
                     )
                 }
             },
+        )
+    }
+
+    state.dateRecommendation?.let { recommendation ->
+        HomeDateRecommendationOverlay(
+            recommendation = recommendation,
+            onPickDate = { onIntent(HomeUiIntent.PickRecommendedDate(it)) },
+            onPickOtherDate = { onIntent(HomeUiIntent.PickOtherRecommendedDate) },
+            // 홈 사진 카드와 같은 길이다 — 고지를 띄운 뒤 요청하고, 일부 허용이면 사진을 다시 고르게 한다. 돌아오면 복귀
+            // 갱신이 추천을 다시 센다.
+            onRequestPhotoAccess = { onRequestPermission(DataPermission.PHOTO) },
+            onSkip = { onIntent(HomeUiIntent.SkipDateRecommendation) },
         )
     }
 
@@ -380,6 +415,7 @@ private fun HomeScreen(
     state: HomeUiState,
     onIntent: (HomeUiIntent) -> Unit,
     onRequestPermission: (DataPermission) -> Unit,
+    coachmarkState: CoachmarkState = rememberCoachmarkState(),
 ) {
     // CTA 는 **바닥에 고정**하고 카드들만 그 위 영역에 둔다. 사진 칸이 1:1 이라 격자 높이가 화면
     // 폭을 따라가므로, 좁고 긴 화면이나 큰 글꼴에서는 카드가 다 들어가지 않을 수 있다. 그때도
@@ -402,6 +438,8 @@ private fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.large),
         ) {
             HomeHeaderRow(
+                dateModifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_DATE),
+                pastRecordsModifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_PAST_RECORDS),
                 selectedDate = state.selectedDate,
                 isDateEnabled = !state.isDateLocked,
                 onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
@@ -424,6 +462,7 @@ private fun HomeScreen(
 
             HomeSourceCard(
                 kind = HomeSourceKind.PHOTO,
+                modifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_PHOTO),
                 status = state.permissions.photo,
                 body = state.cardBody(HomeSourceKind.PHOTO),
                 onClick = state.cardClick(HomeSourceKind.PHOTO, onIntent, onRequestPermission),
@@ -435,6 +474,7 @@ private fun HomeScreen(
 
             HomeSourceCard(
                 kind = HomeSourceKind.CALENDAR,
+                modifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_CALENDAR),
                 status = state.permissions.calendar,
                 body = state.cardBody(HomeSourceKind.CALENDAR),
                 onClick = state.cardClick(HomeSourceKind.CALENDAR, onIntent, onRequestPermission),
@@ -445,7 +485,11 @@ private fun HomeScreen(
 
             Row(
                 // 두 반쪽 카드의 높이를 맞춘다. 큰 글꼴에서 한쪽만 늘면(빈 알림은 한 줄) 테두리가 어긋난다.
-                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .coachmarkTarget(coachmarkState, COACHMARK_OTHER_SOURCES),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 HomeSourceCard(
@@ -484,9 +528,10 @@ private fun HomeScreen(
         DisposableEffect(snackbarAnchor) { onDispose { snackbarAnchor.bottomInset = 0.dp } }
         HomeTimelineButton(
             modifier =
-                Modifier.onSizeChanged { size ->
-                    snackbarAnchor.bottomInset = with(density) { size.height.toDp() } + HOME_BOTTOM_PADDING
-                },
+                Modifier
+                    .onSizeChanged { size ->
+                        snackbarAnchor.bottomInset = with(density) { size.height.toDp() } + HOME_BOTTOM_PADDING
+                    }.coachmarkTarget(coachmarkState, COACHMARK_CREATE),
             status = state.timelineButtonStatus,
             selectedDate = state.selectedDate,
             today = state.today,
@@ -506,6 +551,25 @@ private fun HomeScreen(
         )
     }
 }
+
+/** 코치마크가 짚는 홈의 자리. [HomeCoachmarkStep] 이 이 이름으로 자리를 고른다. */
+private const val COACHMARK_DATE = "date"
+private const val COACHMARK_PHOTO = "photo"
+private const val COACHMARK_CALENDAR = "calendar"
+private const val COACHMARK_OTHER_SOURCES = "other_sources"
+private const val COACHMARK_PAST_RECORDS = "past_records"
+private const val COACHMARK_CREATE = "create"
+
+private val HomeCoachmarkStep.targetKeys: List<String>
+    get() =
+        when (this) {
+            HomeCoachmarkStep.DATE -> listOf(COACHMARK_DATE)
+            HomeCoachmarkStep.PHOTO -> listOf(COACHMARK_PHOTO)
+            // 일정 카드와 위치·알림 줄을 한 구멍으로 짚는다.
+            HomeCoachmarkStep.SOURCES -> listOf(COACHMARK_CALENDAR, COACHMARK_OTHER_SOURCES)
+            HomeCoachmarkStep.PAST_RECORDS -> listOf(COACHMARK_PAST_RECORDS)
+            HomeCoachmarkStep.CREATE -> listOf(COACHMARK_CREATE)
+        }
 
 /** 상태 표시줄 아래 첫 줄까지(시안 6). */
 private val HOME_TOP_PADDING = 6.dp
@@ -531,6 +595,8 @@ private val HOME_BOTTOM_PADDING = Spacing.large
  */
 @Composable
 private fun HomeHeaderRow(
+    dateModifier: Modifier,
+    pastRecordsModifier: Modifier,
     selectedDate: LocalDate,
     isDateEnabled: Boolean,
     onDateClick: () -> Unit,
@@ -550,7 +616,7 @@ private fun HomeHeaderRow(
         Box {
             Row(
                 modifier =
-                    Modifier
+                    dateModifier
                         .clip(RoundedCornerShape(Spacing.small))
                         .combinedClickable(
                             // 막힌 날짜 줄도 개발 메뉴를 위해 눌린다. 짧게 누르기는 그때 아무 일도 하지 않는다.
@@ -608,7 +674,7 @@ private fun HomeHeaderRow(
             // 아이콘만 서 있어 뜻을 그림으로만 전한다 — 스크린 리더가 읽을 이름을 붙인다.
             contentDescription = "지난 기록",
             modifier =
-                Modifier
+                pastRecordsModifier
                     .clip(CircleShape)
                     .clickable(onClick = onPastRecordsClick)
                     .size(32.dp),

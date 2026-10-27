@@ -72,6 +72,11 @@ import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItemStyle
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.component.coachmark.CoachmarkHoleShape
+import com.soma369.laimory.core.ui.component.coachmark.CoachmarkState
+import com.soma369.laimory.core.ui.component.coachmark.LaimoryCoachmark
+import com.soma369.laimory.core.ui.component.coachmark.coachmarkTarget
+import com.soma369.laimory.core.ui.component.coachmark.rememberCoachmarkState
 import com.soma369.laimory.core.ui.model.displayLabel
 import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
@@ -86,6 +91,7 @@ import com.soma369.laimory.feature.timeline.component.TimelinePhotoViewerDialog
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
+import com.soma369.laimory.feature.timeline.state.TimelineCoachmarkStep
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
@@ -173,11 +179,27 @@ private fun TimelineRecordContent(
         if (!state.isSavingRecord) onIntent(TimelineRecordUiIntent.NavigateBack)
     }
 
+    val coachmarkState = rememberCoachmarkState()
     TimelineRecordScreen(
         innerPadding = innerPadding,
         state = state,
         onIntent = onIntent,
+        coachmarkState = coachmarkState,
     )
+
+    state.coachmark?.let { step ->
+        LaimoryCoachmark(
+            state = coachmarkState,
+            targetKeys = listOf(step.targetKey),
+            message = step.message,
+            position = state.coachmarkSteps.indexOf(step) + 1,
+            total = state.coachmarkSteps.size,
+            onNext = { onIntent(TimelineRecordUiIntent.NextCoachmark) },
+            onSkip = { onIntent(TimelineRecordUiIntent.SkipCoachmark) },
+            // 이벤트 더하기는 둥근 떠 있는 버튼이라 원으로 뚫는다.
+            holeShape = if (step == TimelineCoachmarkStep.ADD_EVENT) CoachmarkHoleShape.CIRCLE else CoachmarkHoleShape.ROUNDED_RECT,
+        )
+    }
 
     state.emotionSheet?.let { emotionSheet ->
         TimelineEmotionSheet(
@@ -218,6 +240,7 @@ private fun TimelineRecordScreen(
     innerPadding: PaddingValues,
     state: TimelineRecordUiState,
     onIntent: (TimelineRecordUiIntent) -> Unit,
+    coachmarkState: CoachmarkState = rememberCoachmarkState(),
 ) {
     var photoViewerState by remember { mutableStateOf<TimelinePhotoViewerState?>(null) }
     var isAiNoticeDialogVisible by rememberSaveable { mutableStateOf(false) }
@@ -367,6 +390,7 @@ private fun TimelineRecordScreen(
                             onAiNoticeClick = { isAiNoticeDialogVisible = true },
                             isAddEventEnabled = state.isModeSwitchable,
                             onAddEventClick = { onIntent(TimelineRecordUiIntent.AddEvent) },
+                            coachmarkState = coachmarkState,
                             modifier = Modifier.fillMaxSize(),
                         )
                         // 목록 위에 얹어 저장 버튼과 겹치지 않게 둔다. 편집 모드에서만 보인다 —
@@ -385,6 +409,7 @@ private fun TimelineRecordScreen(
                                 AddEventFab(
                                     enabled = state.isModeSwitchable,
                                     onClick = { onIntent(TimelineRecordUiIntent.AddEvent) },
+                                    modifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_ADD_EVENT),
                                 )
                             }
                         }
@@ -407,6 +432,7 @@ private fun TimelineRecordScreen(
                                         state.eventDeleteDialogState == TimelineEventDeleteDialogState.Hidden,
                                 isLoading = state.isSavingRecord,
                                 onClick = { onIntent(TimelineRecordUiIntent.RequestSave) },
+                                modifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_SAVE),
                             )
                         }
                     }
@@ -515,6 +541,7 @@ private fun TimelineRecordBody(
     onAiNoticeClick: () -> Unit,
     isAddEventEnabled: Boolean,
     onAddEventClick: () -> Unit,
+    coachmarkState: CoachmarkState,
     modifier: Modifier = Modifier,
 ) {
     if (record.events.isEmpty()) {
@@ -558,24 +585,45 @@ private fun TimelineRecordBody(
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = { onMemoChange(event.timelineEventId, it) },
                 onMemoCommit = { onMemoCommit(event.timelineEventId) },
+                // 코치마크는 첫 이벤트와 그 메모를 짚는다.
+                modifier = if (index == 0) Modifier.coachmarkTarget(coachmarkState, COACHMARK_EVENT) else Modifier,
+                memoModifier = if (index == 0) Modifier.coachmarkTarget(coachmarkState, COACHMARK_MEMO) else Modifier,
             )
         }
     }
 }
+
+/** 코치마크가 짚는 자리. [TimelineCoachmarkStep] 이 이 이름으로 자리를 고른다. */
+private const val COACHMARK_EVENT = "event"
+private const val COACHMARK_MEMO = "memo"
+private const val COACHMARK_ADD_EVENT = "add_event"
+private const val COACHMARK_SAVE = "save"
+
+private val TimelineCoachmarkStep.targetKey: String
+    get() =
+        when (this) {
+            TimelineCoachmarkStep.EVENT -> COACHMARK_EVENT
+            TimelineCoachmarkStep.MEMO -> COACHMARK_MEMO
+            TimelineCoachmarkStep.ADD_EVENT -> COACHMARK_ADD_EVENT
+            TimelineCoachmarkStep.SAVE -> COACHMARK_SAVE
+        }
 
 @Composable
 private fun SaveRecordButton(
     enabled: Boolean,
     isLoading: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Button(
         onClick = onClick,
         enabled = enabled,
+        // 바깥 여백 안쪽에 붙인다. 코치마크가 여백까지 짚으면 버튼보다 큰 구멍이 화면 끝까지 뚫린다.
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = Spacing.large, vertical = Spacing.medium)
+                .then(modifier)
                 .height(52.dp),
         shape = MaterialTheme.shapes.medium,
     ) {

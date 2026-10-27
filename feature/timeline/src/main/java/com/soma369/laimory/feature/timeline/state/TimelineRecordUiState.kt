@@ -25,6 +25,10 @@ data class TimelineRecordUiState(
     val eventDeleteDialogState: TimelineEventDeleteDialogState = TimelineEventDeleteDialogState.Hidden,
     val emotionSheet: TimelineEmotionSheetState? = null,
     val isSavingRecord: Boolean = false,
+    /** 타임라인 첫 도착 코치마크가 짚고 있는 단계. null 이면 띄우지 않는다. */
+    val coachmark: TimelineCoachmarkStep? = null,
+    /** 이번 코치마크가 짚을 단계. 저장한 기록을 다시 볼 때는 `저장하기` 가 빠진다. */
+    val coachmarkSteps: List<TimelineCoachmarkStep> = TimelineCoachmarkStep.entries,
 ) : UiState {
     val isDeleting: Boolean
         get() = deleteDialogState == TimelineDeleteDialogState.Deleting
@@ -68,6 +72,30 @@ data class TimelineRecordUiState(
             !isSavingRecord &&
                 deleteDialogState == TimelineDeleteDialogState.Hidden &&
                 eventDeleteDialogState == TimelineEventDeleteDialogState.Hidden
+
+    /**
+     * 타임라인 튜토리얼 코치마크를 시작해도 되는지 — 내용 있는 초안을 편집 화면으로 보고 있고, 메모를 쓰거나 다른 창이 떠 있지
+     * 않을 때다.
+     */
+    val canStartCoachmark: Boolean
+        get() {
+            val record = (content as? TimelineRecordUiContent.Record)?.value ?: return false
+            return !record.isSaved && mode.isEditing && canReplayCoachmark
+        }
+
+    /**
+     * 설정 `사용 방법` 에서 다시 볼 때 코치마크를 시작해도 되는지 — 이벤트가 있는 기록이 보이고, 메모를 쓰거나 다른 창이 떠
+     * 있지 않을 때다. 저장한 기록도 된다(편집 모드로 바꿔 짚는다).
+     */
+    val canReplayCoachmark: Boolean
+        get() {
+            val record = (content as? TimelineRecordUiContent.Record)?.value ?: return false
+            return coachmark == null &&
+                record.events.isNotEmpty() &&
+                memoEditor == null &&
+                emotionSheet == null &&
+                isModeSwitchable
+        }
 }
 
 /**

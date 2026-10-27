@@ -75,6 +75,8 @@ class PhotoSelectionUseCasesTest {
             return candidates
         }
 
+        override suspend fun capturedPhotosIn(window: RecordDateWindow): List<PhotoCandidate> = emptyList()
+
         override suspend fun collect(ids: List<Long>): List<SourceItem> {
             collectedIds = ids
             return collectedItems

@@ -85,6 +85,7 @@ internal fun TimelineEventCard(
     onMemoChange: (String) -> Unit = {},
     onMemoCommit: () -> Unit = {},
     modifier: Modifier = Modifier,
+    memoModifier: Modifier = Modifier,
 ) {
     val photoSlots = event.photoSlots()
     val isPhotoMain = event.eventType == TimelineEventType.PHOTO_MOMENT && photoSlots.isNotEmpty()
@@ -157,6 +158,7 @@ internal fun TimelineEventCard(
                 onClick = onMemoClick,
                 onValueChange = onMemoChange,
                 onCommit = onMemoCommit,
+                modifier = memoModifier,
             )
         }
     }

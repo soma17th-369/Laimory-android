@@ -33,6 +33,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
@@ -116,6 +117,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var popupNoticeQueue: PopupNoticeQueue
+
+    @Inject
+    lateinit var homeOverlayTurn: HomeOverlayTurn
 
     /**
      * 저장된 화면 모드. `null` 은 아직 읽기 전이다.
@@ -209,6 +213,10 @@ class MainActivity : ComponentActivity() {
             val activeDialog by messageHelper.activeDialog.collectAsStateWithLifecycle()
             val popupNotices by popupNoticeQueue.notices.collectAsStateWithLifecycle()
             val popupNoticeTotal by popupNoticeQueue.total.collectAsStateWithLifecycle()
+            val isHomeTutorialActive by homeOverlayTurn.isTutorialActive.collectAsStateWithLifecycle()
+            val hasPendingPopupNotices = popupNotices.isNotEmpty()
+            // 홈 튜토리얼은 처리하지 않은 공지가 있으면 기다린다. 공지 시트와 튜토리얼 시트가 겹치지 않게 차례를 알린다.
+            LaunchedEffect(hasPendingPopupNotices) { homeOverlayTurn.setPendingNotices(hasPendingPopupNotices) }
             var currentPath by remember { mutableStateOf<String?>(null) }
             val isOnHome = currentPath == HomePage.PATH
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -277,7 +285,7 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                         // 팝업 공지는 맨 뒤에 둔다 — 강제 · 권장 업데이트 안내와 다른 전역 Dialog 가 먼저다. 그것들이 떠 있거나
-                        // 홈이 아니면 기다렸다가 띄운다.
+                        // 홈이 아니면 기다렸다가 띄운다. 먼저 뜬 홈 튜토리얼도 마칠 때까지 기다린다.
                         PopupNoticeHost(
                             notices = popupNotices,
                             total = popupNoticeTotal,
@@ -285,7 +293,8 @@ class MainActivity : ComponentActivity() {
                                 isOnHome &&
                                     gateState != AppUpdateGateState.BLOCKED &&
                                     recommendation == null &&
-                                    activeDialog == null,
+                                    activeDialog == null &&
+                                    !isHomeTutorialActive,
                             onOpen = { notice ->
                                 // 팝업 응답엔 원문 주소가 없어 단건 조회로 받는다. 그사이 숨겨졌으면(404) 열지 않는다(서버 계약).
                                 // 설정 공지사항과 같은 방식(Custom Tab)으로 연다. 열어도 카드는 시트에 남는다.

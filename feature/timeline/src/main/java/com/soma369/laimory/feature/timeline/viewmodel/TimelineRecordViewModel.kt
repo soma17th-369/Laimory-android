@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
+import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
 import com.soma369.laimory.core.domain.exception.TimelineEventUpdateException
@@ -23,6 +24,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
+import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
 import com.soma369.laimory.core.domain.navigation.TimelineEventEditorPage
 import com.soma369.laimory.core.domain.usecase.CompleteDailyRecordOutcome
@@ -37,6 +39,8 @@ import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.core.util.logging.LogDomain
@@ -45,6 +49,7 @@ import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.model.initialMode
 import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
+import com.soma369.laimory.feature.timeline.state.TimelineCoachmarkStep
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetPurpose
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
@@ -59,6 +64,10 @@ import com.soma369.laimory.feature.timeline.state.TimelineRecordUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
@@ -84,6 +93,9 @@ class TimelineRecordViewModel
         private val recordTimelineEditUseCase: RecordTimelineEditUseCase,
         private val takeTimelineEditLogUseCase: TakeTimelineEditLogUseCase,
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
+        private val observeTutorialSeen: ObserveTutorialSeenUseCase,
+        private val markTutorialSeen: MarkTutorialSeenUseCase,
+        private val tutorialReplayRequests: TutorialReplayRequests,
         private val clock: Clock,
     ) : BaseMviViewModel<TimelineRecordUiState, TimelineRecordUiIntent, TimelineRecordUiSideEffect>(
             TimelineRecordUiState(),
@@ -145,7 +157,18 @@ class TimelineRecordViewModel
         /** 모으기 시작하기 전의 메모. 모으는 사이에 원래대로 되돌렸으면 보내지 않는다. */
         private val memoBaselines = mutableMapOf<Long, String?>()
 
+        /**
+         * 화면이 떠 있는지. 이 ViewModel 은 화면보다 오래 살아([TimelineRecordUiIntent.Leave]) 화면이 내려간 뒤에도 기록을
+         * 들고 있다. 그때 코치마크를 시작하면 다음에 들어온 순간 엉뚱한 자리에서 뜬다.
+         */
+        private val isScreenVisible = MutableStateFlow(false)
+
+        /** 이번에 튜토리얼을 마쳤다. 봤다는 기록이 저장돼 돌아오기 전에 다시 시작하지 않게 막는다. */
+        private val hasFinishedTutorial = MutableStateFlow(false)
+
         init {
+            observeTutorial()
+            observeTutorialReplay()
             safeLaunch {
                 observeTimelineRecordUseCase().collect { timeline ->
                     val requestedDate = requestedRecordDate ?: return@collect
@@ -178,7 +201,9 @@ class TimelineRecordViewModel
             when (intent) {
                 is TimelineRecordUiIntent.Initialize -> initialize(intent.recordDate, intent.entryPoint)
                 TimelineRecordUiIntent.RetryLoad -> requestedRecordDate?.let(::loadRecord)
-                TimelineRecordUiIntent.Leave -> flushMemoSaved()
+                TimelineRecordUiIntent.Leave -> leave()
+                TimelineRecordUiIntent.NextCoachmark -> nextCoachmark()
+                TimelineRecordUiIntent.SkipCoachmark -> finishTutorial()
                 TimelineRecordUiIntent.NavigateBack ->
                     navigateBack()
                 TimelineRecordUiIntent.RequestSave -> openEmotionSheet()
@@ -216,6 +241,80 @@ class TimelineRecordViewModel
             navigationHelper.navigateToBack()
         }
 
+        /**
+         * 타임라인 튜토리얼을 띄울 때를 기다린다. 보지 않았으면 초안에 처음 도착했을 때 코치마크를 시작한다.
+         *
+         * 내용 있는 초안을 편집 화면으로 보고 있고 다른 창이 없을 때만 짚는다 — 저장한 기록 · 빈 초안에는 짚을 자리가 없다.
+         * debug 초기화로 보지 않은 상태가 되면 다음에 초안을 열 때 다시 띄운다.
+         */
+        private fun observeTutorial() =
+            safeLaunch {
+                observeTutorialSeen(Tutorial.TIMELINE).collectLatest { seen ->
+                    if (seen) return@collectLatest
+                    hasFinishedTutorial.value = false
+                    while (true) {
+                        combine(state, isScreenVisible, hasFinishedTutorial) { current, isVisible, hasFinished ->
+                            isVisible && !hasFinished && current.isRequestedRecord() && current.canStartCoachmark
+                        }.first { it }
+                        updateState {
+                            copy(coachmark = TimelineCoachmarkStep.entries.first(), coachmarkSteps = TimelineCoachmarkStep.entries)
+                        }
+                        // 화면을 떠나 거뒀으면 다음에 열 때 다시 짚는다. 마치면 위 막음이 다시 시작하지 않게 한다.
+                        state.first { it.coachmark == null }
+                    }
+                }
+            }
+
+        /**
+         * 설정 `사용 방법 › 타임라인 편집 둘러보기`. 설정이 연 기록을 편집 모드로 바꿔 짚는다. 봤다는 기록은 건드리지 않는다.
+         *
+         * 저장한 기록에는 `저장하기` 버튼이 없어 그 단계를 뺀다.
+         */
+        private fun observeTutorialReplay() =
+            safeLaunch {
+                tutorialReplayRequests.pending.filter { it == Tutorial.TIMELINE }.collectLatest {
+                    combine(state, isScreenVisible) { current, isVisible ->
+                        isVisible && current.isRequestedRecord() && current.canReplayCoachmark
+                    }.first { it }
+                    if (!tutorialReplayRequests.consume(Tutorial.TIMELINE)) return@collectLatest
+                    val isSaved = state.value.record()?.isSaved == true
+                    switchMode(TimelineRecordMode.EDIT)
+                    val steps =
+                        if (isSaved) TimelineCoachmarkStep.entries - TimelineCoachmarkStep.SAVE else TimelineCoachmarkStep.entries
+                    updateState { copy(coachmark = steps.first(), coachmarkSteps = steps) }
+                }
+            }
+
+        private fun nextCoachmark() {
+            val current = state.value
+            val step = current.coachmark ?: return
+            val next = current.coachmarkSteps.getOrNull(current.coachmarkSteps.indexOf(step) + 1)
+            if (next == null) finishTutorial() else updateState { copy(coachmark = next) }
+        }
+
+        /** 끝까지 봤든 중간에 건너뛰었든 다시 띄우지 않는다. */
+        private fun finishTutorial() {
+            if (state.value.coachmark == null) return
+            hasFinishedTutorial.value = true
+            updateState { copy(coachmark = null) }
+            safeLaunch { markTutorialSeen(Tutorial.TIMELINE) }
+        }
+
+        /**
+         * 화면이 내려갔다. 짚던 코치마크는 거둔다 — 본 것으로 남기지 않아 다음에 초안을 열면 처음부터 다시 짚는다.
+         */
+        private suspend fun leave() {
+            isScreenVisible.value = false
+            // 기록을 못 불러와 받아 가지 못한 다시 보기 요청이 다음에 연 다른 기록에서 뜨지 않게 버린다.
+            tutorialReplayRequests.consume(Tutorial.TIMELINE)
+            updateState { copy(coachmark = null) }
+            flushMemoSaved()
+        }
+
+        /**
+         * 화면이 떴다. **이전 기록을 걷어 낸 뒤에** 화면이 보인다고 알린다 — 먼저 알리면 튜토리얼이 아직 남아 있는 이전
+         * 기록(다른 날짜의 초안)을 짚고, 새 기록이 저장한 기록으로 들어와도 그 코치마크가 남는다.
+         */
         private fun initialize(
             recordDate: LocalDate?,
             entryPoint: AnalyticsEntryPoint,
@@ -224,7 +323,8 @@ class TimelineRecordViewModel
             if (recordDate == null) {
                 loadJob?.cancel()
                 requestedRecordDate = null
-                updateState { copy(content = TimelineRecordUiContent.Unavailable, memoEditor = null) }
+                updateState { copy(content = TimelineRecordUiContent.Unavailable, memoEditor = null, coachmark = null) }
+                isScreenVisible.value = true
                 return
             }
             // Record가 표시 중일 때만 재조회를 생략한다 — 저장 종결(Unavailable) 뒤 재진입이나
@@ -232,15 +332,21 @@ class TimelineRecordViewModel
             val isAlreadyPresented =
                 requestedRecordDate == recordDate &&
                     state.value.content is TimelineRecordUiContent.Record
-            if (isAlreadyPresented) return
+            if (isAlreadyPresented) {
+                isScreenVisible.value = true
+                return
+            }
             // 같은 날짜의 재조회는 그대로 둔다 — 날아가는 중인 커밋이 이 기록의 것이다.
             if (requestedRecordDate != recordDate) {
                 // 다른 기록으로 넘어가기 전에 앞 기록의 것을 꺼낸다. 보내는 것은 뒤에서 해도 된다.
                 val memoSaves = takeMemoSavedEvents()
                 if (memoSaves.isNotEmpty()) safeLaunch { memoSaves.forEach { analyticsHelper.log(it) } }
                 resetMemoCommitState()
+                // 조회는 뒤에서 돌아 그사이 이전 기록이 화면 상태로 남는다. 여기서 바로 걷어 낸다.
+                updateState { copy(content = TimelineRecordUiContent.Loading, memoEditor = null, coachmark = null) }
             }
             requestedRecordDate = recordDate
+            isScreenVisible.value = true
             loadRecord(recordDate)
         }
 
@@ -1070,6 +1176,9 @@ class TimelineRecordViewModel
         }
 
         private fun TimelineRecordUiState.record() = (content as? TimelineRecordUiContent.Record)?.value
+
+        /** 보이는 기록이 이 화면이 연 날짜의 것인지. 다른 날짜로 넘어가는 중에 남은 이전 기록을 짚지 않게 한다. */
+        private fun TimelineRecordUiState.isRequestedRecord(): Boolean = record()?.recordDate == requestedRecordDate
 
         private fun TimelineRecordUiState.completionSnapshot(): List<AnalyticsTimelineEventSnapshot> =
             record()
