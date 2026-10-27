@@ -2662,7 +2662,7 @@ class HomeViewModelTest {
         }
 
     @Test
-    fun `다른 날 직접 고르기는 시트를 닫고 날짜 피커를 연다`() =
+    fun `다른 날 직접 고르기는 시트를 내리고 날짜 피커를 열며 튜토리얼은 이어진다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             tutorialRepository.seen.value = false
             val viewModel = createViewModel()
@@ -2674,7 +2674,52 @@ class HomeViewModelTest {
             val state = viewModel.state.value
             assertNull(state.dateRecommendation)
             assertNotNull(state.datePicker)
+            assertFalse(tutorialRepository.seen.value)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `다른 날 피커를 확정 없이 닫으면 추천 시트로 돌아온다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(2), count = 3)
+            val viewModel = createViewModel()
+            runCurrent()
+            val recommendation = viewModel.state.value.dateRecommendation
+            val before = viewModel.state.value.selectedDate
+            viewModel.sendIntent(HomeUiIntent.PickOtherRecommendedDate)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(recommendation, state.dateRecommendation)
+            assertNull(state.datePicker)
+            assertEquals(before, state.selectedDate)
+            assertFalse(tutorialRepository.seen.value)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `다른 날 피커에서 날짜를 확정하면 그 날로 옮기고 튜토리얼을 마친다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(5)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.PickOtherRecommendedDate)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickDate(picked))
+            viewModel.sendIntent(HomeUiIntent.ConfirmDatePicker)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertNull(state.dateRecommendation)
+            assertEquals(picked, state.selectedDate)
             assertTrue(tutorialRepository.seen.value)
+            assertFalse(homeOverlayTurn.isTutorialActive.value)
         }
 
     @Test

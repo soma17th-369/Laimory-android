@@ -251,6 +251,9 @@ class HomeViewModel
          */
         private var hasUserRange = false
 
+        /** 추천 시트의 `다른 날 직접 고르기` 로 피커를 열며 잠시 내린 추천. 피커를 그냥 닫으면 이 추천으로 돌아온다. */
+        private var recommendationBehindPicker: HomeDateRecommendation? = null
+
         init {
             observeSummary()
             observeCalendar()
@@ -732,21 +735,43 @@ class HomeViewModel
             )
         }
 
+        /**
+         * `다른 날 직접 고르기`. 추천 시트를 내리고 날짜 피커를 연다. 튜토리얼은 이어진다 — 피커에서 날짜를 확정해야 마치고,
+         * 그냥 닫으면 추천 시트로 돌아온다. 튜토리얼을 끝내는 길은 건너뛰기뿐이다.
+         */
         private fun pickOtherRecommendedDate() {
-            if (finishDateRecommendation()) showDatePicker()
+            val recommendation = state.value.dateRecommendation ?: return
+            showDatePicker()
+            // 피커를 열지 못했으면(만드는 중) 시트를 그대로 둔다.
+            if (state.value.datePicker == null) return
+            recommendationBehindPicker = recommendation
+            updateState { copy(dateRecommendation = null) }
+        }
+
+        /** `다른 날 직접 고르기` 로 연 피커를 확정 없이 닫았다. 내려 둔 추천 시트를 다시 띄운다. */
+        private fun returnToRecommendation() {
+            val recommendation = recommendationBehindPicker ?: return
+            recommendationBehindPicker = null
+            updateState { copy(dateRecommendation = recommendation) }
         }
 
         /**
-         * 추천 시트를 닫고 홈 튜토리얼을 본 것으로 남긴다. 고르든 건너뛰든 다시 띄우지 않는다.
+         * 추천 시트를 닫고 홈 튜토리얼을 마친다.
          *
          * @return 시트가 떠 있어 닫았는지. 이미 닫힌 뒤 늦게 온 입력은 무시한다.
          */
         private fun finishDateRecommendation(): Boolean {
             if (state.value.dateRecommendation == null) return false
             updateState { copy(dateRecommendation = null) }
+            finishHomeTutorial()
+            return true
+        }
+
+        /** 홈 튜토리얼을 본 것으로 남긴다. 고르든 건너뛰든 다시 띄우지 않는다. 기다리던 팝업 공지가 이제 뜬다. */
+        private fun finishHomeTutorial() {
+            recommendationBehindPicker = null
             homeOverlayTurn.setTutorialActive(false)
             safeLaunch { markTutorialSeen(Tutorial.HOME) }
-            return true
         }
 
         /**
@@ -775,6 +800,7 @@ class HomeViewModel
         /** 피커를 닫는다. 세션 전체를 버리므로 아무것도 확정되지 않고 기록 창도 그대로다. */
         private fun dismissDatePicker() {
             updateState { copy(datePicker = null, timeSheet = null) }
+            returnToRecommendation()
         }
 
         /**
@@ -810,6 +836,7 @@ class HomeViewModel
             // 다이얼로그만 남으므로 세션을 버린다.
             if (current.isDateLocked) return dismissDatePicker()
             commitDatePicker(session)
+            if (recommendationBehindPicker != null) finishHomeTutorial()
         }
 
         /**
