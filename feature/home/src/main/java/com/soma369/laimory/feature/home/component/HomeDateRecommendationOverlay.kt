@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.component
 
 import android.provider.Settings
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
@@ -29,6 +30,9 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -56,6 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -72,12 +77,14 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.HomeDateRecommendation
 import com.soma369.laimory.feature.home.state.HomeRecommendationPhotoAccess
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.soma369.laimory.core.ui.R as UiR
 
 /**
  * 홈 튜토리얼의 첫 장 — 최근 한 달 중 사진을 많이 찍은 날을 추천해 첫 타임라인을 만들어 볼 날을 고르게 한다.
@@ -205,11 +212,12 @@ private fun HomeDateRecommendationContent(
 }
 
 /**
- * 추천한 날 카드 더미. 앞 카드 하나만 끌 수 있고, 뒤 두 장은 대각선으로 비친다. 끝까지 넘기면 첫 카드로 돌아온다.
+ * 추천한 날 카드 더미. 앞 카드 하나만 끌 수 있고, 남은 카드가 최대 두 장까지 뒤에 대각선으로 비친다. 목록이라 처음과 끝이 있다 —
+ * 마지막 카드 뒤에는 아무것도 없고, 넘겨도 첫 카드로 돌아가지 않는다.
  *
  * 끌다 놓았을 때 충분히 왼쪽으로 갔으면 앞 카드가 왼쪽 위로 날아가고 다음 카드가 앞으로 온다. 충분히 오른쪽이면 앞서 본 카드가
- * 왼쪽 위에서 돌아온다. 덜 갔으면 제자리로 돌아간다. 아래 점은 몇 번째인지 말하고, 눌러서 그 카드로 옮길 수도 있다(끌기 대신
- * 쓸 수 있는 길).
+ * 왼쪽 위에서 돌아온다. 덜 갔거나 그 쪽에 카드가 없으면 제자리로 돌아간다 — 끝에서는 끌리는 양을 줄여 더 없다는 걸 느끼게 한다.
+ * 아래 줄의 좌우 화살표와 점으로도 옮긴다(끌기를 모르는 사용자 · 끌기 대신 쓸 수 있는 길). 화살표는 그 쪽에 카드가 없으면 흐려진다.
  */
 @Composable
 private fun RecommendedDateDeck(
@@ -229,10 +237,10 @@ private fun RecommendedDateDeck(
     val stepY = with(density) { StackStepY.toPx() }
     val cardWidthPx = with(density) { CardWidth.toPx() }
     val canSwipe = dates.size > 1
-
-    fun move(next: Int) {
-        current = (next + dates.size) % dates.size
-    }
+    val hasPrevious = current > 0
+    val hasNext = current < dates.lastIndex
+    // 넘기는 중에 화살표를 또 누르면 무시한다. 겹치면 한 번에 두 장을 건너뛰거나 끝을 지나친다.
+    var moveJob by remember { mutableStateOf<Job?>(null) }
 
     suspend fun settle() =
         coroutineScope {
@@ -244,6 +252,34 @@ private fun RecommendedDateDeck(
         coroutineScope {
             launch { dragX.animateTo(exitX, tween(FLY_MILLIS)) }
             launch { dragY.animateTo(exitY, tween(FLY_MILLIS)) }
+        }
+
+    fun step(action: suspend () -> Unit) {
+        if (moveJob?.isActive == true) return
+        moveJob = scope.launch { action() }
+    }
+
+    fun showNext() =
+        step {
+            if (current < dates.lastIndex) {
+                flyOut()
+                current += 1
+                dragX.snapTo(0f)
+                dragY.snapTo(0f)
+            } else {
+                settle()
+            }
+        }
+
+    // 앞서 본 카드가 왼쪽 위에서 돌아온다.
+    fun showPrevious() =
+        step {
+            if (current > 0) {
+                current -= 1
+                dragX.snapTo(exitX)
+                dragY.snapTo(exitY)
+            }
+            settle()
         }
 
     Column(
@@ -258,18 +294,17 @@ private fun RecommendedDateDeck(
                     .padding(bottom = StackStepY * (VISIBLE_CARDS - 1) + StackTiltOverhang),
             contentAlignment = Alignment.TopStart,
         ) {
-            val visible = minOf(dates.size, VISIBLE_CARDS)
+            // 남은 카드만 뒤에 쌓는다. 마지막 카드에 오면 뒤가 비어 끝이라는 게 보인다.
+            val visible = minOf(dates.size - current, VISIBLE_CARDS)
             // 뒤 카드부터 그려 앞 카드가 위에 오게 한다.
             for (depth in visible - 1 downTo 0) {
-                val index = (current + depth) % dates.size
+                val index = current + depth
                 val date = dates[index]
                 key(index) {
                     val isFront = depth == 0
-                    // 앞으로 나오는 카드는 스르륵 당겨지고, 넘겨서 맨 뒤로 돌아가는 카드는 화면 밖에서 오므로 바로 그 자리에 놓는다.
+                    // 앞으로 나오는 카드는 스르륵 당겨지고, 앞서 본 카드가 돌아오면 밀린 카드는 스르륵 뒤로 물러난다.
                     val pose = remember { Animatable(depth.toFloat()) }
-                    LaunchedEffect(depth) {
-                        if (depth < pose.value) pose.animateTo(depth.toFloat(), tween(SHIFT_MILLIS)) else pose.snapTo(depth.toFloat())
-                    }
+                    LaunchedEffect(depth) { pose.animateTo(depth.toFloat(), tween(SHIFT_MILLIS)) }
                     RecommendedDateCard(
                         date = date,
                         onClick = { onPickDate(date.date) },
@@ -293,31 +328,23 @@ private fun RecommendedDateDeck(
                                         Modifier.pointerInput(current) {
                                             detectDragGestures(
                                                 onDragEnd = {
-                                                    scope.launch {
-                                                        when {
-                                                            dragX.value < -swipeThreshold -> {
-                                                                flyOut()
-                                                                move(current + 1)
-                                                                dragX.snapTo(0f)
-                                                                dragY.snapTo(0f)
-                                                            }
-                                                            dragX.value > swipeThreshold -> {
-                                                                // 앞서 본 카드가 왼쪽 위에서 돌아온다.
-                                                                move(current - 1)
-                                                                dragX.snapTo(exitX)
-                                                                dragY.snapTo(exitY)
-                                                                settle()
-                                                            }
-                                                            else -> settle()
-                                                        }
+                                                    when {
+                                                        // 넘기는 중에 다시 끌었다 놓았으면 넘기기는 무시되니 제자리로만 돌린다.
+                                                        moveJob?.isActive == true -> scope.launch { settle() }
+                                                        dragX.value < -swipeThreshold -> showNext()
+                                                        dragX.value > swipeThreshold -> showPrevious()
+                                                        else -> scope.launch { settle() }
                                                     }
                                                 },
                                                 onDragCancel = { scope.launch { settle() } },
                                             ) { change, amount ->
                                                 change.consume()
+                                                val nextX = dragX.value + amount.x
+                                                val isPastEnd = (nextX < 0f && !hasNext) || (nextX > 0f && !hasPrevious)
+                                                val resistance = if (isPastEnd) EDGE_DRAG_RESISTANCE else 1f
                                                 scope.launch {
-                                                    dragX.snapTo(dragX.value + amount.x)
-                                                    dragY.snapTo(dragY.value + amount.y)
+                                                    dragX.snapTo(dragX.value + amount.x * resistance)
+                                                    dragY.snapTo(dragY.value + amount.y * resistance)
                                                 }
                                             }
                                         }
@@ -330,14 +357,23 @@ private fun RecommendedDateDeck(
             }
         }
         if (canSwipe) {
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.small)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DeckArrowButton(
+                    iconRes = UiR.drawable.ico_default_caret_left,
+                    contentDescription = "이전 날 보기",
+                    enabled = hasPrevious,
+                    onClick = ::showPrevious,
+                )
                 dates.indices.forEach { index ->
                     Box(
                         modifier =
                             Modifier
                                 .size(PageDotTouchSize)
                                 .semantics { contentDescription = "${index + 1}번째 날 보기" }
-                                .clickable { move(index) },
+                                .clickable { if (moveJob?.isActive != true) current = index },
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
@@ -348,8 +384,37 @@ private fun RecommendedDateDeck(
                         )
                     }
                 }
+                DeckArrowButton(
+                    iconRes = UiR.drawable.ico_default_caret_right,
+                    contentDescription = "다음 날 보기",
+                    enabled = hasNext,
+                    onClick = ::showNext,
+                )
             }
         }
+    }
+}
+
+/** 카드 더미 아래 좌우 화살표. 덮개 위라 밝은 색이고, 그 쪽에 카드가 없으면 흐려진 채 눌리지 않는다. */
+@Composable
+private fun DeckArrowButton(
+    @DrawableRes iconRes: Int,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(DeckArrowTouchSize),
+        colors = IconButtonDefaults.iconButtonColors(contentColor = OnDim, disabledContentColor = OnDimMuted),
+    ) {
+        // tint 를 직접 주면 IconButton 의 disabled content color 를 덮어써 비활성이 활성처럼 보인다.
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            modifier = Modifier.size(DeckArrowIconSize),
+        )
     }
 }
 
@@ -556,6 +621,9 @@ private const val FRONT_FADE = 0.6f
 private val SwipeThreshold = 72.dp
 private val ExitOffsetX = 360.dp
 private val ExitOffsetY = 220.dp
+
+/** 끝 카드에서 더 없는 쪽으로 끌 때 손가락을 따라가는 비율. */
+private const val EDGE_DRAG_RESISTANCE = 0.3f
 private const val FLY_MILLIS = 260
 private const val SHIFT_MILLIS = 280
 private val CardElevation = 8.dp
@@ -564,6 +632,8 @@ private val ButtonHeight = 52.dp
 private val ButtonCornerRadius = 12.dp
 private val PageDotSize = 6.dp
 private val PageDotTouchSize = 24.dp
+private val DeckArrowTouchSize = 40.dp
+private val DeckArrowIconSize = 20.dp
 private val GridSpacing = 4.dp
 private const val GRID_COLUMNS = 3
 private const val VISIBLE_ROWS = 3
