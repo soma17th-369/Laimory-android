@@ -4,8 +4,12 @@ import android.provider.Settings
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -52,6 +56,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -64,6 +71,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -242,6 +250,11 @@ private fun RecommendedDateDeck(
     // 넘기는 중에 화살표를 또 누르면 무시한다. 겹치면 한 번에 두 장을 건너뛰거나 끝을 지나친다.
     var moveJob by remember { mutableStateOf<Job?>(null) }
 
+    // 점 줄이 가리킬 카드. 넘기기를 정한 순간 바뀐다 — 앞 카드는 날아간 뒤에야 [current] 가 바뀌어, [current] 를 따르면
+    // 다음으로 갈 때만 점이 늦게 움직인다.
+    var indicatorTarget by remember { mutableStateOf<Int?>(null) }
+    var isDragging by remember { mutableStateOf(false) }
+
     suspend fun settle() =
         coroutineScope {
             launch { dragX.animateTo(0f) }
@@ -254,13 +267,32 @@ private fun RecommendedDateDeck(
             launch { dragY.animateTo(exitY, tween(FLY_MILLIS)) }
         }
 
-    fun step(action: suspend () -> Unit) {
+    // 날아갈 때와 같은 시간으로 돌아온다. 넘기는 쪽에 따라 빠르기가 다르면 어색하다.
+    suspend fun flyIn() =
+        coroutineScope {
+            launch { dragX.animateTo(0f, tween(FLY_MILLIS)) }
+            launch { dragY.animateTo(0f, tween(FLY_MILLIS)) }
+        }
+
+    // 점 줄 목표는 코루틴을 띄우기 전에 바꾼다. 띄운 뒤에 바꾸면 손을 뗀 한 프레임 동안 물방울이 제자리로 돌아가려 한다.
+    fun step(
+        target: Int?,
+        action: suspend () -> Unit,
+    ) {
         if (moveJob?.isActive == true) return
-        moveJob = scope.launch { action() }
+        indicatorTarget = target
+        moveJob =
+            scope.launch {
+                try {
+                    action()
+                } finally {
+                    indicatorTarget = null
+                }
+            }
     }
 
     fun showNext() =
-        step {
+        step(target = (current + 1).takeIf { it <= dates.lastIndex }) {
             if (current < dates.lastIndex) {
                 flyOut()
                 current += 1
@@ -273,13 +305,15 @@ private fun RecommendedDateDeck(
 
     // 앞서 본 카드가 왼쪽 위에서 돌아온다.
     fun showPrevious() =
-        step {
+        step(target = (current - 1).takeIf { it >= 0 }) {
             if (current > 0) {
                 current -= 1
                 dragX.snapTo(exitX)
                 dragY.snapTo(exitY)
+                flyIn()
+            } else {
+                settle()
             }
-            settle()
         }
 
     Column(
@@ -327,7 +361,9 @@ private fun RecommendedDateDeck(
                                     if (isFront && canSwipe) {
                                         Modifier.pointerInput(current) {
                                             detectDragGestures(
+                                                onDragStart = { isDragging = true },
                                                 onDragEnd = {
+                                                    isDragging = false
                                                     when {
                                                         // 넘기는 중에 다시 끌었다 놓았으면 넘기기는 무시되니 제자리로만 돌린다.
                                                         moveJob?.isActive == true -> scope.launch { settle() }
@@ -336,7 +372,10 @@ private fun RecommendedDateDeck(
                                                         else -> scope.launch { settle() }
                                                     }
                                                 },
-                                                onDragCancel = { scope.launch { settle() } },
+                                                onDragCancel = {
+                                                    isDragging = false
+                                                    scope.launch { settle() }
+                                                },
                                             ) { change, amount ->
                                                 change.consume()
                                                 val nextX = dragX.value + amount.x
@@ -367,23 +406,20 @@ private fun RecommendedDateDeck(
                     enabled = hasPrevious,
                     onClick = ::showPrevious,
                 )
-                dates.indices.forEach { index ->
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(PageDotTouchSize)
-                                .semantics { contentDescription = "${index + 1}번째 날 보기" }
-                                .clickable { if (moveJob?.isActive != true) current = index },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(PageDotSize)
-                                    .background(if (index == current) MaterialTheme.colorScheme.primary else OnDimMuted, CircleShape),
-                        )
-                    }
-                }
+                DeckPageIndicator(
+                    count = dates.size,
+                    current = indicatorTarget ?: current,
+                    // 손가락으로 끄는 동안만 따라 늘어난다. 놓은 뒤 카드가 날고 돌아오는 움직임은 따르지 않는다 — 그걸 따르면 다음 ·
+                    // 이전의 움직임이 달라진다. 왼쪽으로 끌면 다음 쪽(+)으로, 그 쪽에 카드가 없으면 늘어나지 않는다.
+                    dragProgress = {
+                        if (isDragging) {
+                            (-dragX.value / cardWidthPx).coerceIn(if (hasPrevious) -1f else 0f, if (hasNext) 1f else 0f)
+                        } else {
+                            0f
+                        }
+                    },
+                    onSelect = { index -> if (moveJob?.isActive != true) current = index },
+                )
                 DeckArrowButton(
                     iconRes = UiR.drawable.ico_default_caret_right,
                     contentDescription = "다음 날 보기",
@@ -391,6 +427,67 @@ private fun RecommendedDateDeck(
                     onClick = ::showNext,
                 )
             }
+        }
+    }
+}
+
+/**
+ * 몇 번째 카드인지 보여 주는 점 줄. 지금 카드는 길쭉한 물방울이고, 옮기면 다음 점 쪽으로 늘어났다가 따라붙으며 줄어든다.
+ *
+ * 물방울의 앞끝과 뒤끝이 서로 다른 빠르기의 스프링으로 따라가 늘었다 줄었다 한다. 카드를 끄는 동안에는 [dragProgress] 만큼
+ * 미리 늘어나 손가락과 함께 움직인다. 점을 누르면 그 카드로 바로 옮긴다.
+ *
+ * @param dragProgress 끄는 정도. -1(이전 카드까지) ~ 1(다음 카드까지). 끄는 동안 매 프레임 바뀌어 람다로 받아 이 줄만 다시 그린다.
+ */
+@Composable
+private fun DeckPageIndicator(
+    count: Int,
+    current: Int,
+    dragProgress: () -> Float,
+    onSelect: (Int) -> Unit,
+) {
+    val head by animateFloatAsState(
+        targetValue = current + dragProgress(),
+        animationSpec = spring(dampingRatio = DROPLET_DAMPING, stiffness = Spring.StiffnessMedium),
+        label = "dropletHead",
+    )
+    val tail by animateFloatAsState(
+        targetValue = current.toFloat(),
+        animationSpec = spring(dampingRatio = DROPLET_DAMPING, stiffness = Spring.StiffnessLow),
+        label = "dropletTail",
+    )
+    val activeColor = MaterialTheme.colorScheme.primary
+    Box(contentAlignment = Alignment.CenterStart) {
+        Row(horizontalArrangement = Arrangement.spacedBy(PageDotSpacing)) {
+            repeat(count) { index ->
+                Box(
+                    modifier =
+                        Modifier
+                            .size(PageDotTouchSize)
+                            .semantics {
+                                contentDescription = "${index + 1}번째 날 보기"
+                                selected = index == current
+                            }.clickable { onSelect(index) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(modifier = Modifier.size(PageDotSize).background(OnDimMuted, CircleShape))
+                }
+            }
+        }
+        // 점 위에 겹쳐 그린다. 그리기만 해서 점 누르기를 가리지 않는다.
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val pitch = (PageDotTouchSize + PageDotSpacing).toPx()
+            val center = PageDotTouchSize.toPx() / 2
+            val halfWidth = ActiveDotWidth.toPx() / 2
+            val height = PageDotSize.toPx()
+            val start = minOf(head, tail) * pitch + center - halfWidth
+            val end = maxOf(head, tail) * pitch + center + halfWidth
+            drawRoundRect(
+                color = activeColor,
+                topLeft = Offset(start, (size.height - height) / 2),
+                size = Size(end - start, height),
+                cornerRadius = CornerRadius(height / 2),
+            )
         }
     }
 }
@@ -630,7 +727,14 @@ private val CardElevation = 8.dp
 
 private val ButtonHeight = 52.dp
 private val ButtonCornerRadius = 12.dp
-private val PageDotSize = 6.dp
+private val PageDotSize = 8.dp
+private val PageDotSpacing = 8.dp
+
+/** 지금 카드 점(물방울)의 폭. 멈춰 있을 때도 길쭉해 다른 점과 모양으로 갈린다. */
+private val ActiveDotWidth = 22.dp
+
+/** 물방울이 따라붙을 때 살짝 출렁이게 하는 정도. 1 이면 출렁임 없이 멈춘다. */
+private const val DROPLET_DAMPING = 0.65f
 private val PageDotTouchSize = 24.dp
 private val DeckArrowTouchSize = 40.dp
 private val DeckArrowIconSize = 20.dp
