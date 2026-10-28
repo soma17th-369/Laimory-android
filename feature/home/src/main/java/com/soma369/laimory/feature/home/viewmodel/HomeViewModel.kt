@@ -266,6 +266,9 @@ class HomeViewModel
          */
         private var recommendationBehindPicker: HomeDateRecommendation? = null
 
+        /** 튜토리얼이 연 사진 시트가 닫히면 이을 코치마크 단계. 시트 단계를 마치고 직접 고르는 동안에도 들고 있다. */
+        private var coachmarkAfterPhotoSheet: HomeCoachmarkStep? = null
+
         init {
             observeSummary()
             observeCalendar()
@@ -622,6 +625,7 @@ class HomeViewModel
         private fun dismissPhotoSheet() {
             updateState { copy(isPhotoSheetVisible = false, isPhotoAccessDenied = false, pendingPhotoIds = emptySet()) }
             resumeCreateAfterPhotoSheet()
+            resumeCoachmarkAfterPhotoSheet()
         }
 
         /** 고른 사진을 홈에 돌려주고 닫는다. */
@@ -652,6 +656,7 @@ class HomeViewModel
                 ).withSourceSummary(summaryItems, photoCandidates)
             }
             resumeCreateAfterPhotoSheet()
+            resumeCoachmarkAfterPhotoSheet()
         }
 
         /**
@@ -865,7 +870,38 @@ class HomeViewModel
         private fun nextCoachmark() {
             val step = state.value.homeCoachmark ?: return
             val next = HomeCoachmarkStep.entries.getOrNull(step.ordinal + 1)
-            if (next == null) finishHomeTutorial() else updateState { copy(homeCoachmark = next) }
+            when {
+                next == null -> finishHomeTutorial()
+                next.isInPhotoSheet && state.value.isInputLocked ->
+                    // 사진을 바꿀 수 없는 날은 시트를 열지 않고 시트 단계를 건너뛴다.
+                    updateState { copy(homeCoachmark = HomeCoachmarkStep.entries.first { it > step && !it.isInPhotoSheet }) }
+                step == HomeCoachmarkStep.PHOTO -> openPhotoSheetInTutorial(sheetStep = next)
+                // 시트 단계를 마쳤다. 코치마크를 걷고 직접 고르게 한다 — 시트가 닫히면 이어 간다.
+                step.isInPhotoSheet && !next.isInPhotoSheet -> {
+                    coachmarkAfterPhotoSheet = next
+                    updateState { copy(homeCoachmark = null) }
+                }
+                else -> updateState { copy(homeCoachmark = next) }
+            }
+        }
+
+        /**
+         * 사진 단계를 지나며 실제 사진 시트를 열고 시트 위 첫 단계([sheetStep])로 간다. 홈 사진 카드만 짚으면 고르는 곳을 보지 못한다.
+         *
+         * 권한이 없으면 평소처럼 고지·요청을 거쳐 거부 안내 시트가 열린다. 그때는 짚을 사진이 없어 시트가 코치마크를 그리지 않는다.
+         * 어느 길이든 시트가 닫히면 시트 다음 단계부터 잇는다([resumeCoachmarkAfterPhotoSheet]).
+         */
+        private fun openPhotoSheetInTutorial(sheetStep: HomeCoachmarkStep) {
+            coachmarkAfterPhotoSheet = HomeCoachmarkStep.entries.first { it > sheetStep && !it.isInPhotoSheet }
+            updateState { copy(homeCoachmark = sheetStep) }
+            startPhotoSelection()
+        }
+
+        /** 튜토리얼이 연 사진 시트가 닫혔다. 골랐든 그냥 닫았든 코치마크를 잇는다 — 튜토리얼은 건너뛰기로만 끝난다. */
+        private fun resumeCoachmarkAfterPhotoSheet() {
+            val step = coachmarkAfterPhotoSheet ?: return
+            coachmarkAfterPhotoSheet = null
+            updateState { copy(homeCoachmark = step) }
         }
 
         /**
@@ -875,6 +911,7 @@ class HomeViewModel
          */
         private fun finishHomeTutorial() {
             recommendationBehindPicker = null
+            coachmarkAfterPhotoSheet = null
             updateState { copy(dateRecommendation = null, homeCoachmark = null) }
             homeOverlayTurn.setTutorialActive(false)
             safeLaunch { markTutorialSeen(Tutorial.HOME) }

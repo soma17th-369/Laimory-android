@@ -2665,6 +2665,11 @@ class HomeViewModelTest {
                 viewModel.state.value.homeCoachmark?.let(visited::add)
                 viewModel.sendIntent(HomeUiIntent.NextCoachmark)
                 runCurrent()
+                // 시트 단계를 마치면 직접 고르는 동안 코치마크가 걷힌다. 시트를 닫아야 다음 단계가 뜬다.
+                if (viewModel.state.value.homeCoachmark == null && homeOverlayTurn.isTutorialActive.value) {
+                    viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+                    runCurrent()
+                }
             }
 
             assertEquals(HomeCoachmarkStep.entries, visited)
@@ -2690,6 +2695,111 @@ class HomeViewModelTest {
             assertNull(viewModel.state.value.homeCoachmark)
             assertTrue(tutorialRepository.seen.value)
             assertFalse(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `사진 단계를 넘기면 실제 사진 시트를 열고 시트 위에서 사진 목록과 버튼을 차례로 짚는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            // 시트는 권한을 확인한 뒤 열린다(화면이 확인하고 돌려준다).
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+            assertEquals(HomeCoachmarkStep.PHOTO_SHEET_LIST, viewModel.state.value.homeCoachmark)
+
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            assertEquals(HomeCoachmarkStep.PHOTO_SHEET_DONE, viewModel.state.value.homeCoachmark)
+
+            // 시트 단계를 마치면 코치마크를 걷어 직접 고르게 한다. 튜토리얼은 이어진다.
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            val state = viewModel.state.value
+            assertNull(state.homeCoachmark)
+            assertTrue(state.isPhotoSheetVisible)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+            assertFalse(tutorialRepository.seen.value)
+        }
+
+    @Test
+    fun `튜토리얼이 연 사진 시트에서 고르고 완료하면 고른 사진을 남기고 다음 단계부터 잇는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            repeat(2) {
+                viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+                runCurrent()
+            }
+            val photoId = viewModel.state.value.availablePhotos.first().mediaStoreId
+
+            viewModel.sendIntent(HomeUiIntent.TogglePhoto(photoId))
+            viewModel.sendIntent(HomeUiIntent.ConfirmPhotoSelection)
+            runCurrent()
+
+            val state = viewModel.state.value
+            assertEquals(setOf(photoId), state.selectedPhotoIds)
+            assertFalse(state.isPhotoSheetVisible)
+            assertEquals(HomeCoachmarkStep.SOURCES, state.homeCoachmark)
+        }
+
+    @Test
+    fun `짚을 사진이 없는 시트를 닫아도 튜토리얼은 다음 단계부터 이어진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            // 거부되면 거부 안내 시트가 열리고, 시트는 짚을 사진이 없어 코치마크를 그리지 않는다.
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+
+            assertEquals(HomeCoachmarkStep.SOURCES, viewModel.state.value.homeCoachmark)
+            assertFalse(tutorialRepository.seen.value)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `시트 위 코치마크에서 건너뛰면 시트는 남기고 튜토리얼만 마친다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark)
+            runCurrent()
+            assertTrue(tutorialRepository.seen.value)
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+
+            // 마친 뒤 시트를 닫아도 코치마크가 되살아나지 않는다.
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+            assertNull(viewModel.state.value.homeCoachmark)
+        }
+
+    @Test
+    fun `직접 연 사진 시트를 닫아도 코치마크를 띄우지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            photoSource.candidates = listOf(todayPhotoCandidate(1L))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.OpenPhotoSheet)
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+
+            assertNull(viewModel.state.value.homeCoachmark)
         }
 
     @Test
@@ -2967,6 +3077,22 @@ class HomeViewModelTest {
             // 추천 시트가 다시 뜨지 않는다.
             assertNull(viewModel.state.value.dateRecommendation)
         }
+
+    /** 추천한 날을 골라 코치마크를 사진 단계까지 넘긴다. 그 날 사진 한 장이 시트 후보로 있다. */
+    private fun TestScope.startCoachmarkAtPhotoStep(): HomeViewModel {
+        tutorialRepository.seen.value = false
+        val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
+        photoSource.captured = capturedPhotosOn(picked, count = 1)
+        photoSource.candidates = photoSource.captured
+        val viewModel = createViewModel()
+        runCurrent()
+        viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+        runCurrent()
+        viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+        runCurrent()
+        assertEquals(HomeCoachmarkStep.PHOTO, viewModel.state.value.homeCoachmark)
+        return viewModel
+    }
 
     private fun capturedPhotosOn(
         date: LocalDate,

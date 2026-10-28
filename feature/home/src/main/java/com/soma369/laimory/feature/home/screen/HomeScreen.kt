@@ -274,7 +274,8 @@ private fun HomeContent(
         coachmarkState = coachmarkState,
     )
 
-    state.homeCoachmark?.let { step ->
+    // 시트 위 단계는 사진 시트가 그린다.
+    state.homeCoachmark?.takeIf { !it.isInPhotoSheet }?.let { step ->
         LaimoryCoachmark(
             state = coachmarkState,
             targetKeys = step.targetKeys,
@@ -565,6 +566,7 @@ private val HomeCoachmarkStep.targetKeys: List<String>
         when (this) {
             HomeCoachmarkStep.DATE -> listOf(COACHMARK_DATE)
             HomeCoachmarkStep.PHOTO -> listOf(COACHMARK_PHOTO)
+            HomeCoachmarkStep.PHOTO_SHEET_LIST, HomeCoachmarkStep.PHOTO_SHEET_DONE -> emptyList()
             // 일정 카드와 위치·알림 줄을 한 구멍으로 짚는다.
             HomeCoachmarkStep.SOURCES -> listOf(COACHMARK_CALENDAR, COACHMARK_OTHER_SOURCES)
             HomeCoachmarkStep.PAST_RECORDS -> listOf(COACHMARK_PAST_RECORDS)
