@@ -23,7 +23,6 @@ enum class HomeCoachmarkStep(
     PHOTO_SHEET_LIST("이 날 찍은 사진이 모두 모여 있어요. 눌러서 타임라인에 담을 사진을 골라요."),
     PHOTO_SHEET_DONE("다 골랐으면 여기를 눌러 홈으로 돌아가요. 고르지 않고 닫아도 괜찮아요. 이제 직접 골라 보세요."),
     SOURCES("일정·위치·알림도 함께 담겨요. 카드를 눌러 무엇이 담기는지 보고 뺄 수 있어요."),
-    PAST_RECORDS("만든 기록은 여기서 다시 볼 수 있어요."),
     CREATE(
         message = "다 골랐으면 여기를 눌러 타임라인을 만들어 보세요.",
         recordedDayMessage = "이 날은 이미 타임라인이 있어요. 여기를 눌러 열어 볼 수 있어요.",
