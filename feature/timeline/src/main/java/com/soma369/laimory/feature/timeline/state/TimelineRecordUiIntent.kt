@@ -108,4 +108,39 @@ sealed interface TimelineRecordUiIntent : UiIntent {
         val commitId: Long,
         val memo: String?,
     ) : TimelineRecordUiIntent
+
+    /** 부제 속 장소 칩. 편집 모드이고 장소 후보가 있는 이벤트에서만 열린다. */
+    data class OpenPlaceSheet(
+        val timelineEventId: Long,
+    ) : TimelineRecordUiIntent
+
+    data object DismissPlaceSheet : TimelineRecordUiIntent
+
+    data class SelectPlaceOption(
+        val place: String,
+    ) : TimelineRecordUiIntent
+
+    /** 목록의 `직접 입력`. 시트 안에서 입력 단계로 넘어간다. */
+    data object OpenDirectPlaceInput : TimelineRecordUiIntent
+
+    /** 입력 단계의 뒤로. 고르던 목록으로 돌아간다. */
+    data object CloseDirectPlaceInput : TimelineRecordUiIntent
+
+    data class ChangeDirectPlaceInput(
+        val value: String,
+    ) : TimelineRecordUiIntent
+
+    data object ConfirmPlace : TimelineRecordUiIntent
+
+    /**
+     * 장소를 바꿨다는 스낵바의 `되돌리기`.
+     *
+     * 바꾼 요청의 번호를 함께 들고 온다. 스낵바가 떠 있는 동안 같은 이벤트의 장소를 또 바꿨다면 이
+     * 되돌리기는 이미 지난 것이다 — 확인하지 않으면 새로 고른 장소를 옛 장소로 덮는다.
+     */
+    data class UndoPlaceChange(
+        val timelineEventId: Long,
+        val changeId: Long,
+        val place: String,
+    ) : TimelineRecordUiIntent
 }

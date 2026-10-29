@@ -3,11 +3,13 @@ package com.soma369.laimory.feature.timeline.model
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.PlaceSubtitle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.displaySubtitle
+import com.soma369.laimory.core.domain.model.timeline.placeSubtitle
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -47,7 +49,33 @@ data class TimelineEventUiModel(
     val question: String?,
     val itemCounts: List<TimelineItemCountUiModel>,
     val photoUrls: List<String?> = emptyList(),
-)
+    /**
+     * 부제를 장소 칩 앞·장소·뒤로 나눈 것. **장소를 다시 고를 수 있는 이벤트에만** 있다 — 후보가
+     * 있고 부제에 장소 자리가 남아 있을 때다. 칩을 그릴지는 이 값과 화면 모드가 정한다.
+     */
+    val placeSentence: PlaceSubtitle? = null,
+    /** AI 가 준 장소 후보. 순서가 우선순위다. */
+    val placeCandidates: List<String> = emptyList(),
+) {
+    /** 지금 장소. 고를 수 있는 이벤트에만 의미가 있다. */
+    val place: String?
+        get() = placeSentence?.place
+
+    /**
+     * 장소를 [place] 로 바꾼 모습. 서버 응답을 기다리는 동안 바뀐 장소를 먼저 보여 줄 때 쓴다.
+     *
+     * 부제에 장소 자리가 둘 이상이면 뒷자리는 옛 장소로 남는다 — 응답이 오면 서버 값으로 맞춰지고,
+     * AI 가 같은 장소를 두 번 쓰는 문장은 드물다.
+     */
+    fun withPlace(place: String): TimelineEventUiModel {
+        val sentence = placeSentence ?: return this
+        val replaced = sentence.copy(place = place)
+        return copy(
+            subtitle = replaced.before + replaced.place + replaced.after,
+            placeSentence = replaced,
+        )
+    }
+}
 
 @Immutable
 data class TimelineItemCountUiModel(
@@ -92,4 +120,6 @@ private fun TimelineEvent.toUiModel() =
             items
                 .filter { it.itemType == TimelineItemType.PHOTO }
                 .map { item -> item.photoUrl },
+        placeSentence = placeSubtitle()?.takeIf { placeCandidates.isNotEmpty() },
+        placeCandidates = placeCandidates,
     )
