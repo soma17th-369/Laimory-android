@@ -6,6 +6,8 @@ import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -24,9 +26,17 @@ class DailyReminderDelivery
     constructor(
         private val repository: DailyReminderRepository,
         private val coordinator: DailyReminderCoordinator,
-        private val notifier: DailyReminderNotifier,
+        private val notifier: DailyReminderNotifications,
         @ApplicationCoroutineScope private val applicationScope: CoroutineScope,
     ) {
+        /**
+         * 기록 읽기 → 중복 판정 → 표시 → 기록 저장을 한 번에 하나만 한다.
+         *
+         * 같은 시각에 건 알람 둘이 함께 오면 각자 코루틴으로 돈다. 나눠 돌면 둘 다 "아직 안 띄움"을 읽고 둘 다
+         * 띄운다 — 같은 알림 자리를 덮어써도 소리·진동은 두 번 난다.
+         */
+        private val deliveryLock = Mutex()
+
         /** 수신기가 부른다. 끝나면 [onFinished] 로 알린다 — 수신기는 그때까지 프로세스를 붙잡는다. */
         fun onAlarm(
             scheduledAtMillis: Long?,
@@ -40,7 +50,7 @@ class DailyReminderDelivery
                             scheduledAtMillis
                                 ?.let { millis -> LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneId.systemDefault()) }
                                 ?: now
-                        deliverIfDue(scheduledAt, now)
+                        deliveryLock.withLock { deliverIfDue(scheduledAt, now) }
                     }
                     coordinator.resync()
                 } catch (error: Exception) {

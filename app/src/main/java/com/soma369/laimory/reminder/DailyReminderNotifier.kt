@@ -23,23 +23,18 @@ class DailyReminderNotifier
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
-    ) {
+    ) : DailyReminderNotifications {
         private val picker = DailyReminderCopyPicker()
 
         /** 문구 후보 수. 리소스 배열 길이를 그대로 쓴다. */
         private val generalCount: Int get() = context.resources.getStringArray(R.array.daily_reminder_general_titles).size
         private val completedCount: Int get() = context.resources.getStringArray(R.array.daily_reminder_completed_titles).size
 
-        internal fun pickGeneral(lastIndex: Int?): DailyReminderCopy.General = picker.pickGeneral(generalCount, lastIndex)
+        override fun pickGeneral(lastIndex: Int?): DailyReminderCopy.General = picker.pickGeneral(generalCount, lastIndex)
 
-        internal fun pickCompleted(lastIndex: Int?): DailyReminderCopy.Completed = picker.pickCompleted(completedCount, lastIndex)
+        override fun pickCompleted(lastIndex: Int?): DailyReminderCopy.Completed = picker.pickCompleted(completedCount, lastIndex)
 
-        /**
-         * 알림을 띄운다. 기기가 알림을 표시할 수 없으면 아무것도 하지 않고 `false`.
-         *
-         * @param recordDate 완료 문구일 때 누르면 열 기록 날짜.
-         */
-        internal fun notify(
+        override fun notify(
             copy: DailyReminderCopy,
             recordDate: LocalDate,
         ): Boolean {

@@ -5,7 +5,7 @@ package com.soma369.laimory.reminder
  *
  * 제목과 본문은 서로 어울리게 쓴 짝이라 [index] 하나로 함께 고른다.
  */
-internal sealed interface DailyReminderCopy {
+sealed interface DailyReminderCopy {
     val index: Int
 
     /** 작성을 권하는 문구. */
