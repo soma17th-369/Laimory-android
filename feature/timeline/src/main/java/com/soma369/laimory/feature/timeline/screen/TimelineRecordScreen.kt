@@ -88,6 +88,7 @@ import com.soma369.laimory.feature.timeline.component.TimelineEmotionSheet
 import com.soma369.laimory.feature.timeline.component.TimelineEventCard
 import com.soma369.laimory.feature.timeline.component.TimelineEventDeleteDialog
 import com.soma369.laimory.feature.timeline.component.TimelinePhotoViewerDialog
+import com.soma369.laimory.feature.timeline.component.TimelinePlaceSheet
 import com.soma369.laimory.feature.timeline.model.TimelineEventUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineItemCountUiModel
 import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
@@ -145,6 +146,23 @@ private fun TimelineRecordContent(
                 is TimelineRecordUiSideEffect.ShowSnackbar ->
                     snackbarHostState.showSnackbar(effect.message)
 
+                is TimelineRecordUiSideEffect.PlaceChanged -> {
+                    val result =
+                        snackbarHostState.showSnackbar(
+                            message = effect.message,
+                            actionLabel = "되돌리기",
+                        )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        onIntent(
+                            TimelineRecordUiIntent.UndoPlaceChange(
+                                timelineEventId = effect.timelineEventId,
+                                changeId = effect.changeId,
+                                place = effect.previousPlace,
+                            ),
+                        )
+                    }
+                }
+
                 is TimelineRecordUiSideEffect.MemoCommitFailed -> {
                     val result =
                         snackbarHostState.showSnackbar(
@@ -198,6 +216,18 @@ private fun TimelineRecordContent(
             onSkip = { onIntent(TimelineRecordUiIntent.SkipCoachmark) },
             // 이벤트 더하기는 둥근 떠 있는 버튼이라 원으로 뚫는다.
             holeShape = if (step == TimelineCoachmarkStep.ADD_EVENT) CoachmarkHoleShape.CIRCLE else CoachmarkHoleShape.ROUNDED_RECT,
+        )
+    }
+
+    state.placeSheet?.let { placeSheet ->
+        TimelinePlaceSheet(
+            state = placeSheet,
+            onSelect = { onIntent(TimelineRecordUiIntent.SelectPlaceOption(it)) },
+            onOpenDirectInput = { onIntent(TimelineRecordUiIntent.OpenDirectPlaceInput) },
+            onCloseDirectInput = { onIntent(TimelineRecordUiIntent.CloseDirectPlaceInput) },
+            onDirectInputChange = { onIntent(TimelineRecordUiIntent.ChangeDirectPlaceInput(it)) },
+            onConfirm = { onIntent(TimelineRecordUiIntent.ConfirmPlace) },
+            onDismiss = { onIntent(TimelineRecordUiIntent.DismissPlaceSheet) },
         )
     }
 
@@ -380,6 +410,7 @@ private fun TimelineRecordScreen(
                                 onIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId, value))
                             },
                             onMemoCommit = { onIntent(TimelineRecordUiIntent.CommitMemoEdit(it)) },
+                            onPlaceClick = { onIntent(TimelineRecordUiIntent.OpenPlaceSheet(it)) },
                             onPhotoClick = { photoUrls, initialIndex ->
                                 photoViewerState =
                                     TimelinePhotoViewerState(
@@ -537,6 +568,7 @@ private fun TimelineRecordBody(
     onMemoClick: (Long) -> Unit,
     onMemoChange: (timelineEventId: Long, value: String) -> Unit,
     onMemoCommit: (Long) -> Unit,
+    onPlaceClick: (Long) -> Unit,
     onPhotoClick: (photoUrls: List<String?>, initialIndex: Int) -> Unit,
     onAiNoticeClick: () -> Unit,
     isAddEventEnabled: Boolean,
@@ -585,6 +617,7 @@ private fun TimelineRecordBody(
                 onMemoClick = { onMemoClick(event.timelineEventId) },
                 onMemoChange = { onMemoChange(event.timelineEventId, it) },
                 onMemoCommit = { onMemoCommit(event.timelineEventId) },
+                onPlaceClick = { onPlaceClick(event.timelineEventId) },
                 // 코치마크는 첫 이벤트와 그 메모를 짚는다.
                 modifier = if (index == 0) Modifier.coachmarkTarget(coachmarkState, COACHMARK_EVENT) else Modifier,
                 memoModifier = if (index == 0) Modifier.coachmarkTarget(coachmarkState, COACHMARK_MEMO) else Modifier,
