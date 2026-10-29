@@ -58,19 +58,24 @@ internal fun TimelinePlaceSentence(
     }
 }
 
-/** Figma `PlaceChip`(3497:8976) — 핀 + 지금 장소 + 펼침 화살표, 완전히 둥근 칩. */
+/**
+ * Figma `PlaceChip`(3497:8976) — 핀 + 지금 장소 + 펼침 화살표, 완전히 둥근 칩.
+ *
+ * 바탕은 중립 회색이다. 바로 아래 AI 질문 말풍선이 `primaryContainer` 라, 같은 파란 칩을 두면 둘이 한 덩어리로
+ * 읽힌다(2026-10-30 실기기 확인).
+ */
 @Composable
 internal fun TimelinePlaceChip(
     place: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    val contentColor = MaterialTheme.colorScheme.onSurface
     Row(
         modifier =
             modifier
                 .clip(RoundedCornerShape(percent = 50))
-                .background(MaterialTheme.colorScheme.primaryContainer)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .clickable(role = Role.Button, onClick = onClick)
                 .semantics { contentDescription = "장소 $place, 바꾸기" }
                 .padding(start = 8.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
@@ -81,7 +86,7 @@ internal fun TimelinePlaceChip(
             painter = painterResource(UiR.drawable.ico_setting_datasource_location),
             contentDescription = null,
             modifier = Modifier.size(14.dp),
-            tint = contentColor,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = place,
@@ -96,7 +101,7 @@ internal fun TimelinePlaceChip(
             painter = painterResource(UiR.drawable.ico_default_caret_down),
             contentDescription = null,
             modifier = Modifier.size(12.dp),
-            tint = contentColor,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
