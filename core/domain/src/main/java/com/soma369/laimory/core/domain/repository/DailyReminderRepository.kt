@@ -17,7 +17,7 @@ interface DailyReminderRepository {
     val settings: Flow<DailyReminderSettings>
 
     /**
-     * 서버 리마인더를 끄는 일이 이 기기에서 한 번이라도 끝났는지.
+     * 지금 로그인한 계정의 서버 리마인더를 끄는 일이 끝났는지. 로그아웃하면 비운다([clearAccountState]).
      *
      * 끝나기 전에는 예약하지 않는다. 서버가 아직 보내는 동안 기기도 띄우면 같은 시각에 두 번 온다.
      */
@@ -50,4 +50,13 @@ interface DailyReminderRepository {
     suspend fun setLastCompletedCopyIndex(index: Int)
 
     suspend fun setLastDeliveredRecordDate(date: LocalDate)
+
+    /**
+     * 계정에 딸린 값을 비운다 — 서버 넘겨받기 표시, 전체 알림 거울값, 작성 완료 날짜.
+     *
+     * 로그아웃(세션 종료) 때 부른다. 남겨 두면 다음에 로그인한 계정이 앞 계정의 값으로 판정받는다 — 그 계정의
+     * 서버 끄기가 끝나기 전(또는 실패해도) 기기 예약이 걸려 같은 시각에 두 번 온다. 켜짐·시각은 기기를 쓰는
+     * 사람이 정한 값이라 남긴다.
+     */
+    suspend fun clearAccountState()
 }

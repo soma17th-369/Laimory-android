@@ -57,4 +57,10 @@ class FakeDailyReminderRepository(
     override suspend fun setLastCompletedCopyIndex(index: Int) = Unit
 
     override suspend fun setLastDeliveredRecordDate(date: LocalDate) = Unit
+
+    override suspend fun clearAccountState() {
+        handedOff.value = false
+        mirror.value = null
+        savedRecordDates.clear()
+    }
 }

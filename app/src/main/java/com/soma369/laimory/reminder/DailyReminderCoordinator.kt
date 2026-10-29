@@ -31,6 +31,9 @@ import javax.inject.Singleton
  *
  * 서버 넘겨받기는 로그인할 때마다 한다(다른 계정·새 계정도 서버 값이 켜져 있을 수 있다). 실패했으면 앱이
  * 전경으로 올라올 때 다시 한다.
+ *
+ * 넘겨받기 표시는 **로그인한 계정의 것**이다. 로그아웃하면 계정에 딸린 값을 비운다 — 남겨 두면 다음 계정이 앞
+ * 계정의 표시로 예약을 허락받아, 자기 서버 끄기가 끝나기 전(또는 실패해도) 서버 알림과 기기 알림이 함께 온다.
  */
 @Singleton
 class DailyReminderCoordinator
@@ -39,7 +42,7 @@ class DailyReminderCoordinator
         private val repository: DailyReminderRepository,
         private val observeAuthSession: ObserveAuthSessionUseCase,
         private val handOffDailyReminder: HandOffDailyReminderUseCase,
-        private val scheduler: DailyReminderAlarmScheduler,
+        private val scheduler: DailyReminderAlarms,
         @ApplicationCoroutineScope private val applicationScope: CoroutineScope,
     ) : DefaultLifecycleObserver {
         private var isStarted = false
@@ -70,20 +73,30 @@ class DailyReminderCoordinator
             applicationScope.launch {
                 observeAuthSession()
                     .distinctUntilChanged()
-                    .filter { session -> session == AuthSessionState.Authenticated }
-                    .collect { handOffLock.withLock { handOff() } }
+                    .collect { session ->
+                        handOffLock.withLock {
+                            when (session) {
+                                AuthSessionState.Authenticated -> handOff()
+                                AuthSessionState.Unauthenticated -> repository.clearAccountState()
+                                AuthSessionState.Loading -> Unit
+                            }
+                        }
+                    }
             }
         }
 
         override fun onStart(owner: LifecycleOwner) {
-            applicationScope.launch {
-                handOffLock.withLock {
-                    if (repository.isServerReminderHandedOff.first()) return@withLock
-                    if (observeAuthSession().first { it != AuthSessionState.Loading } != AuthSessionState.Authenticated) {
-                        return@withLock
-                    }
-                    handOff()
+            applicationScope.launch { retryHandOffIfNeeded() }
+        }
+
+        /** 지금 계정의 넘겨받기가 아직 끝나지 않았으면 다시 한다. 앱이 전경으로 올라올 때 부른다. */
+        suspend fun retryHandOffIfNeeded() {
+            handOffLock.withLock {
+                if (repository.isServerReminderHandedOff.first()) return@withLock
+                if (observeAuthSession().first { it != AuthSessionState.Loading } != AuthSessionState.Authenticated) {
+                    return@withLock
                 }
+                handOff()
             }
         }
 

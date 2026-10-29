@@ -99,6 +99,14 @@ internal class DailyReminderRepositoryImpl
             editQuietly("마지막 알림 날짜") { preferences -> preferences[KEY_LAST_DELIVERED_RECORD_EPOCH_DAY] = date.toEpochDay() }
         }
 
+        override suspend fun clearAccountState() {
+            dataStore.edit { preferences ->
+                preferences.remove(KEY_SERVER_HANDED_OFF)
+                preferences.remove(KEY_PUSH_ENABLED_MIRROR)
+                preferences.remove(KEY_LAST_SAVED_EPOCH_DAY)
+            }
+        }
+
         /** 보조 기록은 실패해도 호출부의 본래 동작(저장·조회)을 막지 않는다. */
         private suspend fun editQuietly(
             label: String,

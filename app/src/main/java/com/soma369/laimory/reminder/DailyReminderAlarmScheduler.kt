@@ -28,12 +28,11 @@ class DailyReminderAlarmScheduler
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
-    ) {
+    ) : DailyReminderAlarms {
         private val alarmManager: AlarmManager
             get() = context.getSystemService(AlarmManager::class.java)
 
-        /** @param deliveredRecordDate 이미 알림을 띄운 기록 날짜. 그 날을 가리키는 시각은 건너뛴다. */
-        fun schedule(
+        override fun schedule(
             time: LocalTime,
             deliveredRecordDate: LocalDate?,
         ) {
@@ -52,7 +51,7 @@ class DailyReminderAlarmScheduler
             )
         }
 
-        fun cancel() {
+        override fun cancel() {
             alarmManager.cancel(pendingIntent(REQUEST_CODE_WINDOW, triggerAtMillis = null))
             alarmManager.cancel(pendingIntent(REQUEST_CODE_WHILE_IDLE, triggerAtMillis = null))
         }
