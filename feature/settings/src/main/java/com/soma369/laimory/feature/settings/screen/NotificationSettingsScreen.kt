@@ -1,5 +1,10 @@
 package com.soma369.laimory.feature.settings.screen
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -164,8 +170,8 @@ private fun NotificationToggleList(
     onIntent: (NotificationSettingsUiIntent) -> Unit,
 ) {
     // 카드로 감싸지 않는다. 설정 화면은 여러 갈래를 나눠 보여 줘야 해서 구획이 필요하지만,
-    // 여기는 한 갈래로 들어온 화면이라 목록 하나뿐이다 — 나눌 것이 없는데 테를 두르면 무엇과
-    // 무엇을 가르는 선인지 알 수 없다.
+    // 여기는 한 갈래로 들어온 화면이라 목록 하나뿐이다. 나누는 것은 선 하나 — 모든 알림을 막는
+    // 전체 알림과, 그 아래 알림 종류별 묶음은 성격이 달라서다.
     Column(
         modifier =
             Modifier
@@ -179,6 +185,10 @@ private fun NotificationToggleList(
             isEnabled = true,
             onCheckedChange = { isEnabled -> onIntent(NotificationSettingsUiIntent.PushToggled(isEnabled)) },
         )
+        HorizontalDivider(
+            modifier = Modifier.padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = Spacing.small),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        )
         NotificationToggleRow(
             title = "일일 리마인더",
             description = "하루를 기록할 시간에 알려드려요.",
@@ -187,12 +197,20 @@ private fun NotificationToggleList(
             isEnabled = isPushEnabled,
             onCheckedChange = { isEnabled -> onIntent(NotificationSettingsUiIntent.DailyReminderToggled(isEnabled)) },
         )
-        ReminderTimeRow(
-            time = reminder.time,
-            // 리마인더가 오지 않는 동안에는 시각을 바꿔도 의미가 없다. 값은 보여 둔다 — 다시 켜면 그 시각에 온다.
-            isEnabled = isPushEnabled && reminder.isEnabled,
-            onClick = { onIntent(NotificationSettingsUiIntent.OpenReminderTimePicker) },
-        )
+        // 시각은 리마인더에 딸린 값이라 켜져 있을 때만 바로 아래에 붙인다. 끈 동안은 의미가 없는 값이고, 숨겨야
+        // 둘이 한 묶음이라는 것이 드러난다. 고른 시각은 남아 있다가 다시 켜면 그대로 나온다.
+        AnimatedVisibility(
+            visible = reminder.isEnabled,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            ReminderTimeRow(
+                time = reminder.time,
+                // 전체가 꺼져 있으면 리마인더 줄과 함께 잠근다.
+                isEnabled = isPushEnabled,
+                onClick = { onIntent(NotificationSettingsUiIntent.OpenReminderTimePicker) },
+            )
+        }
         // 알림이 오기로 돼 있는데 기기가 띄우지 못하는 상태. 여기만 앱에서 해결할 수 없어
         // 시스템 설정으로 보낸다.
         if (isPushEnabled && isDeviceNotificationBlocked) {
@@ -270,7 +288,8 @@ private fun NotificationToggleRow(
 /**
  * 리마인더 시각 줄. 누르면 시각 시트를 연다.
  *
- * 스위치 줄과 같은 높이·여백을 쓰고, 값은 오른쪽에 둔다 — 무엇을 고른 상태인지 들어가 보지 않아도 읽힌다.
+ * 리마인더 줄의 하위 줄이다. 위 줄에 간격 없이 붙이고 높이와 글자를 한 단계 낮춰, 따로 선 설정이 아니라 위 줄에
+ * 딸린 값으로 읽히게 한다. 값은 오른쪽에 둔다 — 무엇을 고른 상태인지 들어가 보지 않아도 읽힌다.
  */
 @Composable
 private fun ReminderTimeRow(
@@ -288,21 +307,21 @@ private fun ReminderTimeRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = ROW_MIN_HEIGHT)
+                .heightIn(min = SUB_ROW_MIN_HEIGHT)
                 .clickable(enabled = isEnabled, role = Role.Button, onClick = onClick)
-                .padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = ROW_VERTICAL_PADDING),
+                .padding(horizontal = ROW_HORIZONTAL_PADDING),
         horizontalArrangement = Arrangement.spacedBy(Spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "알림 시각",
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = contentColor,
         )
         Text(
             text = time.format(REMINDER_TIME_FORMAT),
-            style = MaterialTheme.typography.bodyLarge,
+            style = MaterialTheme.typography.bodyMedium,
             color = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -336,7 +355,7 @@ private fun ReminderTimeSheet(
         onValueChange = { _, value, _ -> onTimeChange(value.time) },
         onConfirm = onConfirm,
         onDismiss = onDismiss,
-        title = "알림 시각",
+        title = "일일 리마인더",
     )
 }
 
@@ -422,6 +441,9 @@ private val PLACEHOLDER_DATE: LocalDate = LocalDate.of(2000, 1, 1)
 private val REMINDER_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("a h:mm", Locale.KOREAN)
 
 private val ROW_MIN_HEIGHT = 64.dp
+
+/** 하위 줄 높이. 터치 최소 크기(48)는 지킨다. */
+private val SUB_ROW_MIN_HEIGHT = 48.dp
 private val ROW_VERTICAL_PADDING = 4.dp
 
 /** 제목과 설명 사이. */
