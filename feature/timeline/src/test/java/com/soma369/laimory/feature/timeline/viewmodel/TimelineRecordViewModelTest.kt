@@ -1748,6 +1748,7 @@ class TimelineRecordViewModelTest {
                 CompleteDailyRecordUseCase(
                     repository = recordRepository,
                     sessionRepository = repository,
+                    reminderRepository = FakeDailyReminderRepository(),
                     messageHelper = NoOpMessageHelper,
                 ),
             updateDailyRecordEmotionUseCase =

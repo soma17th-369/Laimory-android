@@ -1,3 +1,34 @@
 <resources>
     <string name="app_name">Laimory</string>
+
+    <!--
+        일일 리마인더 문구. 제목과 본문이 서로 어울리게 쓴 짝이라 같은 인덱스끼리만 쓴다.
+        제목·본문 배열의 길이는 같아야 한다.
+    -->
+    <string-array name="daily_reminder_general_titles">
+        <item>오늘 하루 어땠나요?</item>
+        <item>하루를 마무리할 시간이에요</item>
+        <item>오늘을 잊기 전에</item>
+        <item>오늘의 순간들을 모아볼까요?</item>
+    </string-array>
+    <string-array name="daily_reminder_general_bodies">
+        <item>오늘의 기록으로 타임라인을 만들어보세요.</item>
+        <item>오늘 하루를 타임라인으로 정리해보세요.</item>
+        <item>오늘 있었던 일을 타임라인으로 남겨보세요.</item>
+        <item>흩어진 기록을 타임라인으로 만들어보세요.</item>
+    </string-array>
+
+    <!-- 오늘 기록을 이미 마친 날의 문구. 위와 같이 짝이다. -->
+    <string-array name="daily_reminder_completed_titles">
+        <item>오늘의 타임라인이 완성됐어요</item>
+        <item>오늘 하루도 잘 담았어요</item>
+        <item>오늘 기록을 마쳤어요</item>
+        <item>오늘도 기록해줘서 고마워요</item>
+    </string-array>
+    <string-array name="daily_reminder_completed_bodies">
+        <item>기억에 남는 순간에 메모를 더해보세요.</item>
+        <item>타임라인을 다시 보며 오늘을 돌아보세요.</item>
+        <item>오늘의 감정을 타임라인에서 확인해보세요.</item>
+        <item>내일의 순간들도 함께 모아볼게요.</item>
+    </string-array>
 </resources>

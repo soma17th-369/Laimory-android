@@ -471,6 +471,7 @@ private val AnalyticsEntryPoint.paramValue: String
             AnalyticsEntryPoint.CALENDAR -> "calendar"
             AnalyticsEntryPoint.HOME -> "home"
             AnalyticsEntryPoint.DRAFT_COMPLETE -> "draft_complete"
+            AnalyticsEntryPoint.DAILY_REMINDER -> "daily_reminder"
             AnalyticsEntryPoint.UNKNOWN -> "unknown"
         }
 

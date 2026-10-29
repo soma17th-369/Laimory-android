@@ -19,13 +19,26 @@ class IssueAuthTokensUseCaseTest {
     fun `일회용 code와 verifier를 repository에 전달한다`() =
         runBlocking {
             val repository = FakeAuthRepository()
-            val useCase = IssueAuthTokensUseCase(repository)
+            val useCase = IssueAuthTokensUseCase(repository) {}
 
             val result = useCase(IssueAuthTokensParams("code", "verifier"))
 
             assertTrue(result.isSuccess)
             assertEquals("code", repository.appCode)
             assertEquals("verifier", repository.appVerifier)
+        }
+
+    @Test
+    fun `토큰을 저장하기 전에 새 세션 몫을 갈라 둔다`() =
+        runBlocking {
+            // 토큰이 저장되는 순간 인증 상태가 바뀐다. 그보다 늦으면 새 세션이 앞 계정의 값으로 판정받는다.
+            val events = mutableListOf<String>()
+            val repository = FakeAuthRepository(onIssue = { events += "issue" })
+            val useCase = IssueAuthTokensUseCase(repository) { events += "prepare" }
+
+            useCase(IssueAuthTokensParams("code", "verifier"))
+
+            assertEquals(listOf("prepare", "issue"), events)
         }
 
     @Test
@@ -43,7 +56,7 @@ class IssueAuthTokensUseCaseTest {
             val error = ApiException.UnauthorizedException(errorCode = -2002, rawCode = 401)
             repository.issueError = error
 
-            val result = IssueAuthTokensUseCase(repository)(IssueAuthTokensParams("code", "verifier"))
+            val result = IssueAuthTokensUseCase(repository) {}(IssueAuthTokensParams("code", "verifier"))
 
             assertSame(error, result.exceptionOrNull())
         }
@@ -55,12 +68,14 @@ class IssueAuthTokensUseCaseTest {
 
         assertThrows(IllegalStateException::class.java) {
             runBlocking {
-                IssueAuthTokensUseCase(repository)(IssueAuthTokensParams("code", "verifier"))
+                IssueAuthTokensUseCase(repository) {}(IssueAuthTokensParams("code", "verifier"))
             }
         }
     }
 
-    private class FakeAuthRepository : AuthRepository {
+    private class FakeAuthRepository(
+        private val onIssue: () -> Unit = {},
+    ) : AuthRepository {
         var appCode: String? = null
         var appVerifier: String? = null
         var issueError: Throwable? = null
@@ -73,6 +88,7 @@ class IssueAuthTokensUseCaseTest {
             appCode: String,
             appVerifier: String,
         ) {
+            onIssue()
             issueError?.let { throw it }
             this.appCode = appCode
             this.appVerifier = appVerifier

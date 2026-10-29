@@ -255,7 +255,7 @@ class LoginViewModelTest {
             completeSocialLogin =
                 CompleteSocialLoginUseCase(
                     socialRepository,
-                    IssueAuthTokensUseCase(authRepository),
+                    IssueAuthTokensUseCase(authRepository) {},
                 ),
             cancelSocialLogin = CancelSocialLoginUseCase(socialRepository),
             callbackHandler = callbackHandler,

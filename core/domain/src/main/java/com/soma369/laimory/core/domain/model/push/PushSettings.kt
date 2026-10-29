@@ -7,7 +7,8 @@ package com.soma369.laimory.core.domain.model.push
  * 저쪽은 "이 기기가 받은 것을 띄울지"다. 둘 중 하나만 꺼져도 알림은 보이지 않는다.
  *
  * @param isPushEnabled 전체 푸시 수신. 꺼도 종류별 설정값은 서버에 그대로 남는다.
- * @param isDailyReminderEnabled 하루를 기록할 시간에 오는 리마인더.
+ * @param isDailyReminderEnabled 서버가 보내던 일일 리마인더. 지금은 기기가 예약하고, 앱은 이 값을 꺼 두기만
+ *   한다(`HandOffDailyReminderUseCase`). 화면이 보여 주는 리마인더 값은 기기 설정이다.
  */
 data class PushSettings(
     val isPushEnabled: Boolean,

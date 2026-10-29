@@ -477,6 +477,7 @@ class AnalyticsEventMapperTest {
                 AnalyticsEntryPoint.CALENDAR to "calendar",
                 AnalyticsEntryPoint.HOME to "home",
                 AnalyticsEntryPoint.DRAFT_COMPLETE to "draft_complete",
+                AnalyticsEntryPoint.DAILY_REMINDER to "daily_reminder",
                 AnalyticsEntryPoint.UNKNOWN to "unknown",
             ),
             AnalyticsEntryPoint.entries,
