@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.repository.AppThemeRepositoryImpl
 import com.soma369.laimory.core.data.repository.AppUpdateRepositoryImpl
 import com.soma369.laimory.core.data.repository.AuthRepositoryImpl
 import com.soma369.laimory.core.data.repository.CreditRepositoryImpl
+import com.soma369.laimory.core.data.repository.DailyReminderRepositoryImpl
 import com.soma369.laimory.core.data.repository.DefaultRecordRangeRepositoryImpl
 import com.soma369.laimory.core.data.repository.Feature1RepositoryImpl
 import com.soma369.laimory.core.data.repository.InquiryRepositoryImpl
@@ -26,6 +27,7 @@ import com.soma369.laimory.core.domain.repository.AppThemeRepository
 import com.soma369.laimory.core.domain.repository.AppUpdateRepository
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.CreditRepository
+import com.soma369.laimory.core.domain.repository.DailyReminderRepository
 import com.soma369.laimory.core.domain.repository.DefaultRecordRangeRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.InquiryRepository
@@ -90,6 +92,10 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindDefaultRecordRangeRepository(impl: DefaultRecordRangeRepositoryImpl): DefaultRecordRangeRepository
+
+    @Binds
+    @Singleton
+    internal abstract fun bindDailyReminderRepository(impl: DailyReminderRepositoryImpl): DailyReminderRepository
 
     @Binds
     @Singleton

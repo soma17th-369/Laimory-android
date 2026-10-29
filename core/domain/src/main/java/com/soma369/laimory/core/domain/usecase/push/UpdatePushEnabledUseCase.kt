@@ -2,6 +2,7 @@ package com.soma369.laimory.core.domain.usecase.push
 
 import com.soma369.laimory.core.domain.base.BaseUseCase
 import com.soma369.laimory.core.domain.helper.MessageHelper
+import com.soma369.laimory.core.domain.repository.DailyReminderRepository
 import com.soma369.laimory.core.domain.repository.PushSettingsRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -17,7 +18,12 @@ class UpdatePushEnabledUseCase
     @Inject
     constructor(
         private val repository: PushSettingsRepository,
+        private val reminderRepository: DailyReminderRepository,
         messageHelper: MessageHelper,
     ) : BaseUseCase(messageHelper) {
-        suspend operator fun invoke(isEnabled: Boolean): Result<Unit> = execute { repository.updatePushEnabled(isEnabled) }
+        suspend operator fun invoke(isEnabled: Boolean): Result<Unit> =
+            execute {
+                repository.updatePushEnabled(isEnabled)
+                reminderRepository.setPushEnabledMirror(isEnabled)
+            }
     }

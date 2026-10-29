@@ -4,6 +4,7 @@ import com.soma369.laimory.core.domain.base.BaseUseCase
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
+import com.soma369.laimory.core.domain.repository.DailyReminderRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordRepository
 import com.soma369.laimory.core.domain.repository.TimelineRecordSessionRepository
 import java.time.LocalDate
@@ -34,6 +35,8 @@ sealed interface CompleteDailyRecordOutcome {
  * 확정·수렴·소실 어느 결과든 같은 날짜의 현재 초안 세션을 정리해 오래된 초안이 남지 않게 한다.
  *
  * 감정은 서버 계약상 필수라 호출부가 반드시 하나를 정해 넘긴다 — 미선택을 뜻하는 null 경로는 없다.
+ *
+ * 확정·수렴이면 그 날짜를 일일 리마인더에 남긴다. 그날 알림은 작성을 권하는 대신 완료 문구로 간다.
  */
 @Singleton
 class CompleteDailyRecordUseCase
@@ -41,6 +44,7 @@ class CompleteDailyRecordUseCase
     constructor(
         private val repository: TimelineRecordRepository,
         private val sessionRepository: TimelineRecordSessionRepository,
+        private val reminderRepository: DailyReminderRepository,
         messageHelper: MessageHelper,
     ) : BaseUseCase(messageHelper) {
         suspend operator fun invoke(
@@ -51,11 +55,13 @@ class CompleteDailyRecordUseCase
                 try {
                     repository.saveDailyRecord(recordDate, emotion)
                     clearSession(recordDate)
+                    reminderRepository.markRecordSaved(recordDate)
                     CompleteDailyRecordOutcome.Completed
                 } catch (exception: ApiException) {
                     when (exception.errorCode) {
                         RECORD_SAVED_ERROR_CODE -> {
                             clearSession(recordDate)
+                            reminderRepository.markRecordSaved(recordDate)
                             CompleteDailyRecordOutcome.AlreadySaved
                         }
                         RECORD_UNAVAILABLE_ERROR_CODE -> {

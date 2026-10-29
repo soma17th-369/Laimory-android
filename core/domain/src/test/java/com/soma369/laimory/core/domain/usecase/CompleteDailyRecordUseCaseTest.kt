@@ -26,19 +26,22 @@ import java.time.YearMonth
 class CompleteDailyRecordUseCaseTest {
     private val recordDate: LocalDate = LocalDate.of(2026, 8, 12)
     private val emotion: TimelineEmotion = TimelineEmotion.HAPPY
+    private val reminder = FakeDailyReminderRepository()
 
     @Test
     fun `저장 성공은 Completed를 반환하고 같은 날짜의 세션을 비운다`() =
         runBlocking {
             val repository = FakeRecordRepository()
             val session = FakeSessionRepository(timeline(recordDate))
-            val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
+            val useCase = CompleteDailyRecordUseCase(repository, session, reminder, RecordingMessageHelper())
 
             val outcome = useCase(recordDate, emotion).getOrNull()
 
             assertEquals(CompleteDailyRecordOutcome.Completed, outcome)
             assertEquals(listOf(recordDate to emotion), repository.savedRecords)
             assertTrue(session.cleared)
+            // 그날 리마인더는 작성을 권하지 않고 완료 문구로 간다.
+            assertEquals(listOf(recordDate), reminder.savedRecordDates)
         }
 
     @Test
@@ -46,7 +49,7 @@ class CompleteDailyRecordUseCaseTest {
         runBlocking {
             val repository = FakeRecordRepository()
             val session = FakeSessionRepository(timeline(recordDate.plusDays(1)))
-            val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
+            val useCase = CompleteDailyRecordUseCase(repository, session, reminder, RecordingMessageHelper())
 
             useCase(recordDate, emotion)
 
@@ -61,12 +64,13 @@ class CompleteDailyRecordUseCaseTest {
                     failure = ApiException.ConflictException(errorCode = -1003, rawCode = 409),
                 )
             val session = FakeSessionRepository(timeline(recordDate))
-            val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
+            val useCase = CompleteDailyRecordUseCase(repository, session, reminder, RecordingMessageHelper())
 
             val outcome = useCase(recordDate, emotion).getOrNull()
 
             assertEquals(CompleteDailyRecordOutcome.AlreadySaved, outcome)
             assertTrue(session.cleared)
+            assertEquals(listOf(recordDate), reminder.savedRecordDates)
         }
 
     @Test
@@ -82,7 +86,7 @@ class CompleteDailyRecordUseCaseTest {
                         ),
                 )
             val session = FakeSessionRepository(timeline(recordDate))
-            val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
+            val useCase = CompleteDailyRecordUseCase(repository, session, reminder, RecordingMessageHelper())
 
             val outcome = useCase(recordDate, emotion).getOrNull()
 
@@ -95,12 +99,14 @@ class CompleteDailyRecordUseCaseTest {
         runBlocking {
             val repository = FakeRecordRepository(failure = ApiException.NetworkException())
             val session = FakeSessionRepository(timeline(recordDate))
-            val useCase = CompleteDailyRecordUseCase(repository, session, RecordingMessageHelper())
+            val useCase = CompleteDailyRecordUseCase(repository, session, reminder, RecordingMessageHelper())
 
             val failure = useCase(recordDate, emotion).exceptionOrNull()
 
             assertTrue(failure is ApiException.NetworkException)
             assertFalse(session.cleared)
+            // 저장되지 않은 날은 작성을 권하는 문구가 그대로 가야 한다.
+            assertTrue(reminder.savedRecordDates.isEmpty())
         }
 
     @Test
@@ -111,7 +117,7 @@ class CompleteDailyRecordUseCaseTest {
                 FakeRecordRepository(
                     failure = ApiException.UnauthorizedException(errorCode = -2001, rawCode = 401),
                 )
-            val useCase = CompleteDailyRecordUseCase(repository, FakeSessionRepository(null), helper)
+            val useCase = CompleteDailyRecordUseCase(repository, FakeSessionRepository(null), reminder, helper)
 
             val failure = useCase(recordDate, emotion).exceptionOrNull()
 

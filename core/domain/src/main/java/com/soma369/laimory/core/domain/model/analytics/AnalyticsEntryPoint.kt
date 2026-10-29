@@ -19,5 +19,8 @@ enum class AnalyticsEntryPoint {
     /** 생성이 끝나 자동으로 넘어갔거나, 완료 스낵바·완료 알림으로 열었다. */
     DRAFT_COMPLETE,
 
+    /** 오늘 기록을 마친 날 받은 일일 리마인더(완료 문구)를 눌렀다. */
+    DAILY_REMINDER,
+
     UNKNOWN,
 }
