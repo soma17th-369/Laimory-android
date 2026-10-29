@@ -5,15 +5,17 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.push.PushSettings
+import com.soma369.laimory.core.domain.model.reminder.DailyReminderSettings
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.PushSettingsRepository
 import com.soma369.laimory.core.domain.usecase.push.GetPushSettingsUseCase
-import com.soma369.laimory.core.domain.usecase.push.UpdateDailyReminderEnabledUseCase
 import com.soma369.laimory.core.domain.usecase.push.UpdatePushEnabledUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.ObserveDailyReminderSettingsUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderEnabledUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderTimeUseCase
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiContent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiIntent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiSideEffect
-import com.soma369.laimory.feature.settings.state.NotificationToggle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -27,6 +29,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NotificationSettingsViewModelTest {
@@ -34,19 +37,30 @@ class NotificationSettingsViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val repository = FakePushSettingsRepository()
+    private val reminderRepository = FakeDailyReminderRepository()
     private val navigationHelper = RecordingNavigationHelper()
 
     @Test
-    fun `조회 성공은 서버 값을 그대로 그린다`() =
+    fun `조회 성공은 서버의 전체 알림 값을 그대로 그린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = true)
 
             val viewModel = createLoadedViewModel()
 
-            assertEquals(
-                PushSettings(isPushEnabled = true, isDailyReminderEnabled = false),
-                viewModel.state.value.settings,
-            )
+            assertEquals(false, viewModel.state.value.isPushEnabled)
+            assertEquals(false, viewModel.state.value.confirmedPushEnabled)
+        }
+
+    @Test
+    fun `일일 리마인더는 서버 값이 아니라 기기 값을 그린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버 값은 앱이 꺼 두기만 한다. 화면이 그것을 읽으면 모두 꺼진 것으로 보인다.
+            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            reminderRepository.setEnabled(true)
+
+            val viewModel = createLoadedViewModel()
+
+            assertTrue(viewModel.state.value.reminder.isEnabled)
         }
 
     @Test
@@ -57,7 +71,7 @@ class NotificationSettingsViewModelTest {
             val viewModel = createLoadedViewModel()
 
             assertEquals(NotificationSettingsUiContent.LoadFailed, viewModel.state.value.content)
-            assertEquals(null, viewModel.state.value.settings)
+            assertEquals(null, viewModel.state.value.isPushEnabled)
 
             repository.getFailure = null
             viewModel.sendIntent(NotificationSettingsUiIntent.RetryLoad)
@@ -67,62 +81,47 @@ class NotificationSettingsViewModelTest {
         }
 
     @Test
-    fun `화면은 누른 즉시 바뀌고 서버에는 손이 멈춘 뒤 보낸다`() =
+    fun `전체 알림은 누른 즉시 바뀌고 서버에는 손이 멈춘 뒤 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
 
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
-            )
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(true))
             runCurrent()
 
             // 응답을 기다리지 않는다. 기다리면 누른 자리가 움직이지 않아 눌리지 않은 것처럼 보인다.
-            assertTrue(viewModel.state.value.settings!!.isDailyReminderEnabled)
-            assertTrue(repository.dailyReminderUpdates.isEmpty())
+            assertEquals(true, viewModel.state.value.isPushEnabled)
+            assertTrue(repository.pushUpdates.isEmpty())
 
             advanceUntilIdle()
 
-            assertEquals(listOf(true), repository.dailyReminderUpdates)
-            assertTrue(viewModel.state.value.confirmedSettings!!.isDailyReminderEnabled)
+            assertEquals(listOf(true), repository.pushUpdates)
+            assertEquals(true, viewModel.state.value.confirmedPushEnabled)
+            // 기기 리마인더가 띄울지 판정할 거울에도 남는다.
+            assertEquals(true, reminderRepository.mirrorValue)
         }
 
     @Test
     fun `변경에 실패하면 서버 값으로 되돌리고 안내한다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = true)
+            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
             repository.updateFailure = ApiException.NetworkException()
 
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.PUSH, false),
-            )
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(false))
             runCurrent()
 
-            assertFalse(viewModel.state.value.settings!!.isPushEnabled)
+            assertEquals(false, viewModel.state.value.isPushEnabled)
 
             advanceUntilIdle()
 
-            assertTrue(viewModel.state.value.settings!!.isPushEnabled)
+            assertEquals(true, viewModel.state.value.isPushEnabled)
             assertEquals(
                 NotificationSettingsUiSideEffect.ShowSnackbar("네트워크 상태를 확인한 뒤 다시 시도해주세요."),
                 viewModel.sideEffect.first(),
             )
-        }
-
-    @Test
-    fun `전체 알림이 꺼져 있으면 일일 리마인더 요청을 받지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
-            val viewModel = createLoadedViewModel()
-
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
-            )
-            advanceUntilIdle()
-
-            assertTrue(repository.dailyReminderUpdates.isEmpty())
-            assertFalse(viewModel.state.value.settings!!.isDailyReminderEnabled)
+            // 서버가 거절한 값을 거울에 남기지 않는다.
+            assertEquals(true, reminderRepository.mirrorValue)
         }
 
     @Test
@@ -131,9 +130,7 @@ class NotificationSettingsViewModelTest {
             repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
 
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.PUSH, true),
-            )
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(true))
             advanceUntilIdle()
 
             assertTrue(repository.pushUpdates.isEmpty())
@@ -142,94 +139,34 @@ class NotificationSettingsViewModelTest {
     @Test
     fun `연타해도 마지막 값 하나만 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
 
             // 켰다 껐다 켠다. 중간 값까지 보내면 서버가 그 순서를 그대로 겪는다.
             listOf(true, false, true).forEach { isEnabled ->
-                viewModel.sendIntent(
-                    NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, isEnabled),
-                )
+                viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(isEnabled))
                 runCurrent()
             }
             advanceUntilIdle()
 
-            assertEquals(listOf(true), repository.dailyReminderUpdates)
-            assertTrue(viewModel.state.value.settings!!.isDailyReminderEnabled)
+            assertEquals(listOf(true), repository.pushUpdates)
+            assertEquals(true, viewModel.state.value.isPushEnabled)
         }
 
     @Test
     fun `눌렀다 제자리로 되돌리면 서버를 부르지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
 
             listOf(true, false).forEach { isEnabled ->
-                viewModel.sendIntent(
-                    NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, isEnabled),
-                )
+                viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(isEnabled))
                 runCurrent()
             }
             advanceUntilIdle()
 
-            assertTrue(repository.dailyReminderUpdates.isEmpty())
-            assertFalse(viewModel.state.value.settings!!.isDailyReminderEnabled)
-        }
-
-    @Test
-    fun `전체 알림을 꺼도 방금 고른 일일 리마인더 값은 지켜진다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            // 잠기는 것은 줄이지 값이 아니다. 다시 켰을 때 종전 선택이 그대로 살아 있어야 한다.
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
-            val viewModel = createLoadedViewModel()
-
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
-            )
-            runCurrent()
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.PUSH, false),
-            )
-            advanceUntilIdle()
-
-            assertEquals(listOf(true), repository.dailyReminderUpdates)
-            assertEquals(listOf(false), repository.pushUpdates)
-            val settings = viewModel.state.value.settings!!
-            assertTrue(settings.isDailyReminderEnabled)
-            assertFalse(settings.isPushEnabled)
-            assertEquals(viewModel.state.value.confirmedSettings, settings)
-        }
-
-    @Test
-    fun `일일 리마인더를 보내는 중에 전체 알림을 꺼도 화면과 서버가 갈리지 않는다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            // 나간 요청은 끊기지 않는다. 그 값을 화면에서만 되돌리면 서버는 켜고 화면은 꺼진 채로
-            // 남고, 전체 알림을 다시 켜도 아무도 그 차이를 보내지 않아 그대로 굳는다.
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
-            val viewModel = createLoadedViewModel()
-            val gate = CompletableDeferred<Unit>()
-            repository.updateGate = gate
-
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
-            )
-            advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
-            runCurrent()
-            assertEquals(listOf(true), repository.dailyReminderUpdates)
-
-            // 응답을 기다리는 사이 전체를 끈다.
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.PUSH, false),
-            )
-            runCurrent()
-            gate.complete(Unit)
-            advanceUntilIdle()
-
-            val settings = viewModel.state.value.settings!!
-            assertEquals(viewModel.state.value.confirmedSettings, settings)
-            assertTrue(settings.isDailyReminderEnabled)
-            assertFalse(settings.isPushEnabled)
-            assertEquals(listOf(false), repository.pushUpdates)
+            assertTrue(repository.pushUpdates.isEmpty())
+            assertEquals(false, viewModel.state.value.isPushEnabled)
         }
 
     @Test
@@ -237,59 +174,51 @@ class NotificationSettingsViewModelTest {
         runTest(mainDispatcherRule.testDispatcher) {
             // 끊으면 그 요청이 서버에 닿았는지 모르는 채 남는다. 그사이 화면이 원래 값으로 돌아와
             // 있으면 보낼 것이 없다고 판단해, 서버만 켜진 채 화면과 갈라진다.
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
             val gate = CompletableDeferred<Unit>()
             repository.updateGate = gate
 
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
-            )
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(true))
             advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
             runCurrent()
-            assertEquals(listOf(true), repository.dailyReminderUpdates)
+            assertEquals(listOf(true), repository.pushUpdates)
 
             // 응답이 오기 전에 되돌린다.
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, false),
-            )
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(false))
             advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
             runCurrent()
             // 앞 요청이 끝나기 전에는 줄을 서 있는다.
-            assertEquals(listOf(true), repository.dailyReminderUpdates)
+            assertEquals(listOf(true), repository.pushUpdates)
 
             gate.complete(Unit)
             advanceUntilIdle()
 
-            assertEquals(listOf(true, false), repository.dailyReminderUpdates)
-            assertFalse(viewModel.state.value.settings!!.isDailyReminderEnabled)
-            assertFalse(viewModel.state.value.confirmedSettings!!.isDailyReminderEnabled)
+            assertEquals(listOf(true, false), repository.pushUpdates)
+            assertEquals(false, viewModel.state.value.isPushEnabled)
+            assertEquals(false, viewModel.state.value.confirmedPushEnabled)
         }
 
     @Test
     fun `보내는 사이 다시 누른 값은 앞 요청이 실패해도 되돌리지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
             val gate = CompletableDeferred<Unit>()
             repository.updateGate = gate
             repository.updateFailure = ApiException.NetworkException()
 
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, true),
-            )
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(true))
             advanceTimeBy(DEBOUNCE_MARGIN_MILLIS)
             runCurrent()
-            viewModel.sendIntent(
-                NotificationSettingsUiIntent.ToggleChanged(NotificationToggle.DAILY_REMINDER, false),
-            )
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(false))
             gate.complete(Unit)
             advanceUntilIdle()
 
             // 실패한 값은 사용자가 이미 지나온 값이다. 되돌리면 방금 한 조작을 뒤엎는다.
-            assertFalse(viewModel.state.value.settings!!.isDailyReminderEnabled)
+            assertEquals(false, viewModel.state.value.isPushEnabled)
             // 되돌린 값이 서버 값과 같아져 보낼 것이 없다.
-            assertEquals(listOf(true), repository.dailyReminderUpdates)
+            assertEquals(listOf(true), repository.pushUpdates)
         }
 
     @Test
@@ -300,23 +229,107 @@ class NotificationSettingsViewModelTest {
             repository.settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = false)
             val viewModel = createLoadedViewModel()
 
-            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = true)
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
             viewModel.sendIntent(NotificationSettingsUiIntent.Initialize)
             advanceUntilIdle()
 
-            assertEquals(
-                PushSettings(isPushEnabled = false, isDailyReminderEnabled = true),
-                viewModel.state.value.settings,
-            )
+            assertEquals(false, viewModel.state.value.isPushEnabled)
+        }
+
+    @Test
+    fun `일일 리마인더는 서버에 보내지 않고 기기에 바로 저장한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.DailyReminderToggled(false))
+            advanceUntilIdle()
+
+            assertFalse(reminderRepository.currentSettings.isEnabled)
+            assertFalse(viewModel.state.value.reminder.isEnabled)
+            assertTrue(repository.dailyReminderUpdates.isEmpty())
+        }
+
+    @Test
+    fun `전체 알림이 꺼져 있으면 일일 리마인더 요청을 받지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            repository.settings = PushSettings(isPushEnabled = false, isDailyReminderEnabled = false)
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.DailyReminderToggled(false))
+            viewModel.sendIntent(NotificationSettingsUiIntent.OpenReminderTimePicker)
+            advanceUntilIdle()
+
+            assertTrue(reminderRepository.currentSettings.isEnabled)
+            assertEquals(null, viewModel.state.value.reminderTimeDraft)
+        }
+
+    @Test
+    fun `전체 알림을 꺼도 일일 리마인더 값은 그대로 남는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 잠기는 것은 줄이지 값이 아니다. 다시 켰을 때 종전 선택이 그대로 살아 있어야 한다.
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.PushToggled(false))
+            advanceUntilIdle()
+
+            assertTrue(viewModel.state.value.reminder.isEnabled)
+        }
+
+    @Test
+    fun `시각은 시트에서 굴리는 동안 저장하지 않고 확인에서 저장한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.OpenReminderTimePicker)
+            advanceUntilIdle()
+            assertEquals(DailyReminderSettings.DEFAULT_TIME, viewModel.state.value.reminderTimeDraft)
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.ReminderTimeChanged(LocalTime.of(22, 30)))
+            advanceUntilIdle()
+            assertEquals(DailyReminderSettings.DEFAULT_TIME, reminderRepository.currentSettings.time)
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.ConfirmReminderTime)
+            advanceUntilIdle()
+
+            assertEquals(LocalTime.of(22, 30), reminderRepository.currentSettings.time)
+            assertEquals(LocalTime.of(22, 30), viewModel.state.value.reminder.time)
+            assertEquals(null, viewModel.state.value.reminderTimeDraft)
+        }
+
+    @Test
+    fun `시트를 닫으면 굴린 시각은 버린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.OpenReminderTimePicker)
+            viewModel.sendIntent(NotificationSettingsUiIntent.ReminderTimeChanged(LocalTime.of(7, 0)))
+            viewModel.sendIntent(NotificationSettingsUiIntent.DismissReminderTimePicker)
+            advanceUntilIdle()
+
+            assertEquals(DailyReminderSettings.DEFAULT_TIME, reminderRepository.currentSettings.time)
+            assertEquals(null, viewModel.state.value.reminderTimeDraft)
+        }
+
+    @Test
+    fun `리마인더가 꺼져 있으면 시각 시트를 열지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            reminderRepository.setEnabled(false)
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.OpenReminderTimePicker)
+            advanceUntilIdle()
+
+            assertEquals(null, viewModel.state.value.reminderTimeDraft)
         }
 
     private fun TestScope.createLoadedViewModel(): NotificationSettingsViewModel {
         val viewModel =
             NotificationSettingsViewModel(
-                getPushSettingsUseCase = GetPushSettingsUseCase(repository, NoOpMessageHelper),
-                updatePushEnabledUseCase = UpdatePushEnabledUseCase(repository, NoOpMessageHelper),
-                updateDailyReminderEnabledUseCase =
-                    UpdateDailyReminderEnabledUseCase(repository, NoOpMessageHelper),
+                getPushSettingsUseCase = GetPushSettingsUseCase(repository, reminderRepository, NoOpMessageHelper),
+                updatePushEnabledUseCase = UpdatePushEnabledUseCase(repository, reminderRepository, NoOpMessageHelper),
+                observeDailyReminderSettingsUseCase = ObserveDailyReminderSettingsUseCase(reminderRepository),
+                setDailyReminderEnabledUseCase = SetDailyReminderEnabledUseCase(reminderRepository),
+                setDailyReminderTimeUseCase = SetDailyReminderTimeUseCase(reminderRepository),
                 navigationHelper = navigationHelper,
             )
         viewModel.sendIntent(NotificationSettingsUiIntent.Initialize)

@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.settings.screen
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,9 +32,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.soma369.laimory.core.domain.model.push.PushSettings
+import com.soma369.laimory.core.domain.model.reminder.DailyReminderSettings
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
+import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
+import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
 import com.soma369.laimory.core.ui.permission.openAppNotificationSettings
 import com.soma369.laimory.core.ui.permission.rememberAppNotificationsEnabled
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
@@ -39,9 +46,12 @@ import com.soma369.laimory.feature.settings.state.NotificationSettingsUiContent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiIntent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiSideEffect
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiState
-import com.soma369.laimory.feature.settings.state.NotificationToggle
 import com.soma369.laimory.feature.settings.viewmodel.NotificationSettingsViewModel
 import kotlinx.coroutines.flow.Flow
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun NotificationSettingsRoute(
@@ -127,23 +137,31 @@ private fun NotificationSettingsScreen(
                 )
             is NotificationSettingsUiContent.Settings ->
                 NotificationToggleList(
-                    settings = content.value,
+                    isPushEnabled = content.isPushEnabled,
+                    reminder = state.reminder,
                     isDeviceNotificationBlocked = isDeviceNotificationBlocked,
                     onOpenSystemSettings = onOpenSystemSettings,
-                    onToggle = { toggle, isEnabled ->
-                        onIntent(NotificationSettingsUiIntent.ToggleChanged(toggle, isEnabled))
-                    },
+                    onIntent = onIntent,
                 )
         }
+    }
+    state.reminderTimeDraft?.let { draft ->
+        ReminderTimeSheet(
+            time = draft,
+            onTimeChange = { time -> onIntent(NotificationSettingsUiIntent.ReminderTimeChanged(time)) },
+            onConfirm = { onIntent(NotificationSettingsUiIntent.ConfirmReminderTime) },
+            onDismiss = { onIntent(NotificationSettingsUiIntent.DismissReminderTimePicker) },
+        )
     }
 }
 
 @Composable
 private fun NotificationToggleList(
-    settings: PushSettings,
+    isPushEnabled: Boolean,
+    reminder: DailyReminderSettings,
     isDeviceNotificationBlocked: Boolean,
     onOpenSystemSettings: () -> Unit,
-    onToggle: (NotificationToggle, Boolean) -> Unit,
+    onIntent: (NotificationSettingsUiIntent) -> Unit,
 ) {
     // 카드로 감싸지 않는다. 설정 화면은 여러 갈래를 나눠 보여 줘야 해서 구획이 필요하지만,
     // 여기는 한 갈래로 들어온 화면이라 목록 하나뿐이다 — 나눌 것이 없는데 테를 두르면 무엇과
@@ -157,21 +175,27 @@ private fun NotificationToggleList(
         NotificationToggleRow(
             title = "전체 알림",
             description = "끄면 아래 알림도 오지 않아요.",
-            isChecked = settings.isPushEnabled,
+            isChecked = isPushEnabled,
             isEnabled = true,
-            onCheckedChange = { isEnabled -> onToggle(NotificationToggle.PUSH, isEnabled) },
+            onCheckedChange = { isEnabled -> onIntent(NotificationSettingsUiIntent.PushToggled(isEnabled)) },
         )
         NotificationToggleRow(
             title = "일일 리마인더",
-            description = "하루를 기록할 시간에 알려드려요. (21시)",
-            isChecked = settings.isDailyReminderEnabled,
-            // 전체가 꺼져 있으면 눌러도 오지 않는 알림이라 잠근다. 서버 값은 그대로 둔다.
-            isEnabled = settings.isPushEnabled,
-            onCheckedChange = { isEnabled -> onToggle(NotificationToggle.DAILY_REMINDER, isEnabled) },
+            description = "하루를 기록할 시간에 알려드려요.",
+            isChecked = reminder.isEnabled,
+            // 전체가 꺼져 있으면 눌러도 오지 않는 알림이라 잠근다. 값은 그대로 둔다.
+            isEnabled = isPushEnabled,
+            onCheckedChange = { isEnabled -> onIntent(NotificationSettingsUiIntent.DailyReminderToggled(isEnabled)) },
         )
-        // 서버가 보내기로 돼 있는데 기기가 띄우지 못하는 상태. 여기만 앱에서 해결할 수 없어
+        ReminderTimeRow(
+            time = reminder.time,
+            // 리마인더가 오지 않는 동안에는 시각을 바꿔도 의미가 없다. 값은 보여 둔다 — 다시 켜면 그 시각에 온다.
+            isEnabled = isPushEnabled && reminder.isEnabled,
+            onClick = { onIntent(NotificationSettingsUiIntent.OpenReminderTimePicker) },
+        )
+        // 알림이 오기로 돼 있는데 기기가 띄우지 못하는 상태. 여기만 앱에서 해결할 수 없어
         // 시스템 설정으로 보낸다.
-        if (settings.isPushEnabled && isDeviceNotificationBlocked) {
+        if (isPushEnabled && isDeviceNotificationBlocked) {
             DeviceNotificationNotice(onOpenSystemSettings = onOpenSystemSettings)
         }
     }
@@ -241,6 +265,79 @@ private fun NotificationToggleRow(
             enabled = isEnabled,
         )
     }
+}
+
+/**
+ * 리마인더 시각 줄. 누르면 시각 시트를 연다.
+ *
+ * 스위치 줄과 같은 높이·여백을 쓰고, 값은 오른쪽에 둔다 — 무엇을 고른 상태인지 들어가 보지 않아도 읽힌다.
+ */
+@Composable
+private fun ReminderTimeRow(
+    time: LocalTime,
+    isEnabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val contentColor =
+        if (isEnabled) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = ROW_MIN_HEIGHT)
+                .clickable(enabled = isEnabled, role = Role.Button, onClick = onClick)
+                .padding(horizontal = ROW_HORIZONTAL_PADDING, vertical = ROW_VERTICAL_PADDING),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "알림 시각",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge,
+            color = contentColor,
+        )
+        Text(
+            text = time.format(REMINDER_TIME_FORMAT),
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 리마인더 시각 시트. 공용 타임 피커에 시각 한 줄만 둔다.
+ *
+ * 날짜는 다루지 않는다. 피커 값이 날짜를 요구해 아무 날짜나 얹지만 화면에는 나오지 않는다.
+ */
+@Composable
+private fun ReminderTimeSheet(
+    time: LocalTime,
+    onTimeChange: (LocalTime) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // 줄이 하나라 처음부터 펼쳐 둔다. 접는 것은 화면의 일이 아니라 시트 안의 표시라 여기서 든다.
+    var expandedFieldId by remember { mutableStateOf<String?>(REMINDER_TIME_FIELD_ID) }
+    LaimoryTimePickerSheet(
+        fields =
+            listOf(
+                TimePickerField(
+                    id = REMINDER_TIME_FIELD_ID,
+                    label = "알림 시각",
+                    value = LaimoryTimePickerValue(date = PLACEHOLDER_DATE, time = time),
+                ),
+            ),
+        expandedFieldId = expandedFieldId,
+        onExpandedFieldChange = { id -> expandedFieldId = id },
+        onValueChange = { _, value, _ -> onTimeChange(value.time) },
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        title = "알림 시각",
+    )
 }
 
 @Composable
@@ -316,6 +413,14 @@ private fun NotificationSettingsLoadFailed(onRetryClick: () -> Unit) {
     }
 }
 
+private const val REMINDER_TIME_FIELD_ID = "reminder_time"
+
+/** 피커 값이 요구하는 날짜 자리. 날짜 열이 없어 화면에 나오지 않고 바뀌지도 않는다. */
+private val PLACEHOLDER_DATE: LocalDate = LocalDate.of(2000, 1, 1)
+
+/** `오후 9:00`. 기기 언어와 관계없이 앱 문구와 같은 한국어로 쓴다. */
+private val REMINDER_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("a h:mm", Locale.KOREAN)
+
 private val ROW_MIN_HEIGHT = 64.dp
 private val ROW_VERTICAL_PADDING = 4.dp
 
@@ -344,9 +449,7 @@ private fun NotificationSettingsPreview() {
             state =
                 NotificationSettingsUiState(
                     content =
-                        NotificationSettingsUiContent.Settings(
-                            PushSettings(isPushEnabled = true, isDailyReminderEnabled = true),
-                        ),
+                        NotificationSettingsUiContent.Settings(isPushEnabled = true),
                 ),
             isDeviceNotificationBlocked = false,
             onOpenSystemSettings = {},
@@ -364,9 +467,7 @@ private fun NotificationSettingsPushOffPreview() {
             state =
                 NotificationSettingsUiState(
                     content =
-                        NotificationSettingsUiContent.Settings(
-                            PushSettings(isPushEnabled = false, isDailyReminderEnabled = true),
-                        ),
+                        NotificationSettingsUiContent.Settings(isPushEnabled = false),
                 ),
             isDeviceNotificationBlocked = true,
             onOpenSystemSettings = {},
@@ -384,9 +485,8 @@ private fun NotificationSettingsBlockedPreview() {
             state =
                 NotificationSettingsUiState(
                     content =
-                        NotificationSettingsUiContent.Settings(
-                            PushSettings(isPushEnabled = true, isDailyReminderEnabled = false),
-                        ),
+                        NotificationSettingsUiContent.Settings(isPushEnabled = true),
+                    reminder = DailyReminderSettings(isEnabled = false, time = DailyReminderSettings.DEFAULT_TIME),
                 ),
             isDeviceNotificationBlocked = true,
             onOpenSystemSettings = {},
