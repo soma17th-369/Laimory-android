@@ -23,7 +23,8 @@ class UpdatePushEnabledUseCase
     ) : BaseUseCase(messageHelper) {
         suspend operator fun invoke(isEnabled: Boolean): Result<Unit> =
             execute {
+                val generation = reminderRepository.accountGeneration()
                 repository.updatePushEnabled(isEnabled)
-                reminderRepository.setPushEnabledMirror(isEnabled)
+                reminderRepository.setPushEnabledMirror(isEnabled, generation)
             }
     }

@@ -11,6 +11,7 @@ import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -32,8 +33,12 @@ import javax.inject.Singleton
  * 서버 넘겨받기는 로그인할 때마다 한다(다른 계정·새 계정도 서버 값이 켜져 있을 수 있다). 실패했으면 앱이
  * 전경으로 올라올 때 다시 한다.
  *
- * 넘겨받기 표시는 **로그인한 계정의 것**이다. 로그아웃하면 계정에 딸린 값을 비운다 — 남겨 두면 다음 계정이 앞
- * 계정의 표시로 예약을 허락받아, 자기 서버 끄기가 끝나기 전(또는 실패해도) 서버 알림과 기기 알림이 함께 온다.
+ * 넘겨받기 표시는 **지금 세션 계정의 것**이다. 로그인 직전에 비워지고(`NewSessionPreparer`), 앞 세션의 늦은 응답은
+ * 세대가 달라 적히지 않는다. 남으면 다음 계정이 앞 계정의 표시로 예약을 허락받아, 자기 서버 끄기가 끝나기 전(또는
+ * 실패해도) 서버 알림과 기기 알림이 함께 온다.
+ *
+ * 세션이 바뀌면 진행 중이던 넘겨받기는 취소한다([collectLatest]). 앞 세션 일이 잠금을 쥔 채 서버를 기다리면, 새
+ * 세션의 넘겨받기가 그 뒤에 줄을 선다.
  */
 @Singleton
 class DailyReminderCoordinator
@@ -73,14 +78,8 @@ class DailyReminderCoordinator
             applicationScope.launch {
                 observeAuthSession()
                     .distinctUntilChanged()
-                    .collect { session ->
-                        handOffLock.withLock {
-                            when (session) {
-                                AuthSessionState.Authenticated -> handOff()
-                                AuthSessionState.Unauthenticated -> repository.clearAccountState()
-                                AuthSessionState.Loading -> Unit
-                            }
-                        }
+                    .collectLatest { session ->
+                        if (session == AuthSessionState.Authenticated) handOffLock.withLock { handOff() }
                     }
             }
         }

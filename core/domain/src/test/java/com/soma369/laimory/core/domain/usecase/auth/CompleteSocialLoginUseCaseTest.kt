@@ -18,7 +18,7 @@ import org.junit.Test
 class CompleteSocialLoginUseCaseTest {
     private val socialRepository = FakeSocialLoginRepository()
     private val authRepository = FakeAuthRepository()
-    private val useCase = CompleteSocialLoginUseCase(socialRepository, IssueAuthTokensUseCase(authRepository))
+    private val useCase = CompleteSocialLoginUseCase(socialRepository, IssueAuthTokensUseCase(authRepository) {})
 
     @Test
     fun `callback code와 보관된 verifier를 한 번 교환한다`() =

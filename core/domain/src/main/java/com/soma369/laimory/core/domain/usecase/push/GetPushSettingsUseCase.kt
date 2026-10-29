@@ -23,8 +23,9 @@ class GetPushSettingsUseCase
     ) : BaseUseCase(messageHelper) {
         suspend operator fun invoke(): Result<PushSettings> =
             execute {
+                val generation = reminderRepository.accountGeneration()
                 repository.getPushSettings().also { settings ->
-                    reminderRepository.setPushEnabledMirror(settings.isPushEnabled)
+                    reminderRepository.setPushEnabledMirror(settings.isPushEnabled, generation)
                 }
             }
     }

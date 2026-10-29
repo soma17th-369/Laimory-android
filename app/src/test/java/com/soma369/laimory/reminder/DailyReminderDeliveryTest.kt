@@ -15,7 +15,7 @@ class DailyReminderDeliveryTest {
     fun `같은 시각의 알람 둘이 함께 와도 한 번만 띄운다`() =
         runTest {
             withApplicationScope { scope ->
-                val reminder = FakeDailyReminderRepository().apply { markServerReminderHandedOff() }
+                val reminder = FakeDailyReminderRepository().apply { markServerReminderHandedOff(accountGeneration()) }
                 val notifications = RecordingNotifications()
                 val coordinator =
                     DailyReminderCoordinator(

@@ -52,16 +52,17 @@ class CompleteDailyRecordUseCase
             emotion: TimelineEmotion,
         ): Result<CompleteDailyRecordOutcome> =
             execute {
+                val generation = reminderRepository.accountGeneration()
                 try {
                     repository.saveDailyRecord(recordDate, emotion)
                     clearSession(recordDate)
-                    reminderRepository.markRecordSaved(recordDate)
+                    reminderRepository.markRecordSaved(recordDate, generation)
                     CompleteDailyRecordOutcome.Completed
                 } catch (exception: ApiException) {
                     when (exception.errorCode) {
                         RECORD_SAVED_ERROR_CODE -> {
                             clearSession(recordDate)
-                            reminderRepository.markRecordSaved(recordDate)
+                            reminderRepository.markRecordSaved(recordDate, generation)
                             CompleteDailyRecordOutcome.AlreadySaved
                         }
                         RECORD_UNAVAILABLE_ERROR_CODE -> {

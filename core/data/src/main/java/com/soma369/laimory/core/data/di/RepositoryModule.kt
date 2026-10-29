@@ -32,6 +32,7 @@ import com.soma369.laimory.core.domain.repository.DefaultRecordRangeRepository
 import com.soma369.laimory.core.domain.repository.Feature1Repository
 import com.soma369.laimory.core.domain.repository.InquiryRepository
 import com.soma369.laimory.core.domain.repository.IntroRepository
+import com.soma369.laimory.core.domain.repository.NewSessionPreparer
 import com.soma369.laimory.core.domain.repository.NoticeRepository
 import com.soma369.laimory.core.domain.repository.OnboardingRepository
 import com.soma369.laimory.core.domain.repository.PopupNoticeRepository
@@ -96,6 +97,9 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     internal abstract fun bindDailyReminderRepository(impl: DailyReminderRepositoryImpl): DailyReminderRepository
+
+    @Binds
+    internal abstract fun bindNewSessionPreparer(impl: DailyReminderRepositoryImpl): NewSessionPreparer
 
     @Binds
     @Singleton

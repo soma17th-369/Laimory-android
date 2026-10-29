@@ -88,13 +88,40 @@ class HandOffDailyReminderUseCaseTest {
             assertFalse(reminder.storedEnabled)
         }
 
+    @Test
+    fun `기다리는 사이 세션이 바뀌면 앞 결과를 버리고 지금 세션으로 다시 한다`() =
+        runBlocking {
+            // 첫 조회 응답을 기다리는 사이 다른 계정으로 로그인했다.
+            var calls = 0
+            server.onGet = { if (calls++ == 0) reminder.prepareNewSession() }
+
+            assertTrue(useCase().isSuccess)
+
+            assertEquals(2, calls)
+            assertTrue(reminder.isHandedOff)
+        }
+
+    @Test
+    fun `앞 세션의 늦은 응답은 넘겨받음으로 적지 않는다`() =
+        runBlocking {
+            // 세션이 계속 바뀌어 재시도도 모두 묵은 결과다.
+            server.onGet = { reminder.prepareNewSession() }
+
+            assertTrue(useCase().isFailure)
+
+            assertFalse(reminder.isHandedOff)
+            assertEquals(null, reminder.mirrorValue)
+        }
+
     private class FakePushSettingsRepository : PushSettingsRepository {
         var settings = PushSettings(isPushEnabled = true, isDailyReminderEnabled = true)
         var getFailure: ApiException? = null
+        var onGet: suspend () -> Unit = {}
         var updateFailure: ApiException? = null
         val dailyReminderUpdates = mutableListOf<Boolean>()
 
         override suspend fun getPushSettings(): PushSettings {
+            onGet()
             getFailure?.let { throw it }
             return settings
         }

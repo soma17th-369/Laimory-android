@@ -6,6 +6,7 @@ import com.soma369.laimory.core.domain.model.auth.SignedInAccount
 import com.soma369.laimory.core.domain.model.push.PushSettings
 import com.soma369.laimory.core.domain.repository.AuthRepository
 import com.soma369.laimory.core.domain.repository.PushSettingsRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -42,7 +43,19 @@ class FakePushSettingsRepository : PushSettingsRepository {
     var updateFailure: ApiException? = null
     val dailyReminderUpdates = mutableListOf<Boolean>()
 
-    override suspend fun getPushSettings(): PushSettings = settings
+    /** 다음 조회 하나를 붙잡는다. 응답이 늦는 동안 일어나는 일을 시험할 때 쓴다. */
+    var getGate: CompletableDeferred<Unit>? = null
+    var getCount = 0
+        private set
+
+    override suspend fun getPushSettings(): PushSettings {
+        getCount++
+        getGate?.let { gate ->
+            getGate = null
+            gate.await()
+        }
+        return settings
+    }
 
     override suspend fun updatePushEnabled(isEnabled: Boolean) = Unit
 

@@ -31,6 +31,8 @@ import javax.inject.Inject
  * 선택(전환 뒤에는 모두 꺼짐)을 다시 이어받지 않는다.
  *
  * 시각은 자정부터의 분, 날짜는 epoch day 로 적는다.
+ *
+ * 계정 값의 세대 비교와 쓰기는 `edit` 한 번 안에서 한다 — 읽고 나서 따로 쓰면 그 사이에 새 세션이 시작될 수 있다.
  */
 internal class DailyReminderRepositoryImpl
     @Inject
@@ -55,6 +57,8 @@ internal class DailyReminderRepositoryImpl
         override val pushEnabledMirror: Flow<Boolean?> =
             preferences.map { preferences -> preferences[KEY_PUSH_ENABLED_MIRROR] }.distinctUntilChanged()
 
+        override suspend fun accountGeneration(): Long = preferences.first().generation
+
         override suspend fun hasStoredEnabled(): Boolean = preferences.first()[KEY_ENABLED] != null
 
         override suspend fun setEnabled(isEnabled: Boolean) {
@@ -65,12 +69,23 @@ internal class DailyReminderRepositoryImpl
             dataStore.edit { preferences -> preferences[KEY_TIME_MINUTE] = time.toSecondOfDay() / SECONDS_PER_MINUTE }
         }
 
-        override suspend fun markServerReminderHandedOff() {
-            dataStore.edit { preferences -> preferences[KEY_SERVER_HANDED_OFF] = true }
+        override suspend fun markServerReminderHandedOff(generation: Long): Boolean {
+            var isMarked = false
+            dataStore.edit { preferences ->
+                if (preferences.generation != generation) return@edit
+                preferences[KEY_SERVER_HANDED_OFF] = true
+                isMarked = true
+            }
+            return isMarked
         }
 
-        override suspend fun setPushEnabledMirror(isEnabled: Boolean) {
-            editQuietly("전체 알림 거울값") { preferences -> preferences[KEY_PUSH_ENABLED_MIRROR] = isEnabled }
+        override suspend fun setPushEnabledMirror(
+            isEnabled: Boolean,
+            generation: Long,
+        ) {
+            editQuietly("전체 알림 거울값") { preferences ->
+                if (preferences.generation == generation) preferences[KEY_PUSH_ENABLED_MIRROR] = isEnabled
+            }
         }
 
         override suspend fun deliveryMemory(): DailyReminderDeliveryMemory {
@@ -83,8 +98,13 @@ internal class DailyReminderRepositoryImpl
             )
         }
 
-        override suspend fun markRecordSaved(recordDate: LocalDate) {
-            editQuietly("완료 기록 날짜") { preferences -> preferences[KEY_LAST_SAVED_EPOCH_DAY] = recordDate.toEpochDay() }
+        override suspend fun markRecordSaved(
+            recordDate: LocalDate,
+            generation: Long,
+        ) {
+            editQuietly("완료 기록 날짜") { preferences ->
+                if (preferences.generation == generation) preferences[KEY_LAST_SAVED_EPOCH_DAY] = recordDate.toEpochDay()
+            }
         }
 
         override suspend fun setLastGeneralCopyIndex(index: Int) {
@@ -99,8 +119,15 @@ internal class DailyReminderRepositoryImpl
             editQuietly("마지막 알림 날짜") { preferences -> preferences[KEY_LAST_DELIVERED_RECORD_EPOCH_DAY] = date.toEpochDay() }
         }
 
-        override suspend fun clearAccountState() {
-            dataStore.edit { preferences ->
+        /**
+         * 세대를 올리고 계정 값을 비운다.
+         *
+         * 실패해도 로그인을 막지 않는다. 그 경우 앞 계정의 넘겨받기 표시가 남을 수 있지만, 로그인 자체가 막히는 쪽이
+         * 훨씬 크다.
+         */
+        override suspend fun prepareNewSession() {
+            editQuietly("새 세션 준비") { preferences ->
+                preferences[KEY_ACCOUNT_GENERATION] = preferences.generation + 1
                 preferences.remove(KEY_SERVER_HANDED_OFF)
                 preferences.remove(KEY_PUSH_ENABLED_MIRROR)
                 preferences.remove(KEY_LAST_SAVED_EPOCH_DAY)
@@ -119,6 +146,8 @@ internal class DailyReminderRepositoryImpl
             }
         }
 
+        private val Preferences.generation: Long get() = this[KEY_ACCOUNT_GENERATION] ?: 0L
+
         private fun Int.toLocalTimeOrNull(): LocalTime? {
             if (this !in 0 until MINUTES_PER_DAY) return null
             return LocalTime.ofSecondOfDay(toLong() * SECONDS_PER_MINUTE)
@@ -127,6 +156,7 @@ internal class DailyReminderRepositoryImpl
         private companion object {
             val KEY_ENABLED = booleanPreferencesKey("daily_reminder_enabled")
             val KEY_TIME_MINUTE = intPreferencesKey("daily_reminder_time_minute")
+            val KEY_ACCOUNT_GENERATION = longPreferencesKey("daily_reminder_account_generation")
             val KEY_SERVER_HANDED_OFF = booleanPreferencesKey("daily_reminder_server_handed_off")
             val KEY_PUSH_ENABLED_MIRROR = booleanPreferencesKey("daily_reminder_push_enabled_mirror")
             val KEY_LAST_SAVED_EPOCH_DAY = longPreferencesKey("daily_reminder_last_saved_epoch_day")

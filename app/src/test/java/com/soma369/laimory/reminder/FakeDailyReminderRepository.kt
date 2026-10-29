@@ -21,6 +21,7 @@ class FakeDailyReminderRepository(
     private val handedOff = MutableStateFlow(false)
     private val mirror = MutableStateFlow<Boolean?>(null)
     private var storedEnabled = false
+    private var generation = 0L
     private var memory = DailyReminderDeliveryMemory(null, null, null, null)
 
     override val settings: Flow<DailyReminderSettings> = state
@@ -28,6 +29,8 @@ class FakeDailyReminderRepository(
     override val pushEnabledMirror: Flow<Boolean?> = mirror
 
     val isHandedOff: Boolean get() = handedOff.value
+
+    override suspend fun accountGeneration(): Long = generation
 
     override suspend fun hasStoredEnabled(): Boolean = storedEnabled
 
@@ -40,12 +43,17 @@ class FakeDailyReminderRepository(
         state.value = state.value.copy(time = time)
     }
 
-    override suspend fun markServerReminderHandedOff() {
+    override suspend fun markServerReminderHandedOff(generation: Long): Boolean {
+        if (generation != this.generation) return false
         handedOff.value = true
+        return true
     }
 
-    override suspend fun setPushEnabledMirror(isEnabled: Boolean) {
-        mirror.value = isEnabled
+    override suspend fun setPushEnabledMirror(
+        isEnabled: Boolean,
+        generation: Long,
+    ) {
+        if (generation == this.generation) mirror.value = isEnabled
     }
 
     override suspend fun deliveryMemory(): DailyReminderDeliveryMemory {
@@ -54,8 +62,11 @@ class FakeDailyReminderRepository(
         return read
     }
 
-    override suspend fun markRecordSaved(recordDate: LocalDate) {
-        memory = memory.copy(lastSavedRecordDate = recordDate)
+    override suspend fun markRecordSaved(
+        recordDate: LocalDate,
+        generation: Long,
+    ) {
+        if (generation == this.generation) memory = memory.copy(lastSavedRecordDate = recordDate)
     }
 
     override suspend fun setLastGeneralCopyIndex(index: Int) {
@@ -70,7 +81,8 @@ class FakeDailyReminderRepository(
         memory = memory.copy(lastDeliveredRecordDate = date)
     }
 
-    override suspend fun clearAccountState() {
+    override suspend fun prepareNewSession() {
+        generation++
         handedOff.value = false
         mirror.value = null
         memory = memory.copy(lastSavedRecordDate = null)
