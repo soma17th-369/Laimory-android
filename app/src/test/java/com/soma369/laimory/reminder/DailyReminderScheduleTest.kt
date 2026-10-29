@@ -37,6 +37,38 @@ class DailyReminderScheduleTest {
     }
 
     @Test
+    fun `오늘 이미 받았으면 시각을 늦춰도 내일 건다`() {
+        // 21시에 받고 22시로 옮긴 경우. 오늘 22시에 걸면 띄우지도 않을 알람으로 기기만 깨운다.
+        val now = ZonedDateTime.of(2026, 10, 29, 21, 30, 0, 0, zone)
+
+        assertEquals(
+            ZonedDateTime.of(2026, 10, 30, 22, 0, 0, 0, zone),
+            DailyReminderSchedule.nextTriggerAt(now, LocalTime.of(22, 0), deliveredRecordDate = LocalDate.of(2026, 10, 29)),
+        )
+    }
+
+    @Test
+    fun `새벽으로 옮겨도 같은 기록 날짜면 하루 민다`() {
+        // 21시에 받고 01시로 옮기면 다음 01시는 06시 전이라 아직 같은 하루다.
+        val now = ZonedDateTime.of(2026, 10, 29, 21, 30, 0, 0, zone)
+
+        assertEquals(
+            ZonedDateTime.of(2026, 10, 31, 1, 0, 0, 0, zone),
+            DailyReminderSchedule.nextTriggerAt(now, LocalTime.of(1, 0), deliveredRecordDate = LocalDate.of(2026, 10, 29)),
+        )
+    }
+
+    @Test
+    fun `받은 적 없는 기록 날짜면 그대로 건다`() {
+        val now = ZonedDateTime.of(2026, 10, 29, 21, 30, 0, 0, zone)
+
+        assertEquals(
+            ZonedDateTime.of(2026, 10, 29, 22, 0, 0, 0, zone),
+            DailyReminderSchedule.nextTriggerAt(now, LocalTime.of(22, 0), deliveredRecordDate = LocalDate.of(2026, 10, 28)),
+        )
+    }
+
+    @Test
     fun `저녁 알림은 그날 기록을 가리킨다`() {
         assertEquals(
             LocalDate.of(2026, 10, 29),

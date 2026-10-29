@@ -21,13 +21,24 @@ internal object DailyReminderSchedule {
      */
     const val LATE_LIMIT_MINUTES = 120L
 
-    /** [now] 이후 처음 오는 [time]. 지금이 바로 그 시각이면 다음 날이다 — 방금 띄운 알람이 다시 걸리지 않게. */
+    /**
+     * [now] 이후 처음 오는 [time]. 지금이 바로 그 시각이면 다음 날이다 — 방금 띄운 알람이 다시 걸리지 않게.
+     *
+     * 그 시각이 가리키는 기록 날짜에 이미 알림을 띄웠으면([deliveredRecordDate]) 하루 더 민다. 21시에 받고 22시로
+     * 옮기면 오늘 22시가 아니라 내일 22시에 건다 — 걸어 두면 띄우지도 않을 알람으로 기기만 깨운다.
+     */
     fun nextTriggerAt(
         now: ZonedDateTime,
         time: LocalTime,
+        deliveredRecordDate: LocalDate? = null,
     ): ZonedDateTime {
         val today = ZonedDateTime.of(now.toLocalDate(), time, now.zone)
-        return if (today.isAfter(now)) today else ZonedDateTime.of(now.toLocalDate().plusDays(1), time, now.zone)
+        val first = if (today.isAfter(now)) today else ZonedDateTime.of(now.toLocalDate().plusDays(1), time, now.zone)
+        return if (recordDateAt(first.toLocalDateTime()) == deliveredRecordDate) {
+            ZonedDateTime.of(first.toLocalDate().plusDays(1), time, now.zone)
+        } else {
+            first
+        }
     }
 
     /** [scheduledAt] 에 띄우는 알림이 가리키는 기록 날짜. */

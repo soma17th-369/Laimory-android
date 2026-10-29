@@ -56,14 +56,13 @@ class DailyReminderDelivery
             now: LocalDateTime,
         ) {
             val memory = repository.deliveryMemory()
-            val scheduledDate = scheduledAt.toLocalDate()
-            // 같은 시각에 건 알람 둘 중 늦은 쪽이다.
-            if (memory.lastDeliveredDate == scheduledDate) return
+            val recordDate = DailyReminderSchedule.recordDateAt(scheduledAt)
+            // 같은 시각에 건 알람 둘 중 늦은 쪽이거나, 이미 받은 날 시각을 옮긴 경우다.
+            if (memory.lastDeliveredRecordDate == recordDate) return
             if (DailyReminderSchedule.isTooLate(scheduledAt, now)) {
                 Logger.i(LogDomain.PUSH, "일일 리마인더가 너무 늦게 와 건너뜀")
                 return
             }
-            val recordDate = DailyReminderSchedule.recordDateAt(scheduledAt)
             val copy =
                 if (memory.lastSavedRecordDate == recordDate) {
                     notifier.pickCompleted(memory.lastCompletedCopyIndex)
@@ -74,7 +73,7 @@ class DailyReminderDelivery
                 Logger.i(LogDomain.PUSH, "기기 알림이 꺼져 있어 일일 리마인더를 띄우지 못함")
                 return
             }
-            repository.setLastDeliveredDate(scheduledDate)
+            repository.setLastDeliveredRecordDate(recordDate)
             when (copy) {
                 is DailyReminderCopy.General -> repository.setLastGeneralTitleIndex(copy.titleIndex)
                 is DailyReminderCopy.Completed -> repository.setLastCompletedCopyIndex(copy.index)

@@ -111,12 +111,12 @@ class DailyReminderCoordinator
             }
         }
 
-        private fun apply(time: LocalTime?) {
+        private suspend fun apply(time: LocalTime?) {
             if (time == null) {
                 scheduler.cancel()
                 Logger.i(LogDomain.PUSH, "일일 리마인더 예약 해제")
             } else {
-                scheduler.schedule(time)
+                scheduler.schedule(time, repository.deliveryMemory().lastDeliveredRecordDate)
                 Logger.i(LogDomain.PUSH, "일일 리마인더 예약($time)")
             }
         }

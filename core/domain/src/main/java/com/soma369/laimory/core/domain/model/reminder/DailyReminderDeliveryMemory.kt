@@ -9,11 +9,13 @@ import java.time.LocalDate
  *   다른 기기에서 저장한 날은 알 수 없다.
  * @param lastGeneralTitleIndex 일반 문구에서 마지막으로 쓴 제목. 다음 날 같은 제목을 피한다.
  * @param lastCompletedCopyIndex 완료 문구에서 마지막으로 쓴 짝.
- * @param lastDeliveredDate 마지막으로 알림을 띄운 예정 날짜. 같은 날 두 번 띄우지 않는다.
+ * @param lastDeliveredRecordDate 마지막으로 알림을 띄운 **기록 날짜**. 하루치 기록에 알림은 한 번이다 — 띄운 뒤 시각을
+ *   바꿔도 같은 기록 날짜면 다시 띄우지 않는다. 달력 날짜로 세면 21시에 받고 새벽 1시로 옮겼을 때 같은 하루를
+ *   두 번 권한다.
  */
 data class DailyReminderDeliveryMemory(
     val lastSavedRecordDate: LocalDate?,
     val lastGeneralTitleIndex: Int?,
     val lastCompletedCopyIndex: Int?,
-    val lastDeliveredDate: LocalDate?,
+    val lastDeliveredRecordDate: LocalDate?,
 )

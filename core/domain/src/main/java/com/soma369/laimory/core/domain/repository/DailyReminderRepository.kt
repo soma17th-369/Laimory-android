@@ -49,5 +49,5 @@ interface DailyReminderRepository {
 
     suspend fun setLastCompletedCopyIndex(index: Int)
 
-    suspend fun setLastDeliveredDate(date: LocalDate)
+    suspend fun setLastDeliveredRecordDate(date: LocalDate)
 }

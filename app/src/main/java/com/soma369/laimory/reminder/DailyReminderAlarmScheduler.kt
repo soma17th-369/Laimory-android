@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import javax.inject.Inject
@@ -31,8 +32,12 @@ class DailyReminderAlarmScheduler
         private val alarmManager: AlarmManager
             get() = context.getSystemService(AlarmManager::class.java)
 
-        fun schedule(time: LocalTime) {
-            val triggerAt = DailyReminderSchedule.nextTriggerAt(ZonedDateTime.now(), time)
+        /** @param deliveredRecordDate 이미 알림을 띄운 기록 날짜. 그 날을 가리키는 시각은 건너뛴다. */
+        fun schedule(
+            time: LocalTime,
+            deliveredRecordDate: LocalDate?,
+        ) {
+            val triggerAt = DailyReminderSchedule.nextTriggerAt(ZonedDateTime.now(), time, deliveredRecordDate)
             val triggerAtMillis = triggerAt.toInstant().toEpochMilli()
             alarmManager.setWindow(
                 AlarmManager.RTC_WAKEUP,

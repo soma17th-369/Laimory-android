@@ -56,5 +56,5 @@ class FakeDailyReminderRepository(
 
     override suspend fun setLastCompletedCopyIndex(index: Int) = Unit
 
-    override suspend fun setLastDeliveredDate(date: LocalDate) = Unit
+    override suspend fun setLastDeliveredRecordDate(date: LocalDate) = Unit
 }

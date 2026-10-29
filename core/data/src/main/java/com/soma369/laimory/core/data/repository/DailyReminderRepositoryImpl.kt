@@ -79,7 +79,7 @@ internal class DailyReminderRepositoryImpl
                 lastSavedRecordDate = preferences[KEY_LAST_SAVED_EPOCH_DAY]?.let(LocalDate::ofEpochDay),
                 lastGeneralTitleIndex = preferences[KEY_LAST_GENERAL_TITLE_INDEX],
                 lastCompletedCopyIndex = preferences[KEY_LAST_COMPLETED_COPY_INDEX],
-                lastDeliveredDate = preferences[KEY_LAST_DELIVERED_EPOCH_DAY]?.let(LocalDate::ofEpochDay),
+                lastDeliveredRecordDate = preferences[KEY_LAST_DELIVERED_RECORD_EPOCH_DAY]?.let(LocalDate::ofEpochDay),
             )
         }
 
@@ -95,8 +95,8 @@ internal class DailyReminderRepositoryImpl
             editQuietly("완료 문구 기억") { preferences -> preferences[KEY_LAST_COMPLETED_COPY_INDEX] = index }
         }
 
-        override suspend fun setLastDeliveredDate(date: LocalDate) {
-            editQuietly("마지막 알림 날짜") { preferences -> preferences[KEY_LAST_DELIVERED_EPOCH_DAY] = date.toEpochDay() }
+        override suspend fun setLastDeliveredRecordDate(date: LocalDate) {
+            editQuietly("마지막 알림 날짜") { preferences -> preferences[KEY_LAST_DELIVERED_RECORD_EPOCH_DAY] = date.toEpochDay() }
         }
 
         /** 보조 기록은 실패해도 호출부의 본래 동작(저장·조회)을 막지 않는다. */
@@ -124,7 +124,7 @@ internal class DailyReminderRepositoryImpl
             val KEY_LAST_SAVED_EPOCH_DAY = longPreferencesKey("daily_reminder_last_saved_epoch_day")
             val KEY_LAST_GENERAL_TITLE_INDEX = intPreferencesKey("daily_reminder_last_general_title_index")
             val KEY_LAST_COMPLETED_COPY_INDEX = intPreferencesKey("daily_reminder_last_completed_copy_index")
-            val KEY_LAST_DELIVERED_EPOCH_DAY = longPreferencesKey("daily_reminder_last_delivered_epoch_day")
+            val KEY_LAST_DELIVERED_RECORD_EPOCH_DAY = longPreferencesKey("daily_reminder_last_delivered_record_epoch_day")
             const val SECONDS_PER_MINUTE = 60
             const val MINUTES_PER_DAY = 24 * 60
         }
