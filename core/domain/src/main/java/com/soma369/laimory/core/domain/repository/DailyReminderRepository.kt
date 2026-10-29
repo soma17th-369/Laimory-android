@@ -45,7 +45,7 @@ interface DailyReminderRepository {
 
     suspend fun markRecordSaved(recordDate: LocalDate)
 
-    suspend fun setLastGeneralTitleIndex(index: Int)
+    suspend fun setLastGeneralCopyIndex(index: Int)
 
     suspend fun setLastCompletedCopyIndex(index: Int)
 

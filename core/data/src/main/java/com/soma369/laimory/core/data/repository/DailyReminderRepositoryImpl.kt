@@ -77,7 +77,7 @@ internal class DailyReminderRepositoryImpl
             val preferences = preferences.first()
             return DailyReminderDeliveryMemory(
                 lastSavedRecordDate = preferences[KEY_LAST_SAVED_EPOCH_DAY]?.let(LocalDate::ofEpochDay),
-                lastGeneralTitleIndex = preferences[KEY_LAST_GENERAL_TITLE_INDEX],
+                lastGeneralCopyIndex = preferences[KEY_LAST_GENERAL_COPY_INDEX],
                 lastCompletedCopyIndex = preferences[KEY_LAST_COMPLETED_COPY_INDEX],
                 lastDeliveredRecordDate = preferences[KEY_LAST_DELIVERED_RECORD_EPOCH_DAY]?.let(LocalDate::ofEpochDay),
             )
@@ -87,8 +87,8 @@ internal class DailyReminderRepositoryImpl
             editQuietly("완료 기록 날짜") { preferences -> preferences[KEY_LAST_SAVED_EPOCH_DAY] = recordDate.toEpochDay() }
         }
 
-        override suspend fun setLastGeneralTitleIndex(index: Int) {
-            editQuietly("일반 문구 기억") { preferences -> preferences[KEY_LAST_GENERAL_TITLE_INDEX] = index }
+        override suspend fun setLastGeneralCopyIndex(index: Int) {
+            editQuietly("일반 문구 기억") { preferences -> preferences[KEY_LAST_GENERAL_COPY_INDEX] = index }
         }
 
         override suspend fun setLastCompletedCopyIndex(index: Int) {
@@ -122,7 +122,7 @@ internal class DailyReminderRepositoryImpl
             val KEY_SERVER_HANDED_OFF = booleanPreferencesKey("daily_reminder_server_handed_off")
             val KEY_PUSH_ENABLED_MIRROR = booleanPreferencesKey("daily_reminder_push_enabled_mirror")
             val KEY_LAST_SAVED_EPOCH_DAY = longPreferencesKey("daily_reminder_last_saved_epoch_day")
-            val KEY_LAST_GENERAL_TITLE_INDEX = intPreferencesKey("daily_reminder_last_general_title_index")
+            val KEY_LAST_GENERAL_COPY_INDEX = intPreferencesKey("daily_reminder_last_general_copy_index")
             val KEY_LAST_COMPLETED_COPY_INDEX = intPreferencesKey("daily_reminder_last_completed_copy_index")
             val KEY_LAST_DELIVERED_RECORD_EPOCH_DAY = longPreferencesKey("daily_reminder_last_delivered_record_epoch_day")
             const val SECONDS_PER_MINUTE = 60

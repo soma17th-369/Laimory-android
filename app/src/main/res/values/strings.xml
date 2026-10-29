@@ -2,8 +2,8 @@
     <string name="app_name">Laimory</string>
 
     <!--
-        일일 리마인더 일반 문구. 제목과 본문을 따로 골라 섞는다(DailyReminderCopyPicker).
-        순서를 바꾸거나 늘리면 피커의 제외 조합(인덱스)도 함께 본다.
+        일일 리마인더 문구. 제목과 본문이 서로 어울리게 쓴 짝이라 같은 인덱스끼리만 쓴다.
+        제목·본문 배열의 길이는 같아야 한다.
     -->
     <string-array name="daily_reminder_general_titles">
         <item>오늘 하루 어땠나요?</item>
@@ -18,7 +18,7 @@
         <item>흩어진 기록을 타임라인으로 만들어보세요.</item>
     </string-array>
 
-    <!-- 오늘 기록을 이미 마친 날의 문구. 제목과 본문이 짝이라 같은 인덱스끼리만 쓴다. -->
+    <!-- 오늘 기록을 이미 마친 날의 문구. 위와 같이 짝이다. -->
     <string-array name="daily_reminder_completed_titles">
         <item>오늘의 타임라인이 완성됐어요</item>
         <item>오늘 하루도 잘 담았어요</item>

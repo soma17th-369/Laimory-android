@@ -67,7 +67,7 @@ class DailyReminderDelivery
                 if (memory.lastSavedRecordDate == recordDate) {
                     notifier.pickCompleted(memory.lastCompletedCopyIndex)
                 } else {
-                    notifier.pickGeneral(memory.lastGeneralTitleIndex)
+                    notifier.pickGeneral(memory.lastGeneralCopyIndex)
                 }
             if (!notifier.notify(copy, recordDate)) {
                 Logger.i(LogDomain.PUSH, "기기 알림이 꺼져 있어 일일 리마인더를 띄우지 못함")
@@ -75,7 +75,7 @@ class DailyReminderDelivery
             }
             repository.setLastDeliveredRecordDate(recordDate)
             when (copy) {
-                is DailyReminderCopy.General -> repository.setLastGeneralTitleIndex(copy.titleIndex)
+                is DailyReminderCopy.General -> repository.setLastGeneralCopyIndex(copy.index)
                 is DailyReminderCopy.Completed -> repository.setLastCompletedCopyIndex(copy.index)
             }
             Logger.i(LogDomain.PUSH, "일일 리마인더 표시(${if (copy is DailyReminderCopy.Completed) "완료" else "일반"})")

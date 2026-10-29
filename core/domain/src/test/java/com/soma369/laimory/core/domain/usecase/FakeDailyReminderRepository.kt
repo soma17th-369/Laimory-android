@@ -52,7 +52,7 @@ class FakeDailyReminderRepository(
         savedRecordDates += recordDate
     }
 
-    override suspend fun setLastGeneralTitleIndex(index: Int) = Unit
+    override suspend fun setLastGeneralCopyIndex(index: Int) = Unit
 
     override suspend fun setLastCompletedCopyIndex(index: Int) = Unit
 

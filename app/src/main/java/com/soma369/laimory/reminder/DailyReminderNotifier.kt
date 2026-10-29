@@ -26,13 +26,11 @@ class DailyReminderNotifier
     ) {
         private val picker = DailyReminderCopyPicker()
 
-        /** 일반 문구 후보 수. 리소스 배열 길이를 그대로 쓴다. */
-        val generalTitleCount: Int get() = context.resources.getStringArray(R.array.daily_reminder_general_titles).size
-        val generalBodyCount: Int get() = context.resources.getStringArray(R.array.daily_reminder_general_bodies).size
-        val completedCount: Int get() = context.resources.getStringArray(R.array.daily_reminder_completed_titles).size
+        /** 문구 후보 수. 리소스 배열 길이를 그대로 쓴다. */
+        private val generalCount: Int get() = context.resources.getStringArray(R.array.daily_reminder_general_titles).size
+        private val completedCount: Int get() = context.resources.getStringArray(R.array.daily_reminder_completed_titles).size
 
-        internal fun pickGeneral(lastTitleIndex: Int?): DailyReminderCopy.General =
-            picker.pickGeneral(generalTitleCount, generalBodyCount, lastTitleIndex)
+        internal fun pickGeneral(lastIndex: Int?): DailyReminderCopy.General = picker.pickGeneral(generalCount, lastIndex)
 
         internal fun pickCompleted(lastIndex: Int?): DailyReminderCopy.Completed = picker.pickCompleted(completedCount, lastIndex)
 
@@ -50,8 +48,8 @@ class DailyReminderNotifier
             val (title, body) =
                 when (copy) {
                     is DailyReminderCopy.General ->
-                        resources.getStringArray(R.array.daily_reminder_general_titles)[copy.titleIndex] to
-                            resources.getStringArray(R.array.daily_reminder_general_bodies)[copy.bodyIndex]
+                        resources.getStringArray(R.array.daily_reminder_general_titles)[copy.index] to
+                            resources.getStringArray(R.array.daily_reminder_general_bodies)[copy.index]
                     is DailyReminderCopy.Completed ->
                         resources.getStringArray(R.array.daily_reminder_completed_titles)[copy.index] to
                             resources.getStringArray(R.array.daily_reminder_completed_bodies)[copy.index]
