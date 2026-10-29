@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
+import com.soma369.laimory.core.domain.model.timeline.displaySubtitle
 import com.soma369.laimory.core.ui.model.toUiEmotionOrNull
 import com.soma369.laimory.core.ui.theme.Emotion
 import java.time.LocalDate
@@ -30,7 +31,7 @@ internal fun DailyTimeline.toPastRecordUiModel(): PastRecordUiModel =
         emotion = emotion?.toUiEmotionOrNull(),
         summary =
             events.firstOrNull()?.let { event ->
-                event.subtitle?.let { subtitle -> "${event.title} · $subtitle" } ?: event.title
+                event.displaySubtitle?.let { subtitle -> "${event.title} · $subtitle" } ?: event.title
             },
         photoUrl =
             events

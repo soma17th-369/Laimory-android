@@ -83,6 +83,35 @@ class TimelineRecordUiModelTest {
         assertEquals("오늘 누구와 함께였나요?", timeline.toUiModel().events.single().question)
     }
 
+    @Test
+    fun `toUiModel - 부제의 장소 자리를 지금 장소로 채운다`() {
+        val startAt = LocalDateTime.of(2026, 5, 8, 12, 0)
+        val timeline =
+            DailyTimeline(
+                dailyRecordId = 31L,
+                recordDate = startAt.toLocalDate(),
+                emotion = null,
+                events =
+                    listOf(
+                        TimelineEvent(
+                            timelineEventId = 1L,
+                            eventType = TimelineEventType.MEAL,
+                            startAt = startAt,
+                            endAt = null,
+                            title = "점심 식사",
+                            subtitle = "{place}에서 친구와 파스타",
+                            memo = null,
+                            question = null,
+                            items = emptyList(),
+                            place = "어니언 성수",
+                            placeCandidates = listOf("어니언 성수", "△△공원"),
+                        ),
+                    ),
+            )
+
+        assertEquals("어니언 성수에서 친구와 파스타", timeline.toUiModel().events.single().subtitle)
+    }
+
     private fun item(
         id: Long,
         type: TimelineItemType,
