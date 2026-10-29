@@ -146,23 +146,6 @@ private fun TimelineRecordContent(
                 is TimelineRecordUiSideEffect.ShowSnackbar ->
                     snackbarHostState.showSnackbar(effect.message)
 
-                is TimelineRecordUiSideEffect.PlaceChanged -> {
-                    val result =
-                        snackbarHostState.showSnackbar(
-                            message = effect.message,
-                            actionLabel = "되돌리기",
-                        )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        onIntent(
-                            TimelineRecordUiIntent.UndoPlaceChange(
-                                timelineEventId = effect.timelineEventId,
-                                changeId = effect.changeId,
-                                place = effect.previousPlace,
-                            ),
-                        )
-                    }
-                }
-
                 is TimelineRecordUiSideEffect.MemoCommitFailed -> {
                     val result =
                         snackbarHostState.showSnackbar(

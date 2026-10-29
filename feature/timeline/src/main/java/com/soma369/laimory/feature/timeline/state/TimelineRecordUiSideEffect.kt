@@ -19,17 +19,4 @@ sealed interface TimelineRecordUiSideEffect : UiSideEffect {
         val memo: String?,
         val message: String,
     ) : TimelineRecordUiSideEffect
-
-    /**
-     * 장소를 바꿨다. 알리면서 되돌릴 길을 준다.
-     *
-     * 되돌릴 값([previousPlace])을 상태가 아니라 이 효과가 들고 간다 — 스낵바가 사라지면 되돌릴 곳도
-     * 없다.
-     */
-    data class PlaceChanged(
-        val timelineEventId: Long,
-        val changeId: Long,
-        val previousPlace: String,
-        val message: String,
-    ) : TimelineRecordUiSideEffect
 }

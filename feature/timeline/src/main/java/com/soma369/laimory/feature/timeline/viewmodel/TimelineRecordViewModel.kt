@@ -161,7 +161,8 @@ class TimelineRecordViewModel
 
         /**
          * 이벤트별로 도는 장소 변경과 그 일련번호. 메모 커밋([memoCommitJobs])과 같은 이유로 둔다 — 같은
-         * 이벤트의 다음 요청은 앞엣것이 끝난 뒤에 나가고, 응답이 도착했을 때 아직 최신인지 가린다.
+         * 이벤트의 다음 요청은 앞엣것이 끝난 뒤에 나가고, 응답이 도착했을 때 아직 최신인지 가린다. 연달아
+         * 바꾸면 앞선 요청의 실패가 뒤에 고른 장소를 되돌리지 않는다.
          */
         private val placeChangeJobs = mutableMapOf<Long, Job>()
         private var placeChangeSequence = 0L
@@ -253,8 +254,6 @@ class TimelineRecordViewModel
                         copy(directInput = intent.value.take(UpdateTimelineEventPlaceUseCase.MAX_PLACE_LENGTH))
                     }
                 TimelineRecordUiIntent.ConfirmPlace -> confirmPlace()
-                is TimelineRecordUiIntent.UndoPlaceChange ->
-                    undoPlaceChange(intent.timelineEventId, intent.changeId, intent.place)
             }
         }
 
@@ -1251,27 +1250,18 @@ class TimelineRecordViewModel
             updateState { placeSheet?.let { copy(placeSheet = it.transform()) } ?: this }
         }
 
-        /** 시트의 확인. 지금 장소와 같으면 요청 없이 닫는다. */
+        /**
+         * 시트의 확인. 지금 장소와 같으면 요청 없이 닫는다.
+         *
+         * 바꿨다고 따로 알리지 않는다 — 칩이 바로 바뀌어 눈에 보이고, 후보는 바꾼 뒤에도 남아 칩을 다시
+         * 눌러 원래 장소를 고르는 것이 곧 되돌리기다. 알리는 것은 실패뿐이다.
+         */
         private fun confirmPlace() {
             val sheet = state.value.placeSheet ?: return
             val place = sheet.chosenPlace ?: return
             updateState { copy(placeSheet = null) }
             if (place == sheet.currentPlace) return
-            sendPlace(sheet.timelineEventId, place, previousPlace = sheet.currentPlace, announce = true)
-        }
-
-        /**
-         * 스낵바의 `되돌리기`. 그 사이 같은 이벤트의 장소를 또 바꿨다면 지난 되돌리기라 버린다.
-         *
-         * 되돌린 것은 다시 알리지 않는다 — 되돌리기의 되돌리기를 주면 스낵바가 끝없이 이어진다.
-         */
-        private fun undoPlaceChange(
-            timelineEventId: Long,
-            changeId: Long,
-            place: String,
-        ) {
-            if (latestPlaceChanges[timelineEventId] != changeId) return
-            sendPlace(timelineEventId, place, previousPlace = null, announce = false)
+            sendPlace(sheet.timelineEventId, place)
         }
 
         /**
@@ -1281,8 +1271,6 @@ class TimelineRecordViewModel
         private fun sendPlace(
             timelineEventId: Long,
             place: String,
-            previousPlace: String?,
-            announce: Boolean,
         ) {
             val changeId = ++placeChangeSequence
             latestPlaceChanges[timelineEventId] = changeId
@@ -1292,20 +1280,9 @@ class TimelineRecordViewModel
                 safeLaunch(onError = { error -> handlePlaceChangeFailure(timelineEventId, changeId, error) }) {
                     previous?.join()
                     updateTimelineEventPlaceUseCase(timelineEventId, place)
-                        .onSuccess {
-                            // 성공하면 UseCase 가 세션에 같은 값을 넣어 두므로 덧씌울 것이 없다.
-                            clearPendingPlace(timelineEventId, changeId)
-                            if (announce && previousPlace != null && latestPlaceChanges[timelineEventId] == changeId) {
-                                sendEffect(
-                                    TimelineRecordUiSideEffect.PlaceChanged(
-                                        timelineEventId = timelineEventId,
-                                        changeId = changeId,
-                                        previousPlace = previousPlace,
-                                        message = "'$place'로 바꿨어요",
-                                    ),
-                                )
-                            }
-                        }.onFailure { error -> handlePlaceChangeFailure(timelineEventId, changeId, error) }
+                        // 성공하면 UseCase 가 세션에 같은 값을 넣어 두므로 덧씌울 것이 없다.
+                        .onSuccess { clearPendingPlace(timelineEventId, changeId) }
+                        .onFailure { error -> handlePlaceChangeFailure(timelineEventId, changeId, error) }
                 }
         }
 

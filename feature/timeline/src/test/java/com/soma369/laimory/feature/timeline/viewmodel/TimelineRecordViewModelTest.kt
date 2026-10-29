@@ -2439,9 +2439,6 @@ class TimelineRecordViewModelTest {
             val event = viewModel.state.value.displayedRecord?.events?.single()
             assertEquals("△△공원", event?.place)
             assertEquals("△△공원에서 파스타", event?.subtitle)
-            val changed = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.PlaceChanged
-            assertEquals("성수동 카페", changed.previousPlace)
-            assertEquals("'△△공원'로 바꿨어요", changed.message)
         }
 
     @Test
@@ -2494,28 +2491,6 @@ class TimelineRecordViewModelTest {
                 TimelineRecordUiSideEffect.ShowSnackbar("장소를 바꾸지 못했어요."),
                 viewModel.sideEffect.first(),
             )
-        }
-
-    @Test
-    fun `되돌리기는 이전 장소를 다시 보내고 그 사이 또 바꿨으면 버린다`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
-
-            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
-            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
-            advanceUntilIdle()
-            val first = viewModel.sideEffect.first() as TimelineRecordUiSideEffect.PlaceChanged
-
-            viewModel.sendIntent(TimelineRecordUiIntent.UndoPlaceChange(1L, first.changeId, first.previousPlace))
-            advanceUntilIdle()
-            assertEquals(listOf(1L to "△△공원", 1L to "성수동 카페"), recordRepository.updatedPlaces)
-            assertEquals("성수동 카페", viewModel.state.value.displayedRecord?.events?.single()?.place)
-
-            // 이미 되돌린 변경을 다시 되돌리지 않는다.
-            viewModel.sendIntent(TimelineRecordUiIntent.UndoPlaceChange(1L, first.changeId, first.previousPlace))
-            advanceUntilIdle()
-            assertEquals(2, recordRepository.updatedPlaces.size)
         }
 
     private class FakeTimelineRecordSessionRepository : TimelineRecordSessionRepository {

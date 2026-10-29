@@ -131,16 +131,4 @@ sealed interface TimelineRecordUiIntent : UiIntent {
     ) : TimelineRecordUiIntent
 
     data object ConfirmPlace : TimelineRecordUiIntent
-
-    /**
-     * 장소를 바꿨다는 스낵바의 `되돌리기`.
-     *
-     * 바꾼 요청의 번호를 함께 들고 온다. 스낵바가 떠 있는 동안 같은 이벤트의 장소를 또 바꿨다면 이
-     * 되돌리기는 이미 지난 것이다 — 확인하지 않으면 새로 고른 장소를 옛 장소로 덮는다.
-     */
-    data class UndoPlaceChange(
-        val timelineEventId: Long,
-        val changeId: Long,
-        val place: String,
-    ) : TimelineRecordUiIntent
 }
