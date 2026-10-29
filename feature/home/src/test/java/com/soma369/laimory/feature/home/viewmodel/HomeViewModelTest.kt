@@ -2767,6 +2767,42 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `거부 안내에서 설정에 다녀와 허용하지 않고 돌아와 시트가 닫혀도 튜토리얼은 다음 단계부터 이어진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
+            runCurrent()
+
+            // 복귀 갱신이 권한 없음을 보고 시트를 닫는다. 닫기 버튼을 거치지 않는 길이다.
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = false, limited = false))
+            runCurrent()
+
+            assertFalse(viewModel.state.value.isPhotoSheetVisible)
+            assertEquals(HomeCoachmarkStep.SOURCES, viewModel.state.value.homeCoachmark)
+            assertTrue(homeOverlayTurn.isTutorialActive.value)
+        }
+
+    @Test
+    fun `시트가 열리기 전 복귀 갱신은 튜토리얼 시트 단계를 건너뛰지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+
+            // 권한 창이 떠 있는 동안의 복귀다. 시트가 아직 안 열렸으니 닫힌 것으로 치지 않는다.
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = false, limited = false))
+            runCurrent()
+            assertEquals(HomeCoachmarkStep.PHOTO_SHEET_LIST, viewModel.state.value.homeCoachmark)
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertTrue(viewModel.state.value.isPhotoSheetVisible)
+            assertEquals(HomeCoachmarkStep.PHOTO_SHEET_LIST, viewModel.state.value.homeCoachmark)
+        }
+
+    @Test
     fun `시트 위 코치마크에서 건너뛰면 시트는 남기고 튜토리얼만 마친다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = startCoachmarkAtPhotoStep()

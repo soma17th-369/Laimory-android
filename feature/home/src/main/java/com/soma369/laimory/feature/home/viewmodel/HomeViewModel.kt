@@ -592,7 +592,11 @@ class HomeViewModel
             photoAccessGranted = hasAccess
             updatePhotoAccess(hasAccess, limited)
             if (!hasAccess) {
+                val wasSheetVisible = state.value.isPhotoSheetVisible
                 clearPhotoCandidates()
+                // 설정에 다녀와 허용하지 않고 돌아오면 여기서 시트가 닫힌다. 튜토리얼이 연 시트였으면 이어 가야 한다 —
+                // 시트 단계에 남겨 두면 홈은 그 단계를 그리지 않아 안내가 사라지고, 튜토리얼도 끝나지 않는다.
+                if (wasSheetVisible) resumeCoachmarkAfterPhotoSheet()
                 return
             }
             // 거부 안내의 `설정 열기` 로 나갔다 허용하고 돌아오는 경로다. 복귀는
