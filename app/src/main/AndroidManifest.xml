@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 일일 리마인더 알람은 재부팅으로 지워져 다시 건다. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
         분석 SDK(#410)가 광고 측정용으로 병합해 오는 권한들을 도로 뺀다. 우리는 광고를 하지 않고
@@ -131,6 +133,22 @@
             <!-- Health Connect 권한 rationale 은 debug 소스셋에만 둔다 — `src/debug/AndroidManifest.xml` 참고. -->
         </activity>
 
+        <!-- 일일 리마인더 알람 수신(우리 PendingIntent 로만 트리거되므로 exported=false). -->
+        <receiver
+            android:name=".reminder.DailyReminderAlarmReceiver"
+            android:exported="false" />
+
+        <!-- 알람이 지워지거나 어긋나는 때 다시 건다. 시스템 전용 방송이라 다른 앱이 보낼 수 없다. -->
+        <receiver
+            android:name=".reminder.DailyReminderRescheduleReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

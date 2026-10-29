@@ -19,6 +19,8 @@ import com.soma369.laimory.crash.isUnexpectedFailure
 import com.soma369.laimory.draft.DraftTaskProcessLifecycleObserver
 import com.soma369.laimory.push.DraftCompletionNotificationChannel
 import com.soma369.laimory.push.PushRegistrationSessionObserver
+import com.soma369.laimory.reminder.DailyReminderCoordinator
+import com.soma369.laimory.reminder.DailyReminderNotificationChannel
 import com.soma369.laimory.retention.SourceItemRetentionScheduler
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
@@ -60,6 +62,9 @@ class LaimoryApp :
     lateinit var sourceItemRetentionScheduler: SourceItemRetentionScheduler
 
     @Inject
+    lateinit var dailyReminderCoordinator: DailyReminderCoordinator
+
+    @Inject
     lateinit var signedInCrashKeyObserver: SignedInCrashKeyObserver
 
     @Inject
@@ -87,11 +92,14 @@ class LaimoryApp :
         ProcessLifecycleOwner.get().lifecycle.addObserver(autoCollectionProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(locationTrackingProcessLifecycleObserver)
         ProcessLifecycleOwner.get().lifecycle.addObserver(backgroundStateCrashKeyObserver)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(dailyReminderCoordinator)
         pushRegistrationSessionObserver.start()
         signedInCrashKeyObserver.start()
         backgroundStateCrashKeyObserver.start()
         sourceItemRetentionScheduler.schedule()
         DraftCompletionNotificationChannel.create(this)
+        DailyReminderNotificationChannel.create(this)
+        dailyReminderCoordinator.start()
         // 수면 자동 감지 구독 복원. 사용자가 켜둔 상태였을 때만 다시 구독한다(시스템 구독이라 앱이 죽어도 유지).
         val subscriber =
             EntryPointAccessors

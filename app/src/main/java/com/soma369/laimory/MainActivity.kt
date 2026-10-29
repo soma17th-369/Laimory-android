@@ -37,6 +37,7 @@ import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
+import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.settings.AppThemeMode
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.DraftLoadingPage
@@ -57,6 +58,7 @@ import com.soma369.laimory.notice.PopupNoticeHost
 import com.soma369.laimory.notice.PopupNoticeQueue
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
+import com.soma369.laimory.reminder.DailyReminderTap
 import com.soma369.laimory.ui.GlobalUiHost
 import com.soma369.laimory.update.AppUpdateGate
 import com.soma369.laimory.update.AppUpdateGateHost
@@ -199,6 +201,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) popupNoticeQueue.onAppLaunched()
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
+        consumeDailyReminderNotification(intent)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
         // 다이얼로그는 거부되기 쉽고, 한 번 거부하면 다시 물을 기회가 사실상 없다.
         // 요청은 온보딩의 알림 장 CTA 가 맡는다.
@@ -327,6 +330,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         consumeSocialLoginCallback(intent)
         consumeDraftCompletionNotification(intent)
+        consumeDailyReminderNotification(intent)
     }
 
     /**
@@ -449,6 +453,25 @@ class MainActivity : ComponentActivity() {
                 return@launch
             }
             navigationHelper.navigateTo(DraftLoadingPage)
+        }
+    }
+
+    /**
+     * 일일 리마인더 알림을 눌러 들어왔으면 그 목적지로 연다.
+     *
+     * 일반 문구는 홈, 완료 문구는 그날 타임라인이다. 알림 처리 화면으로 뒤로 돌아오지 않도록 홈을 루트로 세운다.
+     * 로그인이 풀린 채 눌렀으면 앱 시작 게이트에 맡긴다.
+     */
+    private fun consumeDailyReminderNotification(intent: Intent) {
+        val destination = DailyReminderTap.consume(intent) ?: return
+        setIntent(intent)
+        lifecycleScope.launch {
+            val session = observeAuthSession().first { state -> state != AuthSessionState.Loading }
+            if (session != AuthSessionState.Authenticated) return@launch
+            navigationHelper.replaceRoot(HomePage)
+            destination.recordDate?.let { recordDate ->
+                navigationHelper.navigateTo(TimelinePage(recordDate, AnalyticsEntryPoint.DAILY_REMINDER))
+            }
         }
     }
 
