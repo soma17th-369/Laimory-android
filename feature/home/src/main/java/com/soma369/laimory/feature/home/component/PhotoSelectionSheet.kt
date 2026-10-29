@@ -47,8 +47,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.soma369.laimory.core.ui.R
+import com.soma369.laimory.core.ui.component.coachmark.LaimoryCoachmark
+import com.soma369.laimory.core.ui.component.coachmark.coachmarkTarget
+import com.soma369.laimory.core.ui.component.coachmark.rememberCoachmarkState
 import com.soma369.laimory.core.ui.component.photo.LaimoryPhotoViewerDialog
 import com.soma369.laimory.core.ui.theme.Spacing
+import com.soma369.laimory.feature.home.state.HomeCoachmarkStep
 import com.soma369.laimory.feature.home.state.HomePhotoItem
 import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiState
@@ -75,6 +79,7 @@ internal fun PhotoSelectionSheet(
     // 크게 보는 사진의 순번. 격자에 보이는 순서(날짜별) 그대로 넘긴다.
     val orderedPhotos = remember(photosByDate) { photosByDate.values.flatten() }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
+    val coachmarkState = rememberCoachmarkState()
     ModalBottomSheet(
         onDismissRequest = { onIntent(HomeUiIntent.DismissPhotoSheet) },
         sheetState = sheetState,
@@ -139,7 +144,8 @@ internal fun PhotoSelectionSheet(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 88.dp, max = 400.dp),
+                            .heightIn(min = 88.dp, max = 400.dp)
+                            .coachmarkTarget(coachmarkState, COACHMARK_SHEET_PHOTOS),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
                     verticalArrangement = Arrangement.spacedBy(Spacing.extraSmall),
                 ) {
@@ -188,7 +194,7 @@ internal fun PhotoSelectionSheet(
                         },
                     )
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().coachmarkTarget(coachmarkState, COACHMARK_SHEET_DONE),
                 enabled = !state.isPhotoLoading,
                 // M3 기본값은 모서리를 완전히 둥글리므로(stadium) 우리 버튼보다 훨씬 둥글다.
                 shape = MaterialTheme.shapes.large,
@@ -203,6 +209,21 @@ internal fun PhotoSelectionSheet(
             }
             Spacer(modifier = Modifier.height(Spacing.large))
         }
+    }
+
+    // 홈 튜토리얼이 연 시트면 고르는 곳과 닫는 곳을 짚는다. 시트 안에서 그려야 코치마크 창이 시트 창보다 위에 뜬다.
+    // 짚을 사진이 없으면(거부 · 빈 범위 · 불러오는 중) 띄우지 않는다 — 시트를 닫으면 홈 코치마크가 이어진다.
+    val sheetStep = state.homeCoachmark?.takeIf { it.isInPhotoSheet }
+    if (sheetStep != null && !isReadOnly && !state.isPhotoAccessDenied && !state.isPhotoLoading && state.availablePhotos.isNotEmpty()) {
+        LaimoryCoachmark(
+            state = coachmarkState,
+            targetKeys = listOf(if (sheetStep == HomeCoachmarkStep.PHOTO_SHEET_LIST) COACHMARK_SHEET_PHOTOS else COACHMARK_SHEET_DONE),
+            message = sheetStep.message,
+            position = sheetStep.ordinal + 1,
+            total = HomeCoachmarkStep.entries.size,
+            onNext = { onIntent(HomeUiIntent.NextCoachmark) },
+            onSkip = { onIntent(HomeUiIntent.SkipCoachmark) },
+        )
     }
 
     viewerIndex?.let { initialIndex ->
@@ -432,3 +453,6 @@ private val VIEWER_BADGE_SIZE = 28.dp
 private val VIEWER_CHECK_TOUCH_SIZE = 48.dp
 
 private val PHOTO_DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MM월 dd일", Locale.KOREAN)
+
+private const val COACHMARK_SHEET_PHOTOS = "sheet_photos"
+private const val COACHMARK_SHEET_DONE = "sheet_done"

@@ -57,7 +57,6 @@ import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenuItem
-import com.soma369.laimory.core.ui.component.coachmark.CoachmarkHoleShape
 import com.soma369.laimory.core.ui.component.coachmark.CoachmarkState
 import com.soma369.laimory.core.ui.component.coachmark.LaimoryCoachmark
 import com.soma369.laimory.core.ui.component.coachmark.coachmarkTarget
@@ -274,7 +273,8 @@ private fun HomeContent(
         coachmarkState = coachmarkState,
     )
 
-    state.homeCoachmark?.let { step ->
+    // 시트 위 단계는 사진 시트가 그린다.
+    state.homeCoachmark?.takeIf { !it.isInPhotoSheet }?.let { step ->
         LaimoryCoachmark(
             state = coachmarkState,
             targetKeys = step.targetKeys,
@@ -283,8 +283,6 @@ private fun HomeContent(
             total = HomeCoachmarkStep.entries.size,
             onNext = { onIntent(HomeUiIntent.NextCoachmark) },
             onSkip = { onIntent(HomeUiIntent.SkipCoachmark) },
-            // 지난 기록은 둥근 아이콘이라 원으로 뚫는다.
-            holeShape = if (step == HomeCoachmarkStep.PAST_RECORDS) CoachmarkHoleShape.CIRCLE else CoachmarkHoleShape.ROUNDED_RECT,
         )
     }
 
@@ -439,7 +437,6 @@ private fun HomeScreen(
         ) {
             HomeHeaderRow(
                 dateModifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_DATE),
-                pastRecordsModifier = Modifier.coachmarkTarget(coachmarkState, COACHMARK_PAST_RECORDS),
                 selectedDate = state.selectedDate,
                 isDateEnabled = !state.isDateLocked,
                 onDateClick = { onIntent(HomeUiIntent.ShowDatePicker) },
@@ -557,7 +554,6 @@ private const val COACHMARK_DATE = "date"
 private const val COACHMARK_PHOTO = "photo"
 private const val COACHMARK_CALENDAR = "calendar"
 private const val COACHMARK_OTHER_SOURCES = "other_sources"
-private const val COACHMARK_PAST_RECORDS = "past_records"
 private const val COACHMARK_CREATE = "create"
 
 private val HomeCoachmarkStep.targetKeys: List<String>
@@ -565,9 +561,9 @@ private val HomeCoachmarkStep.targetKeys: List<String>
         when (this) {
             HomeCoachmarkStep.DATE -> listOf(COACHMARK_DATE)
             HomeCoachmarkStep.PHOTO -> listOf(COACHMARK_PHOTO)
+            HomeCoachmarkStep.PHOTO_SHEET_LIST, HomeCoachmarkStep.PHOTO_SHEET_DONE -> emptyList()
             // 일정 카드와 위치·알림 줄을 한 구멍으로 짚는다.
             HomeCoachmarkStep.SOURCES -> listOf(COACHMARK_CALENDAR, COACHMARK_OTHER_SOURCES)
-            HomeCoachmarkStep.PAST_RECORDS -> listOf(COACHMARK_PAST_RECORDS)
             HomeCoachmarkStep.CREATE -> listOf(COACHMARK_CREATE)
         }
 
@@ -596,7 +592,6 @@ private val HOME_BOTTOM_PADDING = Spacing.large
 @Composable
 private fun HomeHeaderRow(
     dateModifier: Modifier,
-    pastRecordsModifier: Modifier,
     selectedDate: LocalDate,
     isDateEnabled: Boolean,
     onDateClick: () -> Unit,
@@ -674,7 +669,7 @@ private fun HomeHeaderRow(
             // 아이콘만 서 있어 뜻을 그림으로만 전한다 — 스크린 리더가 읽을 이름을 붙인다.
             contentDescription = "지난 기록",
             modifier =
-                pastRecordsModifier
+                Modifier
                     .clip(CircleShape)
                     .clickable(onClick = onPastRecordsClick)
                     .size(32.dp),
