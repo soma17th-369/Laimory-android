@@ -57,7 +57,6 @@ import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @Composable
 fun NotificationSettingsRoute(
@@ -437,8 +436,8 @@ private const val REMINDER_TIME_FIELD_ID = "reminder_time"
 /** 피커 값이 요구하는 날짜 자리. 날짜 열이 없어 화면에 나오지 않고 바뀌지도 않는다. */
 private val PLACEHOLDER_DATE: LocalDate = LocalDate.of(2000, 1, 1)
 
-/** `오후 9:00`. 기기 언어와 관계없이 앱 문구와 같은 한국어로 쓴다. */
-private val REMINDER_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("a h:mm", Locale.KOREAN)
+/** `21:00`. 시각 시트의 롤러가 24시간이라 같은 표기를 쓴다 — 줄과 시트가 다르게 말하지 않게. */
+private val REMINDER_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private val ROW_MIN_HEIGHT = 64.dp
 
