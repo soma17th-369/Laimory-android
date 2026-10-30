@@ -22,6 +22,9 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.displaySubtitle
+import com.soma369.laimory.core.domain.model.timeline.placeSubtitle
+import com.soma369.laimory.core.domain.model.timeline.restorePlacePlaceholder
 import com.soma369.laimory.core.domain.usecase.CreateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoOutcome
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoUseCase
@@ -182,6 +185,7 @@ class TimelineEventEditorViewModel
                     recordDate = timeline.recordDate,
                     content = TimelineEventEditorUiContent.Editor,
                     originalForm = form,
+                    subtitlePlace = event.placeSubtitle()?.place,
                     form = form,
                     existingPhotos = event.existingPhotos(),
                 )
@@ -734,15 +738,34 @@ class TimelineEventEditorViewModel
                 form.endAt != original.endAt
         }
 
+        /**
+         * 수정 요청에 실을 부제.
+         *
+         * 비었으면 빈 문자열을 그대로 보낸다. null 로 바꾸면 서버가 "그대로 두세요" 로 읽어 설명을 지울 수 없다(서버
+         * 계약: 빈 문자열·공백은 비움, null 은 유지).
+         *
+         * 장소 자리가 있는 부제는 셋으로 갈린다.
+         * - 안 고쳤으면 null(유지) — 서버의 원문 템플릿이 그대로 남는다.
+         * - 지금 장소 이름이 통째로 남아 있으면 그 자리를 장소 자리로 되돌려 보낸다. 칩이 살아 있다.
+         * - 장소 이름 일부라도 지웠으면 고친 문장 그대로다. 그 이벤트의 칩은 사라진다.
+         */
+        private fun TimelineEventEditorUiState.subtitleRequest(
+            form: TimelineEventEditorForm,
+            original: TimelineEventEditorForm,
+        ): String? {
+            val edited = form.subtitle.trim()
+            val place = subtitlePlace ?: return edited
+            if (edited == original.subtitle.trim()) return null
+            return edited.restorePlacePlaceholder(place)
+        }
+
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {
             val original = requireNotNull(originalForm)
             val photoAdditions = photoAdditions()
             return UpdateTimelineEventCommand(
                 timelineEventId = requireNotNull(timelineEventId),
                 title = form.title.trim(),
-                // 비었으면 빈 문자열을 그대로 보낸다. null 로 바꾸면 서버가 "그대로 두세요" 로 읽어
-                // 설명을 지울 수 없다(서버 계약: 빈 문자열·공백은 비움, null 은 유지).
-                subtitle = form.subtitle.trim(),
+                subtitle = subtitleRequest(form, original),
                 startAt = form.startAt,
                 endAt = form.endAt,
                 eventType = form.eventType.takeIf { it != original.eventType },
@@ -766,7 +789,8 @@ private fun TimelineEvent.toEditorForm() =
     TimelineEventEditorForm(
         eventType = eventType,
         title = title,
-        subtitle = subtitle.orEmpty(),
+        // 장소 자리를 채운 완성 문장을 보여 준다. 편집 화면은 장소를 고르는 곳이 아니라 글을 고치는 곳이다.
+        subtitle = displaySubtitle.orEmpty(),
         startAt = startAt,
         endAt = endAt,
         memo = memo.orEmpty(),
