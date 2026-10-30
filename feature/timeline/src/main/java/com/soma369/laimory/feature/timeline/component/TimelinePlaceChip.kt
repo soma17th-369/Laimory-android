@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -62,7 +63,8 @@ internal fun TimelinePlaceSentence(
  * Figma `PlaceChip`(3497:8976) — 핀 + 지금 장소 + 펼침 화살표, 완전히 둥근 칩.
  *
  * 바탕은 중립 회색이다. 바로 아래 AI 질문 말풍선이 `primaryContainer` 라, 같은 파란 칩을 두면 둘이 한 덩어리로
- * 읽힌다(2026-10-30 실기기 확인).
+ * 읽힌다(2026-10-30 실기기 확인). 테두리는 왼쪽 이벤트 종류 표시자와 같은 굵기·색을 70% 로 옅게 둘러, 바탕만으로는
+ * 흐린 칩의 경계를 잡는다.
  */
 @Composable
 internal fun TimelinePlaceChip(
@@ -71,11 +73,13 @@ internal fun TimelinePlaceChip(
     modifier: Modifier = Modifier,
 ) {
     val contentColor = MaterialTheme.colorScheme.onSurface
+    val shape = RoundedCornerShape(percent = 50)
     Row(
         modifier =
             modifier
-                .clip(RoundedCornerShape(percent = 50))
+                .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .border(ChipBorderWidth, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = CHIP_BORDER_ALPHA), shape)
                 .clickable(role = Role.Button, onClick = onClick)
                 .semantics { contentDescription = "장소 $place, 바꾸기" }
                 .padding(start = 8.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
@@ -119,6 +123,8 @@ private fun SentenceWord(word: String) {
 private fun String.words(): List<String> = Regex("""\S+\s*""").findAll(this).map { it.value }.toList()
 
 private val ChipSpacing = 4.dp
+private val ChipBorderWidth = 1.dp
+private const val CHIP_BORDER_ALPHA = 0.7f
 private val SentenceLineGap = 4.dp
 private val ChipTextMaxWidth = 180.dp
 

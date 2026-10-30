@@ -179,7 +179,7 @@ private fun DirectInputStep(
         value = state.directInput,
         onValueChange = onValueChange,
         label = "장소 이름",
-        placeholder = "예: 성수 골목 국밥집",
+        placeholder = "장소를 입력하세요",
         supportingText = "타임라인에 이 이름으로 보여요",
         counterText = "${state.directInput.length}/${UpdateTimelineEventPlaceUseCase.MAX_PLACE_LENGTH}",
         focusRequester = focusRequester,
