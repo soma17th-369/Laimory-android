@@ -2,6 +2,7 @@ package com.soma369.laimory.core.data.repository
 
 import com.soma369.laimory.core.data.datasource.remote.TimelineRecordRemoteDataSource
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventPlaceRequest
 import com.soma369.laimory.core.data.model.timeline.request.toRequest
 import com.soma369.laimory.core.data.model.timeline.response.toDomain
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
@@ -41,6 +42,18 @@ class TimelineRecordRepositoryImpl
             remote.updateTimelineEventMemo(
                 timelineEventId = timelineEventId,
                 request = UpdateTimelineEventMemoRequest(memo),
+            )
+            return remote.getTimelineEvent(timelineEventId).toDomain()
+        }
+
+        /** PUT 성공 응답의 body가 null이므로 서버에 저장된 최신 Event를 GET으로 재조회한다. */
+        override suspend fun updateEventPlace(
+            timelineEventId: Long,
+            place: String,
+        ): TimelineEvent {
+            remote.updateTimelineEventPlace(
+                timelineEventId = timelineEventId,
+                request = UpdateTimelineEventPlaceRequest(place),
             )
             return remote.getTimelineEvent(timelineEventId).toDomain()
         }

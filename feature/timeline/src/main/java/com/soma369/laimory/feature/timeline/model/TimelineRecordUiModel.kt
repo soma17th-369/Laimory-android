@@ -7,6 +7,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
+import com.soma369.laimory.core.domain.model.timeline.displaySubtitle
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -39,6 +40,7 @@ data class TimelineEventUiModel(
     val startAt: LocalDateTime,
     val endAt: LocalDateTime?,
     val title: String,
+    /** 장소 자리를 채운 표시 문장. 서버 원문(템플릿)은 담지 않는다. */
     val subtitle: String?,
     val memo: String?,
     /** AI 가 되묻는 문장. 메모가 비어 있을 때 안내 문구를 대신하는 prompt 로 쓴다. */
@@ -77,7 +79,7 @@ private fun TimelineEvent.toUiModel() =
         startAt = startAt,
         endAt = endAt,
         title = title,
-        subtitle = subtitle,
+        subtitle = displaySubtitle,
         memo = memo,
         question = question,
         itemCounts =

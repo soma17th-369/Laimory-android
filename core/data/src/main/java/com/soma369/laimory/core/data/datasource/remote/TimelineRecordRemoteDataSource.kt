@@ -1,6 +1,7 @@
 package com.soma369.laimory.core.data.datasource.remote
 
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventPlaceRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
@@ -36,6 +37,12 @@ interface TimelineRecordRemoteDataSource {
     suspend fun updateTimelineEventMemo(
         timelineEventId: Long,
         request: UpdateTimelineEventMemoRequest,
+    )
+
+    /** Event 장소만 바꾼다. */
+    suspend fun updateTimelineEventPlace(
+        timelineEventId: Long,
+        request: UpdateTimelineEventPlaceRequest,
     )
 
     /** Event와 연결된 데이터를 삭제한다. */
