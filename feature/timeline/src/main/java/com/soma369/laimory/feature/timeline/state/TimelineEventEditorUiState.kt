@@ -14,6 +14,13 @@ data class TimelineEventEditorUiState(
     val recordDate: LocalDate? = null,
     val content: TimelineEventEditorUiContent = TimelineEventEditorUiContent.Loading,
     val originalForm: TimelineEventEditorForm? = null,
+    /**
+     * 부제 원문에 장소 자리(`{place}`)가 있을 때 그 자리를 채운 지금 장소. 없으면 null 이다.
+     *
+     * 폼은 장소를 채운 완성 문장을 다룬다. 저장할 때 이 장소 이름이 문장에 그대로 남아 있으면 그 자리를 다시 장소
+     * 자리로 돌려 보낸다 — 그래야 저장 뒤에도 타임라인 장소 칩이 살아 있다.
+     */
+    val subtitlePlace: String? = null,
     val form: TimelineEventEditorForm? = null,
     val existingPhotos: List<TimelineEventExistingPhoto> = emptyList(),
     /**
