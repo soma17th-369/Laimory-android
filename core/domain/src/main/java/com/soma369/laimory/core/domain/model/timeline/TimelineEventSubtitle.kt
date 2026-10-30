@@ -41,4 +41,17 @@ fun placeSubtitleOf(
     return PlaceSubtitle(texts = texts, place = place)
 }
 
+/**
+ * 사용자가 고친 부제에 [place] 가 **통째로** 남아 있으면 그 첫 자리를 장소 자리로 되돌린다. 없으면 그대로다.
+ *
+ * 부분 일치나 비슷한 이름은 보지 않는다 — 장소 이름 일부를 지웠다면 사용자가 문장을 직접 다시 쓴 것으로 보고,
+ * 그 이벤트는 이후 장소를 바꿔도 부제에 반영되지 않는다.
+ */
+fun String.restorePlacePlaceholder(place: String): String {
+    val name = place.trim()
+    if (name.isEmpty()) return this
+    val index = indexOf(name).takeIf { it >= 0 } ?: return this
+    return substring(0, index) + PLACE_PLACEHOLDER + substring(index + name.length)
+}
+
 private fun String?.nonBlank(): String? = this?.trim()?.takeIf(String::isNotEmpty)

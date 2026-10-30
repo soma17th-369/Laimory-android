@@ -56,6 +56,18 @@ class TimelineEventSubtitleTest {
         assertNull(event(subtitle = "{place}에서 파스타", address = "서울 성동구 아차산로9길 8").placeSubtitle())
     }
 
+    @Test
+    fun `고친 부제에 장소 이름이 통째로 남아 있으면 첫 자리를 장소 자리로 되돌린다`() {
+        assertEquals("오늘 {place}에서 저녁을 먹었어요.", "오늘 라쿤 피자에서 저녁을 먹었어요.".restorePlacePlaceholder("라쿤 피자"))
+        assertEquals("{place} 갔다가 라쿤 피자", "라쿤 피자 갔다가 라쿤 피자".restorePlacePlaceholder("라쿤 피자"))
+    }
+
+    @Test
+    fun `장소 이름 일부만 남았거나 장소가 비었으면 그대로 둔다`() {
+        assertEquals("라쿤 에서 저녁을 먹었어요.", "라쿤 에서 저녁을 먹었어요.".restorePlacePlaceholder("라쿤 피자"))
+        assertEquals("저녁을 먹었어요.", "저녁을 먹었어요.".restorePlacePlaceholder(" "))
+    }
+
     private fun event(
         subtitle: String?,
         place: String? = null,

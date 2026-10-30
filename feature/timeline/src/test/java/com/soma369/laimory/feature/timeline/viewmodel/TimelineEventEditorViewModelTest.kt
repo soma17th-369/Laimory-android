@@ -1168,6 +1168,67 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
+    fun `장소 자리가 있는 부제는 장소를 채운 완성 문장으로 보여 준다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(events = listOf(placeEvent())))
+            val viewModel = initializedViewModel()
+
+            assertEquals("라쿤 피자에서 저녁을 먹었어요.", viewModel.state.value.form?.subtitle)
+        }
+
+    @Test
+    fun `장소 자리가 있는 부제를 안 고치면 부제를 그대로 두라고 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(events = listOf(placeEvent())))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("늦은 저녁"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertNull(recordRepository.commands.single().subtitle)
+        }
+
+    @Test
+    fun `장소 이름이 통째로 남으면 그 자리를 장소 자리로 되돌려 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(events = listOf(placeEvent())))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeSubtitle("오늘 라쿤 피자에서 저녁을 먹었어요."))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("오늘 {place}에서 저녁을 먹었어요.", recordRepository.commands.single().subtitle)
+        }
+
+    @Test
+    fun `장소 이름 일부를 지우면 고친 문장 그대로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(events = listOf(placeEvent())))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeSubtitle("라쿤 에서 저녁을 먹었어요."))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("라쿤 에서 저녁을 먹었어요.", recordRepository.commands.single().subtitle)
+        }
+
+    @Test
+    fun `장소 자리가 있는 부제를 비우면 빈 문자열을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sessionRepository.save(timeline().copy(events = listOf(placeEvent())))
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeSubtitle("  "))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals("", recordRepository.commands.single().subtitle)
+        }
+
+    @Test
     fun `내용을 고쳐 저장하면 바뀐 칸과 수정 뒤 시작 시각으로 수정을 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = initializedViewModel()
@@ -1323,6 +1384,15 @@ class TimelineEventEditorViewModelTest {
             recordDate = LocalDate.of(2026, 5, 8),
             emotion = null,
             events = listOf(event()),
+        )
+
+    private fun placeEvent() =
+        event().copy(
+            eventType = TimelineEventType.MEAL,
+            title = "저녁",
+            subtitle = "{place}에서 저녁을 먹었어요.",
+            place = "라쿤 피자",
+            placeCandidates = listOf("라쿤 피자", "성수 감자탕"),
         )
 
     private fun event(
