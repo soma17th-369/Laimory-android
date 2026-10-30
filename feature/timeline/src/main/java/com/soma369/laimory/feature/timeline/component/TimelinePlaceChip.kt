@@ -30,7 +30,7 @@ import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.R as UiR
 
 /**
- * 장소 자리를 칩으로 둔 부제 문장. 칩을 누르면 장소 고르기 시트가 열린다.
+ * 장소 자리마다 칩을 둔 부제 문장. 칩을 누르면 장소 고르기 시트가 열린다.
  *
  * 앞뒤 문장을 **어절 단위로 흘려** 칩과 한 흐름으로 잇는다. 앞 문장을 통째로 한 덩어리로 두면 문장이
  * 조금만 길어도 칩이 다음 줄로 밀려 문장이 끊겨 읽힌다. 칩 바로 뒤 어절(`에서` 등)은 띄우지 않고
@@ -48,14 +48,17 @@ internal fun TimelinePlaceSentence(
         itemVerticalAlignment = Alignment.CenterVertically,
         verticalArrangement = Arrangement.spacedBy(SentenceLineGap),
     ) {
-        sentence.before.words().forEach { SentenceWord(it) }
-        TimelinePlaceChip(
-            place = sentence.place,
-            onClick = onPlaceClick,
-            // 칩 앞뒤 공백은 원문이 정한다. 원문에 공백이 있으면 그 어절이 이미 품고 있다.
-            modifier = Modifier.padding(end = if (sentence.after.startsWith(" ")) ChipSpacing else 0.dp),
-        )
-        sentence.after.words().forEach { SentenceWord(it) }
+        sentence.texts.forEachIndexed { index, text ->
+            text.words().forEach { SentenceWord(it) }
+            val next = sentence.texts.getOrNull(index + 1) ?: return@forEachIndexed
+            // 장소 자리마다 칩을 둔다. 모두 같은 장소라 어느 칩을 눌러도 같은 시트가 열리고 함께 바뀐다.
+            TimelinePlaceChip(
+                place = sentence.place,
+                onClick = onPlaceClick,
+                // 칩 앞뒤 공백은 원문이 정한다. 원문에 공백이 있으면 그 어절이 이미 품고 있다.
+                modifier = Modifier.padding(end = if (next.startsWith(" ")) ChipSpacing else 0.dp),
+            )
+        }
     }
 }
 
@@ -133,7 +136,7 @@ private val ChipTextMaxWidth = 180.dp
 private fun TimelinePlaceSentencePreview() {
     LaimoryTheme {
         TimelinePlaceSentence(
-            sentence = PlaceSubtitle(before = "", place = "어니언 성수", after = "에서 친구와 파스타를 먹고 한참 이야기했다"),
+            sentence = PlaceSubtitle(texts = listOf("", "에서 친구와 파스타를 먹고 한참 이야기했다"), place = "어니언 성수"),
             onPlaceClick = {},
         )
     }

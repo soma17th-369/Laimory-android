@@ -142,7 +142,7 @@ class TimelineRecordUiModelTest {
 
         assertEquals("공유오피스 오늘 팀 사무실 공유오피스 멘토링", changed.subtitle)
         assertEquals("공유오피스", changed.place)
-        assertEquals(" 오늘 팀 사무실 공유오피스 멘토링", changed.placeSentence?.after)
+        assertEquals(listOf("", " 오늘 팀 사무실 ", " 멘토링"), changed.placeSentence?.texts)
     }
 
     private fun item(

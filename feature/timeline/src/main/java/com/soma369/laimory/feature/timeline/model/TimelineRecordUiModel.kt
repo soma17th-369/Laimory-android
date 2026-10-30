@@ -72,7 +72,7 @@ data class TimelineEventUiModel(
     fun withPlace(place: String): TimelineEventUiModel {
         val sentence = placeSubtitleOf(subtitleTemplate, place) ?: return this
         return copy(
-            subtitle = sentence.before + sentence.place + sentence.after,
+            subtitle = sentence.text,
             placeSentence = sentence,
         )
     }
