@@ -157,7 +157,7 @@ private fun LaimoryTextFieldLayout(
                             text = placeholder,
                             modifier = if (singleLine) Modifier else Modifier.padding(vertical = Spacing.large),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = visuals.contentColor,
+                            color = visuals.placeholderColor,
                         )
                     }
                     Box(
