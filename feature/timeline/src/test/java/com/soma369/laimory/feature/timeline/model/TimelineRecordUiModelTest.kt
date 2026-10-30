@@ -112,6 +112,39 @@ class TimelineRecordUiModelTest {
         assertEquals("어니언 성수에서 친구와 파스타", timeline.toUiModel().events.single().subtitle)
     }
 
+    @Test
+    fun `withPlace - 장소 자리가 여럿이면 모두 새 장소로 바꾸고 직접 쓴 글자는 그대로 둔다`() {
+        val startAt = LocalDateTime.of(2026, 5, 8, 12, 0)
+        val timeline =
+            DailyTimeline(
+                dailyRecordId = 31L,
+                recordDate = startAt.toLocalDate(),
+                emotion = null,
+                events =
+                    listOf(
+                        TimelineEvent(
+                            timelineEventId = 1L,
+                            eventType = TimelineEventType.MEETING,
+                            startAt = startAt,
+                            endAt = null,
+                            title = "멘토링",
+                            subtitle = "{place} 오늘 팀 사무실 {place} 멘토링",
+                            memo = null,
+                            question = null,
+                            items = emptyList(),
+                            place = "팀 사무실",
+                            placeCandidates = listOf("팀 사무실", "공유오피스"),
+                        ),
+                    ),
+            )
+
+        val changed = timeline.toUiModel().events.single().withPlace("공유오피스")
+
+        assertEquals("공유오피스 오늘 팀 사무실 공유오피스 멘토링", changed.subtitle)
+        assertEquals("공유오피스", changed.place)
+        assertEquals(" 오늘 팀 사무실 공유오피스 멘토링", changed.placeSentence?.after)
+    }
+
     private fun item(
         id: Long,
         type: TimelineItemType,

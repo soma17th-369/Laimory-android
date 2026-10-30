@@ -10,6 +10,7 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.displaySubtitle
 import com.soma369.laimory.core.domain.model.timeline.placeSubtitle
+import com.soma369.laimory.core.domain.model.timeline.placeSubtitleOf
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -56,6 +57,8 @@ data class TimelineEventUiModel(
     val placeSentence: PlaceSubtitle? = null,
     /** AI 가 준 장소 후보. 순서가 우선순위다. */
     val placeCandidates: List<String> = emptyList(),
+    /** 장소 자리가 남은 서버 부제 원문. [placeSentence] 가 있을 때만 들고, 새 장소로 다시 채울 때 쓴다. */
+    val subtitleTemplate: String? = null,
 ) {
     /** 지금 장소. 고를 수 있는 이벤트에만 의미가 있다. */
     val place: String?
@@ -64,15 +67,13 @@ data class TimelineEventUiModel(
     /**
      * 장소를 [place] 로 바꾼 모습. 서버 응답을 기다리는 동안 바뀐 장소를 먼저 보여 줄 때 쓴다.
      *
-     * 부제에 장소 자리가 둘 이상이면 뒷자리는 옛 장소로 남는다 — 응답이 오면 서버 값으로 맞춰지고,
-     * AI 가 같은 장소를 두 번 쓰는 문장은 드물다.
+     * 원문 템플릿에서 다시 채우므로 장소 자리가 여럿이어도 모두 함께 바뀐다.
      */
     fun withPlace(place: String): TimelineEventUiModel {
-        val sentence = placeSentence ?: return this
-        val replaced = sentence.copy(place = place)
+        val sentence = placeSubtitleOf(subtitleTemplate, place) ?: return this
         return copy(
-            subtitle = replaced.before + replaced.place + replaced.after,
-            placeSentence = replaced,
+            subtitle = sentence.before + sentence.place + sentence.after,
+            placeSentence = sentence,
         )
     }
 }
@@ -122,4 +123,5 @@ private fun TimelineEvent.toUiModel() =
                 .map { item -> item.photoUrl },
         placeSentence = placeSubtitle()?.takeIf { placeCandidates.isNotEmpty() },
         placeCandidates = placeCandidates,
+        subtitleTemplate = subtitle.takeIf { placeSubtitle() != null && placeCandidates.isNotEmpty() },
     )
