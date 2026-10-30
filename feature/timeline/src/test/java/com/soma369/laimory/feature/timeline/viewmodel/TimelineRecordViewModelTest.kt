@@ -49,6 +49,7 @@ import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
+import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventPlaceUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
@@ -57,6 +58,7 @@ import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineCoachmarkStep
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelinePlaceSheetState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
@@ -1744,6 +1746,12 @@ class TimelineRecordViewModelTest {
                     sessionRepository = repository,
                     messageHelper = NoOpMessageHelper,
                 ),
+            updateTimelineEventPlaceUseCase =
+                UpdateTimelineEventPlaceUseCase(
+                    repository = recordRepository,
+                    sessionRepository = repository,
+                    messageHelper = NoOpMessageHelper,
+                ),
             completeDailyRecordUseCase =
                 CompleteDailyRecordUseCase(
                     repository = recordRepository,
@@ -2349,6 +2357,13 @@ class TimelineRecordViewModelTest {
         status = status,
     )
 
+    private fun placeEvent(place: String = "성수동 카페") =
+        event().copy(
+            subtitle = "{place}에서 파스타",
+            place = place,
+            placeCandidates = PLACE_CANDIDATES,
+        )
+
     private fun event(
         memo: String? = null,
         timelineEventId: Long = 1L,
@@ -2364,6 +2379,119 @@ class TimelineRecordViewModelTest {
         question = question,
         items = emptyList(),
     )
+
+    @Test
+    fun `장소 칩을 누르면 지금 장소가 골라진 채로 후보 시트를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            val sheet = viewModel.state.value.placeSheet
+            assertEquals(PLACE_CANDIDATES, sheet?.options)
+            assertEquals("성수동 카페", sheet?.selected)
+            assertEquals("09:00 · 업무", sheet?.eventLabel)
+        }
+
+    @Test
+    fun `후보에 없는 지금 장소는 목록 맨 위에 둔다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent(place = "직접 쓴 장소"))))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            assertEquals(listOf("직접 쓴 장소") + PLACE_CANDIDATES, viewModel.state.value.placeSheet?.options)
+        }
+
+    @Test
+    fun `읽기 모드나 후보가 없는 이벤트는 장소 시트를 열지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val saved =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(placeEvent()), status = DailyRecordStatus.SAVED, emotion = TimelineEmotion.HAPPY),
+                )
+            saved.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertNull(saved.state.value.placeSheet)
+
+            val noCandidates =
+                createLoadedViewModel(record = timeline(events = listOf(placeEvent().copy(placeCandidates = emptyList()))))
+            noCandidates.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertNull(noCandidates.state.value.placeSheet)
+        }
+
+    @Test
+    fun `후보를 고르면 장소만 바꾸고 바꾼 장소를 칩과 부제에 보여 준다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "△△공원"), recordRepository.updatedPlaces)
+            assertNull(viewModel.state.value.placeSheet)
+            assertTrue(viewModel.state.value.pendingPlaces.isEmpty())
+            val event = viewModel.state.value.displayedRecord?.events?.single()
+            assertEquals("△△공원", event?.place)
+            assertEquals("△△공원에서 파스타", event?.subtitle)
+        }
+
+    @Test
+    fun `지금 장소를 그대로 확인하면 요청하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.updatedPlaces.isEmpty())
+            assertNull(viewModel.state.value.placeSheet)
+        }
+
+    @Test
+    fun `직접 입력은 앞뒤 공백을 빼고 보내고 공백뿐이면 확인되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenDirectPlaceInput)
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeDirectPlaceInput("   "))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+            assertTrue(recordRepository.updatedPlaces.isEmpty())
+            assertEquals(TimelinePlaceSheetState.Step.DIRECT_INPUT, viewModel.state.value.placeSheet?.step)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeDirectPlaceInput("  성수 골목 국밥집 "))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "성수 골목 국밥집"), recordRepository.updatedPlaces)
+        }
+
+    @Test
+    fun `장소 변경이 실패하면 칩을 되돌리고 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals("성수동 카페", viewModel.state.value.displayedRecord?.events?.single()?.place)
+            assertTrue(viewModel.state.value.pendingPlaces.isEmpty())
+            assertEquals(
+                TimelineRecordUiSideEffect.ShowSnackbar("장소를 바꾸지 못했어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
 
     private class FakeTimelineRecordSessionRepository : TimelineRecordSessionRepository {
         private val mutableTimeline = MutableStateFlow<DailyTimeline?>(null)
@@ -2418,6 +2546,8 @@ class TimelineRecordViewModelTest {
         var saveGate: CompletableDeferred<Unit>? = null
         var saveFailure: ApiException? = null
         val updatedMemos = mutableListOf<Pair<Long, String?>>()
+        val updatedPlaces = mutableListOf<Pair<Long, String>>()
+        var placeFailure: ApiException? = null
         var dailyRecordResult: Result<DailyTimeline>? = null
         var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
         var memoUpdateGate: CompletableDeferred<Unit>? = null
@@ -2448,7 +2578,23 @@ class TimelineRecordViewModelTest {
         override suspend fun updateEventPlace(
             timelineEventId: Long,
             place: String,
-        ): TimelineEvent = error("사용하지 않음")
+        ): TimelineEvent {
+            updatedPlaces += timelineEventId to place
+            placeFailure?.let { throw it }
+            return TimelineEvent(
+                timelineEventId = timelineEventId,
+                eventType = TimelineEventType.WORK,
+                startAt = LocalDateTime.of(2026, 5, 8, 9, 0),
+                endAt = null,
+                title = "업무",
+                subtitle = "{place}에서 파스타",
+                memo = null,
+                question = null,
+                items = emptyList(),
+                place = place,
+                placeCandidates = PLACE_CANDIDATES,
+            )
+        }
 
         override suspend fun updateEventMemo(
             timelineEventId: Long,
@@ -2600,6 +2746,7 @@ class TimelineRecordViewModelTest {
     }
 
     private companion object {
+        val PLACE_CANDIDATES = listOf("성수동 카페", "△△공원", "어니언 성수")
         const val DAILY_RECORD_ID = 31L
         val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
         val OTHER_RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 9)

@@ -39,13 +39,14 @@ class TimelineEventSubtitleTest {
     }
 
     @Test
-    fun `첫 장소 자리를 기준으로 앞 장소 뒤로 나눈다`() {
+    fun `장소 자리마다 나누고 모든 자리가 같은 장소를 가리킨다`() {
         val event = event(subtitle = "친구와 {place}에서 파스타, 다시 {place}", place = "어니언 성수")
 
         assertEquals(
-            PlaceSubtitle(before = "친구와 ", place = "어니언 성수", after = "에서 파스타, 다시 어니언 성수"),
+            PlaceSubtitle(texts = listOf("친구와 ", "에서 파스타, 다시 ", ""), place = "어니언 성수"),
             event.placeSubtitle(),
         )
+        assertEquals("친구와 어니언 성수에서 파스타, 다시 어니언 성수", event.placeSubtitle()?.text)
     }
 
     @Test

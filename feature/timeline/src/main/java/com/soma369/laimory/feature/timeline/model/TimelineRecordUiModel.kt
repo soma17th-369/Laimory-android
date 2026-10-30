@@ -3,11 +3,14 @@ package com.soma369.laimory.feature.timeline.model
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.PlaceSubtitle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.displaySubtitle
+import com.soma369.laimory.core.domain.model.timeline.placeSubtitle
+import com.soma369.laimory.core.domain.model.timeline.placeSubtitleOf
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -47,7 +50,33 @@ data class TimelineEventUiModel(
     val question: String?,
     val itemCounts: List<TimelineItemCountUiModel>,
     val photoUrls: List<String?> = emptyList(),
-)
+    /**
+     * 부제를 장소 칩 앞·장소·뒤로 나눈 것. **장소를 다시 고를 수 있는 이벤트에만** 있다 — 후보가
+     * 있고 부제에 장소 자리가 남아 있을 때다. 칩을 그릴지는 이 값과 화면 모드가 정한다.
+     */
+    val placeSentence: PlaceSubtitle? = null,
+    /** AI 가 준 장소 후보. 순서가 우선순위다. */
+    val placeCandidates: List<String> = emptyList(),
+    /** 장소 자리가 남은 서버 부제 원문. [placeSentence] 가 있을 때만 들고, 새 장소로 다시 채울 때 쓴다. */
+    val subtitleTemplate: String? = null,
+) {
+    /** 지금 장소. 고를 수 있는 이벤트에만 의미가 있다. */
+    val place: String?
+        get() = placeSentence?.place
+
+    /**
+     * 장소를 [place] 로 바꾼 모습. 서버 응답을 기다리는 동안 바뀐 장소를 먼저 보여 줄 때 쓴다.
+     *
+     * 원문 템플릿에서 다시 채우므로 장소 자리가 여럿이어도 모두 함께 바뀐다.
+     */
+    fun withPlace(place: String): TimelineEventUiModel {
+        val sentence = placeSubtitleOf(subtitleTemplate, place) ?: return this
+        return copy(
+            subtitle = sentence.text,
+            placeSentence = sentence,
+        )
+    }
+}
 
 @Immutable
 data class TimelineItemCountUiModel(
@@ -92,4 +121,7 @@ private fun TimelineEvent.toUiModel() =
             items
                 .filter { it.itemType == TimelineItemType.PHOTO }
                 .map { item -> item.photoUrl },
+        placeSentence = placeSubtitle()?.takeIf { placeCandidates.isNotEmpty() },
+        placeCandidates = placeCandidates,
+        subtitleTemplate = subtitle.takeIf { placeSubtitle() != null && placeCandidates.isNotEmpty() },
     )

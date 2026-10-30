@@ -84,6 +84,7 @@ internal fun TimelineEventCard(
     onMemoClick: () -> Unit = {},
     onMemoChange: (String) -> Unit = {},
     onMemoCommit: () -> Unit = {},
+    onPlaceClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     memoModifier: Modifier = Modifier,
 ) {
@@ -136,12 +137,19 @@ internal fun TimelineEventCard(
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            event.subtitle?.takeIf(String::isNotBlank)?.let { subtitle ->
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            // 장소를 다시 고를 수 있는 이벤트는 편집 모드에서만 장소를 칩으로 둔다. 읽기 모드는 같은
+            // 문장을 글로만 보여 준다 — 칩은 바꿀 수 있다는 표시라 바꿀 수 없는 자리에 두지 않는다.
+            val placeSentence = event.placeSentence.takeIf { isEditable }
+            if (placeSentence != null) {
+                TimelinePlaceSentence(sentence = placeSentence, onPlaceClick = onPlaceClick)
+            } else {
+                event.subtitle?.takeIf(String::isNotBlank)?.let { subtitle ->
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (photoSlots.isNotEmpty()) {
                 EventPhotos(
