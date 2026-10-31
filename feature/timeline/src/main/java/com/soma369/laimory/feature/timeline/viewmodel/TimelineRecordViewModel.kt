@@ -168,6 +168,12 @@ class TimelineRecordViewModel
         private var placeChangeSequence = 0L
         private val latestPlaceChanges = mutableMapOf<Long, Long>()
 
+        /**
+         * 실패한 장소 변경. 칩은 이미 서버 값으로 되돌렸지만, 기록 완료가 그 응답을 기다리던 중이면 사용자가 결과를
+         * 보기 전에 화면이 닫힌다. 완료를 한 번 멈추는 데만 쓴다([awaitPlaceChanges]).
+         */
+        private val failedPlaceChanges = mutableSetOf<Long>()
+
         /** 모으기 시작하기 전의 메모. 모으는 사이에 원래대로 되돌렸으면 보내지 않는다. */
         private val memoBaselines = mutableMapOf<Long, String?>()
 
@@ -631,6 +637,12 @@ class TimelineRecordViewModel
                         abortSaveForFailedMemo()
                         return@safeLaunch
                     }
+                    // 장소도 같다. 바꾼 직후 완료하면 PUT 이 끝나기 전에 화면이 닫혀, 실패해도 되돌림 · 안내를 볼
+                    // 자리가 없다.
+                    if (!awaitPlaceChanges()) {
+                        abortSaveForFailedPlace()
+                        return@safeLaunch
+                    }
                     // 완료 요약용 이벤트는 요청 전에 갈무리한다. 확정되면 UseCase 가 세션을 비우고, 화면이
                     // 그 즉시 기록을 내려 결과를 받을 때는 목록이 이미 없다. 메모는 위에서 다 저장된 뒤다.
                     val completedEvents = state.value.completionSnapshot()
@@ -680,6 +692,15 @@ class TimelineRecordViewModel
         private fun abortSaveForFailedMemo() {
             updateState { copy(isSavingRecord = false, emotionSheet = null) }
             showSnackbar("저장하지 못한 메모가 있어요. 메모를 다시 저장한 뒤 완료해 주세요.")
+        }
+
+        /**
+         * 장소 변경이 실패했으면 이번 완료를 멈춘다. 칩은 이미 원래 장소로 돌아갔으니, 시트를 닫아 그 모습을 보게
+         * 한다. 메모와 달리 잃은 글이 없어 다음 완료는 막지 않는다 — 다시 누르면 지금 장소로 확정된다.
+         */
+        private fun abortSaveForFailedPlace() {
+            updateState { copy(isSavingRecord = false, emotionSheet = null) }
+            showSnackbar("장소를 바꾸지 못했어요. 장소를 확인한 뒤 다시 완료해 주세요.")
         }
 
         private fun handleSaveFailure(error: Throwable) {
@@ -1140,6 +1161,24 @@ class TimelineRecordViewModel
         }
 
         /**
+         * 날아가는 중인 장소 변경이 기록 확정보다 늦게 끝나지 않도록 기다린다.
+         *
+         * **기다리는 동안** 실패한 것이 있으면 `false` 다. 그 전에 실패한 것은 화면이 떠 있을 때 이미 되돌리고
+         * 알렸으니 완료를 막지 않는다.
+         */
+        private suspend fun awaitPlaceChanges(): Boolean {
+            failedPlaceChanges.clear()
+            val currentEvents =
+                state.value
+                    .record()
+                    ?.events
+                    .orEmpty()
+                    .mapTo(mutableSetOf()) { it.timelineEventId }
+            placeChangeJobs.filterKeys(currentEvents::contains).values.forEach { it.join() }
+            return failedPlaceChanges.none(currentEvents::contains)
+        }
+
+        /**
          * 기록을 바꿀 때 메모 커밋 대장을 비운다.
          *
          * 번호도 실패도 이벤트 단위인데 이벤트는 기록에 속한다. 다른 날짜로 넘어가면 남은 값은
@@ -1303,6 +1342,8 @@ class TimelineRecordViewModel
             if (latestPlaceChanges[timelineEventId] != changeId) return
             clearPendingPlace(timelineEventId, changeId)
             if (error is CancellationException) return
+            // 공통 정책이 안내한 실패(HandledException)도 넣는다. 안내했어도 장소는 바뀌지 않았다.
+            failedPlaceChanges += timelineEventId
             when ((error as? TimelineEventUpdateException)?.reason) {
                 TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE -> {
                     latestPlaceChanges -= timelineEventId

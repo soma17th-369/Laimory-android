@@ -69,6 +69,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -77,6 +79,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -2475,6 +2478,68 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `기록 완료는 진행 중인 장소 변경이 끝난 뒤에 확정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.placeUpdateGate = gate
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(0, navigationHelper.backCount)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+        }
+
+    @Test
+    fun `기다리던 장소 변경이 실패하면 기록을 확정하지 않고 되돌린 장소를 보게 한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.placeUpdateGate = gate
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(0, navigationHelper.backCount)
+            assertFalse(viewModel.state.value.isSavingRecord)
+            assertNull(viewModel.state.value.emotionSheet)
+            assertEquals("성수동 카페", viewModel.state.value.displayedRecord?.events?.single()?.place)
+            assertEquals(
+                listOf(
+                    TimelineRecordUiSideEffect.ShowSnackbar("장소를 바꾸지 못했어요."),
+                    TimelineRecordUiSideEffect.ShowSnackbar("장소를 바꾸지 못했어요. 장소를 확인한 뒤 다시 완료해 주세요."),
+                ),
+                viewModel.sideEffect.take(2).toList(),
+            )
+
+            // 결과를 본 뒤 다시 완료하면 지금 장소로 확정된다.
+            recordRepository.placeUpdateGate = null
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+        }
+
+    @Test
     fun `장소 변경이 실패하면 칩을 되돌리고 알린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.placeFailure = ApiException.NetworkException()
@@ -2548,6 +2613,7 @@ class TimelineRecordViewModelTest {
         val updatedMemos = mutableListOf<Pair<Long, String?>>()
         val updatedPlaces = mutableListOf<Pair<Long, String>>()
         var placeFailure: ApiException? = null
+        var placeUpdateGate: CompletableDeferred<Unit>? = null
         var dailyRecordResult: Result<DailyTimeline>? = null
         var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
         var memoUpdateGate: CompletableDeferred<Unit>? = null
@@ -2580,6 +2646,7 @@ class TimelineRecordViewModelTest {
             place: String,
         ): TimelineEvent {
             updatedPlaces += timelineEventId to place
+            placeUpdateGate?.await()
             placeFailure?.let { throw it }
             return TimelineEvent(
                 timelineEventId = timelineEventId,
