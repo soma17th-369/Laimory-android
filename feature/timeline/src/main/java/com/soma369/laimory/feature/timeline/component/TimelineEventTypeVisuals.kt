@@ -18,6 +18,10 @@ internal val TimelineEventTypeDisplayOrder =
         TimelineEventType.CALENDAR_EVENT,
         TimelineEventType.PHOTO_MOMENT,
         TimelineEventType.CLASS,
+        TimelineEventType.STAY,
+        TimelineEventType.SHOPPING,
+        TimelineEventType.CULTURE,
+        TimelineEventType.ERRAND,
         TimelineEventType.UNKNOWN,
     )
 
@@ -35,6 +39,10 @@ internal fun TimelineEventType.displayLabel(): String =
         TimelineEventType.EXERCISE -> "운동"
         TimelineEventType.SOCIAL -> "만남"
         TimelineEventType.REST -> "휴식"
+        TimelineEventType.STAY -> "머무름"
+        TimelineEventType.SHOPPING -> "쇼핑"
+        TimelineEventType.CULTURE -> "문화생활"
+        TimelineEventType.ERRAND -> "용무"
         TimelineEventType.UNKNOWN -> "기타"
     }
 
@@ -53,5 +61,9 @@ internal fun TimelineEventType.iconResource(): Int =
         TimelineEventType.EXERCISE -> R.drawable.ico_timeline_event_exercise
         TimelineEventType.SOCIAL -> R.drawable.ico_timeline_event_social
         TimelineEventType.REST -> R.drawable.ico_timeline_event_rest
+        TimelineEventType.STAY -> R.drawable.ico_timeline_event_stay
+        TimelineEventType.SHOPPING -> R.drawable.ico_timeline_event_shopping
+        TimelineEventType.CULTURE -> R.drawable.ico_timeline_event_culture
+        TimelineEventType.ERRAND -> R.drawable.ico_timeline_event_errand
         TimelineEventType.UNKNOWN -> R.drawable.ico_timeline_event_unknown
     }

@@ -80,6 +80,20 @@ class DraftTaskStatusResponseTest {
     }
 
     @Test
+    fun `서버가 추가한 이벤트 타입은 UNKNOWN으로 떨어지지 않는다`() {
+        listOf(
+            TimelineEventType.STAY,
+            TimelineEventType.SHOPPING,
+            TimelineEventType.CULTURE,
+            TimelineEventType.ERRAND,
+        ).forEach { type ->
+            val snapshot = decode(SUCCESS_JSON.replace("\"MEAL\"", "\"${type.name}\""))
+
+            assertEquals(type, requireNotNull(snapshot.result).events.single().eventType)
+        }
+    }
+
+    @Test
     fun `FAILED는 알려진 코드와 미지 코드를 타입으로 구분한다`() {
         val known = decode("""{"status":"FAILED","error":-1009}""")
         val unknown = decode("""{"status":"FAILED","error":-1999}""")

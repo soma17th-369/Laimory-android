@@ -499,6 +499,10 @@ private val TimelineEventType.paramValue: String
             TimelineEventType.EXERCISE -> "exercise"
             TimelineEventType.SOCIAL -> "social"
             TimelineEventType.REST -> "rest"
+            TimelineEventType.STAY -> "stay"
+            TimelineEventType.SHOPPING -> "shopping"
+            TimelineEventType.CULTURE -> "culture"
+            TimelineEventType.ERRAND -> "errand"
             TimelineEventType.UNKNOWN -> "unknown"
         }
 
