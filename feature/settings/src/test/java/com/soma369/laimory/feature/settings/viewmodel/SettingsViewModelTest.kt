@@ -1126,6 +1126,13 @@ class SettingsViewModelTest {
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("not used")
 
+        override suspend fun updateEventPlace(
+            timelineEventId: Long,
+            place: String,
+            latitude: Double?,
+            longitude: Double?,
+        ): TimelineEvent = error("not used")
+
         override suspend fun updateEventMemo(
             timelineEventId: Long,
             memo: String?,

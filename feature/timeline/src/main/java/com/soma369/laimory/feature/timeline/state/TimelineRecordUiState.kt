@@ -24,6 +24,14 @@ data class TimelineRecordUiState(
     /** 이벤트 삭제. 하루 기록 삭제와 대상도 성공 처리도 달라 상태를 나눠 둔다. */
     val eventDeleteDialogState: TimelineEventDeleteDialogState = TimelineEventDeleteDialogState.Hidden,
     val emotionSheet: TimelineEmotionSheetState? = null,
+    val placeSheet: TimelinePlaceSheetState? = null,
+    /**
+     * 서버 응답을 아직 기다리는 장소. `이벤트 id → 보낸 장소`.
+     *
+     * [pendingMemos] 와 같은 자리다 — 고르자마자 칩이 바뀌고, 성공하면 세션이 같은 값을 들고 와 지우고,
+     * 실패하면 지우는 것이 곧 되돌리기다.
+     */
+    val pendingPlaces: Map<Long, String> = emptyMap(),
     val isSavingRecord: Boolean = false,
     /** 타임라인 첫 도착 코치마크가 짚고 있는 단계. null 이면 띄우지 않는다. */
     val coachmark: TimelineCoachmarkStep? = null,
@@ -42,15 +50,17 @@ data class TimelineRecordUiState(
     val displayedRecord: TimelineRecordUiModel?
         get() {
             val record = (content as? TimelineRecordUiContent.Record)?.value ?: return null
-            if (pendingMemos.isEmpty()) return record
+            if (pendingMemos.isEmpty() && pendingPlaces.isEmpty()) return record
             return record.copy(
                 events =
                     record.events.map { event ->
-                        if (pendingMemos.containsKey(event.timelineEventId)) {
-                            event.copy(memo = pendingMemos[event.timelineEventId])
-                        } else {
-                            event
-                        }
+                        val withMemo =
+                            if (pendingMemos.containsKey(event.timelineEventId)) {
+                                event.copy(memo = pendingMemos[event.timelineEventId])
+                            } else {
+                                event
+                            }
+                        pendingPlaces[event.timelineEventId]?.let(withMemo::withPlace) ?: withMemo
                     },
             )
         }
@@ -94,6 +104,7 @@ data class TimelineRecordUiState(
                 record.events.isNotEmpty() &&
                 memoEditor == null &&
                 emotionSheet == null &&
+                placeSheet == null &&
                 isModeSwitchable
         }
 }

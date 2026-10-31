@@ -23,6 +23,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTar
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
@@ -37,6 +38,7 @@ import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionOutcome
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
+import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventPlaceUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
@@ -49,12 +51,14 @@ import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.model.initialMode
 import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
+import com.soma369.laimory.feature.timeline.state.PlaceSheetOption
 import com.soma369.laimory.feature.timeline.state.TimelineCoachmarkStep
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetPurpose
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetState
 import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineMemoEditorState
+import com.soma369.laimory.feature.timeline.state.TimelinePlaceSheetState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordDeleteTarget
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
@@ -71,7 +75,9 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 @HiltViewModel
@@ -84,6 +90,7 @@ class TimelineRecordViewModel
         private val completeDailyRecordUseCase: CompleteDailyRecordUseCase,
         private val updateDailyRecordEmotionUseCase: UpdateDailyRecordEmotionUseCase,
         private val updateTimelineEventMemoUseCase: UpdateTimelineEventMemoUseCase,
+        private val updateTimelineEventPlaceUseCase: UpdateTimelineEventPlaceUseCase,
         private val deleteDailyRecordUseCase: DeleteDailyRecordUseCase,
         private val deleteTimelineEventUseCase: DeleteTimelineEventUseCase,
         private val draftTaskCoordinator: DraftTaskCoordinator,
@@ -153,6 +160,21 @@ class TimelineRecordViewModel
          * 죽으면 잃는다 — 분석용이라 감수한다.
          */
         private val stagedMemoSaves = mutableMapOf<Long, StagedMemoSave>()
+
+        /**
+         * 이벤트별로 도는 장소 변경과 그 일련번호. 메모 커밋([memoCommitJobs])과 같은 이유로 둔다 — 같은
+         * 이벤트의 다음 요청은 앞엣것이 끝난 뒤에 나가고, 응답이 도착했을 때 아직 최신인지 가린다. 연달아
+         * 바꾸면 앞선 요청의 실패가 뒤에 고른 장소를 되돌리지 않는다.
+         */
+        private val placeChangeJobs = mutableMapOf<Long, Job>()
+        private var placeChangeSequence = 0L
+        private val latestPlaceChanges = mutableMapOf<Long, Long>()
+
+        /**
+         * 실패한 장소 변경. 칩은 이미 서버 값으로 되돌렸지만, 기록 완료가 그 응답을 기다리던 중이면 사용자가 결과를
+         * 보기 전에 화면이 닫힌다. 완료를 한 번 멈추는 데만 쓴다([awaitPlaceChanges]).
+         */
+        private val failedPlaceChanges = mutableSetOf<Long>()
 
         /** 모으기 시작하기 전의 메모. 모으는 사이에 원래대로 되돌렸으면 보내지 않는다. */
         private val memoBaselines = mutableMapOf<Long, String?>()
@@ -227,6 +249,19 @@ class TimelineRecordViewModel
                 is TimelineRecordUiIntent.CommitMemoEdit -> commitMemo(intent.timelineEventId)
                 is TimelineRecordUiIntent.RetryMemoCommit ->
                     retryMemoCommit(intent.timelineEventId, intent.commitId, intent.memo)
+                is TimelineRecordUiIntent.OpenPlaceSheet -> openPlaceSheet(intent.timelineEventId)
+                TimelineRecordUiIntent.DismissPlaceSheet -> updateState { copy(placeSheet = null) }
+                is TimelineRecordUiIntent.SelectPlaceOption ->
+                    updatePlaceSheet { if (intent.index in options.indices) copy(selectedIndex = intent.index) else this }
+                TimelineRecordUiIntent.OpenDirectPlaceInput ->
+                    updatePlaceSheet { copy(step = TimelinePlaceSheetState.Step.DIRECT_INPUT) }
+                TimelineRecordUiIntent.CloseDirectPlaceInput ->
+                    updatePlaceSheet { copy(step = TimelinePlaceSheetState.Step.LIST) }
+                is TimelineRecordUiIntent.ChangeDirectPlaceInput ->
+                    updatePlaceSheet {
+                        copy(directInput = intent.value.take(UpdateTimelineEventPlaceUseCase.MAX_PLACE_LENGTH))
+                    }
+                TimelineRecordUiIntent.ConfirmPlace -> confirmPlace()
             }
         }
 
@@ -342,8 +377,18 @@ class TimelineRecordViewModel
                 val memoSaves = takeMemoSavedEvents()
                 if (memoSaves.isNotEmpty()) safeLaunch { memoSaves.forEach { analyticsHelper.log(it) } }
                 resetMemoCommitState()
+                // 장소도 메모와 같다 — 날아가는 요청은 끝까지 보내되, 결과를 받을 화면은 새 기록의 것이다.
+                latestPlaceChanges.clear()
                 // 조회는 뒤에서 돌아 그사이 이전 기록이 화면 상태로 남는다. 여기서 바로 걷어 낸다.
-                updateState { copy(content = TimelineRecordUiContent.Loading, memoEditor = null, coachmark = null) }
+                updateState {
+                    copy(
+                        content = TimelineRecordUiContent.Loading,
+                        memoEditor = null,
+                        coachmark = null,
+                        placeSheet = null,
+                        pendingPlaces = emptyMap(),
+                    )
+                }
             }
             requestedRecordDate = recordDate
             isScreenVisible.value = true
@@ -586,12 +631,21 @@ class TimelineRecordViewModel
 
             Logger.i(LogDomain.USER_ACTION, "하루 기록 작성 완료 요청")
             updateState { copy(isSavingRecord = true) }
+            // 이 완료 시도부터의 장소 실패만 센다. 메모를 기다리는 동안 난 실패도 여기에 쌓여야 하므로 대기보다 먼저
+            // 비운다 — 장소 대기에 들어가서 비우면 그사이 실패가 지워져 그대로 확정된다.
+            failedPlaceChanges.clear()
             saveJob =
                 safeLaunch(onError = ::handleSaveFailure) {
                     // 메모가 아직 날아가는 중일 수 있다. 기록이 먼저 확정되면 화면이 종결돼
                     // 뒤늦게 도착한 메모가 어디에 붙을지 알 수 없다.
                     if (!awaitMemoCommits()) {
                         abortSaveForFailedMemo()
+                        return@safeLaunch
+                    }
+                    // 장소도 같다. 바꾼 직후 완료하면 PUT 이 끝나기 전에 화면이 닫혀, 실패해도 되돌림 · 안내를 볼
+                    // 자리가 없다.
+                    if (!awaitPlaceChanges()) {
+                        abortSaveForFailedPlace()
                         return@safeLaunch
                     }
                     // 완료 요약용 이벤트는 요청 전에 갈무리한다. 확정되면 UseCase 가 세션을 비우고, 화면이
@@ -643,6 +697,15 @@ class TimelineRecordViewModel
         private fun abortSaveForFailedMemo() {
             updateState { copy(isSavingRecord = false, emotionSheet = null) }
             showSnackbar("저장하지 못한 메모가 있어요. 메모를 다시 저장한 뒤 완료해 주세요.")
+        }
+
+        /**
+         * 장소 변경이 실패했으면 이번 완료를 멈춘다. 칩은 이미 원래 장소로 돌아갔으니, 시트를 닫아 그 모습을 보게
+         * 한다. 메모와 달리 잃은 글이 없어 다음 완료는 막지 않는다 — 다시 누르면 지금 장소로 확정된다.
+         */
+        private fun abortSaveForFailedPlace() {
+            updateState { copy(isSavingRecord = false, emotionSheet = null) }
+            showSnackbar("장소를 바꾸지 못했어요. 장소를 확인한 뒤 다시 완료해 주세요.")
         }
 
         private fun handleSaveFailure(error: Throwable) {
@@ -1103,6 +1166,23 @@ class TimelineRecordViewModel
         }
 
         /**
+         * 날아가는 중인 장소 변경이 기록 확정보다 늦게 끝나지 않도록 기다린다.
+         *
+         * 이 완료 시도를 시작한 뒤(메모 대기 포함) 실패한 것이 있으면 `false` 다. 대장은 [saveRecord] 가 시작할 때
+         * 비운다. 그 전에 실패한 것은 화면이 떠 있을 때 이미 되돌리고 알렸으니 완료를 막지 않는다.
+         */
+        private suspend fun awaitPlaceChanges(): Boolean {
+            val currentEvents =
+                state.value
+                    .record()
+                    ?.events
+                    .orEmpty()
+                    .mapTo(mutableSetOf()) { it.timelineEventId }
+            placeChangeJobs.filterKeys(currentEvents::contains).values.forEach { it.join() }
+            return failedPlaceChanges.none(currentEvents::contains)
+        }
+
+        /**
          * 기록을 바꿀 때 메모 커밋 대장을 비운다.
          *
          * 번호도 실패도 이벤트 단위인데 이벤트는 기록에 속한다. 다른 날짜로 넘어가면 남은 값은
@@ -1175,6 +1255,124 @@ class TimelineRecordViewModel
             }
         }
 
+        /**
+         * 부제 속 장소 칩을 눌렀다 — 고르기 시트를 연다.
+         *
+         * 편집 모드에서 장소를 고를 수 있는 이벤트만 연다. 읽기 모드에서는 칩이 그려지지 않지만 Intent
+         * 경로도 막는다. 지금 보이는 값(응답을 기다리는 장소 포함)에서 시작한다 — 방금 고른 장소를 다시
+         * 열었는데 옛 장소가 체크돼 있으면 안 된다.
+         */
+        private fun openPlaceSheet(timelineEventId: Long) {
+            val current = state.value
+            if (!current.mode.isEditing || !current.isModeSwitchable || current.placeSheet != null) return
+            commitOpenMemo()
+            val event =
+                state.value
+                    .displayedRecord
+                    ?.events
+                    ?.firstOrNull { it.timelineEventId == timelineEventId }
+                    ?: return
+            val place = event.place ?: return
+            val candidates = event.placeCandidates
+            // 이름이 같은 후보가 여럿이면 이벤트 좌표까지 같은 줄이 지금 장소다.
+            val currentCandidateIndex =
+                candidates
+                    .indexOfFirst { it.name == place && it.latitude == event.latitude && it.longitude == event.longitude }
+                    .takeIf { it >= 0 }
+                    ?: candidates.indexOfFirst { it.name == place }
+            val candidateOptions = candidates.map { PlaceSheetOption(it.name, it) }
+            val options =
+                if (currentCandidateIndex >= 0) candidateOptions else listOf(PlaceSheetOption(place, null)) + candidateOptions
+            updateState {
+                copy(
+                    placeSheet =
+                        TimelinePlaceSheetState(
+                            timelineEventId = timelineEventId,
+                            eventType = event.eventType,
+                            eventLabel = placeSheetEventLabel(event.startAt, event.endAt, event.title),
+                            currentPlace = place,
+                            options = options,
+                            currentIndex = currentCandidateIndex.coerceAtLeast(0),
+                        ),
+                )
+            }
+        }
+
+        private fun updatePlaceSheet(transform: TimelinePlaceSheetState.() -> TimelinePlaceSheetState) {
+            updateState { placeSheet?.let { copy(placeSheet = it.transform()) } ?: this }
+        }
+
+        /**
+         * 시트의 확인. 지금 장소와 같으면 요청 없이 닫는다.
+         *
+         * 바꿨다고 따로 알리지 않는다 — 칩이 바로 바뀌어 눈에 보이고, 후보는 바꾼 뒤에도 남아 칩을 다시
+         * 눌러 원래 장소를 고르는 것이 곧 되돌리기다. 알리는 것은 실패뿐이다.
+         */
+        private fun confirmPlace() {
+            val sheet = state.value.placeSheet ?: return
+            val place = sheet.chosenPlace ?: return
+            updateState { copy(placeSheet = null) }
+            if (sheet.isUnchanged) return
+            sendPlace(sheet.timelineEventId, place, sheet.chosenCandidate)
+        }
+
+        /**
+         * 장소를 서버로 보낸다. 칩은 곧바로 새 장소를 보여 주고([TimelineRecordUiState.pendingPlaces]),
+         * 응답을 기다리며 화면을 묶지 않는다.
+         *
+         * 후보를 골랐으면 그 후보의 좌표를 함께 보내 이벤트 좌표도 바꾼다. 직접 입력은 좌표 없이 보낸다.
+         */
+        private fun sendPlace(
+            timelineEventId: Long,
+            place: String,
+            candidate: PlaceCandidate?,
+        ) {
+            val changeId = ++placeChangeSequence
+            latestPlaceChanges[timelineEventId] = changeId
+            val previous = placeChangeJobs[timelineEventId]
+            updateState { copy(pendingPlaces = pendingPlaces + (timelineEventId to place)) }
+            placeChangeJobs[timelineEventId] =
+                safeLaunch(onError = { error -> handlePlaceChangeFailure(timelineEventId, changeId, error) }) {
+                    previous?.join()
+                    updateTimelineEventPlaceUseCase(timelineEventId, place, candidate?.latitude, candidate?.longitude)
+                        // 성공하면 UseCase 가 세션에 같은 값을 넣어 두므로 덧씌울 것이 없다.
+                        .onSuccess { clearPendingPlace(timelineEventId, changeId) }
+                        .onFailure { error -> handlePlaceChangeFailure(timelineEventId, changeId, error) }
+                }
+        }
+
+        private fun clearPendingPlace(
+            timelineEventId: Long,
+            changeId: Long,
+        ) {
+            if (latestPlaceChanges[timelineEventId] != changeId) return
+            updateState { copy(pendingPlaces = pendingPlaces - timelineEventId) }
+        }
+
+        /** 장소 변경 실패 — 칩을 서버 값으로 되돌리고 알린다. 뒤이은 변경이 이미 대신했으면 그 몫이다. */
+        private fun handlePlaceChangeFailure(
+            timelineEventId: Long,
+            changeId: Long,
+            error: Throwable,
+        ) {
+            if (latestPlaceChanges[timelineEventId] != changeId) return
+            clearPendingPlace(timelineEventId, changeId)
+            if (error is CancellationException) return
+            // 공통 정책이 안내한 실패(HandledException)도 넣는다. 안내했어도 장소는 바뀌지 않았다.
+            failedPlaceChanges += timelineEventId
+            when ((error as? TimelineEventUpdateException)?.reason) {
+                TimelineEventUpdateException.Reason.EVENT_UNAVAILABLE -> {
+                    latestPlaceChanges -= timelineEventId
+                    showSnackbar(error.serverMessageOr("이미 삭제됐거나 접근할 수 없는 이벤트예요."))
+                    requestedRecordDate?.let(::loadRecord)
+                }
+                TimelineEventUpdateException.Reason.INVALID_REQUEST ->
+                    showSnackbar(error.serverMessageOr("장소 이름을 다시 확인해 주세요."))
+                // 공통 정책이 이미 안내한 실패(5xx·401 등)는 다시 알리지 않는다. 칩은 되돌렸다.
+                else -> if (error !is HandledException) showSnackbar("장소를 바꾸지 못했어요.")
+            }
+        }
+
         private fun TimelineRecordUiState.record() = (content as? TimelineRecordUiContent.Record)?.value
 
         /** 보이는 기록이 이 화면이 연 날짜의 것인지. 다른 날짜로 넘어가는 중에 남은 이전 기록을 짚지 않게 한다. */
@@ -1195,3 +1393,15 @@ private data class StagedMemoSave(
     val event: AnalyticsEvent.TimelineMemoSaved,
     val memo: String?,
 )
+
+private val PlaceSheetTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+/** 장소 고르기 시트 위 맥락 줄. 카드의 시각 줄과 같은 모양에 제목을 붙인다. */
+private fun placeSheetEventLabel(
+    startAt: LocalDateTime,
+    endAt: LocalDateTime?,
+    title: String,
+): String {
+    val time = startAt.format(PlaceSheetTimeFormatter) + (endAt?.let { " ~ " + it.format(PlaceSheetTimeFormatter) } ?: "")
+    return if (title.isBlank()) time else "$time · $title"
+}

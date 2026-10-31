@@ -5,6 +5,7 @@ import com.soma369.laimory.core.data.model.timeline.request.CreateTimelineEventR
 import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateDailyRecordEmotionRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventPlaceRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineResponse
@@ -52,6 +53,13 @@ interface TimelineRecordApi {
     suspend fun updateTimelineEventMemo(
         @Path("timelineEventId") timelineEventId: Long,
         @Body request: UpdateTimelineEventMemoRequest,
+    ): Response<ApiResponse<Unit>>
+
+    /** Event 장소만 바꾼다. 제목·부제·후보·좌표는 그대로다. 응답 envelope 의 `body` 는 null 이다. */
+    @PUT("timeline/events/{timelineEventId}/place")
+    suspend fun updateTimelineEventPlace(
+        @Path("timelineEventId") timelineEventId: Long,
+        @Body request: UpdateTimelineEventPlaceRequest,
     ): Response<ApiResponse<Unit>>
 
     @DELETE("timeline/events/{timelineEventId}")

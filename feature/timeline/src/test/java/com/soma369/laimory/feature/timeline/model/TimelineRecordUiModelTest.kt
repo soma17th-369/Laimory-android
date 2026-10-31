@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.model
 
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
@@ -81,6 +82,68 @@ class TimelineRecordUiModelTest {
             )
 
         assertEquals("오늘 누구와 함께였나요?", timeline.toUiModel().events.single().question)
+    }
+
+    @Test
+    fun `toUiModel - 부제의 장소 자리를 지금 장소로 채운다`() {
+        val startAt = LocalDateTime.of(2026, 5, 8, 12, 0)
+        val timeline =
+            DailyTimeline(
+                dailyRecordId = 31L,
+                recordDate = startAt.toLocalDate(),
+                emotion = null,
+                events =
+                    listOf(
+                        TimelineEvent(
+                            timelineEventId = 1L,
+                            eventType = TimelineEventType.MEAL,
+                            startAt = startAt,
+                            endAt = null,
+                            title = "점심 식사",
+                            subtitle = "{place}에서 친구와 파스타",
+                            memo = null,
+                            question = null,
+                            items = emptyList(),
+                            place = "어니언 성수",
+                            placeCandidates = listOf(PlaceCandidate("어니언 성수"), PlaceCandidate("△△공원")),
+                        ),
+                    ),
+            )
+
+        assertEquals("어니언 성수에서 친구와 파스타", timeline.toUiModel().events.single().subtitle)
+    }
+
+    @Test
+    fun `withPlace - 장소 자리가 여럿이면 모두 새 장소로 바꾸고 직접 쓴 글자는 그대로 둔다`() {
+        val startAt = LocalDateTime.of(2026, 5, 8, 12, 0)
+        val timeline =
+            DailyTimeline(
+                dailyRecordId = 31L,
+                recordDate = startAt.toLocalDate(),
+                emotion = null,
+                events =
+                    listOf(
+                        TimelineEvent(
+                            timelineEventId = 1L,
+                            eventType = TimelineEventType.MEETING,
+                            startAt = startAt,
+                            endAt = null,
+                            title = "멘토링",
+                            subtitle = "{place} 오늘 팀 사무실 {place} 멘토링",
+                            memo = null,
+                            question = null,
+                            items = emptyList(),
+                            place = "팀 사무실",
+                            placeCandidates = listOf(PlaceCandidate("팀 사무실"), PlaceCandidate("공유오피스")),
+                        ),
+                    ),
+            )
+
+        val changed = timeline.toUiModel().events.single().withPlace("공유오피스")
+
+        assertEquals("공유오피스 오늘 팀 사무실 공유오피스 멘토링", changed.subtitle)
+        assertEquals("공유오피스", changed.place)
+        assertEquals(listOf("", " 오늘 팀 사무실 ", " 멘토링"), changed.placeSentence?.texts)
     }
 
     private fun item(

@@ -108,4 +108,28 @@ sealed interface TimelineRecordUiIntent : UiIntent {
         val commitId: Long,
         val memo: String?,
     ) : TimelineRecordUiIntent
+
+    /** 부제 속 장소 칩. 편집 모드이고 장소 후보가 있는 이벤트에서만 열린다. */
+    data class OpenPlaceSheet(
+        val timelineEventId: Long,
+    ) : TimelineRecordUiIntent
+
+    data object DismissPlaceSheet : TimelineRecordUiIntent
+
+    /** 목록의 [index] 번째 줄을 골랐다. 이름이 같은 후보가 있어 줄 위치로 가린다. */
+    data class SelectPlaceOption(
+        val index: Int,
+    ) : TimelineRecordUiIntent
+
+    /** 목록의 `직접 입력`. 시트 안에서 입력 단계로 넘어간다. */
+    data object OpenDirectPlaceInput : TimelineRecordUiIntent
+
+    /** 입력 단계의 뒤로. 고르던 목록으로 돌아간다. */
+    data object CloseDirectPlaceInput : TimelineRecordUiIntent
+
+    data class ChangeDirectPlaceInput(
+        val value: String,
+    ) : TimelineRecordUiIntent
+
+    data object ConfirmPlace : TimelineRecordUiIntent
 }

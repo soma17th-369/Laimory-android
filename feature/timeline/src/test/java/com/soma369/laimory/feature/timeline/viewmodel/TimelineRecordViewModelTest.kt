@@ -28,6 +28,7 @@ import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -49,6 +50,7 @@ import com.soma369.laimory.core.domain.usecase.ObserveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.SaveTimelineRecordUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateDailyRecordEmotionUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
+import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventPlaceUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
@@ -57,6 +59,7 @@ import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.feature.timeline.state.TimelineCoachmarkStep
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEventDeleteDialogState
+import com.soma369.laimory.feature.timeline.state.TimelinePlaceSheetState
 import com.soma369.laimory.feature.timeline.state.TimelineRecordMode
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiContent
 import com.soma369.laimory.feature.timeline.state.TimelineRecordUiIntent
@@ -67,6 +70,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -75,6 +80,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -1744,6 +1750,12 @@ class TimelineRecordViewModelTest {
                     sessionRepository = repository,
                     messageHelper = NoOpMessageHelper,
                 ),
+            updateTimelineEventPlaceUseCase =
+                UpdateTimelineEventPlaceUseCase(
+                    repository = recordRepository,
+                    sessionRepository = repository,
+                    messageHelper = NoOpMessageHelper,
+                ),
             completeDailyRecordUseCase =
                 CompleteDailyRecordUseCase(
                     repository = recordRepository,
@@ -2349,6 +2361,13 @@ class TimelineRecordViewModelTest {
         status = status,
     )
 
+    private fun placeEvent(place: String = "성수동 카페") =
+        event().copy(
+            subtitle = "{place}에서 파스타",
+            place = place,
+            placeCandidates = PLACE_CANDIDATE_MODELS,
+        )
+
     private fun event(
         memo: String? = null,
         timelineEventId: Long = 1L,
@@ -2364,6 +2383,290 @@ class TimelineRecordViewModelTest {
         question = question,
         items = emptyList(),
     )
+
+    @Test
+    fun `장소 칩을 누르면 지금 장소가 골라진 채로 후보 시트를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            val sheet = viewModel.state.value.placeSheet
+            assertEquals(PLACE_CANDIDATES, sheet?.options?.map { it.name })
+            assertEquals(0, sheet?.selectedIndex)
+            assertEquals("09:00 · 업무", sheet?.eventLabel)
+        }
+
+    @Test
+    fun `후보에 없는 지금 장소는 목록 맨 위에 둔다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent(place = "직접 쓴 장소"))))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+
+            val sheet = viewModel.state.value.placeSheet
+            assertEquals(listOf("직접 쓴 장소") + PLACE_CANDIDATES, sheet?.options?.map { it.name })
+            assertEquals(0, sheet?.selectedIndex)
+            assertNull(sheet?.options?.first()?.candidate)
+        }
+
+    @Test
+    fun `읽기 모드나 후보가 없는 이벤트는 장소 시트를 열지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val saved =
+                createLoadedViewModel(
+                    record = timeline(events = listOf(placeEvent()), status = DailyRecordStatus.SAVED, emotion = TimelineEmotion.HAPPY),
+                )
+            saved.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertNull(saved.state.value.placeSheet)
+
+            val noCandidates =
+                createLoadedViewModel(record = timeline(events = listOf(placeEvent().copy(placeCandidates = emptyList()))))
+            noCandidates.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertNull(noCandidates.state.value.placeSheet)
+        }
+
+    @Test
+    fun `후보를 고르면 장소만 바꾸고 바꾼 장소를 칩과 부제에 보여 준다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "△△공원"), recordRepository.updatedPlaces)
+            assertEquals(listOf<Pair<Double?, Double?>>(37.5444 to 127.0374), recordRepository.updatedPlaceCoordinates)
+            assertNull(viewModel.state.value.placeSheet)
+            assertTrue(viewModel.state.value.pendingPlaces.isEmpty())
+            val event = viewModel.state.value.displayedRecord?.events?.single()
+            assertEquals("△△공원", event?.place)
+            assertEquals("△△공원에서 파스타", event?.subtitle)
+        }
+
+    @Test
+    fun `지금 장소를 그대로 확인하면 요청하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.updatedPlaces.isEmpty())
+            assertNull(viewModel.state.value.placeSheet)
+        }
+
+    @Test
+    fun `직접 입력은 앞뒤 공백을 빼고 보내고 공백뿐이면 확인되지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenDirectPlaceInput)
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeDirectPlaceInput("   "))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+            assertTrue(recordRepository.updatedPlaces.isEmpty())
+            assertEquals(TimelinePlaceSheetState.Step.DIRECT_INPUT, viewModel.state.value.placeSheet?.step)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeDirectPlaceInput("  성수 골목 국밥집 "))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "성수 골목 국밥집"), recordRepository.updatedPlaces)
+            // 직접 입력은 좌표 없이 보낸다. 서버는 지금 좌표를 그대로 둔다.
+            assertEquals(listOf<Pair<Double?, Double?>>(null to null), recordRepository.updatedPlaceCoordinates)
+        }
+
+    @Test
+    fun `이름이 같은 후보는 고른 줄의 좌표를 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val twins = listOf(PlaceCandidate("스타벅스", 37.5, 127.0), PlaceCandidate("스타벅스", 37.6, 127.1))
+            val event =
+                placeEvent(place = "스타벅스").copy(placeCandidates = twins, latitude = 37.5, longitude = 127.0)
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event)))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertEquals(0, viewModel.state.value.placeSheet?.currentIndex)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            // 이름이 지금 장소와 같아도 다른 후보라 보낸다.
+            assertEquals(listOf(1L to "스타벅스"), recordRepository.updatedPlaces)
+            assertEquals(listOf<Pair<Double?, Double?>>(37.6 to 127.1), recordRepository.updatedPlaceCoordinates)
+        }
+
+    @Test
+    fun `이름이 같은 후보 중 이벤트 좌표와 같은 줄을 지금 장소로 본다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val twins = listOf(PlaceCandidate("스타벅스", 37.5, 127.0), PlaceCandidate("스타벅스", 37.6, 127.1))
+            val event =
+                placeEvent(place = "스타벅스").copy(placeCandidates = twins, latitude = 37.6, longitude = 127.1)
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event)))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertEquals(1, viewModel.state.value.placeSheet?.selectedIndex)
+
+            // 지금 줄을 그대로 확인하면 요청하지 않는다.
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+            assertTrue(recordRepository.updatedPlaces.isEmpty())
+        }
+
+    @Test
+    fun `좌표가 없는 후보를 고르면 좌표 없이 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 2))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "어니언 성수"), recordRepository.updatedPlaces)
+            assertEquals(listOf<Pair<Double?, Double?>>(null to null), recordRepository.updatedPlaceCoordinates)
+        }
+
+    @Test
+    fun `기록 완료는 진행 중인 장소 변경이 끝난 뒤에 확정한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.placeUpdateGate = gate
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            runCurrent()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(0, navigationHelper.backCount)
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+        }
+
+    @Test
+    fun `기다리던 장소 변경이 실패하면 기록을 확정하지 않고 되돌린 장소를 보게 한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            recordRepository.placeUpdateGate = gate
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(0, navigationHelper.backCount)
+            assertFalse(viewModel.state.value.isSavingRecord)
+            assertNull(viewModel.state.value.emotionSheet)
+            assertEquals("성수동 카페", viewModel.state.value.displayedRecord?.events?.single()?.place)
+            assertEquals(
+                listOf(
+                    TimelineRecordUiSideEffect.ShowSnackbar("장소를 바꾸지 못했어요."),
+                    TimelineRecordUiSideEffect.ShowSnackbar("장소를 바꾸지 못했어요. 장소를 확인한 뒤 다시 완료해 주세요."),
+                ),
+                viewModel.sideEffect.take(2).toList(),
+            )
+
+            // 결과를 본 뒤 다시 완료하면 지금 장소로 확정된다.
+            recordRepository.placeUpdateGate = null
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+        }
+
+    @Test
+    fun `메모를 기다리는 동안 장소 변경이 실패해도 기록을 확정하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 완료는 메모를 먼저 기다리고 장소를 기다린다. 메모를 기다리는 사이 난 장소 실패가 지워지면 안 된다.
+            val memoGate = CompletableDeferred<Unit>()
+            val placeGate = CompletableDeferred<Unit>()
+            recordRepository.memoUpdateGate = memoGate
+            recordRepository.placeUpdateGate = placeGate
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel =
+                createLoadedViewModel(record = timeline(events = listOf(placeEvent(), event(timelineEventId = 2L))))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 2L, value = "늦게 닿는 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+
+            // 장소가 먼저 실패하고, 그 뒤 메모가 성공한다.
+            placeGate.complete(Unit)
+            runCurrent()
+            memoGate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(2L to "늦게 닿는 메모"), recordRepository.updatedMemos)
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(0, navigationHelper.backCount)
+            assertFalse(viewModel.state.value.isSavingRecord)
+        }
+
+    @Test
+    fun `완료를 누르기 전에 이미 알린 장소 실패는 완료를 막지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+        }
+
+    @Test
+    fun `장소 변경이 실패하면 칩을 되돌리고 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals("성수동 카페", viewModel.state.value.displayedRecord?.events?.single()?.place)
+            assertTrue(viewModel.state.value.pendingPlaces.isEmpty())
+            assertEquals(
+                TimelineRecordUiSideEffect.ShowSnackbar("장소를 바꾸지 못했어요."),
+                viewModel.sideEffect.first(),
+            )
+        }
 
     private class FakeTimelineRecordSessionRepository : TimelineRecordSessionRepository {
         private val mutableTimeline = MutableStateFlow<DailyTimeline?>(null)
@@ -2418,6 +2721,10 @@ class TimelineRecordViewModelTest {
         var saveGate: CompletableDeferred<Unit>? = null
         var saveFailure: ApiException? = null
         val updatedMemos = mutableListOf<Pair<Long, String?>>()
+        val updatedPlaces = mutableListOf<Pair<Long, String>>()
+        val updatedPlaceCoordinates = mutableListOf<Pair<Double?, Double?>>()
+        var placeFailure: ApiException? = null
+        var placeUpdateGate: CompletableDeferred<Unit>? = null
         var dailyRecordResult: Result<DailyTimeline>? = null
         var dailyRecordGate: CompletableDeferred<DailyTimeline>? = null
         var memoUpdateGate: CompletableDeferred<Unit>? = null
@@ -2444,6 +2751,31 @@ class TimelineRecordViewModelTest {
         override suspend fun createEvent(command: CreateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
 
         override suspend fun updateEvent(command: UpdateTimelineEventCommand): TimelineEvent = error("사용하지 않음")
+
+        override suspend fun updateEventPlace(
+            timelineEventId: Long,
+            place: String,
+            latitude: Double?,
+            longitude: Double?,
+        ): TimelineEvent {
+            updatedPlaces += timelineEventId to place
+            updatedPlaceCoordinates += latitude to longitude
+            placeUpdateGate?.await()
+            placeFailure?.let { throw it }
+            return TimelineEvent(
+                timelineEventId = timelineEventId,
+                eventType = TimelineEventType.WORK,
+                startAt = LocalDateTime.of(2026, 5, 8, 9, 0),
+                endAt = null,
+                title = "업무",
+                subtitle = "{place}에서 파스타",
+                memo = null,
+                question = null,
+                items = emptyList(),
+                place = place,
+                placeCandidates = PLACE_CANDIDATE_MODELS,
+            )
+        }
 
         override suspend fun updateEventMemo(
             timelineEventId: Long,
@@ -2595,6 +2927,15 @@ class TimelineRecordViewModelTest {
     }
 
     private companion object {
+        val PLACE_CANDIDATES = listOf("성수동 카페", "△△공원", "어니언 성수")
+
+        /** 마지막 후보는 좌표가 없다. */
+        val PLACE_CANDIDATE_MODELS =
+            listOf(
+                PlaceCandidate("성수동 카페", 37.5446, 127.0557),
+                PlaceCandidate("△△공원", 37.5444, 127.0374),
+                PlaceCandidate("어니언 성수"),
+            )
         const val DAILY_RECORD_ID = 31L
         val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
         val OTHER_RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 9)

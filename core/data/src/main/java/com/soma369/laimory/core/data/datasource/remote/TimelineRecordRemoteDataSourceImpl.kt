@@ -3,6 +3,7 @@ package com.soma369.laimory.core.data.datasource.remote
 import com.soma369.laimory.core.data.model.timeline.request.SaveDailyRecordRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateDailyRecordEmotionRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventMemoRequest
+import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventPlaceRequest
 import com.soma369.laimory.core.data.model.timeline.request.UpdateTimelineEventRequest
 import com.soma369.laimory.core.data.model.timeline.request.toRequest
 import com.soma369.laimory.core.data.model.timeline.response.DailyTimelineListResponse
@@ -46,6 +47,13 @@ class TimelineRecordRemoteDataSourceImpl
             request: UpdateTimelineEventMemoRequest,
         ) {
             safeApiCallUnit { api.updateTimelineEventMemo(timelineEventId, request) }
+        }
+
+        override suspend fun updateTimelineEventPlace(
+            timelineEventId: Long,
+            request: UpdateTimelineEventPlaceRequest,
+        ) {
+            safeApiCallUnit { api.updateTimelineEventPlace(timelineEventId, request) }
         }
 
         override suspend fun deleteTimelineEvent(timelineEventId: Long) {

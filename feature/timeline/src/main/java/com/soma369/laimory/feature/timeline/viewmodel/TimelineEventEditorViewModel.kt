@@ -22,6 +22,9 @@ import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventUpdateField
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
 import com.soma369.laimory.core.domain.model.timeline.UpdateTimelineEventCommand
+import com.soma369.laimory.core.domain.model.timeline.displaySubtitle
+import com.soma369.laimory.core.domain.model.timeline.placeSubtitle
+import com.soma369.laimory.core.domain.model.timeline.restorePlacePlaceholder
 import com.soma369.laimory.core.domain.usecase.CreateTimelineEventUseCase
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoOutcome
 import com.soma369.laimory.core.domain.usecase.DeleteTimelineEventPhotoUseCase
@@ -182,6 +185,7 @@ class TimelineEventEditorViewModel
                     recordDate = timeline.recordDate,
                     content = TimelineEventEditorUiContent.Editor,
                     originalForm = form,
+                    subtitlePlace = event.placeSubtitle()?.place,
                     form = form,
                     existingPhotos = event.existingPhotos(),
                 )
@@ -304,7 +308,7 @@ class TimelineEventEditorViewModel
             if (current.isSaving || current.deleteDialogState != TimelineDeleteDialogState.Hidden) return
             if (!current.hasUnsavedChanges) return
             val form = current.form ?: return
-            val validation = form.validate(original = current.originalForm)
+            val validation = form.validate(original = current.originalForm, sendingSubtitle = current.sendingSubtitle(form))
             updateState { copy(validation = validation) }
             if (!validation.isValid) {
                 if (validation.titleError != null) {
@@ -734,15 +738,43 @@ class TimelineEventEditorViewModel
                 form.endAt != original.endAt
         }
 
+        /**
+         * 수정 요청에 실을 부제.
+         *
+         * 비었으면 빈 문자열을 그대로 보낸다. null 로 바꾸면 서버가 "그대로 두세요" 로 읽어 설명을 지울 수 없다(서버
+         * 계약: 빈 문자열·공백은 비움, null 은 유지).
+         *
+         * 장소 자리가 있는 부제는 셋으로 갈린다.
+         * - 안 고쳤으면 null(유지) — 서버의 원문 템플릿이 그대로 남는다.
+         * - 지금 장소 이름이 통째로 남아 있으면 그 자리를 장소 자리로 되돌려 보낸다. 칩이 살아 있다.
+         * - 장소 이름 일부라도 지웠으면 고친 문장 그대로다. 그 이벤트의 칩은 사라진다.
+         */
+        private fun TimelineEventEditorUiState.subtitleRequest(
+            form: TimelineEventEditorForm,
+            original: TimelineEventEditorForm,
+        ): String? {
+            val edited = form.subtitle.trim()
+            val place = subtitlePlace ?: return edited
+            if (edited == original.subtitle.trim()) return null
+            return edited.restorePlacePlaceholder(place)
+        }
+
+        /**
+         * 저장 때 실제로 보낼 부제. 길이 검증은 화면에 보이는 문장이 아니라 이 값으로 한다 — 장소 자리를 채운 문장은
+         * 서버 원문보다 길어서, 안 고친 부제가 한도를 넘는 것처럼 보여 제목만 고쳐도 저장이 막힌다. null 은 보내지 않음.
+         */
+        private fun TimelineEventEditorUiState.sendingSubtitle(form: TimelineEventEditorForm): String? {
+            val original = originalForm
+            return if (timelineEventId != null && original != null) subtitleRequest(form, original) else form.subtitle.trim()
+        }
+
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {
             val original = requireNotNull(originalForm)
             val photoAdditions = photoAdditions()
             return UpdateTimelineEventCommand(
                 timelineEventId = requireNotNull(timelineEventId),
                 title = form.title.trim(),
-                // 비었으면 빈 문자열을 그대로 보낸다. null 로 바꾸면 서버가 "그대로 두세요" 로 읽어
-                // 설명을 지울 수 없다(서버 계약: 빈 문자열·공백은 비움, null 은 유지).
-                subtitle = form.subtitle.trim(),
+                subtitle = subtitleRequest(form, original),
                 startAt = form.startAt,
                 endAt = form.endAt,
                 eventType = form.eventType.takeIf { it != original.eventType },
@@ -766,7 +798,8 @@ private fun TimelineEvent.toEditorForm() =
     TimelineEventEditorForm(
         eventType = eventType,
         title = title,
-        subtitle = subtitle.orEmpty(),
+        // 장소 자리를 채운 완성 문장을 보여 준다. 편집 화면은 장소를 고르는 곳이 아니라 글을 고치는 곳이다.
+        subtitle = displaySubtitle.orEmpty(),
         startAt = startAt,
         endAt = endAt,
         memo = memo.orEmpty(),
@@ -787,34 +820,38 @@ private fun TimelineEvent.existingPhotos(): List<TimelineEventExistingPhoto> =
 /**
  * 저장 전 검증. 한도를 줄이기 전에 저장된 긴 메모는 그대로 둔 채 다른 칸만 고쳐도 저장돼야 하므로
  * 메모는 [original] 길이까지 허용한다.
+ *
+ * 부제는 [sendingSubtitle](실제로 보낼 값)로 잰다. 보내지 않으면(null) 재지 않는다.
  */
-private fun TimelineEventEditorForm.validate(original: TimelineEventEditorForm?) =
-    TimelineEventEditorValidation(
-        titleError =
-            when (title.trim().length) {
-                0 -> "제목을 입력해 주세요."
-                in 1..MAX_SHORT_TEXT_LENGTH -> null
-                else -> "제목은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
-            },
-        subtitleError =
-            if (subtitle.trim().length > MAX_SHORT_TEXT_LENGTH) {
-                "설명은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
-            } else {
-                null
-            },
-        timeError =
-            if (endAt != null && endAt <= startAt) {
-                "종료 시각은 시작 시각보다 뒤여야 해요."
-            } else {
-                null
-            },
-        memoError =
-            if (memo.length > TimelineEventMemoPolicy.allowedLength(original?.memo?.length ?: 0)) {
-                "메모는 ${TimelineEventMemoPolicy.MAX_LENGTH}자까지 입력할 수 있어요."
-            } else {
-                null
-            },
-    )
+private fun TimelineEventEditorForm.validate(
+    original: TimelineEventEditorForm?,
+    sendingSubtitle: String?,
+) = TimelineEventEditorValidation(
+    titleError =
+        when (title.trim().length) {
+            0 -> "제목을 입력해 주세요."
+            in 1..MAX_SHORT_TEXT_LENGTH -> null
+            else -> "제목은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
+        },
+    subtitleError =
+        if ((sendingSubtitle?.length ?: 0) > MAX_SHORT_TEXT_LENGTH) {
+            "설명은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
+        } else {
+            null
+        },
+    timeError =
+        if (endAt != null && endAt <= startAt) {
+            "종료 시각은 시작 시각보다 뒤여야 해요."
+        } else {
+            null
+        },
+    memoError =
+        if (memo.length > TimelineEventMemoPolicy.allowedLength(original?.memo?.length ?: 0)) {
+            "메모는 ${TimelineEventMemoPolicy.MAX_LENGTH}자까지 입력할 수 있어요."
+        } else {
+            null
+        },
+)
 
 private fun TimelineEventEditorValidation.afterTitleChanged(value: String): TimelineEventEditorValidation =
     copy(
