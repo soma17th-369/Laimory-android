@@ -1284,6 +1284,7 @@ class TimelineRecordViewModel
                             currentPlace = place,
                             options = options,
                             selected = place,
+                            candidates = event.placeCandidates,
                         ),
                 )
             }
@@ -1304,16 +1305,19 @@ class TimelineRecordViewModel
             val place = sheet.chosenPlace ?: return
             updateState { copy(placeSheet = null) }
             if (place == sheet.currentPlace) return
-            sendPlace(sheet.timelineEventId, place)
+            sendPlace(sheet.timelineEventId, place, sheet.chosenCandidate)
         }
 
         /**
          * 장소를 서버로 보낸다. 칩은 곧바로 새 장소를 보여 주고([TimelineRecordUiState.pendingPlaces]),
          * 응답을 기다리며 화면을 묶지 않는다.
+         *
+         * 후보를 골랐으면 그 후보의 좌표를 함께 보내 이벤트 좌표도 바꾼다. 직접 입력은 좌표 없이 보낸다.
          */
         private fun sendPlace(
             timelineEventId: Long,
             place: String,
+            candidate: PlaceCandidate?,
         ) {
             val changeId = ++placeChangeSequence
             latestPlaceChanges[timelineEventId] = changeId
@@ -1322,7 +1326,7 @@ class TimelineRecordViewModel
             placeChangeJobs[timelineEventId] =
                 safeLaunch(onError = { error -> handlePlaceChangeFailure(timelineEventId, changeId, error) }) {
                     previous?.join()
-                    updateTimelineEventPlaceUseCase(timelineEventId, place)
+                    updateTimelineEventPlaceUseCase(timelineEventId, place, candidate?.latitude, candidate?.longitude)
                         // 성공하면 UseCase 가 세션에 같은 값을 넣어 두므로 덧씌울 것이 없다.
                         .onSuccess { clearPendingPlace(timelineEventId, changeId) }
                         .onFailure { error -> handlePlaceChangeFailure(timelineEventId, changeId, error) }

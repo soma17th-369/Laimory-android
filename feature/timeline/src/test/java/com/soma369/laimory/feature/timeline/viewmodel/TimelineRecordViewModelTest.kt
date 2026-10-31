@@ -2438,6 +2438,7 @@ class TimelineRecordViewModelTest {
             advanceUntilIdle()
 
             assertEquals(listOf(1L to "△△공원"), recordRepository.updatedPlaces)
+            assertEquals(listOf<Pair<Double?, Double?>>(37.5444 to 127.0374), recordRepository.updatedPlaceCoordinates)
             assertNull(viewModel.state.value.placeSheet)
             assertTrue(viewModel.state.value.pendingPlaces.isEmpty())
             val event = viewModel.state.value.displayedRecord?.events?.single()
@@ -2476,6 +2477,22 @@ class TimelineRecordViewModelTest {
             advanceUntilIdle()
 
             assertEquals(listOf(1L to "성수 골목 국밥집"), recordRepository.updatedPlaces)
+            // 직접 입력은 좌표 없이 보낸다. 서버는 지금 좌표를 그대로 둔다.
+            assertEquals(listOf<Pair<Double?, Double?>>(null to null), recordRepository.updatedPlaceCoordinates)
+        }
+
+    @Test
+    fun `좌표가 없는 후보를 고르면 좌표 없이 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("어니언 성수"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            assertEquals(listOf(1L to "어니언 성수"), recordRepository.updatedPlaces)
+            assertEquals(listOf<Pair<Double?, Double?>>(null to null), recordRepository.updatedPlaceCoordinates)
         }
 
     @Test

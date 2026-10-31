@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.state
 
 import androidx.compose.runtime.Immutable
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventPlaceUseCase
 
@@ -23,6 +24,8 @@ data class TimelinePlaceSheetState(
      */
     val options: List<String>,
     val selected: String,
+    /** 서버 후보. 목록에서 고른 이름의 좌표를 찾는 데 쓴다. */
+    val candidates: List<PlaceCandidate> = emptyList(),
     val step: Step = Step.LIST,
     val directInput: String = "",
 ) {
@@ -37,6 +40,17 @@ data class TimelinePlaceSheetState(
             directInput
                 .trim()
                 .takeIf { it.isNotEmpty() && it.length <= UpdateTimelineEventPlaceUseCase.MAX_PLACE_LENGTH }
+
+    /**
+     * 확인을 누르면 함께 보낼 좌표의 주인. 목록에서 후보를 고른 경우에만 있다 — 직접 입력이나 후보에 없는 지금
+     * 장소(예전에 직접 입력한 값)는 좌표 없이 보낸다.
+     */
+    val chosenCandidate: PlaceCandidate?
+        get() =
+            when (step) {
+                Step.LIST -> candidates.firstOrNull { it.name == selected }
+                Step.DIRECT_INPUT -> null
+            }
 
     /** 확인을 누르면 정해질 장소. */
     val chosenPlace: String?
