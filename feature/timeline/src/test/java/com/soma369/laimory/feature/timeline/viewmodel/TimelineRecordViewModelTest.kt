@@ -2540,6 +2540,56 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `메모를 기다리는 동안 장소 변경이 실패해도 기록을 확정하지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 완료는 메모를 먼저 기다리고 장소를 기다린다. 메모를 기다리는 사이 난 장소 실패가 지워지면 안 된다.
+            val memoGate = CompletableDeferred<Unit>()
+            val placeGate = CompletableDeferred<Unit>()
+            recordRepository.memoUpdateGate = memoGate
+            recordRepository.placeUpdateGate = placeGate
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel =
+                createLoadedViewModel(record = timeline(events = listOf(placeEvent(), event(timelineEventId = 2L))))
+            viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 2L))
+            viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 2L, value = "늦게 닿는 메모"))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            runCurrent()
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            runCurrent()
+
+            // 장소가 먼저 실패하고, 그 뒤 메모가 성공한다.
+            placeGate.complete(Unit)
+            runCurrent()
+            memoGate.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(listOf(2L to "늦게 닿는 메모"), recordRepository.updatedMemos)
+            assertTrue(recordRepository.savedRecordDates.isEmpty())
+            assertEquals(0, navigationHelper.backCount)
+            assertFalse(viewModel.state.value.isSavingRecord)
+        }
+
+    @Test
+    fun `완료를 누르기 전에 이미 알린 장소 실패는 완료를 막지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            recordRepository.placeFailure = ApiException.NetworkException()
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmEmotion)
+            advanceUntilIdle()
+
+            assertEquals(listOf(RECORD_DATE), recordRepository.savedRecordDates)
+        }
+
+    @Test
     fun `장소 변경이 실패하면 칩을 되돌리고 알린다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             recordRepository.placeFailure = ApiException.NetworkException()

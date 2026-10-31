@@ -629,6 +629,9 @@ class TimelineRecordViewModel
 
             Logger.i(LogDomain.USER_ACTION, "하루 기록 작성 완료 요청")
             updateState { copy(isSavingRecord = true) }
+            // 이 완료 시도부터의 장소 실패만 센다. 메모를 기다리는 동안 난 실패도 여기에 쌓여야 하므로 대기보다 먼저
+            // 비운다 — 장소 대기에 들어가서 비우면 그사이 실패가 지워져 그대로 확정된다.
+            failedPlaceChanges.clear()
             saveJob =
                 safeLaunch(onError = ::handleSaveFailure) {
                     // 메모가 아직 날아가는 중일 수 있다. 기록이 먼저 확정되면 화면이 종결돼
@@ -1163,11 +1166,10 @@ class TimelineRecordViewModel
         /**
          * 날아가는 중인 장소 변경이 기록 확정보다 늦게 끝나지 않도록 기다린다.
          *
-         * **기다리는 동안** 실패한 것이 있으면 `false` 다. 그 전에 실패한 것은 화면이 떠 있을 때 이미 되돌리고
-         * 알렸으니 완료를 막지 않는다.
+         * 이 완료 시도를 시작한 뒤(메모 대기 포함) 실패한 것이 있으면 `false` 다. 대장은 [saveRecord] 가 시작할 때
+         * 비운다. 그 전에 실패한 것은 화면이 떠 있을 때 이미 되돌리고 알렸으니 완료를 막지 않는다.
          */
         private suspend fun awaitPlaceChanges(): Boolean {
-            failedPlaceChanges.clear()
             val currentEvents =
                 state.value
                     .record()
