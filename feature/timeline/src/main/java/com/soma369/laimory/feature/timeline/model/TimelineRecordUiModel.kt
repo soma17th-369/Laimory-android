@@ -60,6 +60,9 @@ data class TimelineEventUiModel(
     val placeCandidates: List<PlaceCandidate> = emptyList(),
     /** 장소 자리가 남은 서버 부제 원문. [placeSentence] 가 있을 때만 들고, 새 장소로 다시 채울 때 쓴다. */
     val subtitleTemplate: String? = null,
+    /** 이벤트 좌표. 이름이 같은 후보 중 지금 장소가 어느 것인지 가릴 때 쓴다. */
+    val latitude: Double? = null,
+    val longitude: Double? = null,
 ) {
     /** 지금 장소. 고를 수 있는 이벤트에만 의미가 있다. */
     val place: String?
@@ -125,4 +128,6 @@ private fun TimelineEvent.toUiModel() =
         placeSentence = placeSubtitle()?.takeIf { placeCandidates.isNotEmpty() },
         placeCandidates = placeCandidates,
         subtitleTemplate = subtitle.takeIf { placeSubtitle() != null && placeCandidates.isNotEmpty() },
+        latitude = latitude,
+        longitude = longitude,
     )

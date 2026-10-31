@@ -2393,8 +2393,8 @@ class TimelineRecordViewModelTest {
             advanceUntilIdle()
 
             val sheet = viewModel.state.value.placeSheet
-            assertEquals(PLACE_CANDIDATES, sheet?.options)
-            assertEquals("성수동 카페", sheet?.selected)
+            assertEquals(PLACE_CANDIDATES, sheet?.options?.map { it.name })
+            assertEquals(0, sheet?.selectedIndex)
             assertEquals("09:00 · 업무", sheet?.eventLabel)
         }
 
@@ -2406,7 +2406,10 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
             advanceUntilIdle()
 
-            assertEquals(listOf("직접 쓴 장소") + PLACE_CANDIDATES, viewModel.state.value.placeSheet?.options)
+            val sheet = viewModel.state.value.placeSheet
+            assertEquals(listOf("직접 쓴 장소") + PLACE_CANDIDATES, sheet?.options?.map { it.name })
+            assertEquals(0, sheet?.selectedIndex)
+            assertNull(sheet?.options?.first()?.candidate)
         }
 
     @Test
@@ -2433,7 +2436,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
 
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
             advanceUntilIdle()
 
@@ -2482,12 +2485,51 @@ class TimelineRecordViewModelTest {
         }
 
     @Test
+    fun `이름이 같은 후보는 고른 줄의 좌표를 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val twins = listOf(PlaceCandidate("스타벅스", 37.5, 127.0), PlaceCandidate("스타벅스", 37.6, 127.1))
+            val event =
+                placeEvent(place = "스타벅스").copy(placeCandidates = twins, latitude = 37.5, longitude = 127.0)
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event)))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertEquals(0, viewModel.state.value.placeSheet?.currentIndex)
+
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+
+            // 이름이 지금 장소와 같아도 다른 후보라 보낸다.
+            assertEquals(listOf(1L to "스타벅스"), recordRepository.updatedPlaces)
+            assertEquals(listOf<Pair<Double?, Double?>>(37.6 to 127.1), recordRepository.updatedPlaceCoordinates)
+        }
+
+    @Test
+    fun `이름이 같은 후보 중 이벤트 좌표와 같은 줄을 지금 장소로 본다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val twins = listOf(PlaceCandidate("스타벅스", 37.5, 127.0), PlaceCandidate("스타벅스", 37.6, 127.1))
+            val event =
+                placeEvent(place = "스타벅스").copy(placeCandidates = twins, latitude = 37.6, longitude = 127.1)
+            val viewModel = createLoadedViewModel(record = timeline(events = listOf(event)))
+
+            viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
+            advanceUntilIdle()
+            assertEquals(1, viewModel.state.value.placeSheet?.selectedIndex)
+
+            // 지금 줄을 그대로 확인하면 요청하지 않는다.
+            viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
+            advanceUntilIdle()
+            assertTrue(recordRepository.updatedPlaces.isEmpty())
+        }
+
+    @Test
     fun `좌표가 없는 후보를 고르면 좌표 없이 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
 
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("어니언 성수"))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 2))
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
             advanceUntilIdle()
 
@@ -2502,7 +2544,7 @@ class TimelineRecordViewModelTest {
             recordRepository.placeUpdateGate = gate
             val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
             runCurrent()
 
@@ -2526,7 +2568,7 @@ class TimelineRecordViewModelTest {
             recordRepository.placeFailure = ApiException.NetworkException()
             val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
@@ -2571,7 +2613,7 @@ class TimelineRecordViewModelTest {
             viewModel.sendIntent(TimelineRecordUiIntent.EditMemo(timelineEventId = 2L))
             viewModel.sendIntent(TimelineRecordUiIntent.ChangeMemo(timelineEventId = 2L, value = "늦게 닿는 메모"))
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
             runCurrent()
             viewModel.sendIntent(TimelineRecordUiIntent.RequestSave)
@@ -2596,7 +2638,7 @@ class TimelineRecordViewModelTest {
             recordRepository.placeFailure = ApiException.NetworkException()
             val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
             advanceUntilIdle()
 
@@ -2614,7 +2656,7 @@ class TimelineRecordViewModelTest {
             val viewModel = createLoadedViewModel(record = timeline(events = listOf(placeEvent())))
 
             viewModel.sendIntent(TimelineRecordUiIntent.OpenPlaceSheet(timelineEventId = 1L))
-            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption("△△공원"))
+            viewModel.sendIntent(TimelineRecordUiIntent.SelectPlaceOption(index = 1))
             viewModel.sendIntent(TimelineRecordUiIntent.ConfirmPlace)
             advanceUntilIdle()
 

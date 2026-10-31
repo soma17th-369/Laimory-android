@@ -59,7 +59,7 @@ import com.soma369.laimory.core.ui.R as UiR
 @Composable
 internal fun TimelinePlaceSheet(
     state: TimelinePlaceSheetState,
-    onSelect: (String) -> Unit,
+    onSelect: (Int) -> Unit,
     onOpenDirectInput: () -> Unit,
     onCloseDirectInput: () -> Unit,
     onDirectInputChange: (String) -> Unit,
@@ -100,7 +100,7 @@ internal fun TimelinePlaceSheet(
 @Composable
 private fun PlaceListStep(
     state: TimelinePlaceSheetState,
-    onSelect: (String) -> Unit,
+    onSelect: (Int) -> Unit,
     onOpenDirectInput: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -110,8 +110,8 @@ private fun PlaceListStep(
         modifier = Modifier.selectableGroup(),
         verticalArrangement = Arrangement.spacedBy(Spacing.small),
     ) {
-        state.options.forEach { place ->
-            PlaceOption(place = place, isSelected = place == state.selected, onClick = { onSelect(place) })
+        state.options.forEachIndexed { index, option ->
+            PlaceOption(place = option.name, isSelected = index == state.selectedIndex, onClick = { onSelect(index) })
         }
     }
     Row(

@@ -51,6 +51,7 @@ import com.soma369.laimory.feature.timeline.model.TimelineRecordUiModel
 import com.soma369.laimory.feature.timeline.model.initialMode
 import com.soma369.laimory.feature.timeline.model.timelineEmotionDateLabel
 import com.soma369.laimory.feature.timeline.model.toUiModel
+import com.soma369.laimory.feature.timeline.state.PlaceSheetOption
 import com.soma369.laimory.feature.timeline.state.TimelineCoachmarkStep
 import com.soma369.laimory.feature.timeline.state.TimelineDeleteDialogState
 import com.soma369.laimory.feature.timeline.state.TimelineEmotionSheetPurpose
@@ -251,7 +252,7 @@ class TimelineRecordViewModel
                 is TimelineRecordUiIntent.OpenPlaceSheet -> openPlaceSheet(intent.timelineEventId)
                 TimelineRecordUiIntent.DismissPlaceSheet -> updateState { copy(placeSheet = null) }
                 is TimelineRecordUiIntent.SelectPlaceOption ->
-                    updatePlaceSheet { copy(selected = intent.place) }
+                    updatePlaceSheet { if (intent.index in options.indices) copy(selectedIndex = intent.index) else this }
                 TimelineRecordUiIntent.OpenDirectPlaceInput ->
                     updatePlaceSheet { copy(step = TimelinePlaceSheetState.Step.DIRECT_INPUT) }
                 TimelineRecordUiIntent.CloseDirectPlaceInput ->
@@ -1272,8 +1273,16 @@ class TimelineRecordViewModel
                     ?.firstOrNull { it.timelineEventId == timelineEventId }
                     ?: return
             val place = event.place ?: return
-            val names = event.placeCandidates.map(PlaceCandidate::name)
-            val options = if (place in names) names else listOf(place) + names
+            val candidates = event.placeCandidates
+            // 이름이 같은 후보가 여럿이면 이벤트 좌표까지 같은 줄이 지금 장소다.
+            val currentCandidateIndex =
+                candidates
+                    .indexOfFirst { it.name == place && it.latitude == event.latitude && it.longitude == event.longitude }
+                    .takeIf { it >= 0 }
+                    ?: candidates.indexOfFirst { it.name == place }
+            val candidateOptions = candidates.map { PlaceSheetOption(it.name, it) }
+            val options =
+                if (currentCandidateIndex >= 0) candidateOptions else listOf(PlaceSheetOption(place, null)) + candidateOptions
             updateState {
                 copy(
                     placeSheet =
@@ -1283,8 +1292,7 @@ class TimelineRecordViewModel
                             eventLabel = placeSheetEventLabel(event.startAt, event.endAt, event.title),
                             currentPlace = place,
                             options = options,
-                            selected = place,
-                            candidates = event.placeCandidates,
+                            currentIndex = currentCandidateIndex.coerceAtLeast(0),
                         ),
                 )
             }
@@ -1304,7 +1312,7 @@ class TimelineRecordViewModel
             val sheet = state.value.placeSheet ?: return
             val place = sheet.chosenPlace ?: return
             updateState { copy(placeSheet = null) }
-            if (place == sheet.currentPlace) return
+            if (sheet.isUnchanged) return
             sendPlace(sheet.timelineEventId, place, sheet.chosenCandidate)
         }
 

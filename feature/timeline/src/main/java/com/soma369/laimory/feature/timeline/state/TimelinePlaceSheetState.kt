@@ -22,10 +22,10 @@ data class TimelinePlaceSheetState(
      * 목록에 보일 장소. 서버 후보 순서 그대로이되, 지금 장소가 후보에 없으면(직접 입력했던 값) 맨 위에
      * 둔다 — 없으면 지금 무엇으로 돼 있는지 시트에서 보이지 않는다.
      */
-    val options: List<String>,
-    val selected: String,
-    /** 서버 후보. 목록에서 고른 이름의 좌표를 찾는 데 쓴다. */
-    val candidates: List<PlaceCandidate> = emptyList(),
+    val options: List<PlaceSheetOption>,
+    /** 지금 장소인 줄. 같은 줄을 다시 고르면 요청하지 않는다. */
+    val currentIndex: Int,
+    val selectedIndex: Int = currentIndex,
     val step: Step = Step.LIST,
     val directInput: String = "",
 ) {
@@ -41,6 +41,9 @@ data class TimelinePlaceSheetState(
                 .trim()
                 .takeIf { it.isNotEmpty() && it.length <= UpdateTimelineEventPlaceUseCase.MAX_PLACE_LENGTH }
 
+    private val selectedOption: PlaceSheetOption?
+        get() = options.getOrNull(selectedIndex)
+
     /**
      * 확인을 누르면 함께 보낼 좌표의 주인. 목록에서 후보를 고른 경우에만 있다 — 직접 입력이나 후보에 없는 지금
      * 장소(예전에 직접 입력한 값)는 좌표 없이 보낸다.
@@ -48,7 +51,7 @@ data class TimelinePlaceSheetState(
     val chosenCandidate: PlaceCandidate?
         get() =
             when (step) {
-                Step.LIST -> candidates.firstOrNull { it.name == selected }
+                Step.LIST -> selectedOption?.candidate
                 Step.DIRECT_INPUT -> null
             }
 
@@ -56,7 +59,18 @@ data class TimelinePlaceSheetState(
     val chosenPlace: String?
         get() =
             when (step) {
-                Step.LIST -> selected
+                Step.LIST -> selectedOption?.name
                 Step.DIRECT_INPUT -> directPlace
+            }
+
+    /**
+     * 지금 장소 그대로인지. 목록에서는 이름이 아니라 줄로 본다 — 이름이 같아도 좌표가 다른 후보로 바꿀 수 있다.
+     * 직접 입력은 좌표 없이 보내므로 이름만 같으면 그대로다.
+     */
+    val isUnchanged: Boolean
+        get() =
+            when (step) {
+                Step.LIST -> selectedIndex == currentIndex
+                Step.DIRECT_INPUT -> directPlace == currentPlace
             }
 }

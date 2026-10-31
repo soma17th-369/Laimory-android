@@ -116,8 +116,9 @@ sealed interface TimelineRecordUiIntent : UiIntent {
 
     data object DismissPlaceSheet : TimelineRecordUiIntent
 
+    /** 목록의 [index] 번째 줄을 골랐다. 이름이 같은 후보가 있어 줄 위치로 가린다. */
     data class SelectPlaceOption(
-        val place: String,
+        val index: Int,
     ) : TimelineRecordUiIntent
 
     /** 목록의 `직접 입력`. 시트 안에서 입력 단계로 넘어간다. */
