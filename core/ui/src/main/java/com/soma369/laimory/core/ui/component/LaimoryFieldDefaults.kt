@@ -15,6 +15,11 @@ internal data class LaimoryFieldVisuals(
     val containerColor: Color,
     val supportingColor: Color,
     val contentColor: Color,
+    /**
+     * 비어 있을 때의 안내 문구 색. 입력한 글자([contentColor])와 달리 포커스·오류에 따라 진해지지 않는다 —
+     * 포커스가 잡힌 빈 칸에서 안내 문구가 입력한 글자처럼 보이면 무엇을 썼는지 헷갈린다.
+     */
+    val placeholderColor: Color,
     val alpha: Float,
 )
 
@@ -63,6 +68,7 @@ internal fun laimoryFieldVisuals(
                 isActive || isError -> MaterialTheme.colorScheme.onSurface
                 else -> MaterialTheme.colorScheme.onSurfaceVariant
             },
+        placeholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
         alpha = if (enabled) LAIMORY_FIELD_ENABLED_ALPHA else LAIMORY_FIELD_DISABLED_ALPHA,
     )
 
