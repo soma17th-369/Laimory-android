@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -30,6 +31,7 @@ class UpdateTimelineEventPlaceUseCaseTest {
     ) : TimelineRecordRepository {
         var requestedEventId: Long? = null
         var requestedPlace: String? = null
+        var requestedCoordinate: Pair<Double?, Double?>? = null
 
         override suspend fun getDailyRecords(): List<DailyTimeline> = error("사용하지 않음")
 
@@ -42,9 +44,12 @@ class UpdateTimelineEventPlaceUseCaseTest {
         override suspend fun updateEventPlace(
             timelineEventId: Long,
             place: String,
+            latitude: Double?,
+            longitude: Double?,
         ): TimelineEvent {
             requestedEventId = timelineEventId
             requestedPlace = place
+            requestedCoordinate = latitude to longitude
             return result.getOrThrow()
         }
 
@@ -131,6 +136,30 @@ class UpdateTimelineEventPlaceUseCaseTest {
         }
 
     @Test
+    fun `후보 좌표를 함께 보내고 없으면 null 로 보낸다`() =
+        runBlocking {
+            val repository = FakeRecordRepository(Result.success(event(place = "△△공원")))
+            val useCase = UpdateTimelineEventPlaceUseCase(repository, FakeSessionRepository(), RecordingMessageHelper())
+
+            useCase(EVENT_ID, "△△공원", 37.5444, 127.0374)
+            assertEquals(37.5444 to 127.0374, repository.requestedCoordinate)
+
+            useCase(EVENT_ID, "직접 쓴 장소")
+            assertEquals(null to null, repository.requestedCoordinate)
+        }
+
+    @Test
+    fun `좌표가 한쪽만 있으면 둘 다 빼고 보낸다`() =
+        runBlocking {
+            val repository = FakeRecordRepository(Result.success(event(place = "△△공원")))
+            val useCase = UpdateTimelineEventPlaceUseCase(repository, FakeSessionRepository(), RecordingMessageHelper())
+
+            useCase(EVENT_ID, "△△공원", 37.5444, null)
+
+            assertEquals(null to null, repository.requestedCoordinate)
+        }
+
+    @Test
     fun `장소 지정 기능 오류는 화면 의미 오류로 변환한다`() =
         runBlocking {
             val cases =
@@ -189,7 +218,7 @@ class UpdateTimelineEventPlaceUseCaseTest {
             question = null,
             items = emptyList(),
             place = place,
-            placeCandidates = listOf("성수동 카페", "△△공원"),
+            placeCandidates = listOf(PlaceCandidate("성수동 카페"), PlaceCandidate("△△공원")),
         )
 
     private companion object {

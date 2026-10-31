@@ -19,6 +19,7 @@ import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskHandle
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskSnapshot
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.RecordDateWindow
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
@@ -1434,7 +1435,7 @@ class TimelineEventEditorViewModelTest {
             title = "저녁",
             subtitle = "{place}에서 저녁을 먹었어요.",
             place = "라쿤 피자",
-            placeCandidates = listOf("라쿤 피자", "성수 감자탕"),
+            placeCandidates = listOf(PlaceCandidate("라쿤 피자"), PlaceCandidate("성수 감자탕")),
         )
 
     private fun event(
@@ -1513,6 +1514,8 @@ class TimelineEventEditorViewModelTest {
         override suspend fun updateEventPlace(
             timelineEventId: Long,
             place: String,
+            latitude: Double?,
+            longitude: Double?,
         ): TimelineEvent = error("사용하지 않음")
 
         override suspend fun updateEventMemo(

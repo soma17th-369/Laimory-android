@@ -35,6 +35,7 @@ class TimelineRecordRepositoryImplTest {
         var requestedBody: UpdateTimelineEventRequest? = null
         var requestedMemo: String? = null
         var requestedPlace: String? = null
+        var requestedPlaceRequest: UpdateTimelineEventPlaceRequest? = null
         var deletedEventId: Long? = null
         var deletedEventPhotoIds: Pair<Long, Long>? = null
         var deletedRecordDate: LocalDate? = null
@@ -88,6 +89,7 @@ class TimelineRecordRepositoryImplTest {
             calls += "PUT"
             requestedEventId = timelineEventId
             requestedPlace = request.place
+            requestedPlaceRequest = request
             updateFailure?.let { throw it }
         }
 
@@ -272,10 +274,10 @@ class TimelineRecordRepositoryImplTest {
             val remote = FakeRemote()
             val repository = TimelineRecordRepositoryImpl(remote)
 
-            val event = repository.updateEventPlace(17L, "△△공원")
+            val event = repository.updateEventPlace(17L, "△△공원", 37.5444, 127.0374)
 
             assertEquals(17L, remote.requestedEventId)
-            assertEquals("△△공원", remote.requestedPlace)
+            assertEquals(UpdateTimelineEventPlaceRequest("△△공원", 37.5444, 127.0374), remote.requestedPlaceRequest)
             assertEquals(17L, remote.requestedEventFetchId)
             assertEquals(listOf("PUT", "GET"), remote.calls)
             assertEquals(TimelineEventType.PHOTO_MOMENT, event.eventType)
@@ -288,7 +290,7 @@ class TimelineRecordRepositoryImplTest {
             val repository = TimelineRecordRepositoryImpl(remote)
             remote.updateFailure = IllegalStateException("PUT 실패")
 
-            val failure = runCatching { repository.updateEventPlace(17L, "△△공원") }.exceptionOrNull()
+            val failure = runCatching { repository.updateEventPlace(17L, "△△공원", null, null) }.exceptionOrNull()
 
             assertTrue(failure is IllegalStateException)
             assertEquals(listOf("PUT"), remote.calls)

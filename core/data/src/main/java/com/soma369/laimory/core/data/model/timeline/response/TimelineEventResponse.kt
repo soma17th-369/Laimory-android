@@ -43,7 +43,7 @@ internal fun TimelineEventResponse.toDomain(): TimelineEvent =
         // 서버는 둘을 항상 함께 주거나 함께 비운다. 한쪽만 오면 좌표로 쓸 수 없으니 둘 다 버린다.
         latitude = latitude?.takeIf { longitude != null },
         longitude = longitude?.takeIf { latitude != null },
-        placeCandidates = placeCandidates.map(PlaceCandidateResponse::name).filter(String::isNotBlank),
+        placeCandidates = placeCandidates.mapNotNull(PlaceCandidateResponse::toDomainOrNull),
         items = items.map(TimelineItemResponse::toDomain),
     )
 

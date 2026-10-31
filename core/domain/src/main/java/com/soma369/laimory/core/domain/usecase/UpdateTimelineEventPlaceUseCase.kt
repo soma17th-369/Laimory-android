@@ -11,10 +11,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * 전용 PUT으로 Event 장소만 바꾸고 서버 최신 Event를 현재 타임라인 세션에 반영한다.
+ * 전용 PUT으로 Event 장소를 바꾸고 서버 최신 Event를 현재 타임라인 세션에 반영한다.
  *
- * 제목·부제·후보·좌표는 그대로다. 부제의 장소 자리가 새 장소로 채워지는 것은 표시 단계의 일이다.
- * 같은 값으로 다시 보내도 결과가 같아 응답을 못 받았으면 그대로 재시도해도 된다.
+ * 후보를 고르면 그 후보의 좌표를 함께 넘겨 Event 좌표도 바꾼다. 직접 입력처럼 좌표가 없으면 null 로 보내고,
+ * 서버는 지금 좌표를 그대로 둔다. 제목·부제·후보는 그대로다. 부제의 장소 자리가 새 장소로 채워지는 것은 표시
+ * 단계의 일이다. 같은 값으로 다시 보내도 결과가 같아 응답을 못 받았으면 그대로 재시도해도 된다.
  */
 @Singleton
 class UpdateTimelineEventPlaceUseCase
@@ -27,12 +28,21 @@ class UpdateTimelineEventPlaceUseCase
         suspend operator fun invoke(
             timelineEventId: Long,
             place: String,
+            latitude: Double? = null,
+            longitude: Double? = null,
         ): Result<TimelineEvent> =
             try {
                 execute {
+                    // 좌표는 쌍이다. 한쪽만 보내면 서버가 400 으로 거절하므로 둘 다 없는 것으로 보낸다.
+                    val hasCoordinate = latitude != null && longitude != null
                     try {
                         repository
-                            .updateEventPlace(timelineEventId, place.trim())
+                            .updateEventPlace(
+                                timelineEventId = timelineEventId,
+                                place = place.trim(),
+                                latitude = latitude.takeIf { hasCoordinate },
+                                longitude = longitude.takeIf { hasCoordinate },
+                            )
                             .also(sessionRepository::replaceEvent)
                     } catch (exception: ApiException) {
                         val reason = exception.toUpdateReason() ?: throw exception

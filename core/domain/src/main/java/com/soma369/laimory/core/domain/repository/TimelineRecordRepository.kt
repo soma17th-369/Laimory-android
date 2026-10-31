@@ -29,10 +29,16 @@ interface TimelineRecordRepository {
         memo: String?,
     ): TimelineEvent
 
-    /** Event 장소만 바꾸고 서버에 저장된 최신 Event를 반환한다. 후보에 없는 이름도 받는다. */
+    /**
+     * Event 장소를 바꾸고 서버에 저장된 최신 Event를 반환한다. 후보에 없는 이름도 받는다.
+     *
+     * 좌표는 쌍으로 넘긴다. 둘 다 있으면 Event 좌표도 바꾸고, null 이면 지금 좌표를 그대로 둔다.
+     */
     suspend fun updateEventPlace(
         timelineEventId: Long,
         place: String,
+        latitude: Double?,
+        longitude: Double?,
     ): TimelineEvent
 
     /** Event와 하위 Item을 삭제한다. 마지막 Event여도 DailyRecord는 유지한다. */

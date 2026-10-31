@@ -41,6 +41,8 @@ class UpdateTimelineEventUseCaseTest {
         override suspend fun updateEventPlace(
             timelineEventId: Long,
             place: String,
+            latitude: Double?,
+            longitude: Double?,
         ): TimelineEvent = error("사용하지 않음")
 
         override suspend fun updateEventMemo(

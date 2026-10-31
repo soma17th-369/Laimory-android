@@ -28,6 +28,7 @@ import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -2364,7 +2365,7 @@ class TimelineRecordViewModelTest {
         event().copy(
             subtitle = "{place}에서 파스타",
             place = place,
-            placeCandidates = PLACE_CANDIDATES,
+            placeCandidates = PLACE_CANDIDATE_MODELS,
         )
 
     private fun event(
@@ -2662,6 +2663,7 @@ class TimelineRecordViewModelTest {
         var saveFailure: ApiException? = null
         val updatedMemos = mutableListOf<Pair<Long, String?>>()
         val updatedPlaces = mutableListOf<Pair<Long, String>>()
+        val updatedPlaceCoordinates = mutableListOf<Pair<Double?, Double?>>()
         var placeFailure: ApiException? = null
         var placeUpdateGate: CompletableDeferred<Unit>? = null
         var dailyRecordResult: Result<DailyTimeline>? = null
@@ -2694,8 +2696,11 @@ class TimelineRecordViewModelTest {
         override suspend fun updateEventPlace(
             timelineEventId: Long,
             place: String,
+            latitude: Double?,
+            longitude: Double?,
         ): TimelineEvent {
             updatedPlaces += timelineEventId to place
+            updatedPlaceCoordinates += latitude to longitude
             placeUpdateGate?.await()
             placeFailure?.let { throw it }
             return TimelineEvent(
@@ -2709,7 +2714,7 @@ class TimelineRecordViewModelTest {
                 question = null,
                 items = emptyList(),
                 place = place,
-                placeCandidates = PLACE_CANDIDATES,
+                placeCandidates = PLACE_CANDIDATE_MODELS,
             )
         }
 
@@ -2864,6 +2869,14 @@ class TimelineRecordViewModelTest {
 
     private companion object {
         val PLACE_CANDIDATES = listOf("성수동 카페", "△△공원", "어니언 성수")
+
+        /** 마지막 후보는 좌표가 없다. */
+        val PLACE_CANDIDATE_MODELS =
+            listOf(
+                PlaceCandidate("성수동 카페", 37.5446, 127.0557),
+                PlaceCandidate("△△공원", 37.5444, 127.0374),
+                PlaceCandidate("어니언 성수"),
+            )
         const val DAILY_RECORD_ID = 31L
         val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
         val OTHER_RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 9)

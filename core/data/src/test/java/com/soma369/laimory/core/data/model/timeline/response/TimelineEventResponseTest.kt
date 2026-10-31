@@ -1,5 +1,6 @@
 package com.soma369.laimory.core.data.model.timeline.response
 
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -50,11 +51,11 @@ class TimelineEventResponseTest {
         assertNull(event.address)
         assertNull(event.latitude)
         assertNull(event.longitude)
-        assertEquals(emptyList<String>(), event.placeCandidates)
+        assertEquals(emptyList<PlaceCandidate>(), event.placeCandidates)
     }
 
     @Test
-    fun `장소 후보는 서버 순서대로 이름만 도메인에 전달한다`() {
+    fun `좌표가 없는 후보 응답은 서버 순서대로 이름만 읽힌다`() {
         val event =
             decode(
                 ""","subtitle":"{place}에서 친구와 파스타","place":"성수동 카페","address":"서울 성동구 아차산로9길 8",""" +
@@ -67,7 +68,39 @@ class TimelineEventResponseTest {
         assertEquals("서울 성동구 아차산로9길 8", event.address)
         assertEquals(37.5445, event.latitude!!, 0.0)
         assertEquals(127.0559, event.longitude!!, 0.0)
-        assertEquals(listOf("성수동 카페", "△△공원", "어니언 성수"), event.placeCandidates)
+        assertEquals(
+            listOf(PlaceCandidate("성수동 카페"), PlaceCandidate("△△공원"), PlaceCandidate("어니언 성수")),
+            event.placeCandidates,
+        )
+    }
+
+    @Test
+    fun `후보 좌표를 함께 읽는다`() {
+        val event =
+            decode(
+                ""","placeCandidates":[{"name":"성수동 카페","latitude":37.5446,"longitude":127.0557},""" +
+                    """{"name":"△△공원","latitude":null,"longitude":null}]""",
+            )
+
+        assertEquals(
+            listOf(PlaceCandidate("성수동 카페", 37.5446, 127.0557), PlaceCandidate("△△공원")),
+            event.placeCandidates,
+        )
+    }
+
+    @Test
+    fun `후보 좌표가 한쪽만 오거나 범위 밖이면 좌표만 버리고 이름은 남긴다`() {
+        val event =
+            decode(
+                ""","placeCandidates":[{"name":"한쪽","latitude":37.5446},""" +
+                    """{"name":"범위 밖","latitude":91.0,"longitude":127.0},""" +
+                    """{"name":"경계","latitude":-90.0,"longitude":180.0}]""",
+            )
+
+        assertEquals(
+            listOf(PlaceCandidate("한쪽"), PlaceCandidate("범위 밖"), PlaceCandidate("경계", -90.0, 180.0)),
+            event.placeCandidates,
+        )
     }
 
     @Test
@@ -82,7 +115,7 @@ class TimelineEventResponseTest {
     fun `공백 후보는 버린다`() {
         val event = decode(""","placeCandidates":[{"name":" "},{"name":"△△공원"}]""")
 
-        assertEquals(listOf("△△공원"), event.placeCandidates)
+        assertEquals(listOf(PlaceCandidate("△△공원")), event.placeCandidates)
     }
 
     private fun decode(questionJson: String) =

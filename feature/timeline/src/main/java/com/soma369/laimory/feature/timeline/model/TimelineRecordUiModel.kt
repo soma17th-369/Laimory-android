@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.timeline.model
 import androidx.compose.runtime.Immutable
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.PlaceSubtitle
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
@@ -55,8 +56,8 @@ data class TimelineEventUiModel(
      * 있고 부제에 장소 자리가 남아 있을 때다. 칩을 그릴지는 이 값과 화면 모드가 정한다.
      */
     val placeSentence: PlaceSubtitle? = null,
-    /** AI 가 준 장소 후보. 순서가 우선순위다. */
-    val placeCandidates: List<String> = emptyList(),
+    /** AI 가 준 장소 후보. 순서가 우선순위다. 화면은 이름만 쓰고, 좌표는 고를 때 함께 보낸다. */
+    val placeCandidates: List<PlaceCandidate> = emptyList(),
     /** 장소 자리가 남은 서버 부제 원문. [placeSentence] 가 있을 때만 들고, 새 장소로 다시 채울 때 쓴다. */
     val subtitleTemplate: String? = null,
 ) {

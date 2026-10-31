@@ -185,6 +185,8 @@ class PastRecordsViewModelTest {
         override suspend fun updateEventPlace(
             timelineEventId: Long,
             place: String,
+            latitude: Double?,
+            longitude: Double?,
         ) = error("사용하지 않음")
 
         override suspend fun updateEventMemo(

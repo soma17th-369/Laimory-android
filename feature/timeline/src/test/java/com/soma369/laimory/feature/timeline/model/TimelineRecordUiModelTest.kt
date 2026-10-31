@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.model
 
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEvent
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItem
@@ -104,7 +105,7 @@ class TimelineRecordUiModelTest {
                             question = null,
                             items = emptyList(),
                             place = "어니언 성수",
-                            placeCandidates = listOf("어니언 성수", "△△공원"),
+                            placeCandidates = listOf(PlaceCandidate("어니언 성수"), PlaceCandidate("△△공원")),
                         ),
                     ),
             )
@@ -133,7 +134,7 @@ class TimelineRecordUiModelTest {
                             question = null,
                             items = emptyList(),
                             place = "팀 사무실",
-                            placeCandidates = listOf("팀 사무실", "공유오피스"),
+                            placeCandidates = listOf(PlaceCandidate("팀 사무실"), PlaceCandidate("공유오피스")),
                         ),
                     ),
             )

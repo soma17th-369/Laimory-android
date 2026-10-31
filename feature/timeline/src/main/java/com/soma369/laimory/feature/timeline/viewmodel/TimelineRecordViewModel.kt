@@ -23,6 +23,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTar
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
+import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.navigation.TimelineEventCreatePage
@@ -1271,7 +1272,8 @@ class TimelineRecordViewModel
                     ?.firstOrNull { it.timelineEventId == timelineEventId }
                     ?: return
             val place = event.place ?: return
-            val options = if (place in event.placeCandidates) event.placeCandidates else listOf(place) + event.placeCandidates
+            val names = event.placeCandidates.map(PlaceCandidate::name)
+            val options = if (place in names) names else listOf(place) + names
             updateState {
                 copy(
                     placeSheet =

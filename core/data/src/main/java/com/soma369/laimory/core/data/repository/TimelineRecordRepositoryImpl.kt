@@ -50,10 +50,12 @@ class TimelineRecordRepositoryImpl
         override suspend fun updateEventPlace(
             timelineEventId: Long,
             place: String,
+            latitude: Double?,
+            longitude: Double?,
         ): TimelineEvent {
             remote.updateTimelineEventPlace(
                 timelineEventId = timelineEventId,
-                request = UpdateTimelineEventPlaceRequest(place),
+                request = UpdateTimelineEventPlaceRequest(place, latitude, longitude),
             )
             return remote.getTimelineEvent(timelineEventId).toDomain()
         }
