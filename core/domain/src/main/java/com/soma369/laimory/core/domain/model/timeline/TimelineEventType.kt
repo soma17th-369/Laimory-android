@@ -14,5 +14,9 @@ enum class TimelineEventType {
     EXERCISE,
     SOCIAL,
     REST,
+    STAY,
+    SHOPPING,
+    CULTURE,
+    ERRAND,
     UNKNOWN,
 }
