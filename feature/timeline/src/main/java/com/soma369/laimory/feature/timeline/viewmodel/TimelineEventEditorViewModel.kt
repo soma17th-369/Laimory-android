@@ -308,7 +308,7 @@ class TimelineEventEditorViewModel
             if (current.isSaving || current.deleteDialogState != TimelineDeleteDialogState.Hidden) return
             if (!current.hasUnsavedChanges) return
             val form = current.form ?: return
-            val validation = form.validate(original = current.originalForm)
+            val validation = form.validate(original = current.originalForm, sendingSubtitle = current.sendingSubtitle(form))
             updateState { copy(validation = validation) }
             if (!validation.isValid) {
                 if (validation.titleError != null) {
@@ -759,6 +759,15 @@ class TimelineEventEditorViewModel
             return edited.restorePlacePlaceholder(place)
         }
 
+        /**
+         * 저장 때 실제로 보낼 부제. 길이 검증은 화면에 보이는 문장이 아니라 이 값으로 한다 — 장소 자리를 채운 문장은
+         * 서버 원문보다 길어서, 안 고친 부제가 한도를 넘는 것처럼 보여 제목만 고쳐도 저장이 막힌다. null 은 보내지 않음.
+         */
+        private fun TimelineEventEditorUiState.sendingSubtitle(form: TimelineEventEditorForm): String? {
+            val original = originalForm
+            return if (timelineEventId != null && original != null) subtitleRequest(form, original) else form.subtitle.trim()
+        }
+
         private fun TimelineEventEditorUiState.toUpdateCommand(form: TimelineEventEditorForm): UpdateTimelineEventCommand {
             val original = requireNotNull(originalForm)
             val photoAdditions = photoAdditions()
@@ -811,34 +820,38 @@ private fun TimelineEvent.existingPhotos(): List<TimelineEventExistingPhoto> =
 /**
  * 저장 전 검증. 한도를 줄이기 전에 저장된 긴 메모는 그대로 둔 채 다른 칸만 고쳐도 저장돼야 하므로
  * 메모는 [original] 길이까지 허용한다.
+ *
+ * 부제는 [sendingSubtitle](실제로 보낼 값)로 잰다. 보내지 않으면(null) 재지 않는다.
  */
-private fun TimelineEventEditorForm.validate(original: TimelineEventEditorForm?) =
-    TimelineEventEditorValidation(
-        titleError =
-            when (title.trim().length) {
-                0 -> "제목을 입력해 주세요."
-                in 1..MAX_SHORT_TEXT_LENGTH -> null
-                else -> "제목은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
-            },
-        subtitleError =
-            if (subtitle.trim().length > MAX_SHORT_TEXT_LENGTH) {
-                "설명은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
-            } else {
-                null
-            },
-        timeError =
-            if (endAt != null && endAt <= startAt) {
-                "종료 시각은 시작 시각보다 뒤여야 해요."
-            } else {
-                null
-            },
-        memoError =
-            if (memo.length > TimelineEventMemoPolicy.allowedLength(original?.memo?.length ?: 0)) {
-                "메모는 ${TimelineEventMemoPolicy.MAX_LENGTH}자까지 입력할 수 있어요."
-            } else {
-                null
-            },
-    )
+private fun TimelineEventEditorForm.validate(
+    original: TimelineEventEditorForm?,
+    sendingSubtitle: String?,
+) = TimelineEventEditorValidation(
+    titleError =
+        when (title.trim().length) {
+            0 -> "제목을 입력해 주세요."
+            in 1..MAX_SHORT_TEXT_LENGTH -> null
+            else -> "제목은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
+        },
+    subtitleError =
+        if ((sendingSubtitle?.length ?: 0) > MAX_SHORT_TEXT_LENGTH) {
+            "설명은 ${MAX_SHORT_TEXT_LENGTH}자까지 입력할 수 있어요."
+        } else {
+            null
+        },
+    timeError =
+        if (endAt != null && endAt <= startAt) {
+            "종료 시각은 시작 시각보다 뒤여야 해요."
+        } else {
+            null
+        },
+    memoError =
+        if (memo.length > TimelineEventMemoPolicy.allowedLength(original?.memo?.length ?: 0)) {
+            "메모는 ${TimelineEventMemoPolicy.MAX_LENGTH}자까지 입력할 수 있어요."
+        } else {
+            null
+        },
+)
 
 private fun TimelineEventEditorValidation.afterTitleChanged(value: String): TimelineEventEditorValidation =
     copy(

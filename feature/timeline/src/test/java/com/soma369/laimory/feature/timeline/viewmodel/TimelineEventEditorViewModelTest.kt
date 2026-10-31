@@ -1190,6 +1190,48 @@ class TimelineEventEditorViewModelTest {
         }
 
     @Test
+    fun `장소를 채우면 255자를 넘는 부제도 안 고쳤으면 제목만 고쳐 저장할 수 있다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 서버 원문은 255자로 유효하지만, 장소를 채운 화면 문장은 258자다.
+            val template = "{place}" + "가".repeat(248)
+            sessionRepository.save(
+                timeline().copy(events = listOf(placeEvent().copy(subtitle = template, place = "가나다라마바사아자차"))),
+            )
+            val viewModel = initializedViewModel()
+            assertEquals(258, viewModel.state.value.form?.subtitle?.length)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("늦은 저녁"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.validation.subtitleError)
+            assertNull(recordRepository.commands.single().subtitle)
+        }
+
+    @Test
+    fun `장소 자리로 되돌린 부제의 길이로 검증한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val template = "{place}" + "가".repeat(248)
+            sessionRepository.save(
+                timeline().copy(events = listOf(placeEvent().copy(subtitle = template, place = "가나다라마바사아자차"))),
+            )
+            val viewModel = initializedViewModel()
+
+            // 장소 이름을 남긴 채 한 글자 더하면(화면 259자) 보내는 값은 256자라 막는다.
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeSubtitle("가나다라마바사아자차" + "가".repeat(249)))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+            assertEquals("설명은 255자까지 입력할 수 있어요.", viewModel.state.value.validation.subtitleError)
+            assertTrue(recordRepository.commands.isEmpty())
+
+            // 화면 문장은 258자지만 보내는 값은 255자라 저장된다.
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeSubtitle("가나다라마바사아자차" + "가".repeat(247) + "나"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+            assertEquals("{place}" + "가".repeat(247) + "나", recordRepository.commands.single().subtitle)
+        }
+
+    @Test
     fun `장소 이름이 통째로 남으면 그 자리를 장소 자리로 되돌려 보낸다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             sessionRepository.save(timeline().copy(events = listOf(placeEvent())))
