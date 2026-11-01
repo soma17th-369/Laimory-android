@@ -18,6 +18,7 @@ class FakeDailyReminderRepository(
     private val mirror = MutableStateFlow<Boolean?>(null)
     private var generation = 0L
     var savedRecordDates = mutableListOf<LocalDate>()
+    private var lastDeliveredRecordDate: LocalDate? = null
 
     override val settings: Flow<DailyReminderSettings> = state
     override val isServerReminderHandedOff: Flow<Boolean> = handedOff
@@ -54,7 +55,7 @@ class FakeDailyReminderRepository(
     }
 
     override suspend fun deliveryMemory(): DailyReminderDeliveryMemory =
-        DailyReminderDeliveryMemory(savedRecordDates.lastOrNull(), null, null, null)
+        DailyReminderDeliveryMemory(savedRecordDates.lastOrNull(), null, null, lastDeliveredRecordDate)
 
     override suspend fun markRecordSaved(
         recordDate: LocalDate,
@@ -67,7 +68,9 @@ class FakeDailyReminderRepository(
 
     override suspend fun setLastCompletedCopyIndex(index: Int) = Unit
 
-    override suspend fun setLastDeliveredRecordDate(date: LocalDate) = Unit
+    override suspend fun setLastDeliveredRecordDate(date: LocalDate) {
+        lastDeliveredRecordDate = date
+    }
 
     override suspend fun prepareNewSession() {
         generation++

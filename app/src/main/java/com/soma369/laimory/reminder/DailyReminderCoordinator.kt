@@ -74,7 +74,16 @@ class DailyReminderCoordinator
         fun start() {
             if (isStarted) return
             isStarted = true
-            applicationScope.launch { activeTime.collect(::apply) }
+            applicationScope.launch {
+                // 걸려 있던 시각에서 다른 시각으로 바로 넘어가는 것은 사용자가 시간대를 바꿨을 때뿐이다 — 시각은 사용자만
+                // 바꾸고, 켜기·로그인·앱 시작은 걸지 않은 상태(null)에서 넘어온다. 그때만 오늘 몫을 따라잡는다.
+                // 앱 시작·재부팅까지 따라잡으면 고른 시각이 지난 날엔 앱을 열 때마다 알림이 바로 뜬다.
+                var applied: LocalTime? = null
+                activeTime.collect { time ->
+                    apply(time, catchUpToday = applied != null && time != null && time != applied)
+                    applied = time
+                }
+            }
             applicationScope.launch {
                 observeAuthSession()
                     .distinctUntilChanged()
@@ -123,13 +132,16 @@ class DailyReminderCoordinator
             }
         }
 
-        private suspend fun apply(time: LocalTime?) {
+        private suspend fun apply(
+            time: LocalTime?,
+            catchUpToday: Boolean = false,
+        ) {
             if (time == null) {
                 scheduler.cancel()
                 Logger.i(LogDomain.PUSH, "일일 리마인더 예약 해제")
             } else {
-                scheduler.schedule(time, repository.deliveryMemory().lastDeliveredRecordDate)
-                Logger.i(LogDomain.PUSH, "일일 리마인더 예약($time)")
+                scheduler.schedule(time, repository.deliveryMemory().lastDeliveredRecordDate, catchUpToday)
+                Logger.i(LogDomain.PUSH, "일일 리마인더 예약($time${if (catchUpToday) ", 오늘 몫 따라잡기" else ""})")
             }
         }
 

@@ -49,12 +49,14 @@ import com.soma369.laimory.core.ui.permission.DataDisclosureDialog
 import com.soma369.laimory.core.ui.permission.DataPermission
 import com.soma369.laimory.core.ui.permission.LocationPermissionStep
 import com.soma369.laimory.core.ui.permission.rememberDataPermissionState
+import com.soma369.laimory.core.ui.reminder.DailyReminderTimeSheet
 import com.soma369.laimory.core.ui.terms.rememberTermContentLauncher
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.onboarding.component.OnboardingConsentChecklist
 import com.soma369.laimory.feature.onboarding.component.OnboardingPageContent
 import com.soma369.laimory.feature.onboarding.component.OnboardingProgress
+import com.soma369.laimory.feature.onboarding.component.OnboardingReminderTimeRow
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
 import com.soma369.laimory.feature.onboarding.model.PermissionGuideSpec
 import com.soma369.laimory.feature.onboarding.model.advancesAfterGrant
@@ -241,6 +243,7 @@ private fun OnboardingContent(
         onConsentToggle = { termType -> onIntent(OnboardingUiIntent.ConsentToggled(termType)) },
         onAgeConfirmationToggle = { onIntent(OnboardingUiIntent.AgeConfirmationToggled) },
         onOpenTerm = { document -> termContentLauncher.open(document.contentUrl) },
+        onReminderTimeClick = { onIntent(OnboardingUiIntent.OpenReminderTimePicker) },
         onSkipClick = {
             reportAction(AnalyticsOnboardingAction.SKIP)
             goNext()
@@ -250,6 +253,14 @@ private fun OnboardingContent(
             scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
         },
     )
+    state.reminderTimeDraft?.let { draft ->
+        DailyReminderTimeSheet(
+            time = draft,
+            onTimeChange = { time -> onIntent(OnboardingUiIntent.ReminderTimeChanged(time)) },
+            onConfirm = { onIntent(OnboardingUiIntent.ConfirmReminderTime) },
+            onDismiss = { onIntent(OnboardingUiIntent.DismissReminderTimePicker) },
+        )
+    }
 }
 
 @Composable
@@ -268,6 +279,7 @@ private fun OnboardingScreen(
     onAgeConfirmationToggle: () -> Unit,
     onOpenTerm: (TermDocument) -> Unit,
     onBack: () -> Unit,
+    onReminderTimeClick: () -> Unit = {},
 ) {
     // 첫 장에서는 뒤로 갈 곳이 없다. 앱 루트라 뒤로가기로 빠져나가면 빈 화면이 남는다.
     BackHandler(enabled = pagerState.currentPage > 0, onBack = onBack)
@@ -334,25 +346,29 @@ private fun OnboardingScreen(
                         nickname = state.nickname,
                         isGranted = isPageGranted(spec),
                         guide = guideFor(spec),
-                        // 문서가 비어도(이미 다 동의했거나 catalog 가 아직 없어도) 목록을 그린다 —
-                        // 연령 확인 줄은 서버 문서와 무관하게 언제나 받아야 한다.
                         extra =
-                            if (!spec.showsConsents) {
-                                null
-                            } else {
-                                {
-                                    OnboardingConsentChecklist(
-                                        documents = state.consentDocuments,
-                                        checked = state.checkedConsents,
-                                        locked = state.lockedConsents,
-                                        isAgeConfirmed = state.isAgeConfirmed,
-                                        isEnabled = !state.isConsentSubmitting,
-                                        errorMessage = state.consentErrorMessage,
-                                        onToggle = onConsentToggle,
-                                        onToggleAge = onAgeConfirmationToggle,
-                                        onOpenTerm = onOpenTerm,
-                                    )
+                            when {
+                                spec.showsReminderTime -> {
+                                    { OnboardingReminderTimeRow(time = state.reminderTime, onClick = onReminderTimeClick) }
                                 }
+                                // 문서가 비어도(이미 다 동의했거나 catalog 가 아직 없어도) 목록을 그린다 —
+                                // 연령 확인 줄은 서버 문서와 무관하게 언제나 받아야 한다.
+                                spec.showsConsents -> {
+                                    {
+                                        OnboardingConsentChecklist(
+                                            documents = state.consentDocuments,
+                                            checked = state.checkedConsents,
+                                            locked = state.lockedConsents,
+                                            isAgeConfirmed = state.isAgeConfirmed,
+                                            isEnabled = !state.isConsentSubmitting,
+                                            errorMessage = state.consentErrorMessage,
+                                            onToggle = onConsentToggle,
+                                            onToggleAge = onAgeConfirmationToggle,
+                                            onOpenTerm = onOpenTerm,
+                                        )
+                                    }
+                                }
+                                else -> null
                             },
                     )
                 }

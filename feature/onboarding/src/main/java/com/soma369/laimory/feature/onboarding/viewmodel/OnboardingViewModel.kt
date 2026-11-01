@@ -18,6 +18,8 @@ import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.ObserveDailyReminderSettingsUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderTimeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -32,6 +34,7 @@ import com.soma369.laimory.feature.onboarding.state.OnboardingUiSideEffect
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.first
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 @HiltViewModel
@@ -48,6 +51,8 @@ class OnboardingViewModel
         private val logPermissionEvent: LogPermissionEventUseCase,
         private val getOnboardingFlowId: GetOnboardingFlowIdUseCase,
         private val analyticsHelper: AnalyticsHelper,
+        private val observeDailyReminderSettingsUseCase: ObserveDailyReminderSettingsUseCase,
+        private val setDailyReminderTimeUseCase: SetDailyReminderTimeUseCase,
     ) : BaseMviViewModel<OnboardingUiState, OnboardingUiIntent, OnboardingUiSideEffect>(OnboardingUiState()) {
         /**
          * 실제로 서버에 보낼 문서. 화면에 보이는 목록과 다를 수 있다.
@@ -75,6 +80,7 @@ class OnboardingViewModel
             safeLaunch(onError = { }) { restoreLastPage() }
             safeLaunch(onError = { }) { prepareConsentPage() }
             observeNickname()
+            observeReminderTime()
         }
 
         /**
@@ -146,6 +152,15 @@ class OnboardingViewModel
             }
         }
 
+        /** 설정 화면과 같은 저장소를 따른다. 여기서 고른 값이 설정에 그대로 보여야 한다. */
+        private fun observeReminderTime() {
+            safeLaunch(onError = { }) {
+                observeDailyReminderSettingsUseCase().collect { reminder ->
+                    updateState { copy(reminderTime = reminder.time) }
+                }
+            }
+        }
+
         override suspend fun handleIntent(intent: OnboardingUiIntent) {
             when (intent) {
                 is OnboardingUiIntent.PermissionEvent -> logPermission(intent.event)
@@ -156,6 +171,27 @@ class OnboardingViewModel
                 OnboardingUiIntent.RetryConsentLoad -> retryConsentLoad()
                 OnboardingUiIntent.Complete -> complete()
                 OnboardingUiIntent.ReconcileLocationTracking -> reconcileLocationTracking()
+                // 정시만 고르는 시트다. 그 전에 저장된 분 있는 값은 정시로 내려 연다.
+                OnboardingUiIntent.OpenReminderTimePicker ->
+                    updateState { copy(reminderTimeDraft = reminderTime.truncatedTo(ChronoUnit.HOURS)) }
+                is OnboardingUiIntent.ReminderTimeChanged ->
+                    updateState { if (reminderTimeDraft == null) this else copy(reminderTimeDraft = intent.time) }
+                OnboardingUiIntent.ConfirmReminderTime -> confirmReminderTime()
+                OnboardingUiIntent.DismissReminderTimePicker -> updateState { copy(reminderTimeDraft = null) }
+            }
+        }
+
+        /**
+         * 고른 시간대를 기기에 저장한다. 알림 허용과는 따로다 — 허용을 거절하거나 건너뛰어도 고른 시간대는 남는다.
+         *
+         * 저장이 실패하면 화면이 저장소를 따르므로 값은 제자리다. 온보딩을 막을 일은 아니라 조용히 넘긴다.
+         */
+        private fun confirmReminderTime() {
+            val time = state.value.reminderTimeDraft ?: return
+            updateState { copy(reminderTimeDraft = null) }
+            if (time == state.value.reminderTime) return
+            safeLaunch(onError = { error -> Logger.w(LogDomain.PUSH, "온보딩 리마인더 시간대 저장 실패: ${error::class.simpleName}") }) {
+                setDailyReminderTimeUseCase(time)
             }
         }
 

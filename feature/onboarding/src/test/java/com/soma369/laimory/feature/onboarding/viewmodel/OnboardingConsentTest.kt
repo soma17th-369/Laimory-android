@@ -14,6 +14,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingStep
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersion
 import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.LocationTrackingStatus
+import com.soma369.laimory.core.domain.model.reminder.DailyReminderSettings
 import com.soma369.laimory.core.domain.model.terms.TermAgreement
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermRequirement
@@ -31,6 +32,8 @@ import com.soma369.laimory.core.domain.usecase.ObserveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.ReconcileLocationTrackingUseCase
 import com.soma369.laimory.core.domain.usecase.SaveOnboardingProgressUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.ObserveDailyReminderSettingsUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderTimeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.feature.onboarding.state.OnboardingUiIntent
@@ -53,6 +56,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OnboardingConsentTest {
@@ -356,6 +360,7 @@ class OnboardingConsentTest {
         completion: FakeOnboardingCompletionCoordinator = FakeOnboardingCompletionCoordinator(),
         savedPageKey: String? = null,
         flowId: String = FLOW_ID,
+        reminder: FakeDailyReminderRepository = FakeDailyReminderRepository(),
     ) = OnboardingViewModel(
         observeOnboardingProgressUseCase = ObserveOnboardingProgressUseCase(FakeOnboardingRepository(savedPageKey)),
         observeUserProfileUseCase = ObserveUserProfileUseCase(FakeUserProfileCoordinator),
@@ -367,9 +372,64 @@ class OnboardingConsentTest {
         logPermissionEvent = LogPermissionEventUseCase(analyticsHelper),
         getOnboardingFlowId = GetOnboardingFlowIdUseCase(FakeOnboardingRepository(savedPageKey, flowId)),
         analyticsHelper = analyticsHelper,
+        observeDailyReminderSettingsUseCase = ObserveDailyReminderSettingsUseCase(reminder),
+        setDailyReminderTimeUseCase = SetDailyReminderTimeUseCase(reminder),
     )
 
     private val analyticsHelper = RecordingAnalyticsHelper()
+
+    @Test
+    fun `알림 장에서 고른 시간대는 설정과 같은 저장소에 남는다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val reminder = FakeDailyReminderRepository()
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour), reminder = reminder)
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.OpenReminderTimePicker)
+            runCurrent()
+            assertEquals(DailyReminderSettings.DEFAULT_TIME, viewModel.state.value.reminderTimeDraft)
+
+            viewModel.sendIntent(OnboardingUiIntent.ReminderTimeChanged(LocalTime.of(22, 0)))
+            runCurrent()
+            // 굴리는 동안은 저장하지 않는다.
+            assertEquals(DailyReminderSettings.DEFAULT_TIME, reminder.currentSettings.time)
+
+            viewModel.sendIntent(OnboardingUiIntent.ConfirmReminderTime)
+            advanceUntilIdle()
+
+            assertEquals(LocalTime.of(22, 0), reminder.currentSettings.time)
+            assertEquals(LocalTime.of(22, 0), viewModel.state.value.reminderTime)
+            assertNull(viewModel.state.value.reminderTimeDraft)
+        }
+
+    @Test
+    fun `시간대 시트를 닫으면 굴린 값은 버린다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val reminder = FakeDailyReminderRepository()
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour), reminder = reminder)
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.OpenReminderTimePicker)
+            viewModel.sendIntent(OnboardingUiIntent.ReminderTimeChanged(LocalTime.of(7, 0)))
+            viewModel.sendIntent(OnboardingUiIntent.DismissReminderTimePicker)
+            advanceUntilIdle()
+
+            assertEquals(DailyReminderSettings.DEFAULT_TIME, reminder.currentSettings.time)
+            assertNull(viewModel.state.value.reminderTimeDraft)
+        }
+
+    @Test
+    fun `정시가 아닌 저장값은 정시로 내려 시간대 시트를 연다`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val reminder = FakeDailyReminderRepository(DailyReminderSettings(isEnabled = true, time = LocalTime.of(21, 5)))
+            val viewModel = createViewModel(FakeTermsCoordinator(pending = allFour), reminder = reminder)
+            runCurrent()
+
+            viewModel.sendIntent(OnboardingUiIntent.OpenReminderTimePicker)
+            runCurrent()
+
+            assertEquals(LocalTime.of(21, 0), viewModel.state.value.reminderTimeDraft)
+        }
 
     @Test
     fun `처음 연 온보딩의 첫 장은 처음 표시로, 넘겨 도착한 장은 이동으로 한 번씩 남긴다`() =

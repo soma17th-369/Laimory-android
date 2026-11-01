@@ -5,6 +5,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligib
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.base.UiIntent
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
+import java.time.LocalTime
 
 sealed interface OnboardingUiIntent : UiIntent {
     /**
@@ -39,6 +40,16 @@ sealed interface OnboardingUiIntent : UiIntent {
 
     /** 백그라운드 위치까지 허용됐다. 자동 수집을 켠다. */
     data object ReconcileLocationTracking : OnboardingUiIntent
+
+    /** 알림 장의 리마인더 시간대 줄을 눌렀다. */
+    data object OpenReminderTimePicker : OnboardingUiIntent
+
+    /** 시간대 시트에서 굴렸다. 확인 전까지 저장하지 않는다. */
+    data class ReminderTimeChanged(val time: LocalTime) : OnboardingUiIntent
+
+    data object ConfirmReminderTime : OnboardingUiIntent
+
+    data object DismissReminderTimePicker : OnboardingUiIntent
 
     /** 이 화면에서 연 권한 요청과 그 결과. 분석에 기록한다. */
     data class PermissionEvent(

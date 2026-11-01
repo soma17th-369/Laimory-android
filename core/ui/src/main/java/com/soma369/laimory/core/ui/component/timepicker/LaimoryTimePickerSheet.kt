@@ -262,7 +262,7 @@ private fun TimeRow(
     verticalPadding: Dp,
     onClick: () -> Unit,
 ) {
-    val valueLabel = field.value.displayLabel(field.dates)
+    val valueLabel = field.value.displayLabel(field.dates, field.minuteStep)
     val valueColor = if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
     Row(
         modifier =
@@ -313,9 +313,16 @@ private fun TimeRow(
     }
 }
 
-/** 줄에 표시할 값. 날짜 선택지가 아예 없으면 시각만, 있으면 `(MM.dd) HH:mm` 형태로 보여준다. */
-private fun LaimoryTimePickerValue.displayLabel(dates: List<TimePickerDateOption>): String {
-    val formattedTime = time.format(RowTimeFormatter)
+/**
+ * 줄에 표시할 값. 날짜 선택지가 아예 없으면 시각만, 있으면 `(MM.dd) HH:mm` 형태로 보여준다.
+ *
+ * 정시만 고르는 값은 `21시` 로 쓴다 — 분을 고를 수 없는데 `21:00` 이라 쓰면 분까지 정해진 것처럼 읽힌다.
+ */
+private fun LaimoryTimePickerValue.displayLabel(
+    dates: List<TimePickerDateOption>,
+    minuteStep: TimePickerMinuteStep,
+): String {
+    val formattedTime = if (minuteStep == TimePickerMinuteStep.HOUR) time.toHourLabel() else time.format(RowTimeFormatter)
     return if (dates.isEmpty()) formattedTime else "(${date.format(RowDateFormatter)}) $formattedTime"
 }
 

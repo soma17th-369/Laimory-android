@@ -15,6 +15,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DailyReminderCoordinatorTest {
@@ -148,6 +149,31 @@ class DailyReminderCoordinatorTest {
 
                 assertTrue(reminder.isHandedOff)
                 assertNull(alarms.scheduledTime)
+            }
+        }
+
+    @Test
+    fun `켜진 채 시간대를 바꿀 때만 오늘 몫을 따라잡는다`() =
+        runTest {
+            withApplicationScope { scope ->
+                coordinator(scope).start()
+                advanceUntilIdle()
+                // 앱 시작: 지난 시각이어도 따라잡지 않는다. 따라잡으면 앱을 열 때마다 알림이 뜬다.
+                assertEquals(DailyReminderSettings.DEFAULT_TIME, alarms.scheduledTime)
+                assertFalse(alarms.lastCatchUpToday)
+
+                reminder.setTime(LocalTime.of(22, 0))
+                advanceUntilIdle()
+                assertEquals(LocalTime.of(22, 0), alarms.scheduledTime)
+                assertTrue(alarms.lastCatchUpToday)
+
+                // 껐다 켜기는 시간대 변경이 아니다.
+                reminder.setEnabled(false)
+                advanceUntilIdle()
+                reminder.setEnabled(true)
+                advanceUntilIdle()
+                assertEquals(LocalTime.of(22, 0), alarms.scheduledTime)
+                assertFalse(alarms.lastCatchUpToday)
             }
         }
 

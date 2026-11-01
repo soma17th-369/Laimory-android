@@ -5,11 +5,13 @@ import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.push.PushSettings
+import com.soma369.laimory.core.domain.model.reminder.DailyReminderRecordDay
 import com.soma369.laimory.core.domain.model.reminder.DailyReminderSettings
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.PushSettingsRepository
 import com.soma369.laimory.core.domain.usecase.push.GetPushSettingsUseCase
 import com.soma369.laimory.core.domain.usecase.push.UpdatePushEnabledUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.IsDailyReminderDeliveredTodayUseCase
 import com.soma369.laimory.core.domain.usecase.reminder.ObserveDailyReminderSettingsUseCase
 import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderEnabledUseCase
 import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderTimeUseCase
@@ -24,11 +26,14 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -284,16 +289,63 @@ class NotificationSettingsViewModelTest {
             advanceUntilIdle()
             assertEquals(DailyReminderSettings.DEFAULT_TIME, viewModel.state.value.reminderTimeDraft)
 
-            viewModel.sendIntent(NotificationSettingsUiIntent.ReminderTimeChanged(LocalTime.of(22, 30)))
+            viewModel.sendIntent(NotificationSettingsUiIntent.ReminderTimeChanged(LocalTime.of(22, 0)))
             advanceUntilIdle()
             assertEquals(DailyReminderSettings.DEFAULT_TIME, reminderRepository.currentSettings.time)
 
             viewModel.sendIntent(NotificationSettingsUiIntent.ConfirmReminderTime)
             advanceUntilIdle()
 
-            assertEquals(LocalTime.of(22, 30), reminderRepository.currentSettings.time)
-            assertEquals(LocalTime.of(22, 30), viewModel.state.value.reminder.time)
+            assertEquals(LocalTime.of(22, 0), reminderRepository.currentSettings.time)
+            assertEquals(LocalTime.of(22, 0), viewModel.state.value.reminder.time)
             assertEquals(null, viewModel.state.value.reminderTimeDraft)
+        }
+
+    @Test
+    fun `오늘 이미 받은 날 시간대를 바꾸면 내일부터라고 알린다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            reminderRepository.setLastDeliveredRecordDate(DailyReminderRecordDay.of(LocalDateTime.now()))
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.OpenReminderTimePicker)
+            viewModel.sendIntent(NotificationSettingsUiIntent.ReminderTimeChanged(LocalTime.of(22, 0)))
+            viewModel.sendIntent(NotificationSettingsUiIntent.ConfirmReminderTime)
+            advanceUntilIdle()
+
+            assertEquals(LocalTime.of(22, 0), reminderRepository.currentSettings.time)
+            assertEquals(
+                NotificationSettingsUiSideEffect.ShowSnackbar("오늘 알림은 이미 보냈어요. 내일부터 22시에 알려드릴게요."),
+                viewModel.sideEffect.first(),
+            )
+        }
+
+    @Test
+    fun `오늘 아직 안 받았으면 시간대를 바꿔도 알리지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 어제 받은 것은 오늘 받은 것이 아니다. 오늘 몫은 예약이 따라잡아 곧 온다.
+            reminderRepository.setLastDeliveredRecordDate(DailyReminderRecordDay.of(LocalDateTime.now()).minusDays(1))
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.OpenReminderTimePicker)
+            viewModel.sendIntent(NotificationSettingsUiIntent.ReminderTimeChanged(LocalTime.of(22, 0)))
+            viewModel.sendIntent(NotificationSettingsUiIntent.ConfirmReminderTime)
+            advanceUntilIdle()
+
+            assertEquals(LocalTime.of(22, 0), reminderRepository.currentSettings.time)
+            assertNull(withTimeoutOrNull(1) { viewModel.sideEffect.first() })
+        }
+
+    @Test
+    fun `정시가 아닌 값은 정시로 내려 시트를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 정시 피커가 생기기 전에 저장된 값. 시트는 정시만 고른다.
+            reminderRepository.setTime(LocalTime.of(21, 5))
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(NotificationSettingsUiIntent.OpenReminderTimePicker)
+            advanceUntilIdle()
+
+            assertEquals(LocalTime.of(21, 0), viewModel.state.value.reminderTimeDraft)
         }
 
     @Test
@@ -330,6 +382,7 @@ class NotificationSettingsViewModelTest {
                 observeDailyReminderSettingsUseCase = ObserveDailyReminderSettingsUseCase(reminderRepository),
                 setDailyReminderEnabledUseCase = SetDailyReminderEnabledUseCase(reminderRepository),
                 setDailyReminderTimeUseCase = SetDailyReminderTimeUseCase(reminderRepository),
+                isDailyReminderDeliveredTodayUseCase = IsDailyReminderDeliveredTodayUseCase(reminderRepository),
                 navigationHelper = navigationHelper,
             )
         viewModel.sendIntent(NotificationSettingsUiIntent.Initialize)

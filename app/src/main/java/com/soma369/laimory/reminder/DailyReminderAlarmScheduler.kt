@@ -35,8 +35,9 @@ class DailyReminderAlarmScheduler
         override fun schedule(
             time: LocalTime,
             deliveredRecordDate: LocalDate?,
+            catchUpToday: Boolean,
         ) {
-            val triggerAt = DailyReminderSchedule.nextTriggerAt(ZonedDateTime.now(), time, deliveredRecordDate)
+            val triggerAt = DailyReminderSchedule.nextTriggerAt(ZonedDateTime.now(), time, deliveredRecordDate, catchUpToday)
             val triggerAtMillis = triggerAt.toInstant().toEpochMilli()
             alarmManager.setWindow(
                 AlarmManager.RTC_WAKEUP,
