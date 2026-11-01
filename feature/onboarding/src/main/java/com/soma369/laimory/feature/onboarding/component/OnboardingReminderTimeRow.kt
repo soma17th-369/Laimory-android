@@ -3,6 +3,7 @@ package com.soma369.laimory.feature.onboarding.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -31,7 +32,7 @@ import com.soma369.laimory.core.ui.R as UiR
  * 알림 장의 리마인더 시간대 줄. 누르면 시간대 시트를 연다.
  *
  * 설정의 같은 줄은 목록 속 하위 줄이라 값만 두지만, 여기는 처음 보는 화면이라 칸으로 감싸고 화살표를 붙여 눌러서
- * 바꿀 수 있다는 것을 드러낸다.
+ * 바꿀 수 있다는 것을 드러낸다. 아래 안내 한 줄로 기본값(21시)이 정해진 것이 아니라 고를 수 있다는 것을 말해 둔다.
  */
 @Composable
 internal fun OnboardingReminderTimeRow(
@@ -39,9 +40,27 @@ internal fun OnboardingReminderTimeRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(Spacing.small),
+    ) {
+        ReminderTimeButton(time = time, onClick = onClick)
+        Text(
+            text = "원하는 시간으로 바꿀 수 있어요.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ReminderTimeButton(
+    time: LocalTime,
+    onClick: () -> Unit,
+) {
     Row(
         modifier =
-            modifier
+            Modifier
                 .fillMaxWidth()
                 .heightIn(min = ROW_MIN_HEIGHT)
                 .clip(ROW_SHAPE)
