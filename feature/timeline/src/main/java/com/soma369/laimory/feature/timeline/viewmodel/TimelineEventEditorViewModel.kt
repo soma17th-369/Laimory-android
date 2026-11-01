@@ -8,6 +8,8 @@ import com.soma369.laimory.core.domain.exception.findServerMessage
 import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorExitResult
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorMode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
@@ -76,10 +78,24 @@ class TimelineEventEditorViewModel
     ) : BaseMviViewModel<TimelineEventEditorUiState, TimelineEventEditorUiIntent, TimelineEventEditorUiSideEffect>(
             TimelineEventEditorUiState(),
         ) {
+        /**
+         * 지금 보고 있는 편집 화면 한 번. 열림을 보낸 뒤 이탈을 보낼 때까지 있다.
+         *
+         * 화면 상태와 따로 둔다 — 같은 ViewModel 을 다시 쓰는 탓에 바꾸지 않고 나간 사건을 다시 열면 상태는 그대로 재사용되지만,
+         * 사용자에게는 새로 들어온 것이다. 반대로 화면을 다시 그리느라 초기화 인텐트가 또 와도(구성 변경) 같은 방문이다.
+         */
+        private var visit: TimelineEventEditorVisit? = null
+
         override suspend fun handleIntent(intent: TimelineEventEditorUiIntent) {
             when (intent) {
-                is TimelineEventEditorUiIntent.InitializeNew -> initializeNew(intent.recordDate)
-                is TimelineEventEditorUiIntent.Initialize -> initialize(intent.timelineEventId)
+                is TimelineEventEditorUiIntent.InitializeNew -> {
+                    initializeNew(intent.recordDate)
+                    logEditorOpened()
+                }
+                is TimelineEventEditorUiIntent.Initialize -> {
+                    initialize(intent.timelineEventId)
+                    logEditorOpened()
+                }
                 is TimelineEventEditorUiIntent.ChangeEventType ->
                     changeForm(transform = { copy(eventType = intent.eventType) })
                 is TimelineEventEditorUiIntent.ChangeTitle ->
@@ -362,6 +378,7 @@ class TimelineEventEditorViewModel
                         recordTimelineEditUseCase.edited(editingRecordDate, editedEventId)
                     }
                     logSaved(readyState, readyForm, changedFields, timelineBeforeSave)
+                    logEditorClosed(AnalyticsEditorExitResult.SAVED)
                     clearEditorState()
                     navigationHelper.navigateToBack()
                 }.onFailure(::handleUpdateFailure)
@@ -439,12 +456,14 @@ class TimelineEventEditorViewModel
                 updateState { copy(isDiscardDialogVisible = true) }
             } else {
                 reportAppliedRemovalsOnLeave()
+                logEditorClosed(AnalyticsEditorExitResult.UNCHANGED)
                 navigationHelper.navigateToBack()
             }
         }
 
         private suspend fun discardAndNavigateBack() {
             reportAppliedRemovalsOnLeave()
+            logEditorClosed(AnalyticsEditorExitResult.DISCARDED)
             clearEditorState()
             navigationHelper.navigateToBack()
         }
@@ -588,8 +607,9 @@ class TimelineEventEditorViewModel
             updateState { copy(deleteDialogState = TimelineDeleteDialogState.Hidden) }
         }
 
-        private fun finishDelete() {
+        private suspend fun finishDelete() {
             if (state.value.deleteDialogState != TimelineDeleteDialogState.Success) return
+            logEditorClosed(AnalyticsEditorExitResult.DELETED)
             clearEditorState()
             navigationHelper.navigateToBack()
         }
@@ -707,6 +727,46 @@ class TimelineEventEditorViewModel
             val target = AnalyticsTimelineEventTarget.of(timeline, timelineEventId) ?: return
             val startAt = timeline.events.first { it.timelineEventId == timelineEventId }.startAt
             analyticsHelper.log(AnalyticsEvent.TimelineEventUpdated(target, startAt, changedFields))
+        }
+
+        /**
+         * 폼이 보이면 열림을 보낸다. 이미 같은 사건·날짜로 보낸 방문이 이어지는 중이면 보내지 않는다.
+         *
+         * 사건 정보는 지금 잡아 둔다 — 지우고 나간 뒤에는 세션에서 빠져 이탈에 실을 수 없다.
+         */
+        private suspend fun logEditorOpened() {
+            val current = state.value
+            if (current.content != TimelineEventEditorUiContent.Editor) return
+            val recordDate = current.recordDate ?: return
+            val timelineEventId = current.timelineEventId
+            visit?.let { if (it.timelineEventId == timelineEventId && it.recordDate == recordDate) return }
+            val timeline = observeTimelineRecordUseCase().value ?: return
+            val target = timelineEventId?.let { AnalyticsTimelineEventTarget.of(timeline, it) ?: return }
+            val mode = if (timelineEventId == null) AnalyticsEditorMode.CREATE else AnalyticsEditorMode.EDIT
+            visit = TimelineEventEditorVisit(mode, timelineEventId, target, recordDate, openedAtMillis = clock.millis())
+            analyticsHelper.log(
+                AnalyticsEvent.TimelineEventEditorOpened(
+                    mode = mode,
+                    target = target,
+                    recordState = AnalyticsTimelineState.of(timeline.status),
+                    recordDate = recordDate,
+                ),
+            )
+        }
+
+        /** 나가는 방법이 확정됐다. 열림을 보낸 방문마다 한 번만 보낸다. */
+        private suspend fun logEditorClosed(exitResult: AnalyticsEditorExitResult) {
+            val closing = visit ?: return
+            visit = null
+            analyticsHelper.log(
+                AnalyticsEvent.TimelineEventEditorClosed(
+                    mode = closing.mode,
+                    exitResult = exitResult,
+                    stayMs = (clock.millis() - closing.openedAtMillis).coerceAtLeast(0),
+                    target = closing.target,
+                    recordDate = closing.recordDate,
+                ),
+            )
         }
 
         private fun eventTargetOf(timelineEventId: Long): AnalyticsTimelineEventTarget? =

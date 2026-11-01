@@ -5,6 +5,8 @@ import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorExitResult
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorMode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
@@ -85,6 +87,7 @@ class TimelineEventEditorViewModelTest {
     private val messageHelper = NoOpMessageHelper()
     private val editLogRepository = RecordingEditLogRepository()
     private val analyticsHelper = RecordingAnalyticsHelper()
+    private val clock = MutableClock(Instant.parse("2026-05-08T13:45:00Z"))
 
     @Before
     fun setUp() {
@@ -1280,7 +1283,7 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
-            val updated = analyticsHelper.logged.single() as AnalyticsEvent.TimelineEventUpdated
+            val updated = analyticsHelper.editEvents.single() as AnalyticsEvent.TimelineEventUpdated
             assertEquals(
                 AnalyticsTimelineEventTarget(
                     timelineEventId = EVENT_ID,
@@ -1305,7 +1308,7 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
-            val saved = analyticsHelper.logged.single() as AnalyticsEvent.TimelineMemoSaved
+            val saved = analyticsHelper.editEvents.single() as AnalyticsEvent.TimelineMemoSaved
             assertEquals(EVENT_ID, saved.target.timelineEventId)
             assertEquals(7, saved.memoLength)
         }
@@ -1320,7 +1323,7 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
-            val updated = analyticsHelper.logged.single() as AnalyticsEvent.TimelineEventUpdated
+            val updated = analyticsHelper.editEvents.single() as AnalyticsEvent.TimelineEventUpdated
             assertEquals(AnalyticsUpdateScope.COMBINED, updated.updateScope)
             assertEquals(2, updated.changedFieldCount)
         }
@@ -1334,7 +1337,7 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
-            assertTrue(analyticsHelper.logged.isEmpty())
+            assertTrue(analyticsHelper.editEvents.isEmpty())
         }
 
     @Test
@@ -1346,7 +1349,7 @@ class TimelineEventEditorViewModelTest {
             viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
             advanceUntilIdle()
 
-            val updated = analyticsHelper.logged.single() as AnalyticsEvent.TimelineEventUpdated
+            val updated = analyticsHelper.editEvents.single() as AnalyticsEvent.TimelineEventUpdated
             assertEquals(setOf(AnalyticsEventField.PHOTO), updated.changedFields)
             assertEquals(AnalyticsUpdateScope.PHOTO, updated.updateScope)
         }
@@ -1373,9 +1376,132 @@ class TimelineEventEditorViewModelTest {
                         ),
                     ),
                 ),
-                analyticsHelper.logged,
+                analyticsHelper.editEvents,
             )
         }
+
+    @Test
+    fun `기존 사건을 열면 사건 정보로 열림을 한 번 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            // 화면을 다시 그리느라 초기화가 또 와도 같은 방문이다.
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.TimelineEventEditorOpened(
+                        mode = AnalyticsEditorMode.EDIT,
+                        target = eventTarget(),
+                        recordState = AnalyticsTimelineState.DRAFT,
+                        recordDate = RECORD_DATE,
+                    ),
+                ),
+                analyticsHelper.editorEvents,
+            )
+        }
+
+    @Test
+    fun `새 사건을 열면 사건 정보 없이 열림을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = createViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(RECORD_DATE))
+            advanceUntilIdle()
+
+            val opened = analyticsHelper.editorEvents.single() as AnalyticsEvent.TimelineEventEditorOpened
+            assertEquals(AnalyticsEditorMode.CREATE, opened.mode)
+            assertEquals(null, opened.target)
+        }
+
+    @Test
+    fun `저장하고 나가면 머문 시간과 함께 저장으로 이탈을 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            clock.instant = clock.instant.plusMillis(4_200)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Save)
+            advanceUntilIdle()
+
+            assertEquals(
+                AnalyticsEvent.TimelineEventEditorClosed(
+                    mode = AnalyticsEditorMode.EDIT,
+                    exitResult = AnalyticsEditorExitResult.SAVED,
+                    stayMs = 4_200,
+                    target = eventTarget(),
+                    recordDate = RECORD_DATE,
+                ),
+                analyticsHelper.editorEvents.last(),
+            )
+        }
+
+    @Test
+    fun `바꾼 것 없이 뒤로 나가면 그대로 나감으로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            advanceUntilIdle()
+
+            assertEquals(listOf(AnalyticsEditorExitResult.UNCHANGED), closedResults())
+        }
+
+    @Test
+    fun `바꾼 뒤 버리고 나가면 버림으로 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ChangeTitle("퇴근길"))
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            advanceUntilIdle()
+            assertEquals(emptyList<AnalyticsEditorExitResult>(), closedResults())
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDiscard)
+            advanceUntilIdle()
+
+            assertEquals(listOf(AnalyticsEditorExitResult.DISCARDED), closedResults())
+        }
+
+    @Test
+    fun `지우고 나가면 지우기 전 사건 번호로 삭제를 보낸다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.RequestDelete)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ConfirmDelete)
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.FinishDelete)
+            advanceUntilIdle()
+
+            val closed = analyticsHelper.editorEvents.last() as AnalyticsEvent.TimelineEventEditorClosed
+            assertEquals(AnalyticsEditorExitResult.DELETED, closed.exitResult)
+            assertEquals(EVENT_ID, closed.target?.timelineEventId)
+        }
+
+    @Test
+    fun `바꾸지 않고 나간 사건을 다시 열면 새 방문으로 센다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
+            advanceUntilIdle()
+
+            assertEquals(2, analyticsHelper.editorEvents.filterIsInstance<AnalyticsEvent.TimelineEventEditorOpened>().size)
+        }
+
+    private fun closedResults() =
+        analyticsHelper.editorEvents.filterIsInstance<AnalyticsEvent.TimelineEventEditorClosed>().map { it.exitResult }
+
+    private fun eventTarget() =
+        AnalyticsTimelineEventTarget(
+            timelineEventId = EVENT_ID,
+            eventType = TimelineEventType.MOVEMENT,
+            photoCount = 2,
+            recordState = AnalyticsTimelineState.DRAFT,
+            recordDate = RECORD_DATE,
+        )
 
     private fun TestScope.initializedViewModel(): TimelineEventEditorViewModel =
         createViewModel().also {
@@ -1418,7 +1544,7 @@ class TimelineEventEditorViewModelTest {
             recordTimelineEditUseCase = RecordTimelineEditUseCase(editLogRepository),
             analyticsHelper = analyticsHelper,
             navigationHelper = navigationHelper,
-            clock = Clock.fixed(Instant.parse("2026-05-08T13:45:00Z"), ZoneOffset.UTC),
+            clock = clock,
         )
 
     private fun timeline() =
@@ -1675,8 +1801,27 @@ class TimelineEventEditorViewModelTest {
         val RECORD_DATE: LocalDate = LocalDate.of(2026, 5, 8)
     }
 
+    /** 시각을 움직일 수 있는 시계. 머문 시간을 잴 때 쓴다. 시간대를 바꾸면 그 순간의 고정 시계를 준다. */
+    private class MutableClock(
+        var instant: Instant,
+    ) : Clock() {
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = fixed(instant, zone)
+
+        override fun instant(): Instant = instant
+    }
+
     private class RecordingAnalyticsHelper : AnalyticsHelper {
         val logged = mutableListOf<AnalyticsEvent>()
+
+        /** 편집 화면 열림 · 이탈. */
+        val editorEvents: List<AnalyticsEvent>
+            get() = logged.filter { it is AnalyticsEvent.TimelineEventEditorOpened || it is AnalyticsEvent.TimelineEventEditorClosed }
+
+        /** 열림 · 이탈을 뺀 편집 행동(수정 · 메모 · 삭제 · 추가). */
+        val editEvents: List<AnalyticsEvent>
+            get() = logged - editorEvents.toSet()
 
         override suspend fun log(event: AnalyticsEvent) {
             logged += event
