@@ -53,6 +53,7 @@ import java.time.LocalDateTime
  *
  * [dates]가 2개 이상일 때만 날짜 열을 함께 보여주고, 그보다 적으면 시·분 2열만 둔다. 날짜 열이
  * 없으면 옮길 날짜도 없으므로 시·분은 순환하되 날짜는 이동하지 않는다(순수 모델이 판정).
+ * [TimePickerMinuteStep.HOUR] 면 분 열도 빼고 시 열만 둔다.
  */
 @Composable
 internal fun TimePickerRoller(
@@ -66,6 +67,8 @@ internal fun TimePickerRoller(
     // 범위 밖 선택지는 아예 내놓지 않는다 — 고를 수 있게 두고 확인에서 막으면 왜 안 되는지 알기 어렵다.
     val dateOptions = LaimoryTimePickerMath.allowedDates(dates, minuteStep, value.time.minute, range)
     val showDateColumn = dateOptions.size > 1
+    // 정시만 고르는 값은 분 열이 늘 `00` 하나라 두지 않는다.
+    val showMinuteColumn = minuteStep != TimePickerMinuteStep.HOUR
     // 날짜 열이 있으면 시·분은 순환하지 않는다.
     //
     // 순환하면 목록 끝을 넘는 순간 날짜가 함께 밀려야 하는데, 날짜 목록도 끝이라 밀 수 없으면 시만
@@ -95,7 +98,7 @@ internal fun TimePickerRoller(
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.small)) {
             if (showDateColumn) ColumnLabel("날짜")
             ColumnLabel("시")
-            ColumnLabel("분")
+            if (showMinuteColumn) ColumnLabel("분")
         }
         Box(modifier = Modifier.fillMaxWidth().height(RollerHeight)) {
             SelectionBands()
@@ -139,27 +142,29 @@ internal fun TimePickerRoller(
                         onValueChange(next, TimePickerColumn.HOUR)
                     },
                 )
-                SpinnerColumn(
-                    modifier = Modifier.weight(1f),
-                    options = minuteOptions.map { "%02d".format(it) },
-                    selectedIndex = minuteOptions.indexOf(value.time.minute).coerceAtLeast(0),
-                    isCyclic = isTimeCyclic,
-                    columnLabel = "분",
-                    textStyle = MaterialTheme.typography.headlineMedium,
-                    onDelta = { delta ->
-                        val next =
-                            if (range == null) {
-                                LaimoryTimePickerMath.scrollMinute(value, delta, minuteStep, dateOptions)
-                            } else {
-                                val minute = LaimoryTimePickerMath.scrollWithin(minuteOptions, value.time.minute, delta)
-                                LaimoryTimePickerMath.coerceIntoRange(
-                                    value.copy(time = value.time.withMinute(minute)),
-                                    range,
-                                )
-                            }
-                        onValueChange(next, TimePickerColumn.MINUTE)
-                    },
-                )
+                if (showMinuteColumn) {
+                    SpinnerColumn(
+                        modifier = Modifier.weight(1f),
+                        options = minuteOptions.map { "%02d".format(it) },
+                        selectedIndex = minuteOptions.indexOf(value.time.minute).coerceAtLeast(0),
+                        isCyclic = isTimeCyclic,
+                        columnLabel = "분",
+                        textStyle = MaterialTheme.typography.headlineMedium,
+                        onDelta = { delta ->
+                            val next =
+                                if (range == null) {
+                                    LaimoryTimePickerMath.scrollMinute(value, delta, minuteStep, dateOptions)
+                                } else {
+                                    val minute = LaimoryTimePickerMath.scrollWithin(minuteOptions, value.time.minute, delta)
+                                    LaimoryTimePickerMath.coerceIntoRange(
+                                        value.copy(time = value.time.withMinute(minute)),
+                                        range,
+                                    )
+                                }
+                            onValueChange(next, TimePickerColumn.MINUTE)
+                        },
+                    )
+                }
             }
         }
     }

@@ -18,12 +18,18 @@ data class TimePickerDateOption(
     val label: String,
 )
 
-/** 분 롤러 간격. 새 값을 입력하는 화면은 [FIVE], 기존 서버 값을 편집하는 화면은 [ONE]을 쓴다. */
+/**
+ * 분 롤러 간격. 새 값을 입력하는 화면은 [FIVE], 기존 서버 값을 편집하는 화면은 [ONE]을 쓴다.
+ *
+ * [HOUR] 는 정시만 고른다. 분 열을 아예 두지 않는다 — 일일 리마인더처럼 정각이 아니라 그 무렵에 오는 값은 분을
+ * 고르게 해도 지킬 수 없다.
+ */
 enum class TimePickerMinuteStep(
     val minutes: Int,
 ) {
     ONE(1),
     FIVE(5),
+    HOUR(60),
     ;
 
     /** [minute]가 이 간격의 선택지에 포함되는지. */
