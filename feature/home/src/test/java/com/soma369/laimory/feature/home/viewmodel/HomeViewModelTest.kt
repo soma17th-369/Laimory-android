@@ -6,13 +6,12 @@ import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
 import com.soma369.laimory.core.domain.coordinator.TutorialReplayRequests
 import com.soma369.laimory.core.domain.exception.ApiException
-import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
-import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
@@ -20,7 +19,6 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
-import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
@@ -410,6 +408,13 @@ class HomeViewModelTest {
             assertNull(sessionStore.preparation.value)
             assertEquals(0, draftRepository.createCount)
             assertEquals(listOf<Page>(CreditPage), navigationHelper.destinations)
+            assertEquals(
+                AnalyticsEvent.CreditScreenOpened(
+                    AnalyticsCreditEntryPoint.CREATE_CONFIRM_BALANCE,
+                    remainingCredits = creditRepository.remaining,
+                ),
+                analyticsHelper.logged.last(),
+            )
         }
 
     @Test
@@ -433,6 +438,10 @@ class HomeViewModelTest {
             assertEquals(0, draftRepository.createCount)
             assertEquals(listOf<Page>(CreditPage), navigationHelper.destinations)
             assertTrue(effects.isEmpty())
+            assertEquals(
+                AnalyticsEvent.CreditScreenOpened(AnalyticsCreditEntryPoint.CREATE_CONFIRM_CHARGE, remainingCredits = 0),
+                analyticsHelper.logged.last(),
+            )
         }
 
     @Test
@@ -3232,27 +3241,6 @@ class HomeViewModelTest {
             saveCount++
             saved.value = range
         }
-    }
-
-    private class RecordingAnalyticsHelper : AnalyticsHelper {
-        val logged = mutableListOf<AnalyticsEvent>()
-
-        override suspend fun log(event: AnalyticsEvent) {
-            logged += event
-        }
-
-        override suspend fun logOnce(
-            key: AnalyticsDedupeKey,
-            event: AnalyticsEvent,
-        ) {
-            logged += event
-        }
-
-        override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
-
-        override fun setUserId(userId: Long?) = Unit
-
-        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 
     private class FakeDraftRepository : TimelineDraftRepository {

@@ -1,6 +1,9 @@
 package com.soma369.laimory.feature.settings.viewmodel
 
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsBillingState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.settings.credit.CreditBalanceStore
@@ -26,6 +29,7 @@ class CreditViewModel
         private val getTimelineCredit: GetTimelineCreditUseCase,
         private val balanceStore: CreditBalanceStore,
         private val navigationHelper: NavigationHelper,
+        private val analyticsHelper: AnalyticsHelper,
     ) : BaseMviViewModel<CreditUiState, CreditUiIntent, CreditUiSideEffect>(CreditUiState()) {
         /** 마지막 조회 번호. 먼저 보낸 조회가 늦게 끝나도 새 결과를 덮지 않는다. */
         private var request = 0
@@ -42,7 +46,11 @@ class CreditViewModel
             when (intent) {
                 CreditUiIntent.Refresh -> refresh()
                 CreditUiIntent.NavigateBack -> navigationHelper.navigateToBack()
-                is CreditUiIntent.PackageClicked -> sendEffect(CreditUiSideEffect.ShowSnackbar(CHARGE_NOT_OPEN_MESSAGE))
+                is CreditUiIntent.PackageClicked -> {
+                    // 충전을 열기 전의 수요다. 결제를 열면 그때의 상태와 결과 이벤트를 따로 정한다.
+                    analyticsHelper.log(AnalyticsEvent.CreditPackageClicked(intent.amount, AnalyticsBillingState.COMING_SOON))
+                    sendEffect(CreditUiSideEffect.ShowSnackbar(CHARGE_NOT_OPEN_MESSAGE))
+                }
             }
         }
 

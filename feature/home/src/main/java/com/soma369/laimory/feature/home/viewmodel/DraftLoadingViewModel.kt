@@ -2,7 +2,10 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.exception.serverMessageOr
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -51,6 +54,7 @@ class DraftLoadingViewModel
         private val loadingSessionStore: DraftLoadingSessionStore,
         private val submissionStore: DraftSubmissionStore,
         private val navigationHelper: NavigationHelper,
+        private val analyticsHelper: AnalyticsHelper,
         private val clock: Clock,
         retentionConfig: SourceItemRetentionConfig,
     ) : BaseMviViewModel<DraftLoadingUiState, DraftLoadingUiIntent, UiSideEffect>(
@@ -80,6 +84,10 @@ class DraftLoadingViewModel
                 DraftLoadingUiIntent.ChargeCreditsAfterSubmitFailure -> {
                     submissionStore.markShownOnLoading()
                     navigationHelper.navigateToBack()
+                    // 이 화면은 잔액을 받지 않는다. 서버가 모자란다고만 알려 준 값이라 비워 둔다.
+                    analyticsHelper.log(
+                        AnalyticsEvent.CreditScreenOpened(AnalyticsCreditEntryPoint.DRAFT_LOADING_CHARGE, remainingCredits = null),
+                    )
                     navigationHelper.navigateTo(CreditPage)
                 }
                 DraftLoadingUiIntent.Retry -> coordinator.retry()
