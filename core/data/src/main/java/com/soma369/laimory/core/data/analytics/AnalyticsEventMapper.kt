@@ -1,12 +1,17 @@
 package com.soma369.laimory.core.data.analytics
 
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsBillingState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorExitResult
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorMode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsLaunchState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
@@ -15,12 +20,18 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersio
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushDelivery
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsReminderCopy
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsReminderKind
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
@@ -71,6 +82,20 @@ private const val PARAM_AI_EDITED_EVENT_COUNT = "ai_edited_event_count"
 private const val PARAM_AI_DELETED_EVENT_COUNT = "ai_deleted_event_count"
 private const val PARAM_MANUAL_EVENT_COUNT = "manual_event_count"
 private const val PARAM_MANUAL_MEMO_EVENT_COUNT = "manual_memo_event_count"
+private const val PARAM_PROMPT_TYPE = "prompt_type"
+private const val PARAM_INSTALLED_VERSION_CODE = "installed_version_code"
+private const val PARAM_TARGET_VERSION_CODE = "target_version_code"
+private const val PARAM_PUSH_TYPE = "push_type"
+private const val PARAM_DELIVERY = "delivery"
+private const val PARAM_LAUNCH_STATE = "launch_state"
+private const val PARAM_REMINDER_KIND = "reminder_kind"
+private const val PARAM_REMINDER_TITLE = "reminder_title"
+private const val PARAM_EDITOR_MODE = "editor_mode"
+private const val PARAM_EXIT_RESULT = "exit_result"
+private const val PARAM_STAY_MS = "stay_ms"
+private const val PARAM_REMAINING_CREDITS = "remaining_credits"
+private const val PARAM_PACKAGE_AMOUNT = "package_amount"
+private const val PARAM_BILLING_STATE = "billing_state"
 
 /**
  * 도메인 이벤트를 전송 형태로 바꾼다. **버킷 밖에서 한 번만** 한다 — 버킷을 바꿔도 이름과 속성은
@@ -294,6 +319,78 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                 name = "install_attribution_resolved",
                 strings = attribution.toEventStrings(),
             )
+        is AnalyticsEvent.UpdatePromptViewed ->
+            payload(
+                name = "update_prompt_viewed",
+                strings = mapOf(PARAM_PROMPT_TYPE to promptType.paramValue),
+                counts = versionCodes(installedVersionCode, targetVersionCode),
+            )
+        is AnalyticsEvent.UpdatePromptAction ->
+            payload(
+                name = "update_prompt_action",
+                strings =
+                    mapOf(
+                        PARAM_PROMPT_TYPE to promptType.paramValue,
+                        PARAM_ACTION to action.paramValue,
+                    ),
+                counts = versionCodes(installedVersionCode, targetVersionCode),
+            )
+        is AnalyticsEvent.PushOpened ->
+            payload(
+                name = "push_opened",
+                strings =
+                    mapOf(
+                        PARAM_PUSH_TYPE to pushType.paramValue,
+                        PARAM_DELIVERY to delivery.paramValue,
+                        PARAM_LAUNCH_STATE to launchState.paramValue,
+                    ) + reminder?.strings().orEmpty(),
+            )
+        is AnalyticsEvent.PushShown ->
+            payload(
+                name = "push_shown",
+                strings =
+                    mapOf(
+                        PARAM_PUSH_TYPE to pushType.paramValue,
+                        PARAM_DELIVERY to delivery.paramValue,
+                    ) + reminder.strings(),
+            )
+        is AnalyticsEvent.TimelineEventEditorOpened ->
+            payload(
+                name = "timeline_event_editor_opened",
+                recordDate = recordDate,
+                strings =
+                    buildMap {
+                        put(PARAM_EDITOR_MODE, mode.paramValue)
+                        put(PARAM_RECORD_STATE, recordState.paramValue)
+                        target?.let { put(PARAM_EVENT_TYPE, it.eventType.paramValue) }
+                    },
+                counts = target?.let { mapOf(PARAM_EVENT_ID to it.timelineEventId) }.orEmpty(),
+            )
+        is AnalyticsEvent.TimelineEventEditorClosed ->
+            payload(
+                name = "timeline_event_editor_closed",
+                recordDate = recordDate,
+                strings =
+                    mapOf(
+                        PARAM_EDITOR_MODE to mode.paramValue,
+                        PARAM_EXIT_RESULT to exitResult.paramValue,
+                    ),
+                counts =
+                    mapOf(PARAM_STAY_MS to stayMs) +
+                        target?.let { mapOf(PARAM_EVENT_ID to it.timelineEventId) }.orEmpty(),
+            )
+        is AnalyticsEvent.CreditScreenOpened ->
+            payload(
+                name = "credit_screen_opened",
+                strings = mapOf(PARAM_ENTRY_POINT to entryPoint.paramValue),
+                counts = remainingCredits?.let { mapOf(PARAM_REMAINING_CREDITS to it.toLong()) }.orEmpty(),
+            )
+        is AnalyticsEvent.CreditPackageClicked ->
+            payload(
+                name = "credit_package_clicked",
+                strings = mapOf(PARAM_BILLING_STATE to billingState.paramValue),
+                counts = mapOf(PARAM_PACKAGE_AMOUNT to packageAmount.toLong()),
+            )
     }
 
 private const val STAGE_INITIAL = "initial"
@@ -350,6 +447,23 @@ private fun AnalyticsTimelineEventTarget.counts(): Map<String, Long> =
     mapOf(
         PARAM_EVENT_ID to timelineEventId,
         PARAM_PHOTO_COUNT to photoCount.toLong(),
+    )
+
+/** 업데이트 안내 두 이벤트가 함께 싣는 버전. 둘 다 versionCode 다 — versionName 은 GA4 가 `app_info.version` 으로 따로 받는다. */
+private fun versionCodes(
+    installed: Int,
+    target: Int,
+): Map<String, Long> =
+    mapOf(
+        PARAM_INSTALLED_VERSION_CODE to installed.toLong(),
+        PARAM_TARGET_VERSION_CODE to target.toLong(),
+    )
+
+/** 로컬 리마인더 문구. 제목은 알림에 보인 그대로 싣는다. */
+private fun AnalyticsReminderCopy.strings(): Map<String, String> =
+    mapOf(
+        PARAM_REMINDER_KIND to kind.paramValue,
+        PARAM_REMINDER_TITLE to title,
     )
 
 /*
@@ -567,4 +681,81 @@ private val AnalyticsOnboardingAction.paramValue: String
             AnalyticsOnboardingAction.NEXT -> "next"
             AnalyticsOnboardingAction.BACK -> "back"
             AnalyticsOnboardingAction.FINISH -> "finish"
+        }
+
+private val AnalyticsUpdatePromptType.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsUpdatePromptType.FORCED -> "forced"
+            AnalyticsUpdatePromptType.RECOMMENDED -> "recommended"
+        }
+
+private val AnalyticsUpdatePromptAction.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsUpdatePromptAction.UPDATE -> "update"
+            AnalyticsUpdatePromptAction.LATER -> "later"
+            AnalyticsUpdatePromptAction.DISMISS -> "dismiss"
+        }
+
+private val AnalyticsPushType.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsPushType.TIMELINE_COMPLETION_SUCCESS -> "timeline_completion_success"
+            AnalyticsPushType.TIMELINE_COMPLETION_FAILED -> "timeline_completion_failed"
+            AnalyticsPushType.DAILY_REMINDER -> "daily_reminder"
+            AnalyticsPushType.UNKNOWN -> "unknown"
+        }
+
+private val AnalyticsPushDelivery.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsPushDelivery.FCM -> "fcm"
+            AnalyticsPushDelivery.LOCAL -> "local"
+        }
+
+private val AnalyticsLaunchState.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsLaunchState.COLD -> "cold"
+            AnalyticsLaunchState.WARM -> "warm"
+        }
+
+private val AnalyticsReminderKind.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsReminderKind.GENERAL -> "general"
+            AnalyticsReminderKind.COMPLETED -> "completed"
+        }
+
+private val AnalyticsEditorMode.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsEditorMode.EDIT -> "edit"
+            AnalyticsEditorMode.CREATE -> "create"
+        }
+
+private val AnalyticsEditorExitResult.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsEditorExitResult.SAVED -> "saved"
+            AnalyticsEditorExitResult.DELETED -> "deleted"
+            AnalyticsEditorExitResult.UNCHANGED -> "unchanged"
+            AnalyticsEditorExitResult.DISCARDED -> "discarded"
+        }
+
+private val AnalyticsCreditEntryPoint.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsCreditEntryPoint.SETTINGS -> "settings"
+            AnalyticsCreditEntryPoint.CREATE_CONFIRM_CHARGE -> "create_confirm_charge"
+            AnalyticsCreditEntryPoint.CREATE_CONFIRM_BALANCE -> "create_confirm_balance"
+            AnalyticsCreditEntryPoint.DRAFT_LOADING_CHARGE -> "draft_loading_charge"
+        }
+
+private val AnalyticsBillingState.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsBillingState.COMING_SOON -> "coming_soon"
+            AnalyticsBillingState.AVAILABLE -> "available"
         }

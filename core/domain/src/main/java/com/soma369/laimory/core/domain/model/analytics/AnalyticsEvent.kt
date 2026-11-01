@@ -227,4 +227,79 @@ sealed interface AnalyticsEvent {
     data class InstallAttributionResolved(
         val attribution: InstallAttribution,
     ) : AnalyticsEvent
+
+    /**
+     * 업데이트 안내가 보였다. 강제는 프로세스당 1회, 권장은 다이얼로그가 보일 때마다.
+     *
+     * [targetVersionCode] 는 강제면 하한선, 권장이면 권장 버전이다.
+     */
+    data class UpdatePromptViewed(
+        val promptType: AnalyticsUpdatePromptType,
+        val installedVersionCode: Int,
+        val targetVersionCode: Int,
+    ) : AnalyticsEvent
+
+    /** 업데이트 안내에서 행동을 골랐다. 누를 때마다. */
+    data class UpdatePromptAction(
+        val promptType: AnalyticsUpdatePromptType,
+        val action: AnalyticsUpdatePromptAction,
+        val installedVersionCode: Int,
+        val targetVersionCode: Int,
+    ) : AnalyticsEvent
+
+    /**
+     * 알림을 눌러 앱이 열렸다. 누른 한 번에 1회, 로그인 여부와 상관없이.
+     *
+     * [reminder] 는 로컬 리마인더일 때만 있다.
+     */
+    data class PushOpened(
+        val pushType: AnalyticsPushType,
+        val delivery: AnalyticsPushDelivery,
+        val launchState: AnalyticsLaunchState,
+        val reminder: AnalyticsReminderCopy? = null,
+    ) : AnalyticsEvent
+
+    /** 앱이 로컬 알림을 실제로 띄웠다. 서버 FCM 알림은 시스템이 띄워 앱이 알 수 없어 보내지 않는다. */
+    data class PushShown(
+        val pushType: AnalyticsPushType,
+        val delivery: AnalyticsPushDelivery,
+        val reminder: AnalyticsReminderCopy,
+    ) : AnalyticsEvent
+
+    /**
+     * 사건 편집 화면이 내용을 불러와 보였다. 화면에 들어올 때마다 1회.
+     *
+     * [target] 은 고치러 연 사건이다. 새 사건이면 없다.
+     */
+    data class TimelineEventEditorOpened(
+        val mode: AnalyticsEditorMode,
+        val target: AnalyticsTimelineEventTarget?,
+        val recordState: AnalyticsTimelineState,
+        val recordDate: LocalDate,
+    ) : AnalyticsEvent
+
+    /**
+     * 사건 편집 화면을 떠났다. 화면에 들어올 때마다 1회 — 나가는 방법이 확정된 시점이다.
+     *
+     * [stayMs] 는 화면이 보인 뒤 떠날 때까지 걸린 시간이다.
+     */
+    data class TimelineEventEditorClosed(
+        val mode: AnalyticsEditorMode,
+        val exitResult: AnalyticsEditorExitResult,
+        val stayMs: Long,
+        val target: AnalyticsTimelineEventTarget?,
+        val recordDate: LocalDate,
+    ) : AnalyticsEvent
+
+    /** 크레딧 화면으로 보냈다. [remainingCredits] 는 그때 기억해 둔 잔액이고, 아직 모르면 없다. */
+    data class CreditScreenOpened(
+        val entryPoint: AnalyticsCreditEntryPoint,
+        val remainingCredits: Int?,
+    ) : AnalyticsEvent
+
+    /** 충전 상품 줄을 눌렀다. 누를 때마다. [packageAmount] 는 그 상품의 크레딧 수다. */
+    data class CreditPackageClicked(
+        val packageAmount: Int,
+        val billingState: AnalyticsBillingState,
+    ) : AnalyticsEvent
 }
