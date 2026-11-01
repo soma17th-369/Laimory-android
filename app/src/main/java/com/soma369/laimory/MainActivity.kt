@@ -37,6 +37,7 @@ import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.settings.AppThemeMode
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -248,7 +249,10 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         AppUpdateGateHost(
                             state = gateState,
-                            onUpdateClick = { StoreLink.open(context) },
+                            onUpdateClick = {
+                                lifecycleScope.launch { appUpdateGate.onForcedUpdateClicked() }
+                                StoreLink.open(context)
+                            },
                         ) {
                             CompositionLocalProvider(LocalAuthorizationLauncher provides authorizationLauncher) {
                                 LaimoryNavGraph(
@@ -279,11 +283,17 @@ class MainActivity : ComponentActivity() {
                         AppUpdateHost(
                             version = recommendation,
                             isGlobalDialogVisible = activeDialog != null,
-                            onLater = { version -> lifecycleScope.launch { appUpdateGate.dismissRecommendation(version) } },
+                            onShown = { version -> lifecycleScope.launch { appUpdateGate.onRecommendationShown(version) } },
+                            onLater = { version ->
+                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version, AnalyticsUpdatePromptAction.LATER) }
+                            },
+                            onDismiss = { version ->
+                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version, AnalyticsUpdatePromptAction.DISMISS) }
+                            },
                             onUpdate = { version ->
                                 // 스토어로 떠난 것도 그 버전을 미룬 것으로 본다. 업데이트하지 않고
                                 // 돌아올 때마다 다시 뜨면 반복이 심하다.
-                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version) }
+                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version, AnalyticsUpdatePromptAction.UPDATE) }
                                 StoreLink.open(context)
                             },
                         )

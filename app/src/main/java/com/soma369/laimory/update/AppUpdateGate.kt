@@ -1,6 +1,10 @@
 package com.soma369.laimory.update
 
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.model.IntroInfo
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptType
 import com.soma369.laimory.core.domain.model.update.AppUpdateRequirement
 import com.soma369.laimory.core.domain.model.update.hides
 import com.soma369.laimory.core.domain.repository.AppUpdateRepository
@@ -37,6 +41,7 @@ class AppUpdateGate
         private val appUpdateRepository: AppUpdateRepository,
         private val clock: Clock,
         @InstalledVersionCode private val installedVersion: Int,
+        private val analyticsHelper: AnalyticsHelper,
     ) {
         private val _state = MutableStateFlow(AppUpdateGateState.CHECKING)
 
@@ -51,6 +56,12 @@ class AppUpdateGate
         /** 동시에 들어온 확인을 하나로 합친다. 콜드 스타트와 포그라운드 복귀가 겹칠 수 있다. */
         private val mutex = Mutex()
         private var lastAttemptAt: Instant? = null
+
+        /** 막을 때 쓴 하한선. 강제 안내의 행동을 보낼 때 대상 버전으로 싣는다. */
+        private var forcedTargetVersion: Int? = null
+
+        /** 이 프로세스에서 강제 안내를 이미 보냈는지. 포그라운드 복귀마다 다시 막아도 한 번만 센다. */
+        private var forcedViewedLogged = false
 
         /**
          * 마지막 시도로부터 [REFRESH_INTERVAL] 이 지났으면 다시 확인한다.
@@ -76,14 +87,39 @@ class AppUpdateGate
             }
         }
 
+        /** 권장 안내 다이얼로그가 보였다. 전역 Dialog 에 밀렸다가 다시 보여도 보일 때마다 센다. */
+        suspend fun onRecommendationShown(version: Int) {
+            analyticsHelper.log(AnalyticsEvent.UpdatePromptViewed(AnalyticsUpdatePromptType.RECOMMENDED, installedVersion, version))
+        }
+
+        /** 강제 안내에서 `업데이트하기` 를 눌렀다. 스토어로 가는 것은 화면이 맡는다. */
+        suspend fun onForcedUpdateClicked() {
+            val target = forcedTargetVersion ?: return
+            analyticsHelper.log(
+                AnalyticsEvent.UpdatePromptAction(
+                    AnalyticsUpdatePromptType.FORCED,
+                    AnalyticsUpdatePromptAction.UPDATE,
+                    installedVersion,
+                    target,
+                ),
+            )
+        }
+
         /**
-         * 사용자가 `나중에` 를 누르거나 스토어로 떠난 경우. 그 버전을 24시간 미룬다.
+         * 사용자가 `나중에` 를 누르거나, 바깥 터치 · 뒤로 가기로 닫거나, 스토어로 떠난 경우. 그 버전을 24시간 미룬다.
+         * 어느 쪽이었는지는 [action] 으로 받아 분석에만 쓴다 — 미루는 규칙은 셋이 같다.
          *
          * **저장에 실패해도 안내는 닫는다.** 저장 공간이 부족해 기록을 남기지 못했다고 사용자가
          * 누른 버튼이 듣지 않으면, 앱을 쓰려고 눌렀는데 아무 일도 일어나지 않는 자리가 된다.
          * 기록이 없으면 다음 실행에서 한 번 더 뜰 뿐이다.
          */
-        suspend fun dismissRecommendation(version: Int) {
+        suspend fun dismissRecommendation(
+            version: Int,
+            action: AnalyticsUpdatePromptAction,
+        ) {
+            analyticsHelper.log(
+                AnalyticsEvent.UpdatePromptAction(AnalyticsUpdatePromptType.RECOMMENDED, action, installedVersion, version),
+            )
             try {
                 appUpdateRepository.dismissRecommendation(version = version, at = clock.instant())
             } catch (e: CancellationException) {
@@ -102,6 +138,14 @@ class AppUpdateGate
                 AppUpdateRequirement.Forced -> {
                     _state.value = AppUpdateGateState.BLOCKED
                     _recommendation.value = null
+                    forcedTargetVersion = info.minAppVersion
+                    // 막는 순간 강제 화면이 그려진다. 게이트가 NavGraph 를 감싸고 있어 다른 화면이 끼어들지 않는다.
+                    if (!forcedViewedLogged) {
+                        forcedViewedLogged = true
+                        analyticsHelper.log(
+                            AnalyticsEvent.UpdatePromptViewed(AnalyticsUpdatePromptType.FORCED, installedVersion, info.minAppVersion),
+                        )
+                    }
                 }
                 is AppUpdateRequirement.Recommended -> {
                     _state.value = AppUpdateGateState.OPEN
