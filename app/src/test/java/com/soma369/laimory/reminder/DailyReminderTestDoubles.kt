@@ -71,15 +71,22 @@ class RecordingAlarms : DailyReminderAlarms {
     var scheduledTime: LocalTime? = null
         private set
 
+    /** 마지막 예약이 오늘 몫을 따라잡았는지. */
+    var lastCatchUpToday: Boolean = false
+        private set
+
     override fun schedule(
         time: LocalTime,
         deliveredRecordDate: LocalDate?,
+        catchUpToday: Boolean,
     ) {
         scheduledTime = time
+        lastCatchUpToday = catchUpToday
     }
 
     override fun cancel() {
         scheduledTime = null
+        lastCatchUpToday = false
     }
 }
 
