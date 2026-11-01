@@ -1,13 +1,18 @@
 package com.soma369.laimory.core.data.analytics
 
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsBillingState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCompletionOutcome
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateResult
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorExitResult
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEditorMode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEventField
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsLaunchState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingAction
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEligibility
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingEntryMode
@@ -16,13 +21,19 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsOnboardingVersio
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushDelivery
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsReadyTrigger
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordAgeBucket
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsReminderCopy
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsReminderKind
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
 import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.analytics.InstallCampaign
@@ -229,6 +240,74 @@ class AnalyticsEventMapperTest {
                         "utm_content",
                         "utm_id",
                     ),
+                ),
+                Expectation(
+                    AnalyticsEvent.UpdatePromptViewed(AnalyticsUpdatePromptType.FORCED, installedVersionCode = 8, targetVersionCode = 9),
+                    "update_prompt_viewed",
+                    setOf("prompt_type"),
+                    setOf("installed_version_code", "target_version_code"),
+                ),
+                Expectation(
+                    updatePromptAction(),
+                    "update_prompt_action",
+                    setOf("prompt_type", "action"),
+                    setOf("installed_version_code", "target_version_code"),
+                ),
+                Expectation(
+                    pushOpened(),
+                    "push_opened",
+                    setOf("push_type", "delivery", "launch_state"),
+                ),
+                Expectation(
+                    pushOpened(AnalyticsPushType.DAILY_REMINDER, AnalyticsPushDelivery.LOCAL, reminder = generalReminder),
+                    "push_opened",
+                    setOf("push_type", "delivery", "launch_state", "reminder_kind", "reminder_title"),
+                ),
+                Expectation(
+                    AnalyticsEvent.PushShown(AnalyticsPushType.DAILY_REMINDER, AnalyticsPushDelivery.LOCAL, generalReminder),
+                    "push_shown",
+                    setOf("push_type", "delivery", "reminder_kind", "reminder_title"),
+                ),
+                Expectation(
+                    editorOpened(),
+                    "timeline_event_editor_opened",
+                    setOf("editor_mode", "event_type", "record_state"),
+                    setOf("event_id", "record_date"),
+                ),
+                Expectation(
+                    editorOpened(AnalyticsEditorMode.CREATE, target = null),
+                    "timeline_event_editor_opened",
+                    setOf("editor_mode", "record_state"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    editorClosed(),
+                    "timeline_event_editor_closed",
+                    setOf("editor_mode", "exit_result"),
+                    setOf("stay_ms", "event_id", "record_date"),
+                ),
+                Expectation(
+                    editorClosed(AnalyticsEditorMode.CREATE, target = null),
+                    "timeline_event_editor_closed",
+                    setOf("editor_mode", "exit_result"),
+                    setOf("stay_ms", "record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.CreditScreenOpened(AnalyticsCreditEntryPoint.SETTINGS, remainingCredits = 3),
+                    "credit_screen_opened",
+                    setOf("entry_point"),
+                    setOf("remaining_credits"),
+                ),
+                Expectation(
+                    AnalyticsEvent.CreditScreenOpened(AnalyticsCreditEntryPoint.DRAFT_LOADING_CHARGE, remainingCredits = null),
+                    "credit_screen_opened",
+                    setOf("entry_point"),
+                ),
+                Expectation(
+                    AnalyticsEvent.CreditPackageClicked(packageAmount = 10, AnalyticsBillingState.COMING_SOON),
+                    "credit_package_clicked",
+                    setOf("billing_state"),
+                    setOf("package_amount"),
                 ),
             )
 
@@ -642,6 +721,181 @@ class AnalyticsEventMapperTest {
             AnalyticsOnboardingAction.entries,
             "action",
         ) { stepAction(action = it) }
+
+    @Test
+    fun `업데이트 안내에 설치 버전과 대상 버전을 versionCode 로 싣는다`() {
+        val payload = updatePromptAction().toPayload()
+
+        assertEquals(8L, payload.counts["installed_version_code"])
+        assertEquals(9L, payload.counts["target_version_code"])
+    }
+
+    @Test
+    fun `업데이트 안내 종류 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsUpdatePromptType.FORCED to "forced",
+                AnalyticsUpdatePromptType.RECOMMENDED to "recommended",
+            ),
+            AnalyticsUpdatePromptType.entries,
+            "prompt_type",
+        ) { updatePromptAction(promptType = it) }
+
+    @Test
+    fun `업데이트 안내 행동 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsUpdatePromptAction.UPDATE to "update",
+                AnalyticsUpdatePromptAction.LATER to "later",
+                AnalyticsUpdatePromptAction.DISMISS to "dismiss",
+            ),
+            AnalyticsUpdatePromptAction.entries,
+            "action",
+        ) { updatePromptAction(action = it) }
+
+    @Test
+    fun `로컬 리마인더 열람에는 문구 종류와 알림 제목을 그대로 싣는다`() {
+        val payload =
+            pushOpened(AnalyticsPushType.DAILY_REMINDER, AnalyticsPushDelivery.LOCAL, reminder = generalReminder).toPayload()
+
+        assertEquals("general", payload.strings["reminder_kind"])
+        assertEquals("오늘 하루 어때나요?", payload.strings["reminder_title"])
+    }
+
+    @Test
+    fun `알림 종류 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsPushType.TIMELINE_COMPLETION_SUCCESS to "timeline_completion_success",
+                AnalyticsPushType.TIMELINE_COMPLETION_FAILED to "timeline_completion_failed",
+                AnalyticsPushType.DAILY_REMINDER to "daily_reminder",
+                AnalyticsPushType.UNKNOWN to "unknown",
+            ),
+            AnalyticsPushType.entries,
+            "push_type",
+        ) { pushOpened(pushType = it) }
+
+    @Test
+    fun `알림을 띄운 주체 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsPushDelivery.FCM to "fcm",
+                AnalyticsPushDelivery.LOCAL to "local",
+            ),
+            AnalyticsPushDelivery.entries,
+            "delivery",
+        ) { pushOpened(delivery = it) }
+
+    @Test
+    fun `앱이 열린 방식 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsLaunchState.COLD to "cold",
+                AnalyticsLaunchState.WARM to "warm",
+            ),
+            AnalyticsLaunchState.entries,
+            "launch_state",
+        ) { pushOpened(launchState = it) }
+
+    @Test
+    fun `리마인더 문구 종류 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsReminderKind.GENERAL to "general",
+                AnalyticsReminderKind.COMPLETED to "completed",
+            ),
+            AnalyticsReminderKind.entries,
+            "reminder_kind",
+        ) { AnalyticsEvent.PushShown(AnalyticsPushType.DAILY_REMINDER, AnalyticsPushDelivery.LOCAL, AnalyticsReminderCopy(it, "제목")) }
+
+    @Test
+    fun `편집 화면 이탈에 머문 시간과 사건 값을 싣는다`() {
+        val payload = editorClosed().toPayload()
+
+        assertEquals(4_200L, payload.counts["stay_ms"])
+        assertEquals(42L, payload.counts["event_id"])
+        assertEquals("saved", payload.strings["exit_result"])
+    }
+
+    @Test
+    fun `편집 화면 방식 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsEditorMode.EDIT to "edit",
+                AnalyticsEditorMode.CREATE to "create",
+            ),
+            AnalyticsEditorMode.entries,
+            "editor_mode",
+        ) { editorOpened(mode = it) }
+
+    @Test
+    fun `편집 화면 이탈 결과 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsEditorExitResult.SAVED to "saved",
+                AnalyticsEditorExitResult.DELETED to "deleted",
+                AnalyticsEditorExitResult.UNCHANGED to "unchanged",
+                AnalyticsEditorExitResult.DISCARDED to "discarded",
+            ),
+            AnalyticsEditorExitResult.entries,
+            "exit_result",
+        ) { editorClosed(exitResult = it) }
+
+    @Test
+    fun `크레딧 화면 진입 경로 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsCreditEntryPoint.SETTINGS to "settings",
+                AnalyticsCreditEntryPoint.CREATE_CONFIRM_CHARGE to "create_confirm_charge",
+                AnalyticsCreditEntryPoint.CREATE_CONFIRM_BALANCE to "create_confirm_balance",
+                AnalyticsCreditEntryPoint.DRAFT_LOADING_CHARGE to "draft_loading_charge",
+            ),
+            AnalyticsCreditEntryPoint.entries,
+            "entry_point",
+        ) { AnalyticsEvent.CreditScreenOpened(it, remainingCredits = 3) }
+
+    @Test
+    fun `충전 상품 클릭에 상품 크레딧 수를 싣는다`() {
+        val payload = AnalyticsEvent.CreditPackageClicked(packageAmount = 10, AnalyticsBillingState.COMING_SOON).toPayload()
+
+        assertEquals(10L, payload.counts["package_amount"])
+    }
+
+    @Test
+    fun `결제 가능 상태 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsBillingState.COMING_SOON to "coming_soon",
+                AnalyticsBillingState.AVAILABLE to "available",
+            ),
+            AnalyticsBillingState.entries,
+            "billing_state",
+        ) { AnalyticsEvent.CreditPackageClicked(packageAmount = 10, it) }
+
+    private val generalReminder = AnalyticsReminderCopy(AnalyticsReminderKind.GENERAL, "오늘 하루 어때나요?")
+
+    private fun updatePromptAction(
+        promptType: AnalyticsUpdatePromptType = AnalyticsUpdatePromptType.RECOMMENDED,
+        action: AnalyticsUpdatePromptAction = AnalyticsUpdatePromptAction.LATER,
+    ) = AnalyticsEvent.UpdatePromptAction(promptType, action, installedVersionCode = 8, targetVersionCode = 9)
+
+    private fun pushOpened(
+        pushType: AnalyticsPushType = AnalyticsPushType.TIMELINE_COMPLETION_SUCCESS,
+        delivery: AnalyticsPushDelivery = AnalyticsPushDelivery.FCM,
+        launchState: AnalyticsLaunchState = AnalyticsLaunchState.COLD,
+        reminder: AnalyticsReminderCopy? = null,
+    ) = AnalyticsEvent.PushOpened(pushType, delivery, launchState, reminder)
+
+    private fun editorOpened(
+        mode: AnalyticsEditorMode = AnalyticsEditorMode.EDIT,
+        target: AnalyticsTimelineEventTarget? = this.target,
+    ) = AnalyticsEvent.TimelineEventEditorOpened(mode, target, AnalyticsTimelineState.SAVED, date)
+
+    private fun editorClosed(
+        mode: AnalyticsEditorMode = AnalyticsEditorMode.EDIT,
+        exitResult: AnalyticsEditorExitResult = AnalyticsEditorExitResult.SAVED,
+        target: AnalyticsTimelineEventTarget? = this.target,
+    ) = AnalyticsEvent.TimelineEventEditorClosed(mode, exitResult, stayMs = 4_200L, target, date)
 
     private fun stepViewed(
         entryMode: AnalyticsOnboardingEntryMode = AnalyticsOnboardingEntryMode.INITIAL,

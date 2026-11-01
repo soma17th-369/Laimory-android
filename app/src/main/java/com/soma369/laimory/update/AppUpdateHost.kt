@@ -1,6 +1,7 @@
 package com.soma369.laimory.update
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import com.soma369.laimory.core.ui.component.LaimoryDialog
 import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
 
@@ -16,15 +17,22 @@ import com.soma369.laimory.core.ui.component.LaimoryDialogButtons
  *
  * @param version 안내할 권장 버전. `null` 이면 안내할 것이 없다.
  * @param isGlobalDialogVisible 전역 Dialog 표시 여부.
+ * @param onShown 다이얼로그가 보였다. 전역 Dialog 에 밀렸다가 다시 보이면 다시 불린다.
+ * @param onLater `나중에` 를 눌렀다.
+ * @param onDismiss 바깥을 누르거나 뒤로 가서 닫았다. 미루는 결과는 [onLater] 와 같고, 분석에서만 나눈다.
  */
 @Composable
 fun AppUpdateHost(
     version: Int?,
     isGlobalDialogVisible: Boolean,
+    onShown: (Int) -> Unit,
     onLater: (Int) -> Unit,
+    onDismiss: (Int) -> Unit,
     onUpdate: (Int) -> Unit,
 ) {
     if (version == null || isGlobalDialogVisible) return
+
+    LaunchedEffect(version) { onShown(version) }
 
     LaimoryDialog(
         title = "새 버전이 나왔어요",
@@ -38,6 +46,6 @@ fun AppUpdateHost(
             ),
         // 바깥을 누르거나 뒤로 가는 것도 미루는 것으로 본다. 강제와 달리 지금 처리하지 않아도
         // 되는 안내라, 닫는 방법마다 결과가 달라지면 오히려 다시 뜨는 규칙을 알 수 없다.
-        onDismissRequest = { onLater(version) },
+        onDismissRequest = { onDismiss(version) },
     )
 }

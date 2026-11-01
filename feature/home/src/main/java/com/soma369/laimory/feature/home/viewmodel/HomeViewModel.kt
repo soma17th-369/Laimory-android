@@ -11,6 +11,7 @@ import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.helper.NetworkConnectionChecker
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreateStopReason
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
@@ -405,7 +406,8 @@ class HomeViewModel
                 HomeUiIntent.CreateDraft -> prepareDraftConsent()
                 HomeUiIntent.ConfirmCreateDraft -> confirmCreateDraft()
                 HomeUiIntent.DismissCreateConfirm -> dismissCreateConfirm()
-                HomeUiIntent.ChargeCredits, HomeUiIntent.OpenCredits -> openCredits()
+                HomeUiIntent.ChargeCredits -> openCredits(AnalyticsCreditEntryPoint.CREATE_CONFIRM_CHARGE)
+                HomeUiIntent.OpenCredits -> openCredits(AnalyticsCreditEntryPoint.CREATE_CONFIRM_BALANCE)
                 HomeUiIntent.PickPhotosForCreate -> pickPhotosForCreate()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 is HomeUiIntent.PickRecommendedDate -> pickRecommendedDate(intent.date)
@@ -1511,10 +1513,14 @@ class HomeViewModel
         /**
          * 확인 다이얼로그에서 크레딧 화면으로 간다 — 크레딧 줄, 또는 크레딧이 모자랄 때 `만들기` 자리에 오는 `충전하러 가기`.
          * 다이얼로그를 닫는다. 만들지 않았으니 취소와 같게 정리한다. 충전 자체는 아직 열지 않아 그 화면이 준비 중이라고 알린다.
+         *
+         * 잔액은 다이얼로그가 보여 준 값을 싣는다 — 닫으면 사라지므로 닫기 전에 읽는다.
          */
-        private suspend fun openCredits() {
+        private suspend fun openCredits(entryPoint: AnalyticsCreditEntryPoint) {
             if (confirmedSubmission == null) return
+            val remainingCredits = state.value.createConfirm?.credit?.remaining
             dismissCreateConfirm()
+            analyticsHelper.log(AnalyticsEvent.CreditScreenOpened(entryPoint, remainingCredits))
             navigationHelper.navigateTo(CreditPage)
         }
 

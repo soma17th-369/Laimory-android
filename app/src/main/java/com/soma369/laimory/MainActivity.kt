@@ -34,9 +34,15 @@ import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.HomeOverlayTurn
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.GlobalLoadingHelper
 import com.soma369.laimory.core.domain.helper.SocialLoginCallbackHandler
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsLaunchState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushDelivery
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushType
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
 import com.soma369.laimory.core.domain.model.auth.AuthSessionState
 import com.soma369.laimory.core.domain.model.settings.AppThemeMode
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
@@ -58,6 +64,8 @@ import com.soma369.laimory.notice.PopupNoticeHost
 import com.soma369.laimory.notice.PopupNoticeQueue
 import com.soma369.laimory.push.DraftCompletionPushHandler
 import com.soma369.laimory.push.DraftCompletionSignalParser
+import com.soma369.laimory.push.DraftCompletionStatus
+import com.soma369.laimory.push.ServerDailyReminderTap
 import com.soma369.laimory.reminder.DailyReminderTap
 import com.soma369.laimory.ui.GlobalUiHost
 import com.soma369.laimory.update.AppUpdateGate
@@ -116,6 +124,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var appUpdateGate: AppUpdateGate
+
+    @Inject
+    lateinit var analyticsHelper: AnalyticsHelper
 
     @Inject
     lateinit var popupNoticeQueue: PopupNoticeQueue
@@ -200,8 +211,11 @@ class MainActivity : ComponentActivity() {
         // 이전 상태 없이 만들어졌으면 앱을 새로 켠 것이다. 프로세스는 위치 수집 서비스로 살아 있을 수 있어 화면으로 본다.
         if (savedInstanceState == null) popupNoticeQueue.onAppLaunched()
         consumeSocialLoginCallback(intent)
-        consumeDraftCompletionNotification(intent)
-        consumeDailyReminderNotification(intent)
+        // 저장된 상태로 되살린 화면은 앱을 새로 켠 것이 아니다.
+        val launchState = if (savedInstanceState == null) AnalyticsLaunchState.COLD else AnalyticsLaunchState.WARM
+        consumeDraftCompletionNotification(intent, launchState)
+        consumeDailyReminderNotification(intent, launchState)
+        consumeServerDailyReminderNotification(intent, launchState)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
         // 다이얼로그는 거부되기 쉽고, 한 번 거부하면 다시 물을 기회가 사실상 없다.
         // 요청은 온보딩의 알림 장 CTA 가 맡는다.
@@ -248,7 +262,10 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         AppUpdateGateHost(
                             state = gateState,
-                            onUpdateClick = { StoreLink.open(context) },
+                            onUpdateClick = {
+                                lifecycleScope.launch { appUpdateGate.onForcedUpdateClicked() }
+                                StoreLink.open(context)
+                            },
                         ) {
                             CompositionLocalProvider(LocalAuthorizationLauncher provides authorizationLauncher) {
                                 LaimoryNavGraph(
@@ -279,11 +296,17 @@ class MainActivity : ComponentActivity() {
                         AppUpdateHost(
                             version = recommendation,
                             isGlobalDialogVisible = activeDialog != null,
-                            onLater = { version -> lifecycleScope.launch { appUpdateGate.dismissRecommendation(version) } },
+                            onShown = { version -> lifecycleScope.launch { appUpdateGate.onRecommendationShown(version) } },
+                            onLater = { version ->
+                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version, AnalyticsUpdatePromptAction.LATER) }
+                            },
+                            onDismiss = { version ->
+                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version, AnalyticsUpdatePromptAction.DISMISS) }
+                            },
                             onUpdate = { version ->
                                 // 스토어로 떠난 것도 그 버전을 미룬 것으로 본다. 업데이트하지 않고
                                 // 돌아올 때마다 다시 뜨면 반복이 심하다.
-                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version) }
+                                lifecycleScope.launch { appUpdateGate.dismissRecommendation(version, AnalyticsUpdatePromptAction.UPDATE) }
                                 StoreLink.open(context)
                             },
                         )
@@ -329,8 +352,9 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         consumeSocialLoginCallback(intent)
-        consumeDraftCompletionNotification(intent)
-        consumeDailyReminderNotification(intent)
+        consumeDraftCompletionNotification(intent, AnalyticsLaunchState.WARM)
+        consumeDailyReminderNotification(intent, AnalyticsLaunchState.WARM)
+        consumeServerDailyReminderNotification(intent, AnalyticsLaunchState.WARM)
     }
 
     /**
@@ -418,13 +442,23 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun consumeDraftCompletionNotification(intent: Intent) {
+    private fun consumeDraftCompletionNotification(
+        intent: Intent,
+        launchState: AnalyticsLaunchState,
+    ) {
         val taskId = intent.getStringExtra(DraftCompletionSignalParser.TASK_ID_KEY)
         val status = intent.getStringExtra(DraftCompletionSignalParser.STATUS_KEY)
         if (taskId == null && status == null) return
         intent.removeExtra(DraftCompletionSignalParser.TASK_ID_KEY)
         intent.removeExtra(DraftCompletionSignalParser.STATUS_KEY)
         setIntent(intent)
+        val pushType =
+            when (DraftCompletionSignalParser.parse(taskId, status)?.status) {
+                DraftCompletionStatus.SUCCESS -> AnalyticsPushType.TIMELINE_COMPLETION_SUCCESS
+                DraftCompletionStatus.FAILED -> AnalyticsPushType.TIMELINE_COMPLETION_FAILED
+                null -> AnalyticsPushType.UNKNOWN
+            }
+        logPushOpened(AnalyticsEvent.PushOpened(pushType, AnalyticsPushDelivery.FCM, launchState))
         lifecycleScope.launch {
             if (!draftCompletionPushHandler.onNotificationOpened(taskId, status)) return@launch
             // 알림 처리 화면으로 뒤로 돌아오지 않도록 홈을 루트로 세운다.
@@ -462,9 +496,16 @@ class MainActivity : ComponentActivity() {
      * 일반 문구는 홈, 완료 문구는 그날 타임라인이다. 알림 처리 화면으로 뒤로 돌아오지 않도록 홈을 루트로 세운다.
      * 로그인이 풀린 채 눌렀으면 앱 시작 게이트에 맡긴다.
      */
-    private fun consumeDailyReminderNotification(intent: Intent) {
+    private fun consumeDailyReminderNotification(
+        intent: Intent,
+        launchState: AnalyticsLaunchState,
+    ) {
         val destination = DailyReminderTap.consume(intent) ?: return
         setIntent(intent)
+        // 로그인이 풀린 채 눌렀어도 센다. 연 것은 알림의 효과이고, 어디로 가는지는 그다음 문제다.
+        logPushOpened(
+            AnalyticsEvent.PushOpened(AnalyticsPushType.DAILY_REMINDER, AnalyticsPushDelivery.LOCAL, launchState, destination.copy),
+        )
         lifecycleScope.launch {
             val session = observeAuthSession().first { state -> state != AuthSessionState.Loading }
             if (session != AuthSessionState.Authenticated) return@launch
@@ -473,6 +514,20 @@ class MainActivity : ComponentActivity() {
                 navigationHelper.navigateTo(TimelinePage(recordDate, AnalyticsEntryPoint.DAILY_REMINDER))
             }
         }
+    }
+
+    /** 서버가 보낸 일일 리마인더 FCM 을 눌러 들어왔으면 센다. 화면은 따로 옮기지 않는다([ServerDailyReminderTap]). */
+    private fun consumeServerDailyReminderNotification(
+        intent: Intent,
+        launchState: AnalyticsLaunchState,
+    ) {
+        if (!ServerDailyReminderTap.consume(intent)) return
+        setIntent(intent)
+        logPushOpened(AnalyticsEvent.PushOpened(AnalyticsPushType.DAILY_REMINDER, AnalyticsPushDelivery.FCM, launchState))
+    }
+
+    private fun logPushOpened(event: AnalyticsEvent.PushOpened) {
+        lifecycleScope.launch { analyticsHelper.log(event) }
     }
 
     private companion object {

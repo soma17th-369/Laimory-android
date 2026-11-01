@@ -86,14 +86,24 @@ class RecordingAlarms : DailyReminderAlarms {
 class RecordingNotifications : DailyReminderNotifications {
     val posted = mutableListOf<DailyReminderCopy>()
 
+    /** 기기가 알림을 띄울 수 있는지. 끄면 [notify] 가 아무것도 하지 않고 `false`. */
+    var canPost = true
+
     override fun pickGeneral(lastIndex: Int?) = DailyReminderCopy.General(0)
 
     override fun pickCompleted(lastIndex: Int?) = DailyReminderCopy.Completed(0)
+
+    override fun titleOf(copy: DailyReminderCopy): String =
+        when (copy) {
+            is DailyReminderCopy.General -> "일반 ${copy.index}"
+            is DailyReminderCopy.Completed -> "완료 ${copy.index}"
+        }
 
     override fun notify(
         copy: DailyReminderCopy,
         recordDate: LocalDate,
     ): Boolean {
+        if (!canPost) return false
         posted += copy
         return true
     }

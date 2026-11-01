@@ -11,7 +11,7 @@ sealed interface CreditUiIntent : UiIntent {
     /**
      * 충전 상품 한 줄을 눌렀다. 충전은 아직 열지 않아 안내만 한다.
      *
-     * @param amount 누른 상품의 크레딧 개수. 수요 측정 이벤트를 붙일 때 그대로 쓴다.
+     * @param amount 누른 상품의 크레딧 개수. 수요 측정 이벤트에 그대로 싣는다.
      */
     data class PackageClicked(
         val amount: Int,

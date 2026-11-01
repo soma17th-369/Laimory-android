@@ -1,9 +1,13 @@
 package com.soma369.laimory.update
 
+import com.soma369.laimory.analytics.RecordingAnalyticsHelper
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.message.UserMessage
 import com.soma369.laimory.core.domain.model.IntroInfo
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptType
 import com.soma369.laimory.core.domain.model.update.DismissedRecommendation
 import com.soma369.laimory.core.domain.repository.AppUpdateRepository
 import com.soma369.laimory.core.domain.repository.IntroRepository
@@ -31,6 +35,7 @@ class AppUpdateGateTest {
     private val introRepository = FakeIntroRepository()
     private val updateRepository = FakeAppUpdateRepository()
     private val clock = TestClock(NOW)
+    private val analytics = RecordingAnalyticsHelper()
 
     @Test
     fun `하한선 미만이면 막는다`() =
@@ -177,7 +182,7 @@ class AppUpdateGateTest {
             assertEquals(7, gate.recommendation.value)
 
             updateRepository.writeFailure = IOException("no space left")
-            gate.dismissRecommendation(version = 7)
+            gate.dismissRecommendation(version = 7, AnalyticsUpdatePromptAction.LATER)
 
             assertNull(gate.recommendation.value)
         }
@@ -203,10 +208,76 @@ class AppUpdateGateTest {
             gate.refreshIfStale()
             assertEquals(7, gate.recommendation.value)
 
-            gate.dismissRecommendation(version = 7)
+            gate.dismissRecommendation(version = 7, AnalyticsUpdatePromptAction.LATER)
 
             assertNull(gate.recommendation.value)
             assertEquals(DismissedRecommendation(version = 7, at = NOW), updateRepository.dismissed)
+        }
+
+    @Test
+    fun `강제 안내는 다시 막아도 프로세스당 한 번만 보였다고 센다`() =
+        runTest {
+            introRepository.info = IntroInfo(minAppVersion = 5, recommendAppVersion = 5, debugTestMessage = "")
+            val gate = createGate(installedVersion = 4)
+
+            gate.refreshIfStale()
+            advanceClock(Duration.ofHours(2))
+            gate.refreshIfStale()
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.UpdatePromptViewed(AnalyticsUpdatePromptType.FORCED, installedVersionCode = 4, targetVersionCode = 5),
+                ),
+                analytics.logged,
+            )
+        }
+
+    @Test
+    fun `강제 안내의 업데이트는 하한선을 대상 버전으로 싣는다`() =
+        runTest {
+            introRepository.info = IntroInfo(minAppVersion = 5, recommendAppVersion = 6, debugTestMessage = "")
+            val gate = createGate(installedVersion = 4)
+            gate.refreshIfStale()
+
+            gate.onForcedUpdateClicked()
+
+            assertEquals(
+                AnalyticsEvent.UpdatePromptAction(
+                    AnalyticsUpdatePromptType.FORCED,
+                    AnalyticsUpdatePromptAction.UPDATE,
+                    installedVersionCode = 4,
+                    targetVersionCode = 5,
+                ),
+                analytics.logged.last(),
+            )
+        }
+
+    @Test
+    fun `권장 안내는 보일 때와 고를 때 권장 버전을 싣는다`() =
+        runTest {
+            introRepository.info = IntroInfo(minAppVersion = 1, recommendAppVersion = 7, debugTestMessage = "")
+            val gate = createGate(installedVersion = 6)
+            gate.refreshIfStale()
+
+            gate.onRecommendationShown(version = 7)
+            gate.dismissRecommendation(version = 7, AnalyticsUpdatePromptAction.DISMISS)
+
+            assertEquals(
+                listOf(
+                    AnalyticsEvent.UpdatePromptViewed(
+                        AnalyticsUpdatePromptType.RECOMMENDED,
+                        installedVersionCode = 6,
+                        targetVersionCode = 7,
+                    ),
+                    AnalyticsEvent.UpdatePromptAction(
+                        AnalyticsUpdatePromptType.RECOMMENDED,
+                        AnalyticsUpdatePromptAction.DISMISS,
+                        installedVersionCode = 6,
+                        targetVersionCode = 7,
+                    ),
+                ),
+                analytics.logged,
+            )
         }
 
     private fun createGate(installedVersion: Int) =
@@ -215,6 +286,7 @@ class AppUpdateGateTest {
             appUpdateRepository = updateRepository,
             clock = clock,
             installedVersion = installedVersion,
+            analyticsHelper = analytics,
         )
 
     private fun advanceClock(duration: Duration) {

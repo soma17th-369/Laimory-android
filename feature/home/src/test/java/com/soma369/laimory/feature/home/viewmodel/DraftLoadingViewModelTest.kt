@@ -4,6 +4,8 @@ import androidx.lifecycle.viewModelScope
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
@@ -50,6 +52,7 @@ class DraftLoadingViewModelTest {
     private val loadingSessionStore = DraftLoadingSessionStore()
     private val submissionStore = DraftSubmissionStore()
     private val navigationHelper = RecordingNavigationHelper()
+    private val analyticsHelper = RecordingAnalyticsHelper()
     private var created: DraftLoadingViewModel? = null
 
     /**
@@ -270,6 +273,10 @@ class DraftLoadingViewModelTest {
 
             // 로딩 화면 위에 쌓으면 크레딧 화면에서 뒤로 갈 때 끝난 로딩 화면이 다시 보인다.
             assertEquals(listOf<Any>(BACK, CreditPage), navigationHelper.moves)
+            assertEquals(
+                listOf(AnalyticsEvent.CreditScreenOpened(AnalyticsCreditEntryPoint.DRAFT_LOADING_CHARGE, remainingCredits = null)),
+                analyticsHelper.logged,
+            )
             // 안내를 본 것이므로 돌아간 홈이 같은 이유를 다시 알리지 않는다.
             assertTrue((submissionStore.submission.value as DraftSubmission.Failed).shownOnLoading)
         }
@@ -330,6 +337,7 @@ class DraftLoadingViewModelTest {
             loadingSessionStore = loadingSessionStore,
             submissionStore = submissionStore,
             navigationHelper = navigationHelper,
+            analyticsHelper = analyticsHelper,
             clock = clock,
             retentionConfig = SourceItemRetentionConfig(RETENTION_DAYS),
         ).also { created = it }

@@ -10,7 +10,9 @@ import com.soma369.laimory.core.domain.message.DialogActionStyle
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.tutorial.Tutorial
 import com.soma369.laimory.core.domain.model.user.AccountWithdrawalOutcome
@@ -126,6 +128,13 @@ class SettingsViewModel
          * 다시 받아 저장소에 넣는다. 보이던 숫자는 비우지 않는다 — 응답이 오면 조용히 바뀐다. 못 받으면 칸을 `-` 로 둔다(저장소가
          * 비운다). 이전 값을 남겨 두면 줄어든 뒤에도 옛 잔액이 보인다.
          */
+        private suspend fun openCredits() {
+            analyticsHelper.log(
+                AnalyticsEvent.CreditScreenOpened(AnalyticsCreditEntryPoint.SETTINGS, creditBalanceStore.balance.value.remaining),
+            )
+            navigationHelper.navigateTo(CreditPage)
+        }
+
         private fun refreshCredits() {
             val request = ++creditRequest
             val token = creditBalanceStore.beginRequest()
@@ -186,7 +195,7 @@ class SettingsViewModel
                 SettingsUiIntent.ReplayTimelineTutorial -> replayTimelineTutorial()
                 SettingsUiIntent.RefreshNoticeBadge -> refreshNoticeBadge()
                 SettingsUiIntent.RefreshCredits -> refreshCredits()
-                SettingsUiIntent.CreditsClicked -> navigationHelper.navigateTo(CreditPage)
+                SettingsUiIntent.CreditsClicked -> openCredits()
                 is SettingsUiIntent.LocationCollectionToggled -> setLocationTracking(intent.enabled)
                 SettingsUiIntent.LogoutClicked -> requestLogoutConfirm()
                 SettingsUiIntent.LogoutDismissed -> Unit

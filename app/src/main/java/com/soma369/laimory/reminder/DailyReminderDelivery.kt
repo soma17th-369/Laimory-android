@@ -1,6 +1,10 @@
 package com.soma369.laimory.reminder
 
 import com.soma369.laimory.core.domain.di.ApplicationCoroutineScope
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushDelivery
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsPushType
 import com.soma369.laimory.core.domain.repository.DailyReminderRepository
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
@@ -27,6 +31,7 @@ class DailyReminderDelivery
         private val repository: DailyReminderRepository,
         private val coordinator: DailyReminderCoordinator,
         private val notifier: DailyReminderNotifications,
+        private val analyticsHelper: AnalyticsHelper,
         @ApplicationCoroutineScope private val applicationScope: CoroutineScope,
     ) {
         /**
@@ -83,6 +88,14 @@ class DailyReminderDelivery
                 Logger.i(LogDomain.PUSH, "기기 알림이 꺼져 있어 일일 리마인더를 띄우지 못함")
                 return
             }
+            // 띄운 직후에 센다. 아래 기록 저장이 실패해도 알림은 이미 떴다.
+            analyticsHelper.log(
+                AnalyticsEvent.PushShown(
+                    AnalyticsPushType.DAILY_REMINDER,
+                    AnalyticsPushDelivery.LOCAL,
+                    copy.toAnalyticsCopy(notifier.titleOf(copy)),
+                ),
+            )
             repository.setLastDeliveredRecordDate(recordDate)
             when (copy) {
                 is DailyReminderCopy.General -> repository.setLastGeneralCopyIndex(copy.index)

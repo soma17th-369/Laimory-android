@@ -34,20 +34,23 @@ class DailyReminderNotifier
 
         override fun pickCompleted(lastIndex: Int?): DailyReminderCopy.Completed = picker.pickCompleted(completedCount, lastIndex)
 
+        override fun titleOf(copy: DailyReminderCopy): String =
+            when (copy) {
+                is DailyReminderCopy.General -> context.resources.getStringArray(R.array.daily_reminder_general_titles)[copy.index]
+                is DailyReminderCopy.Completed -> context.resources.getStringArray(R.array.daily_reminder_completed_titles)[copy.index]
+            }
+
         override fun notify(
             copy: DailyReminderCopy,
             recordDate: LocalDate,
         ): Boolean {
             if (!canPost()) return false
             val resources = context.resources
-            val (title, body) =
+            val title = titleOf(copy)
+            val body =
                 when (copy) {
-                    is DailyReminderCopy.General ->
-                        resources.getStringArray(R.array.daily_reminder_general_titles)[copy.index] to
-                            resources.getStringArray(R.array.daily_reminder_general_bodies)[copy.index]
-                    is DailyReminderCopy.Completed ->
-                        resources.getStringArray(R.array.daily_reminder_completed_titles)[copy.index] to
-                            resources.getStringArray(R.array.daily_reminder_completed_bodies)[copy.index]
+                    is DailyReminderCopy.General -> resources.getStringArray(R.array.daily_reminder_general_bodies)[copy.index]
+                    is DailyReminderCopy.Completed -> resources.getStringArray(R.array.daily_reminder_completed_bodies)[copy.index]
                 }
             val destinationDate = recordDate.takeIf { copy is DailyReminderCopy.Completed }
             val contentIntent =
@@ -57,6 +60,7 @@ class DailyReminderNotifier
                     DailyReminderTap.put(
                         Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         destinationDate,
+                        copy.toAnalyticsCopy(title),
                     ),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                 )
@@ -78,8 +82,17 @@ class DailyReminderNotifier
             }
         }
 
+        /**
+         * 지금 띄우면 사용자에게 보이는지.
+         *
+         * 앱 전체 알림이 켜져 있어도 **이 채널만** 끌 수 있다. 그때 `notify` 는 예외 없이 끝나지만 시스템이 보이지 않게
+         * 버리므로, 채널 중요도까지 본다 — 보이지 않은 알림을 띄웠다고 기록하면 다음 날 문구 선택과 표시 집계가 어긋난다.
+         */
         private fun canPost(): Boolean {
-            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+            val notificationManager = NotificationManagerCompat.from(context)
+            if (!notificationManager.areNotificationsEnabled()) return false
+            val channel = notificationManager.getNotificationChannelCompat(DailyReminderNotificationChannel.CHANNEL_ID)
+            if (channel?.importance == NotificationManagerCompat.IMPORTANCE_NONE) return false
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
             return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED

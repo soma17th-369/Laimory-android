@@ -1,7 +1,12 @@
 package com.soma369.laimory.feature.settings.viewmodel
 
 import com.soma369.laimory.core.domain.exception.ApiException
+import com.soma369.laimory.core.domain.helper.AnalyticsHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsBillingState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
+import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.credit.CreditCosts
 import com.soma369.laimory.core.domain.navigation.Page
 import com.soma369.laimory.core.domain.repository.CreditRepository
@@ -31,6 +36,7 @@ class CreditViewModelTest {
     private val repository = FakeCreditRepository()
     private val store = CreditBalanceStore()
     private val navigationHelper = RecordingNavigationHelper()
+    private val analyticsHelper = RecordingAnalyticsHelper()
 
     @Test
     fun `들어오면 잔액과 1개당 비용을 함께 보여 준다`() =
@@ -121,6 +127,7 @@ class CreditViewModelTest {
             viewModel.sendIntent(CreditUiIntent.PackageClicked(amount = 7))
 
             assertEquals(CreditUiSideEffect.ShowSnackbar("크레딧 충전은 준비 중이에요"), viewModel.sideEffect.first())
+            assertEquals(listOf(AnalyticsEvent.CreditPackageClicked(7, AnalyticsBillingState.COMING_SOON)), analyticsHelper.logged)
         }
 
     @Test
@@ -140,6 +147,7 @@ class CreditViewModelTest {
                 getTimelineCredit = GetTimelineCreditUseCase(repository),
                 balanceStore = store,
                 navigationHelper = navigationHelper,
+                analyticsHelper = analyticsHelper,
             )
         advanceUntilIdle()
         return viewModel
@@ -173,5 +181,24 @@ class CreditViewModelTest {
         override fun navigateToBack() {
             backCount++
         }
+    }
+
+    private class RecordingAnalyticsHelper : AnalyticsHelper {
+        val logged = mutableListOf<AnalyticsEvent>()
+
+        override suspend fun log(event: AnalyticsEvent) {
+            logged += event
+        }
+
+        override suspend fun logOnce(
+            key: AnalyticsDedupeKey,
+            event: AnalyticsEvent,
+        ) = Unit
+
+        override suspend fun forgetOnce(key: AnalyticsDedupeKey) = Unit
+
+        override fun setUserId(userId: Long?) = Unit
+
+        override fun setInstallAttribution(attribution: InstallAttribution) = Unit
     }
 }

@@ -10,6 +10,7 @@ import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.message.DialogRequest
 import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.message.UserMessage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKey
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsDedupeKeys
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
@@ -187,6 +188,10 @@ class SettingsViewModelTest {
             runCurrent()
 
             assertEquals(listOf<Page>(CreditPage), navigationHelper.navigatedTo)
+            assertEquals(
+                AnalyticsEvent.CreditScreenOpened(AnalyticsCreditEntryPoint.SETTINGS, viewModel.state.value.remainingCredits),
+                analyticsHelper.logged.last(),
+            )
         }
 
     @Test
@@ -591,6 +596,7 @@ class SettingsViewModelTest {
             getTimelineCredit = GetTimelineCreditUseCase(creditRepository),
             balanceStore = creditBalanceStore,
             navigationHelper = navigationHelper,
+            analyticsHelper = analyticsHelper,
         )
 
     @Test
