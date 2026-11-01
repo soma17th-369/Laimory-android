@@ -1491,6 +1491,38 @@ class TimelineEventEditorViewModelTest {
             assertEquals(2, analyticsHelper.editorEvents.filterIsInstance<AnalyticsEvent.TimelineEventEditorOpened>().size)
         }
 
+    @Test
+    fun `나가기 경로 없이 화면이 사라진 뒤 같은 사건을 다시 열면 이탈 없이 새 방문으로 센다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // 편집 중에 알림을 눌러 루트가 홈으로 바뀐 경우다. 어떻게 나갔는지 모르므로 이탈은 보내지 않는다.
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ScreenLeft)
+            advanceUntilIdle()
+            clock.instant = clock.instant.plusMillis(60_000)
+
+            viewModel.sendIntent(TimelineEventEditorUiIntent.Initialize(EVENT_ID))
+            advanceUntilIdle()
+            clock.instant = clock.instant.plusMillis(1_500)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            advanceUntilIdle()
+
+            val events = analyticsHelper.editorEvents
+            assertEquals(2, events.filterIsInstance<AnalyticsEvent.TimelineEventEditorOpened>().size)
+            // 화면 밖에서 보낸 1분은 머문 시간에 들어가지 않는다.
+            assertEquals(listOf(1_500L), events.filterIsInstance<AnalyticsEvent.TimelineEventEditorClosed>().map { it.stayMs })
+        }
+
+    @Test
+    fun `나가기 경로로 이탈을 보낸 뒤 화면이 사라져도 더 보내지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = initializedViewModel()
+            viewModel.sendIntent(TimelineEventEditorUiIntent.NavigateBack)
+            viewModel.sendIntent(TimelineEventEditorUiIntent.ScreenLeft)
+            advanceUntilIdle()
+
+            assertEquals(listOf(AnalyticsEditorExitResult.UNCHANGED), closedResults())
+        }
+
     private fun closedResults() =
         analyticsHelper.editorEvents.filterIsInstance<AnalyticsEvent.TimelineEventEditorClosed>().map { it.exitResult }
 

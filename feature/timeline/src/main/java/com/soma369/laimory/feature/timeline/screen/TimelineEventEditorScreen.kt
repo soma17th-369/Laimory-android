@@ -1,5 +1,8 @@
 package com.soma369.laimory.feature.timeline.screen
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -31,12 +34,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -86,6 +91,7 @@ fun TimelineEventEditorRoute(
     LaunchedEffect(timelineEventId) {
         viewModel.sendIntent(TimelineEventEditorUiIntent.Initialize(timelineEventId))
     }
+    NotifyScreenLeft(viewModel)
     TimelineEventEditorContent(
         innerPadding = innerPadding,
         state = state,
@@ -94,6 +100,28 @@ fun TimelineEventEditorRoute(
         sideEffectFlow = viewModel.sideEffect,
     )
 }
+
+/**
+ * 화면이 컴포지션에서 빠질 때 ViewModel 에 알린다. ViewModel 은 Activity 수명이라 화면이 사라진 것을 스스로 모른다.
+ *
+ * 구성 변경(화면 회전)으로 Activity 가 다시 만들어지는 것은 같은 화면을 다시 그리는 것이라 알리지 않는다.
+ */
+@Composable
+private fun NotifyScreenLeft(viewModel: TimelineEventEditorViewModel) {
+    val activity = LocalContext.current.findActivity()
+    DisposableEffect(viewModel) {
+        onDispose {
+            if (activity?.isChangingConfigurations != true) viewModel.sendIntent(TimelineEventEditorUiIntent.ScreenLeft)
+        }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
 /**
  * 새 이벤트를 만드는 진입점. 편집과 **같은 화면**을 쓰고 초기화 인텐트만 다르다.
@@ -111,6 +139,7 @@ fun TimelineEventCreateRoute(
     LaunchedEffect(recordDate) {
         viewModel.sendIntent(TimelineEventEditorUiIntent.InitializeNew(recordDate))
     }
+    NotifyScreenLeft(viewModel)
     TimelineEventEditorContent(
         innerPadding = innerPadding,
         state = state,

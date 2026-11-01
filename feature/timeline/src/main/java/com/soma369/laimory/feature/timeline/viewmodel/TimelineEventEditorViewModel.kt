@@ -83,6 +83,7 @@ class TimelineEventEditorViewModel
          *
          * 화면 상태와 따로 둔다 — 같은 ViewModel 을 다시 쓰는 탓에 바꾸지 않고 나간 사건을 다시 열면 상태는 그대로 재사용되지만,
          * 사용자에게는 새로 들어온 것이다. 반대로 화면을 다시 그리느라 초기화 인텐트가 또 와도(구성 변경) 같은 방문이다.
+         * 나가기 경로를 거치지 않고 화면이 사라지면([TimelineEventEditorUiIntent.ScreenLeft]) 이탈 없이 끝난다.
          */
         private var visit: TimelineEventEditorVisit? = null
 
@@ -134,6 +135,9 @@ class TimelineEventEditorViewModel
                 TimelineEventEditorUiIntent.ConfirmDelete -> deleteEvent()
                 TimelineEventEditorUiIntent.DismissDelete -> dismissDelete()
                 TimelineEventEditorUiIntent.FinishDelete -> finishDelete()
+                // 나가기 경로를 거치지 않고 사라졌다. 어떻게 나갔는지 모르니 이탈은 보내지 않고 방문만 끝낸다 — 남겨 두면 다시 들어올 때
+                // 열림이 빠지고 머문 시간에 화면 밖 시간이 섞인다.
+                TimelineEventEditorUiIntent.ScreenLeft -> visit = null
             }
         }
 

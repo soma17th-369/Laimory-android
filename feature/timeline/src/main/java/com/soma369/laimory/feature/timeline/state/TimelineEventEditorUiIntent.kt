@@ -16,6 +16,12 @@ sealed interface TimelineEventEditorUiIntent : UiIntent {
         val timelineEventId: Long,
     ) : TimelineEventEditorUiIntent
 
+    /**
+     * 화면이 내비게이션에서 빠졌다 — 알림을 눌러 루트가 바뀌는 것처럼 편집기의 나가기 경로를 거치지 않은 경우까지.
+     * 화면 회전 같은 구성 변경으로 다시 그리는 것은 아니다.
+     */
+    data object ScreenLeft : TimelineEventEditorUiIntent
+
     data class ChangeEventType(
         val eventType: TimelineEventType,
     ) : TimelineEventEditorUiIntent
