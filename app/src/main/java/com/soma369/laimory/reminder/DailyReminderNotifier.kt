@@ -34,20 +34,23 @@ class DailyReminderNotifier
 
         override fun pickCompleted(lastIndex: Int?): DailyReminderCopy.Completed = picker.pickCompleted(completedCount, lastIndex)
 
+        override fun titleOf(copy: DailyReminderCopy): String =
+            when (copy) {
+                is DailyReminderCopy.General -> context.resources.getStringArray(R.array.daily_reminder_general_titles)[copy.index]
+                is DailyReminderCopy.Completed -> context.resources.getStringArray(R.array.daily_reminder_completed_titles)[copy.index]
+            }
+
         override fun notify(
             copy: DailyReminderCopy,
             recordDate: LocalDate,
         ): Boolean {
             if (!canPost()) return false
             val resources = context.resources
-            val (title, body) =
+            val title = titleOf(copy)
+            val body =
                 when (copy) {
-                    is DailyReminderCopy.General ->
-                        resources.getStringArray(R.array.daily_reminder_general_titles)[copy.index] to
-                            resources.getStringArray(R.array.daily_reminder_general_bodies)[copy.index]
-                    is DailyReminderCopy.Completed ->
-                        resources.getStringArray(R.array.daily_reminder_completed_titles)[copy.index] to
-                            resources.getStringArray(R.array.daily_reminder_completed_bodies)[copy.index]
+                    is DailyReminderCopy.General -> resources.getStringArray(R.array.daily_reminder_general_bodies)[copy.index]
+                    is DailyReminderCopy.Completed -> resources.getStringArray(R.array.daily_reminder_completed_bodies)[copy.index]
                 }
             val destinationDate = recordDate.takeIf { copy is DailyReminderCopy.Completed }
             val contentIntent =
@@ -57,6 +60,7 @@ class DailyReminderNotifier
                     DailyReminderTap.put(
                         Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         destinationDate,
+                        copy.toAnalyticsCopy(title),
                     ),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
                 )
