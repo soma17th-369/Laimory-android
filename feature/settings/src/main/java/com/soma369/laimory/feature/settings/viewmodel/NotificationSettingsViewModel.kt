@@ -7,10 +7,12 @@ import com.soma369.laimory.core.domain.exception.serverMessageOr
 import com.soma369.laimory.core.domain.helper.NavigationHelper
 import com.soma369.laimory.core.domain.usecase.push.GetPushSettingsUseCase
 import com.soma369.laimory.core.domain.usecase.push.UpdatePushEnabledUseCase
+import com.soma369.laimory.core.domain.usecase.reminder.IsDailyReminderDeliveredTodayUseCase
 import com.soma369.laimory.core.domain.usecase.reminder.ObserveDailyReminderSettingsUseCase
 import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderEnabledUseCase
 import com.soma369.laimory.core.domain.usecase.reminder.SetDailyReminderTimeUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.core.ui.component.timepicker.toHourLabel
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiContent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiIntent
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiSideEffect
@@ -25,6 +27,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 /**
@@ -56,6 +59,7 @@ class NotificationSettingsViewModel
         observeDailyReminderSettingsUseCase: ObserveDailyReminderSettingsUseCase,
         private val setDailyReminderEnabledUseCase: SetDailyReminderEnabledUseCase,
         private val setDailyReminderTimeUseCase: SetDailyReminderTimeUseCase,
+        private val isDailyReminderDeliveredTodayUseCase: IsDailyReminderDeliveredTodayUseCase,
         private val navigationHelper: NavigationHelper,
     ) : BaseMviViewModel<NotificationSettingsUiState, NotificationSettingsUiIntent, NotificationSettingsUiSideEffect>(
             NotificationSettingsUiState(),
@@ -172,26 +176,47 @@ class NotificationSettingsViewModel
         private fun openReminderTimePicker() {
             val current = state.value
             if (current.isPushEnabled != true || !current.reminder.isEnabled) return
-            updateState { copy(reminderTimeDraft = reminder.time) }
+            // 정시만 고르는 시트다. 그 전에 저장된 분 있는 값은 정시로 내려 연다.
+            updateState { copy(reminderTimeDraft = reminder.time.truncatedTo(ChronoUnit.HOURS)) }
         }
 
         private suspend fun confirmReminderTime() {
             val time: LocalTime = state.value.reminderTimeDraft ?: return
             updateState { copy(reminderTimeDraft = null) }
             if (time == state.value.reminder.time) return
-            saveLocally { setDailyReminderTimeUseCase(time) }
+            if (!saveLocally { setDailyReminderTimeUseCase(time) }) return
+            // 오늘 이미 받았으면 바꾼 시간대는 내일부터다. 알리지 않으면 바꾼 시각에 알림을 기다리다 고장 난 줄 안다.
+            // 아직 받지 않았으면 지난 시간대여도 오늘 곧 오므로(예약이 따라잡는다) 알릴 것이 없다.
+            if (isDeliveredToday()) {
+                sendEffect(NotificationSettingsUiSideEffect.ShowSnackbar("오늘 알림은 이미 보냈어요. 내일부터 ${time.toHourLabel()}에 알려드릴게요."))
+            }
         }
 
-        /** 기기 저장은 거의 실패하지 않지만, 실패하면 화면이 저장소를 따르므로 값은 제자리이고 알리기만 한다. */
-        private suspend fun saveLocally(block: suspend () -> Unit) {
+        /** 읽지 못하면 알리지 않는다. 안내 한 줄을 위해 이미 끝난 저장을 실패처럼 보이게 하지 않는다. */
+        private suspend fun isDeliveredToday(): Boolean =
+            try {
+                isDailyReminderDeliveredTodayUseCase()
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                false
+            }
+
+        /**
+         * 기기 저장은 거의 실패하지 않지만, 실패하면 화면이 저장소를 따르므로 값은 제자리이고 알리기만 한다.
+         *
+         * @return 저장했으면 `true`.
+         */
+        private suspend fun saveLocally(block: suspend () -> Unit): Boolean =
             try {
                 block()
+                true
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: Exception) {
                 sendEffect(NotificationSettingsUiSideEffect.ShowSnackbar(UPDATE_FAILED_MESSAGE))
+                false
             }
-        }
 
         private fun handleUpdateFailure(error: Throwable) {
             if (error is HandledException) return

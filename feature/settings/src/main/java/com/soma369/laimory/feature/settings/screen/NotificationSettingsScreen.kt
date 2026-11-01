@@ -26,9 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -41,11 +38,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.reminder.DailyReminderSettings
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
-import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerSheet
-import com.soma369.laimory.core.ui.component.timepicker.LaimoryTimePickerValue
-import com.soma369.laimory.core.ui.component.timepicker.TimePickerField
+import com.soma369.laimory.core.ui.component.timepicker.toHourLabel
 import com.soma369.laimory.core.ui.permission.openAppNotificationSettings
 import com.soma369.laimory.core.ui.permission.rememberAppNotificationsEnabled
+import com.soma369.laimory.core.ui.reminder.DAILY_REMINDER_TIME_LABEL
+import com.soma369.laimory.core.ui.reminder.DailyReminderTimeSheet
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiContent
@@ -54,9 +51,7 @@ import com.soma369.laimory.feature.settings.state.NotificationSettingsUiSideEffe
 import com.soma369.laimory.feature.settings.state.NotificationSettingsUiState
 import com.soma369.laimory.feature.settings.viewmodel.NotificationSettingsViewModel
 import kotlinx.coroutines.flow.Flow
-import java.time.LocalDate
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
 
 @Composable
 fun NotificationSettingsRoute(
@@ -151,7 +146,7 @@ private fun NotificationSettingsScreen(
         }
     }
     state.reminderTimeDraft?.let { draft ->
-        ReminderTimeSheet(
+        DailyReminderTimeSheet(
             time = draft,
             onTimeChange = { time -> onIntent(NotificationSettingsUiIntent.ReminderTimeChanged(time)) },
             onConfirm = { onIntent(NotificationSettingsUiIntent.ConfirmReminderTime) },
@@ -190,7 +185,8 @@ private fun NotificationToggleList(
         )
         NotificationToggleRow(
             title = "일일 리마인더",
-            description = "하루를 기록할 시간에 알려드려요.",
+            // 정각을 약속하지 않는다. 정확 알람 권한 없이 예약해 고른 시각 무렵에 온다.
+            description = "고른 시간대 무렵에 하루 기록을 알려드려요.",
             isChecked = reminder.isEnabled,
             // 전체가 꺼져 있으면 눌러도 오지 않는 알림이라 잠근다. 값은 그대로 둔다.
             isEnabled = isPushEnabled,
@@ -313,49 +309,17 @@ private fun ReminderTimeRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "알림 시각",
+            text = DAILY_REMINDER_TIME_LABEL,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
             color = contentColor,
         )
         Text(
-            text = time.format(REMINDER_TIME_FORMAT),
+            text = time.toHourLabel(),
             style = MaterialTheme.typography.bodyMedium,
             color = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-}
-
-/**
- * 리마인더 시각 시트. 공용 타임 피커에 시각 한 줄만 둔다.
- *
- * 날짜는 다루지 않는다. 피커 값이 날짜를 요구해 아무 날짜나 얹지만 화면에는 나오지 않는다.
- */
-@Composable
-private fun ReminderTimeSheet(
-    time: LocalTime,
-    onTimeChange: (LocalTime) -> Unit,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    // 줄이 하나라 처음부터 펼쳐 둔다. 접는 것은 화면의 일이 아니라 시트 안의 표시라 여기서 든다.
-    var expandedFieldId by remember { mutableStateOf<String?>(REMINDER_TIME_FIELD_ID) }
-    LaimoryTimePickerSheet(
-        fields =
-            listOf(
-                TimePickerField(
-                    id = REMINDER_TIME_FIELD_ID,
-                    label = "알림 시각",
-                    value = LaimoryTimePickerValue(date = PLACEHOLDER_DATE, time = time),
-                ),
-            ),
-        expandedFieldId = expandedFieldId,
-        onExpandedFieldChange = { id -> expandedFieldId = id },
-        onValueChange = { _, value, _ -> onTimeChange(value.time) },
-        onConfirm = onConfirm,
-        onDismiss = onDismiss,
-        title = "일일 리마인더",
-    )
 }
 
 @Composable
@@ -430,14 +394,6 @@ private fun NotificationSettingsLoadFailed(onRetryClick: () -> Unit) {
         }
     }
 }
-
-private const val REMINDER_TIME_FIELD_ID = "reminder_time"
-
-/** 피커 값이 요구하는 날짜 자리. 날짜 열이 없어 화면에 나오지 않고 바뀌지도 않는다. */
-private val PLACEHOLDER_DATE: LocalDate = LocalDate.of(2000, 1, 1)
-
-/** `21:00`. 시각 시트의 롤러가 24시간이라 같은 표기를 쓴다 — 줄과 시트가 다르게 말하지 않게. */
-private val REMINDER_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private val ROW_MIN_HEIGHT = 64.dp
 
