@@ -52,6 +52,13 @@ data class OnboardingPageSpec(
      * 마지막 장은 동의 유무와 무관하게 온보딩을 끝내는 자리라 사라지면 안 된다.
      */
     val showsConsents: Boolean = false,
+    /**
+     * 설명 아래에 일일 리마인더 시간대 줄을 둘지.
+     *
+     * 알림 장에서 기본 시간대(21시)를 보여 주고 그 자리에서 바꾸게 한다. 설정에서도 바꿀 수 있지만, 알림을 허용하는
+     * 순간이 언제 오는지 가장 궁금한 때다.
+     */
+    val showsReminderTime: Boolean = false,
     val primaryCta: String,
     /** `나중에` 를 함께 둘지. 안내 전용 장에는 건너뛸 것이 없다. */
     val isSkippable: Boolean = permission != null,

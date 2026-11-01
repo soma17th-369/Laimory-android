@@ -1,10 +1,12 @@
 package com.soma369.laimory.feature.onboarding.state
 
+import com.soma369.laimory.core.domain.model.reminder.DailyReminderSettings
 import com.soma369.laimory.core.domain.model.terms.TermDocument
 import com.soma369.laimory.core.domain.model.terms.TermType
 import com.soma369.laimory.core.ui.base.UiState
 import com.soma369.laimory.feature.onboarding.model.ONBOARDING_PAGES
 import com.soma369.laimory.feature.onboarding.model.OnboardingPageSpec
+import java.time.LocalTime
 
 data class OnboardingUiState(
     val pages: List<OnboardingPageSpec> = ONBOARDING_PAGES,
@@ -54,4 +56,8 @@ data class OnboardingUiState(
     val hasConsentLoadFailed: Boolean = false,
     val isConsentSubmitting: Boolean = false,
     val consentErrorMessage: String? = null,
+    /** 기기에 저장된 일일 리마인더 시간대. 설정 화면과 같은 값이다. */
+    val reminderTime: LocalTime = DailyReminderSettings.DEFAULT_TIME,
+    /** 시간대 시트에서 굴리는 값. 시트가 닫혀 있으면 `null`. */
+    val reminderTimeDraft: LocalTime? = null,
 ) : UiState

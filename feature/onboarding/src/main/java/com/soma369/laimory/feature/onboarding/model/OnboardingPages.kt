@@ -65,9 +65,10 @@ val ONBOARDING_PAGES: List<OnboardingPageSpec> =
             key = "app_notification",
             label = "REMINDER",
             title = "하루가 정리되면 알려드릴게요",
-            description = "타임라인이 완성됐을 때와 하루를 돌아볼 시간에 맞춰 알려드려요.",
+            description = "타임라인이 완성됐을 때, 그리고 매일 밤 9시에 하루를 돌아보도록 알려드려요.",
             image = R.drawable.img_onboarding_reminder,
             permission = DataPermission.APP_NOTIFICATION,
+            showsReminderTime = true,
             primaryCta = "알림 받기",
         ),
         // 필수 동의를 마지막 장에 둔다. 소스별로 무엇을 읽어 무엇에 쓰는지 다 읽은 뒤라야
