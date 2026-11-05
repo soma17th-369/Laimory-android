@@ -1,5 +1,6 @@
 package com.soma369.laimory
 
+import android.animation.ValueAnimator
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -53,6 +54,7 @@ import com.soma369.laimory.core.domain.usecase.ObserveOnboardingCompletionUseCas
 import com.soma369.laimory.core.domain.usecase.auth.ObserveAuthSessionUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveAppThemeModeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.ObserveTermsGateUseCase
+import com.soma369.laimory.core.ui.component.preloadWordmarkWriting
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.util.logging.LogDomain
 import com.soma369.laimory.core.util.logging.Logger
@@ -68,6 +70,7 @@ import com.soma369.laimory.push.DraftCompletionStatus
 import com.soma369.laimory.push.ServerDailyReminderTap
 import com.soma369.laimory.reminder.DailyReminderTap
 import com.soma369.laimory.ui.GlobalUiHost
+import com.soma369.laimory.ui.LaunchSplashOverlay
 import com.soma369.laimory.update.AppUpdateGate
 import com.soma369.laimory.update.AppUpdateGateHost
 import com.soma369.laimory.update.AppUpdateGateState
@@ -213,9 +216,23 @@ class MainActivity : ComponentActivity() {
         consumeSocialLoginCallback(intent)
         // 저장된 상태로 되살린 화면은 앱을 새로 켠 것이 아니다.
         val launchState = if (savedInstanceState == null) AnalyticsLaunchState.COLD else AnalyticsLaunchState.WARM
-        consumeDraftCompletionNotification(intent, launchState)
-        consumeDailyReminderNotification(intent, launchState)
-        consumeServerDailyReminderNotification(intent, launchState)
+        // 셋 다 불러야 한다 — 하나가 처리했다고 나머지를 건너뛰면 그 알림의 열람 기록이 빠진다.
+        val openedFromNotification =
+            listOf(
+                consumeDraftCompletionNotification(intent, launchState),
+                consumeDailyReminderNotification(intent, launchState),
+                consumeServerDailyReminderNotification(intent, launchState),
+            ).any { it }
+        // 워드마크 스플래시(LaunchSplashOverlay)는 런처로 새로 켰을 때만 덮는다. 알림으로 들어왔으면 목적지가 먼저이고,
+        // 회전 등으로 되살린 화면은 새로 켠 것이 아니다. 기기에서 애니메이션을 꺼 두었으면 보여 줄 것이 없다.
+        // 위치 수집 알림은 런처 Intent 를 쓰므로 그쪽으로 새로 켜도 뜬다 — 앱을 여는 것 말고 다른 목적지가 없다.
+        val showsLaunchSplash =
+            savedInstanceState == null &&
+                intent.action == Intent.ACTION_MAIN &&
+                !openedFromNotification &&
+                ValueAnimator.areAnimatorsEnabled()
+        if (showsLaunchSplash) preloadWordmarkWriting(this)
+        homeOverlayTurn.setSplashVisible(showsLaunchSplash)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템
         // 다이얼로그는 거부되기 쉽고, 한 번 거부하면 다시 물을 기회가 사실상 없다.
         // 요청은 온보딩의 알림 장 CTA 가 맡는다.
@@ -231,6 +248,7 @@ class MainActivity : ComponentActivity() {
             val popupNotices by popupNoticeQueue.notices.collectAsStateWithLifecycle()
             val popupNoticeTotal by popupNoticeQueue.total.collectAsStateWithLifecycle()
             val isHomeTutorialActive by homeOverlayTurn.isTutorialActive.collectAsStateWithLifecycle()
+            val isLaunchSplashVisible by homeOverlayTurn.isSplashVisible.collectAsStateWithLifecycle()
             val hasPendingPopupNotices = popupNotices.isNotEmpty()
             // 홈 튜토리얼은 처리하지 않은 공지가 있으면 기다린다. 공지 시트와 튜토리얼 시트가 겹치지 않게 차례를 알린다.
             LaunchedEffect(hasPendingPopupNotices) { homeOverlayTurn.setPendingNotices(hasPendingPopupNotices) }
@@ -294,7 +312,8 @@ class MainActivity : ComponentActivity() {
                             loadingHelper = globalLoadingHelper,
                         )
                         AppUpdateHost(
-                            version = recommendation,
+                            // 권장 업데이트 · 팝업 공지는 따로 창을 띄워 스플래시 위로 올라오므로 스플래시가 사라진 뒤에 띄운다.
+                            version = recommendation.takeUnless { isLaunchSplashVisible },
                             isGlobalDialogVisible = activeDialog != null,
                             onShown = { version -> lifecycleScope.launch { appUpdateGate.onRecommendationShown(version) } },
                             onLater = { version ->
@@ -317,6 +336,7 @@ class MainActivity : ComponentActivity() {
                             total = popupNoticeTotal,
                             isVisible =
                                 isOnHome &&
+                                    !isLaunchSplashVisible &&
                                     gateState != AppUpdateGateState.BLOCKED &&
                                     recommendation == null &&
                                     activeDialog == null &&
@@ -337,6 +357,11 @@ class MainActivity : ComponentActivity() {
                             onClose = popupNoticeQueue::close,
                             onCloseAll = popupNoticeQueue::closeAll,
                         )
+                        // 맨 위에 덮는다. 그 아래에서 앱 화면은 그대로 만들어지고, 홈이 첫 데이터를 받는 동안을 가린다.
+                        // 다 사라진 뒤에야 풀어 준다 — 사라지는 도중에 공지 시트 같은 창이 함께 뜨면 그 프레임이 끊긴다.
+                        if (isLaunchSplashVisible) {
+                            LaunchSplashOverlay(onFinished = { homeOverlayTurn.setSplashVisible(false) })
+                        }
                     }
                 }
             }
@@ -445,10 +470,10 @@ class MainActivity : ComponentActivity() {
     private fun consumeDraftCompletionNotification(
         intent: Intent,
         launchState: AnalyticsLaunchState,
-    ) {
+    ): Boolean {
         val taskId = intent.getStringExtra(DraftCompletionSignalParser.TASK_ID_KEY)
         val status = intent.getStringExtra(DraftCompletionSignalParser.STATUS_KEY)
-        if (taskId == null && status == null) return
+        if (taskId == null && status == null) return false
         intent.removeExtra(DraftCompletionSignalParser.TASK_ID_KEY)
         intent.removeExtra(DraftCompletionSignalParser.STATUS_KEY)
         setIntent(intent)
@@ -488,6 +513,7 @@ class MainActivity : ComponentActivity() {
             }
             navigationHelper.navigateTo(DraftLoadingPage)
         }
+        return true
     }
 
     /**
@@ -499,8 +525,8 @@ class MainActivity : ComponentActivity() {
     private fun consumeDailyReminderNotification(
         intent: Intent,
         launchState: AnalyticsLaunchState,
-    ) {
-        val destination = DailyReminderTap.consume(intent) ?: return
+    ): Boolean {
+        val destination = DailyReminderTap.consume(intent) ?: return false
         setIntent(intent)
         // 로그인이 풀린 채 눌렀어도 센다. 연 것은 알림의 효과이고, 어디로 가는지는 그다음 문제다.
         logPushOpened(
@@ -514,16 +540,18 @@ class MainActivity : ComponentActivity() {
                 navigationHelper.navigateTo(TimelinePage(recordDate, AnalyticsEntryPoint.DAILY_REMINDER))
             }
         }
+        return true
     }
 
     /** 서버가 보낸 일일 리마인더 FCM 을 눌러 들어왔으면 센다. 화면은 따로 옮기지 않는다([ServerDailyReminderTap]). */
     private fun consumeServerDailyReminderNotification(
         intent: Intent,
         launchState: AnalyticsLaunchState,
-    ) {
-        if (!ServerDailyReminderTap.consume(intent)) return
+    ): Boolean {
+        if (!ServerDailyReminderTap.consume(intent)) return false
         setIntent(intent)
         logPushOpened(AnalyticsEvent.PushOpened(AnalyticsPushType.DAILY_REMINDER, AnalyticsPushDelivery.FCM, launchState))
+        return true
     }
 
     private fun logPushOpened(event: AnalyticsEvent.PushOpened) {

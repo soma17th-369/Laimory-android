@@ -692,13 +692,14 @@ class HomeViewModel
         /**
          * 홈 튜토리얼을 띄울 때를 기다린다. 보지 않았고 처리하지 않은 팝업 공지가 없으면 추천 날짜 시트를 띄운다.
          *
-         * 공지가 먼저 와 있으면 공지를 모두 처리한 뒤에 띄운다([HomeOverlayTurn]). debug 초기화로 보지 않은 상태가 되면 다시
-         * 띄운다 — 이 ViewModel 은 Activity 범위라 수집 실험실에 가 있어도 관찰이 이어지고, 시트는 홈이 그릴 때 보인다.
+         * 공지가 먼저 와 있으면 공지를 모두 처리한 뒤에, 앱 시작 스플래시가 덮고 있으면 사라진 뒤에 띄운다([HomeOverlayTurn]).
+         * debug 초기화로 보지 않은 상태가 되면 다시 띄운다 — 이 ViewModel 은 Activity 범위라 수집 실험실에 가 있어도 관찰이
+         * 이어지고, 시트는 홈이 그릴 때 보인다.
          */
         private fun observeTutorial() =
             safeLaunch {
-                combine(observeTutorialSeen(Tutorial.HOME), homeOverlayTurn.hasPendingNotices) { seen, hasPendingNotices ->
-                    !seen && !hasPendingNotices
+                combine(observeTutorialSeen(Tutorial.HOME), homeOverlayTurn.blocksTutorial) { seen, blocked ->
+                    !seen && !blocked
                 }.distinctUntilChanged()
                     .collectLatest { canStart -> if (canStart) showDateRecommendation() }
             }
@@ -791,8 +792,8 @@ class HomeViewModel
         private fun observeTutorialReplay() =
             safeLaunch {
                 tutorialReplayRequests.pending.filter { it == Tutorial.HOME }.collectLatest {
-                    combine(state, homeOverlayTurn.hasPendingNotices) { current, hasPendingNotices ->
-                        !hasPendingNotices && current.dateRecommendation == null && current.canShowTutorial
+                    combine(state, homeOverlayTurn.blocksTutorial) { current, blocked ->
+                        !blocked && current.dateRecommendation == null && current.canShowTutorial
                     }.first { it }
                     if (!tutorialReplayRequests.consume(Tutorial.HOME)) return@collectLatest
                     homeOverlayTurn.setTutorialActive(true)

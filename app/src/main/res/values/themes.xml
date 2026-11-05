@@ -10,6 +10,11 @@
     -->
     <style name="Theme.Laimory.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <!--
+            아이콘은 비워 둔다. 런처로 새로 켜면 이어지는 화면 위 스플래시(LaunchSplashOverlay)가 같은 배경에서
+            워드마크를 써 보인다 — 여기 아이콘이 있으면 한 번 보였다가 사라진 뒤 다시 써지는 셈이 된다.
+        -->
+        <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>
         <item name="postSplashScreenTheme">@style/Theme.Laimory</item>
     </style>
 </resources>

@@ -2621,6 +2621,21 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `앱 시작 스플래시가 덮고 있으면 사라질 때까지 추천 시트를 미룬다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            homeOverlayTurn.setSplashVisible(true)
+            val viewModel = createViewModel()
+            runCurrent()
+            assertNull(viewModel.state.value.dateRecommendation)
+
+            homeOverlayTurn.setSplashVisible(false)
+            runCurrent()
+
+            assertNotNull(viewModel.state.value.dateRecommendation)
+        }
+
+    @Test
     fun `이미 기록이 있는 날은 추천하지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             tutorialRepository.seen.value = false
