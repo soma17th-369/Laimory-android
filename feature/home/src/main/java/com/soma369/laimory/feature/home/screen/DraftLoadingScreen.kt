@@ -14,11 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
+import com.soma369.laimory.core.ui.component.WordmarkWritingLoop
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.component.DraftLoadingPhotoPager
@@ -166,14 +167,14 @@ private fun DraftLoadingBody(
     }
 }
 
-/** 사진이 없거나 URI를 읽지 못한 경우. 생성 자체는 계속 진행된다. */
+/** 사진이 없거나 URI를 읽지 못한 경우. 생성 자체는 계속 진행되므로, 빈 칸 대신 워드마크가 써지기를 되풀이한다. */
 @Composable
 private fun DraftLoadingPlaceholder() {
     Box(
         modifier = Modifier.fillMaxWidth().height(PlaceholderHeight),
         contentAlignment = Alignment.Center,
     ) {
-        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        WordmarkWritingLoop(modifier = Modifier.width(PlaceholderWordmarkWidth))
     }
 }
 
@@ -250,6 +251,7 @@ private val HeadlineDateFormatter = DateTimeFormatter.ofPattern("M월 d일")
 
 /** 사진이 없어도 뷰어와 같은 높이를 잡아 진행 카드 위치가 흔들리지 않게 한다. */
 private val PlaceholderHeight = 216.dp
+private val PlaceholderWordmarkWidth = 240.dp
 private val FooterCornerRadius = 12.dp
 
 @Preview(name = "초안 생성 로딩", showBackground = true, widthDp = 360, heightDp = 780)
@@ -272,6 +274,31 @@ private fun DraftLoadingScreenPreview() {
                             DraftLoadingStage.CALENDAR to DraftLoadingStageState.DONE,
                             DraftLoadingStage.STAY to DraftLoadingStageState.IN_PROGRESS,
                             DraftLoadingStage.AI to DraftLoadingStageState.PENDING,
+                        ),
+                ),
+            onIntent = {},
+        )
+    }
+}
+
+@Preview(name = "초안 생성 로딩 · 사진 없음", showBackground = true, widthDp = 360, heightDp = 780)
+@Composable
+private fun DraftLoadingScreenNoPhotoPreview() {
+    LaimoryTheme {
+        DraftLoadingScreen(
+            innerPadding = PaddingValues(),
+            state =
+                DraftLoadingUiState(
+                    recordDate = LocalDate.now(),
+                    retentionDays = 30,
+                    calendarCount = 4,
+                    stayCount = 3,
+                    stageStates =
+                        mapOf(
+                            DraftLoadingStage.PHOTO to DraftLoadingStageState.DONE,
+                            DraftLoadingStage.CALENDAR to DraftLoadingStageState.DONE,
+                            DraftLoadingStage.STAY to DraftLoadingStageState.DONE,
+                            DraftLoadingStage.AI to DraftLoadingStageState.IN_PROGRESS,
                         ),
                 ),
             onIntent = {},
