@@ -46,6 +46,9 @@ dependencies {
     // 약관 원문은 게시된 HTML 이라 브라우저가 정본 뷰어다. 확대 가능 요구도 그대로 만족한다.
     implementation(libs.androidx.browser)
 
+    // 워드마크가 써지는 로딩 · 스플래시 애니메이션. JSON 은 tools/lottie 생성기가 만든다.
+    implementation(libs.lottie.compose)
+
     implementation(libs.lifecycle.viewmodel)
     implementation(libs.coroutines.android)
 
