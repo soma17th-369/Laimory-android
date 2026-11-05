@@ -1,6 +1,5 @@
 package com.soma369.laimory
 
-import android.animation.ValueAnimator
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -224,13 +223,12 @@ class MainActivity : ComponentActivity() {
                 consumeServerDailyReminderNotification(intent, launchState),
             ).any { it }
         // 워드마크 스플래시(LaunchSplashOverlay)는 런처로 새로 켰을 때만 덮는다. 알림으로 들어왔으면 목적지가 먼저이고,
-        // 회전 등으로 되살린 화면은 새로 켠 것이 아니다. 기기에서 애니메이션을 꺼 두었으면 보여 줄 것이 없다.
+        // 회전 등으로 되살린 화면은 새로 켠 것이 아니다. 기기에서 애니메이션을 꺼 두었으면 써지기 대신 다 써진 로고를 잠깐 보인다.
         // 위치 수집 알림은 런처 Intent 를 쓰므로 그쪽으로 새로 켜도 뜬다 — 앱을 여는 것 말고 다른 목적지가 없다.
         val showsLaunchSplash =
             savedInstanceState == null &&
                 intent.action == Intent.ACTION_MAIN &&
-                !openedFromNotification &&
-                ValueAnimator.areAnimatorsEnabled()
+                !openedFromNotification
         if (showsLaunchSplash) preloadWordmarkWriting(this)
         homeOverlayTurn.setSplashVisible(showsLaunchSplash)
         // 로그인 직후 알림 권한을 바로 묻지 않는다. 무엇에 쓰는지 말하기 전에 뜨는 시스템

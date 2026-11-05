@@ -45,8 +45,10 @@ fun WordmarkWritingLoop(modifier: Modifier = Modifier) {
 /**
  * 워드마크를 한 번 써 보이고 i 의 점이 자리 잡으면 [onFinished] 를 부른다. 앱 시작 스플래시가 쓴다.
  *
- * 어떤 경우에도 [onFinished] 는 한 번 불린다 — 애니메이션을 읽지 못하면 바로, 기기에서 꺼 두었으면 기다리지 않고 부른다.
- * 스플래시가 이 끝을 기다리므로 여기서 멈추면 앱이 가려진 채로 남는다.
+ * 어떤 경우에도 [onFinished] 는 한 번 불린다 — 애니메이션을 읽지 못하면 바로 부른다. 스플래시가 이 끝을 기다리므로
+ * 여기서 멈추면 앱이 가려진 채로 남는다.
+ *
+ * 기기에서 애니메이션을 꺼 두었으면 써지기 대신 다 써진 로고 한 장을 그리고 바로 부른다. 그 로고를 얼마나 둘지는 호출부가 정한다.
  *
  * 처음 그린 뒤 [startDeadlineMillis] 안에 시작하지 못하면 쓰지 않고 끝낸다. 앱 시작 직후는 아래 화면을 만드는 일과 메인
  * 스레드를 나눠 쓰는데, 느린 기기나 디버그 빌드에서는 몇 초씩 밀린다. 그동안 빈 화면으로 붙잡느니 바로 앱을 보여 준다.
@@ -65,17 +67,22 @@ fun WordmarkWritingIntro(
     val currentOnFinished by rememberUpdatedState(onFinished)
     val animationsEnabled = rememberAnimationsEnabled()
     LaunchedEffect(Unit) {
-        if (!animationsEnabled) return@LaunchedEffect currentOnFinished()
         // 기한은 읽기를 기다리는 동안에도 센다. 읽기가 끝난 뒤에만 재면 느린 빌드에서 읽는 몇 초 내내 빈 화면이 남는다.
         val remaining = startDeadlineMillis - (SystemClock.uptimeMillis() - shownAt)
         val loaded = result.awaitOrNull(remaining)
         if (loaded == null || SystemClock.uptimeMillis() - shownAt > startDeadlineMillis) {
             return@LaunchedEffect currentOnFinished()
         }
-        animatable.animate(loaded, clipSpec = LottieClipSpec.Marker(MARKER_INTRO), speed = speed)
+        if (animationsEnabled) {
+            animatable.animate(loaded, clipSpec = LottieClipSpec.Marker(MARKER_INTRO), speed = speed)
+        }
         currentOnFinished()
     }
-    LottieAnimation(composition = composition, progress = { animatable.progress }, modifier = modifier)
+    LottieAnimation(
+        composition = composition,
+        progress = { if (animationsEnabled) animatable.progress else composition?.introEndProgress() ?: 0f },
+        modifier = modifier,
+    )
 }
 
 /**
