@@ -13,12 +13,15 @@ import com.airbnb.lottie.LottieComposition
 import com.airbnb.lottie.LottieCompositionFactory
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieClipSpec
+import com.airbnb.lottie.compose.LottieCompositionResult
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieAnimatable
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.soma369.laimory.core.ui.R
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 워드마크가 한 획으로 써졌다 지워지기를 되풀이한다. 기다리는 동안 칸을 채우는 로딩 표시다.
@@ -61,10 +64,14 @@ fun WordmarkWritingIntro(
     val animatable = rememberLottieAnimatable()
     val currentOnFinished by rememberUpdatedState(onFinished)
     val animationsEnabled = rememberAnimationsEnabled()
-    LaunchedEffect(composition, result.isFailure) {
-        if (result.isFailure || !animationsEnabled) return@LaunchedEffect currentOnFinished()
-        val loaded = composition ?: return@LaunchedEffect
-        if (SystemClock.uptimeMillis() - shownAt > startDeadlineMillis) return@LaunchedEffect currentOnFinished()
+    LaunchedEffect(Unit) {
+        if (!animationsEnabled) return@LaunchedEffect currentOnFinished()
+        // 기한은 읽기를 기다리는 동안에도 센다. 읽기가 끝난 뒤에만 재면 느린 빌드에서 읽는 몇 초 내내 빈 화면이 남는다.
+        val remaining = startDeadlineMillis - (SystemClock.uptimeMillis() - shownAt)
+        val loaded = result.awaitOrNull(remaining)
+        if (loaded == null || SystemClock.uptimeMillis() - shownAt > startDeadlineMillis) {
+            return@LaunchedEffect currentOnFinished()
+        }
         animatable.animate(loaded, clipSpec = LottieClipSpec.Marker(MARKER_INTRO), speed = speed)
         currentOnFinished()
     }
@@ -81,6 +88,19 @@ fun preloadWordmarkWriting(context: Context) {
 
 @Composable
 private fun rememberAnimationsEnabled(): Boolean = remember { ValueAnimator.areAnimatorsEnabled() }
+
+/**
+ * [timeoutMillis] 안에 읽히면 그 결과를, 시간이 지나거나 읽기에 실패하면 null 을 준다.
+ * await 는 읽기 실패 원인을 그대로 던지는데, 어떤 실패든 호출부에는 '못 그림' 하나라 가리지 않는다.
+ */
+private suspend fun LottieCompositionResult.awaitOrNull(timeoutMillis: Long): LottieComposition? =
+    try {
+        withTimeoutOrNull(timeoutMillis.coerceAtLeast(0L)) { await() }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
 
 /** 다 써지고 점이 자리 잡은 프레임의 진행률. */
 private fun LottieComposition.introEndProgress(): Float {
