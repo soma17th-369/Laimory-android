@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 다크 background 토큰(Neutral900)과 같은 값. -->
-    <color name="splash_background">#FF1F1C18</color>
+    <!-- 다크 background 토큰(Neutral950)과 같은 값. 이어지는 화면 위 스플래시가 이 배경에서 시작한다. -->
+    <color name="splash_background">#FF13110E</color>
 </resources>
