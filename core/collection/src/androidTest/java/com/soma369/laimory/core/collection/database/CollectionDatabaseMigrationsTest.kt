@@ -90,7 +90,7 @@ internal class CollectionDatabaseMigrationsTest {
             val database =
                 Room
                     .databaseBuilder(context, CollectionDatabase::class.java, TEST_DB)
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
             try {
                 // 미변환 행이 남아 있으면 ItemType.valueOf("LOCATION") 에서 실패한다.
@@ -186,6 +186,24 @@ internal class CollectionDatabaseMigrationsTest {
             cursor.moveToFirst()
             assertEquals("일정은 볼 때마다 읽으므로 저장분을 남기지 않는다", 1, cursor.count)
             assertEquals("raw-stay", cursor.getString(0))
+        }
+    }
+
+    @Test
+    fun v5에서_v6로_이동하면_묘비_테이블만_더하고_기존_행은_그대로_둔다() {
+        helper.createDatabase(TEST_DB, 5).apply {
+            insertV1Row(rawId = "raw-stay", itemType = "STAY", payloadJson = STAY_PAYLOAD, sourceKey = "STAY:1000")
+            close()
+        }
+
+        val db = helper.runMigrationsAndValidate(TEST_DB, 6, true, MIGRATION_5_6)
+
+        db.query("SELECT rawId FROM source_item").use { cursor ->
+            assertEquals(1, cursor.count)
+        }
+        db.query("SELECT COUNT(*) FROM deleted_source_item").use { cursor ->
+            cursor.moveToFirst()
+            assertEquals(0, cursor.getInt(0))
         }
     }
 

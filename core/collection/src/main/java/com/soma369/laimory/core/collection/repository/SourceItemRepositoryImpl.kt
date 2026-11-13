@@ -16,10 +16,7 @@ internal class SourceItemRepositoryImpl
     constructor(
         private val sourceItemDao: SourceItemDao,
     ) : SourceItemRepository {
-        override suspend fun addAll(items: List<SourceItem>): Int =
-            sourceItemDao
-                .insertOrIgnore(items.map(SourceItem::toEntity))
-                .count { rowId -> rowId != IGNORED_ROW_ID }
+        override suspend fun addAll(items: List<SourceItem>): Int = sourceItemDao.addAll(items.map(SourceItem::toEntity))
 
         override suspend fun upsertAll(items: List<SourceItem>): Int = sourceItemDao.upsertAll(items.map(SourceItem::toEntity))
 
@@ -36,11 +33,11 @@ internal class SourceItemRepositoryImpl
         override suspend fun getLatestCollectedAt(itemType: ItemType): Instant? =
             sourceItemDao.latestCollectedAtUtc(itemType.name)?.let(Instant::ofEpochMilli)
 
-        override suspend fun deleteExpired(cutoff: Instant): Int = sourceItemDao.deleteExpired(cutoff.toEpochMilli())
+        override suspend fun deleteExpired(cutoff: Instant): Int {
+            // 묘비도 같은 경계로 걷는다. 원래 행이 만료될 때쯤이면 같은 키가 다시 수집될 일도 없다.
+            sourceItemDao.deleteExpiredTombstones(cutoff.toEpochMilli())
+            return sourceItemDao.deleteExpired(cutoff.toEpochMilli())
+        }
 
         override suspend fun clear(itemType: ItemType) = sourceItemDao.deleteByItemType(itemType.name)
-
-        private companion object {
-            const val IGNORED_ROW_ID = -1L
-        }
     }

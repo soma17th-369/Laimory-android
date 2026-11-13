@@ -106,3 +106,16 @@ internal val MIGRATION_4_5 =
             db.execSQL("DELETE FROM source_item WHERE itemType = 'CALENDAR'")
         }
     }
+
+/** 사용자가 기기에서 지운 아이템의 묘비 테이블을 더한다. 기존 행은 건드리지 않는다. */
+internal val MIGRATION_5_6 =
+    object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `deleted_source_item` (" +
+                    "`itemType` TEXT NOT NULL, `sourceName` TEXT NOT NULL, `sourceKey` TEXT NOT NULL, " +
+                    "`startAtUtc` INTEGER NOT NULL, `endAtUtc` INTEGER, `deletedAtUtc` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`itemType`, `sourceName`, `sourceKey`))",
+            )
+        }
+    }

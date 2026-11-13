@@ -10,8 +10,8 @@ import androidx.room.RoomDatabase
  * `:core:collection` 이 자체 소유한다. 스키마 변경과 migration 도 이 모듈이 관리한다.
  */
 @Database(
-    entities = [SourceItemEntity::class, OngoingLocationSegmentEntity::class],
-    version = 5,
+    entities = [SourceItemEntity::class, OngoingLocationSegmentEntity::class, DeletedSourceItemEntity::class],
+    version = 6,
     exportSchema = true,
 )
 internal abstract class CollectionDatabase : RoomDatabase() {

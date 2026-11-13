@@ -54,25 +54,35 @@ internal fun DraftSourceItemSelection.locationRawIds(): Set<String> =
  * 써넣지 않는다. 서버도 초안 생성 때 좌표를 다시 지오코딩하므로 실어 보낼 이유가 없다.
  *
  * 지도 마커와 아래 목록이 같은 맵을 보므로 두 곳의 주소가 어긋날 수 없다.
+ *
+ * [hiddenRawIds] 는 방금 기기에서 지운 항목이다. 홈이 수집을 다시 읽어 스냅샷을 새로 만들기까지
+ * 시간이 걸려, 그 사이에도 지운 카드가 남지 않게 목록·지도·건수에서 먼저 뺀다.
  */
-internal fun DraftConsentSelectionSnapshot.toConsentContent(resolvedAddresses: Map<String, String> = emptyMap()): DraftConsentUiContent {
+internal fun DraftConsentSelectionSnapshot.toConsentContent(
+    resolvedAddresses: Map<String, String> = emptyMap(),
+    hiddenRawIds: Set<String> = emptySet(),
+): DraftConsentUiContent {
     val report = selection.report
+    val (hidden, items) = selection.items.partition { it.rawId in hiddenRawIds }
+    // 지운 것은 스냅샷에서 전송 대상이었으므로 원본·전송 건수 모두에서 뺀다.
+    val hiddenCounts = hidden.groupingBy(SourceItem::itemType).eachCount()
     val summaries =
         DraftConsentTypeGroup.entries.map { group ->
+            val hiddenCount = group.memberTypes.sumOf { hiddenCounts.getOrDefault(it, 0) }
             DraftConsentTypeSummary(
                 group = group,
-                originalCount = group.memberTypes.sumOf { report.originalCounts.getOrDefault(it, 0) },
-                sentCount = group.memberTypes.sumOf { report.selectedCounts.getOrDefault(it, 0) },
-                sections = buildDetailSections(group, selection.items, zone, resolvedAddresses),
+                originalCount = group.memberTypes.sumOf { report.originalCounts.getOrDefault(it, 0) } - hiddenCount,
+                sentCount = group.memberTypes.sumOf { report.selectedCounts.getOrDefault(it, 0) } - hiddenCount,
+                sections = buildDetailSections(group, items, zone, resolvedAddresses),
             )
         }
     return DraftConsentUiContent(
         revision = revision,
         recordDate = recordDate,
         windowText = formatWindow(window.start, window.end, zone),
-        sentTotal = report.selectedTotal,
+        sentTotal = report.selectedTotal - hidden.size,
         typeSummaries = summaries,
-        locationMarkers = selection.items.toLocationMarkers(zone, resolvedAddresses),
+        locationMarkers = items.toLocationMarkers(zone, resolvedAddresses),
     )
 }
 

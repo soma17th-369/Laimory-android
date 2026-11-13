@@ -2,7 +2,6 @@ package com.soma369.laimory.feature.home.component
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,29 +17,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -64,7 +56,6 @@ import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.state.DraftEndDay
 import com.soma369.laimory.feature.home.state.HomeDatePickerSession
 import com.soma369.laimory.feature.home.state.isSelectableRecordDate
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.YearMonth
@@ -249,28 +240,9 @@ private fun RecordRangeSection(
  * 시안대로 아이콘 둘레 4 만 둔다(누르는 영역 24). 낭독 문구에 설명을 그대로 담는다 — 스크린 리더 사용자는
  * 툴팁을 열지 않아도 듣는다.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RecordRangeInfo() {
-    val tooltipState = rememberTooltipState(isPersistent = true)
-    val scope = rememberCoroutineScope()
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-        tooltip = { PlainTooltip { Text(RECORD_RANGE_GUIDE) } },
-        state = tooltipState,
-    ) {
-        Icon(
-            painter = painterResource(UiR.drawable.ico_setting_info),
-            contentDescription = "기록 범위 안내: $RECORD_RANGE_GUIDE",
-            modifier =
-                Modifier
-                    .clip(CircleShape)
-                    .clickable(role = Role.Button) { scope.launch { tooltipState.show() } }
-                    .padding(Spacing.extraSmall)
-                    .size(RangeInfoIconSize),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    InfoTooltipIcon(label = "기록 범위 안내", guide = RECORD_RANGE_GUIDE)
 }
 
 private const val RECORD_RANGE_GUIDE = "이 시간 안에 모인 사진·일정·위치·알림으로 타임라인을 만들어요.\n6시간 이상 · 종료는 익일 06:00까지"
@@ -452,7 +424,6 @@ private val RecordDotSize = 6.dp
 private const val DISABLED_DOT_ALPHA = 0.38f
 private val StepperTouchTarget = 44.dp
 private val RangeCaretSize = 16.dp
-private val RangeInfoIconSize = 16.dp
 
 private val StepperIconSize = 20.dp
 private const val CHIP_CORNER_PERCENT = 50

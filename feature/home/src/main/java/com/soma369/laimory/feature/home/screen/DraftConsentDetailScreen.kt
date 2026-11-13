@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,22 +24,39 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxDefaults
+import androidx.compose.material3.SwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -55,9 +73,11 @@ import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.component.DraftConsentLocationMap
+import com.soma369.laimory.feature.home.component.InfoTooltipIcon
 import com.soma369.laimory.feature.home.component.iconRes
 import com.soma369.laimory.feature.home.component.label
 import com.soma369.laimory.feature.home.state.ConsentLocationMarker
+import com.soma369.laimory.feature.home.state.DraftConsentDeletionUndo
 import com.soma369.laimory.feature.home.state.DraftConsentDetailItem
 import com.soma369.laimory.feature.home.state.DraftConsentDetailSection
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
@@ -65,6 +85,8 @@ import com.soma369.laimory.feature.home.state.DraftConsentTypeSummary
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import com.soma369.laimory.feature.home.state.DraftConsentUiState
 import com.soma369.laimory.feature.home.viewmodel.DraftConsentViewModel
+import kotlinx.coroutines.delay
+import com.soma369.laimory.core.ui.R as UiR
 
 /**
  * 데이터 유형 1개의 실제 전송 항목을 확인하는 상세 화면.
@@ -84,6 +106,10 @@ fun DraftConsentDetailRoute(
     // 봐서는 재판정 계기가 없어, 복귀를 알려 지도와 주소 해석을 다시 연다.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.sendIntent(DraftConsentUiIntent.Sync)
+    }
+    // ViewModel 은 Activity 범위라 화면을 떠나도 남는다. 떠나면 삭제 묶음을 끝내 실행 취소를 닫는다.
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.sendIntent(DraftConsentUiIntent.EndDeletionUndo) }
     }
     val group = typeGroup?.let { name -> DraftConsentTypeGroup.entries.firstOrNull { it.name == name } }
     DraftConsentDetailContent(
@@ -118,6 +144,12 @@ private fun DraftConsentDetailContent(
         onToggleItem = { itemKey -> onIntent(DraftConsentUiIntent.ToggleItemInclusion(itemKey)) },
         onToggleLocation = { onIntent(DraftConsentUiIntent.ToggleLocationInclusion) },
         onBack = { onIntent(DraftConsentUiIntent.CloseTypeDetail) },
+        canDelete = state.canDelete,
+        deletionUndo = state.deletionUndo,
+        onDeleteItem = { itemKey -> onIntent(DraftConsentUiIntent.DeleteItem(itemKey)) },
+        onDeleteNotificationApp = { packageName -> onIntent(DraftConsentUiIntent.DeleteNotificationApp(packageName)) },
+        onUndoDeletion = { token -> onIntent(DraftConsentUiIntent.UndoDeletion(token)) },
+        onExpireDeletionUndo = { token -> onIntent(DraftConsentUiIntent.ExpireDeletionUndo(token)) },
     )
 }
 
@@ -135,6 +167,62 @@ private fun DraftConsentDetailScreen(
     isReadOnly: Boolean = false,
     onToggleItem: (String) -> Unit = {},
     onToggleLocation: () -> Unit = {},
+    canDelete: Boolean = false,
+    deletionUndo: DraftConsentDeletionUndo? = null,
+    onDeleteItem: (String) -> Unit = {},
+    onDeleteNotificationApp: (String) -> Unit = {},
+    onUndoDeletion: (Long) -> Unit = {},
+    onExpireDeletionUndo: (Long) -> Unit = {},
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        DetailBody(
+            innerPadding = innerPadding,
+            summary = summary,
+            title = title,
+            onBack = onBack,
+            excludedRawIds = excludedRawIds,
+            locationMarkers = locationMarkers,
+            isMapRenderAllowed = isMapRenderAllowed,
+            isLocationIncluded = isLocationIncluded,
+            isLocationToggleEnabled = isLocationToggleEnabled,
+            isReadOnly = isReadOnly,
+            onToggleItem = onToggleItem,
+            onToggleLocation = onToggleLocation,
+            onDeleteItem = onDeleteItem.takeIf { canDelete && summary?.group in DELETABLE_GROUPS },
+            onDeleteNotificationApp = onDeleteNotificationApp.takeIf { canDelete },
+        )
+        // 공용 스낵바 호스트는 쓰지 않는다. 연달아 지우면 한 스낵바의 건수만 바뀌어야 하는데, 호스트는
+        // 스낵바를 줄 세워 하나씩 띄운다.
+        deletionUndo?.let { undo ->
+            DeletionUndoSnackbar(
+                undo = undo,
+                onUndo = onUndoDeletion,
+                onExpire = onExpireDeletionUndo,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(innerPadding),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailBody(
+    innerPadding: PaddingValues,
+    summary: DraftConsentTypeSummary?,
+    title: String,
+    onBack: () -> Unit,
+    excludedRawIds: Set<String>,
+    locationMarkers: List<ConsentLocationMarker>,
+    isMapRenderAllowed: Boolean,
+    isLocationIncluded: Boolean,
+    isLocationToggleEnabled: Boolean,
+    isReadOnly: Boolean,
+    onToggleItem: (String) -> Unit,
+    onToggleLocation: () -> Unit,
+    onDeleteItem: ((String) -> Unit)?,
+    onDeleteNotificationApp: ((String) -> Unit)?,
 ) {
     Column(
         modifier =
@@ -201,28 +289,23 @@ private fun DraftConsentDetailScreen(
             item(key = "notice") {
                 val excludedCount =
                     summary.sections.sumOf { section -> section.items.count { it.key in excludedRawIds } }
-                val label = summary.countLabel(includedCount = summary.sentCount - excludedCount)
-                Text(
-                    text =
-                        when {
-                            // 만드는 중이거나 이미 만든 날이다. 지금 기기에 모인 것을 보여 주므로 보낸 것과 다를 수 있다.
-                            isReadOnly ->
-                                "보낸 내용과 다를 수 있어요. $label · 지금 기기에 모인 항목이고, 전송 선택은 바꿀 수 없어요. " +
-                                    "흐리게 표시된 항목은 전송에서 뺀 항목이에요."
-
-                            summary.group == DraftConsentTypeGroup.PHOTO ->
-                                "$label · 아래 사진이 그대로 서버로 전송돼요. 사진은 홈 사진 선택에서 변경할 수 있어요."
-
-                            summary.group == DraftConsentTypeGroup.LOCATION ->
-                                "$label · 지도 핀을 누르면 장소와 포함 여부가 보이고, 말풍선을 한 번 더 누르면 바뀌어요. 핀 번호는 아래 목록과 같아요."
-
-                            else ->
-                                "$label · 항목을 누르면 전송에서 제외하거나 다시 포함할 수 있어요. 흐리게 표시된 항목은 전송되지 않아요."
-                        },
+                // 한 줄에는 건수만 둔다. 조작법·주의는 `i` 를 눌러 본다 — 다 적으면 목록보다 안내가 먼저 읽힌다.
+                Row(
                     modifier = Modifier.padding(bottom = Spacing.small),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = summary.countLabel(includedCount = summary.sentCount - excludedCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    InfoTooltipIcon(
+                        label = "전송 안내",
+                        guide = detailGuide(group = summary.group, isReadOnly = isReadOnly, canDelete = onDeleteItem != null),
+                        // 바로 위가 앱 바라 위로 띄우면 상태 표시줄까지 덮는다.
+                        showsBelow = true,
+                    )
+                }
             }
             summary.sections.forEach { section ->
                 sectionItems(
@@ -231,11 +314,51 @@ private fun DraftConsentDetailScreen(
                     excludedRawIds = excludedRawIds,
                     markerOrders = markerOrders,
                     onToggleItem = itemToggle,
+                    onDeleteItem = onDeleteItem,
+                    onDeleteNotificationApp = onDeleteNotificationApp,
                 )
             }
         }
     }
 }
+
+/**
+ * 상세 안내 말풍선의 문구. 한 문장씩 줄을 나눈다.
+ *
+ * 완성된 날은 지금 기기에 모인 것을 보여 주므로 보낸 것과 다를 수 있다. 그래도 지울 수는 있어서,
+ * 이미 만든 기록까지 지워진다고 오해하지 않게 기기에서만 지운다고 밝힌다.
+ */
+private fun detailGuide(
+    group: DraftConsentTypeGroup,
+    isReadOnly: Boolean,
+    canDelete: Boolean,
+): String =
+    buildList {
+        when {
+            isReadOnly -> {
+                add("보낸 내용과 다를 수 있어요. 지금 기기에 모인 항목이에요.")
+                add("전송 선택은 바꿀 수 없어요. 흐리게 표시된 항목은 전송에서 뺀 항목이에요.")
+                if (canDelete) add("왼쪽으로 밀면 지울 수 있어요. $DEVICE_ONLY_NOTICE")
+            }
+
+            group == DraftConsentTypeGroup.PHOTO -> {
+                add("아래 사진이 그대로 서버로 전송돼요.")
+                add("사진은 홈 사진 선택에서 변경할 수 있어요.")
+            }
+
+            group == DraftConsentTypeGroup.LOCATION -> {
+                add("지도 핀을 누르면 장소와 포함 여부가 보이고, 말풍선을 한 번 더 누르면 바뀌어요.")
+                add("핀 번호는 아래 목록과 같아요.")
+                if (canDelete) add(SWIPE_TO_DELETE_NOTICE)
+            }
+
+            else -> {
+                add("항목을 누르면 전송에서 제외하거나 다시 포함할 수 있어요.")
+                add("흐리게 표시된 항목은 전송되지 않아요.")
+                if (canDelete) add(SWIPE_TO_DELETE_NOTICE)
+            }
+        }
+    }.joinToString(separator = "\n")
 
 /**
  * 지도 핀과 목록을 잇는 번호 배지.
@@ -319,6 +442,8 @@ private fun LazyListScope.sectionItems(
     excludedRawIds: Set<String>,
     markerOrders: Map<String, List<Int>>,
     onToggleItem: ((String) -> Unit)?,
+    onDeleteItem: ((String) -> Unit)?,
+    onDeleteNotificationApp: ((String) -> Unit)?,
 ) {
     section.title?.let { sectionTitle ->
         // 알림은 표시명이 같은 서로 다른 앱이 있을 수 있어 패키지명을 key 로 쓴다.
@@ -328,6 +453,10 @@ private fun LazyListScope.sectionItems(
                     appName = sectionTitle,
                     packageName = section.iconPackageName,
                     count = section.items.size,
+                    onDeleteAll =
+                        section.iconPackageName?.let { packageName ->
+                            onDeleteNotificationApp?.let { delete -> { delete(packageName) } }
+                        },
                 )
             } else {
                 SectionHeader(title = sectionTitle, count = section.items.size.takeIf { group == DraftConsentTypeGroup.LOCATION })
@@ -353,13 +482,17 @@ private fun LazyListScope.sectionItems(
 
         DraftConsentTypeGroup.LOCATION ->
             items(items = section.items, key = DraftConsentDetailItem::key) { item ->
-                LocationItemCard(
-                    item = item,
-                    included = item.key !in excludedRawIds,
-                    // 지도 핀과 대조할 수 있게 같은 번호를 붙인다. 이동은 시작·도착 두 핀이라 범위로 적는다.
-                    orders = markerOrders[item.key].orEmpty(),
-                    onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
-                )
+                val onDelete = onDeleteItem?.let { delete -> { delete(item.key) } }
+                SwipeToDeleteBox(onDelete = onDelete) {
+                    LocationItemCard(
+                        item = item,
+                        included = item.key !in excludedRawIds,
+                        // 지도 핀과 대조할 수 있게 같은 번호를 붙인다. 이동은 시작·도착 두 핀이라 범위로 적는다.
+                        orders = markerOrders[item.key].orEmpty(),
+                        onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
+                        onDelete = onDelete,
+                    )
+                }
             }
 
         DraftConsentTypeGroup.HEALTH ->
@@ -373,11 +506,15 @@ private fun LazyListScope.sectionItems(
 
         DraftConsentTypeGroup.NOTIFICATION ->
             items(items = section.items, key = DraftConsentDetailItem::key) { item ->
-                NotificationItemCard(
-                    item = item,
-                    included = item.key !in excludedRawIds,
-                    onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
-                )
+                val onDelete = onDeleteItem?.let { delete -> { delete(item.key) } }
+                SwipeToDeleteBox(onDelete = onDelete) {
+                    NotificationItemCard(
+                        item = item,
+                        included = item.key !in excludedRawIds,
+                        onToggle = onToggleItem?.let { toggle -> { toggle(item.key) } },
+                        onDelete = onDelete,
+                    )
+                }
             }
     }
 }
@@ -409,6 +546,7 @@ private fun NotificationSectionHeader(
     appName: String,
     packageName: String?,
     count: Int,
+    onDeleteAll: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -429,6 +567,16 @@ private fun NotificationSectionHeader(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (onDeleteAll != null) {
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(
+                onClick = onDeleteAll,
+                // 버튼이 묶음마다 하나씩이라 문구만으로는 어느 앱인지 모른다. 낭독에는 앱 이름을 붙인다.
+                modifier = Modifier.semantics { contentDescription = "$appName 알림 모두 지우기" },
+            ) {
+                Text(text = "모두 지우기", style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
 }
 
@@ -572,8 +720,9 @@ private fun LocationItemCard(
     included: Boolean,
     orders: List<Int>,
     onToggle: (() -> Unit)?,
+    onDelete: (() -> Unit)? = null,
 ) {
-    DetailCard(included = included, onToggle = onToggle) {
+    DetailCard(included = included, onToggle = onToggle, onDelete = onDelete) {
         MarkerOrderBadge(orders = orders, included = included)
         Column(
             modifier = Modifier.weight(1f),
@@ -666,8 +815,9 @@ private fun NotificationItemCard(
     item: DraftConsentDetailItem,
     included: Boolean,
     onToggle: (() -> Unit)?,
+    onDelete: (() -> Unit)? = null,
 ) {
-    DetailCard(included = included, onToggle = onToggle) {
+    DetailCard(included = included, onToggle = onToggle, onDelete = onDelete) {
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -684,7 +834,7 @@ private fun NotificationItemCard(
                     text = description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = NOTIFICATION_BODY_MAX_LINES,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -705,6 +855,7 @@ private fun NotificationItemCard(
 private fun DetailCard(
     included: Boolean,
     onToggle: (() -> Unit)?,
+    onDelete: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val border =
@@ -726,12 +877,28 @@ private fun DetailCard(
                     onValueChange = { onToggle() },
                 ).semantics { stateDescription = if (included) "전송 포함" else "전송 제외" }
         }
+    // 밀기는 TalkBack 으로 할 수 없다. 같은 일을 사용자 지정 동작으로 연다.
+    val deleteModifier =
+        if (onDelete == null) {
+            Modifier
+        } else {
+            Modifier.semantics {
+                customActions =
+                    listOf(
+                        CustomAccessibilityAction(label = "기기에서 지우기") {
+                            onDelete()
+                            true
+                        },
+                    )
+            }
+        }
     Surface(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .then(stateModifier),
+                .then(stateModifier)
+                .then(deleteModifier),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = border,
@@ -780,6 +947,26 @@ private fun DetailUnavailableContent(onBack: () -> Unit) {
 }
 
 private val NOTIFICATION_APP_ICON_SIZE = 24.dp
+
+/** 알림 본문 줄 수. 넘치면 말줄임한다 — 펼치기는 두지 않는다(카드 탭은 전송 토글이다). */
+private const val NOTIFICATION_BODY_MAX_LINES = 3
+
+/** 기기에서 지울 수 있는 유형. 원본이 Laimory 로컬 DB 에만 있는 것들이다. */
+private val DELETABLE_GROUPS = setOf(DraftConsentTypeGroup.NOTIFICATION, DraftConsentTypeGroup.LOCATION)
+
+private const val SWIPE_TO_DELETE_NOTICE = "왼쪽으로 밀면 기기에서 지워요."
+private const val DEVICE_ONLY_NOTICE = "기기에서만 지워요. 이미 만든 기록은 그대로예요."
+
+/** 실행 취소 스낵바 기본 표시 시간. 접근성 설정이 권하는 만큼 늘린다. */
+private const val UNDO_SNACKBAR_MILLIS = 4_000L
+
+/**
+ * 지우지 못했을 때 카드를 되돌리기까지 기다리는 시간.
+ *
+ * 지우면 수집 관찰이 목록을 다시 만들며 카드가 사라진다. 그 전에 되돌리면 밀어 낸 카드가 잠깐
+ * 돌아왔다 사라지므로 바로 되돌리지 않는다.
+ */
+private const val SWIPE_RESET_DELAY_MILLIS = 1_000L
 
 private const val PHOTO_GRID_COLUMNS = 3
 private val PHOTO_GRID_GAP = 6.dp
@@ -880,5 +1067,109 @@ private fun DraftConsentDetailNotificationDarkPreview() {
             title = "알림",
             onBack = {},
         )
+    }
+}
+
+/**
+ * 왼쪽으로 밀어 지우는 카드 틀. [onDelete] 가 null 이면 밀 수 없는 평범한 카드다.
+ *
+ * 오른쪽으로 밀기는 막는다 — 방향이 둘이면 어느 쪽이 지우기인지 헷갈린다.
+ */
+@Composable
+private fun SwipeToDeleteBox(
+    onDelete: (() -> Unit)?,
+    content: @Composable () -> Unit,
+) {
+    if (onDelete == null) {
+        content()
+        return
+    }
+    // 저장 가능한 기본 상태(rememberSwipeToDismissBoxState)는 쓰지 않는다. 목록이 항목 키별로 상태를
+    // 보관해 두므로, 실행 취소로 같은 키가 돌아오면 밀린 채 되살아나 또 지워진다.
+    val positionalThreshold = SwipeToDismissBoxDefaults.positionalThreshold
+    val state = remember { SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, positionalThreshold) }
+    val currentOnDelete by rememberUpdatedState(onDelete)
+    // 지우기는 여기서 한 번만 부른다. SwipeToDismissBox 의 onDismiss 는 콜백이 바뀔 때마다 다시 불려,
+    // 밀린 채 다시 그려지면 같은 항목을 또 지운다. 지우면 카드가 목록에서 빠지며 이 효과도 취소된다.
+    // 밀린 채 남아 있으면 지우지 못한 것이라 되돌린다.
+    LaunchedEffect(state.settledValue) {
+        if (state.settledValue != SwipeToDismissBoxValue.EndToStart) return@LaunchedEffect
+        currentOnDelete()
+        delay(SWIPE_RESET_DELAY_MILLIS)
+        state.reset()
+    }
+    SwipeToDismissBox(
+        state = state,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            if (state.dismissDirection == SwipeToDismissBoxValue.EndToStart) DeleteSwipeBackground()
+        },
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun DeleteSwipeBackground() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.error)
+                .padding(horizontal = Spacing.extraLarge),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        // 카드가 이미 "기기에서 지우기" 동작을 낭독하므로 아이콘은 장식이다.
+        Icon(
+            painter = painterResource(UiR.drawable.ico_setting_trash),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onError,
+        )
+    }
+}
+
+/**
+ * 삭제 묶음 스낵바. 연달아 지우면 건수만 바뀌고, 지울 때마다 남은 시간을 처음부터 다시 센다.
+ *
+ * 시간은 화면이 센다 — 접근성 설정이 권하는 표시 시간은 화면에서만 알 수 있다. 다 되면 [onExpire] 로
+ * 묶음을 끝낸다.
+ */
+@Composable
+private fun DeletionUndoSnackbar(
+    undo: DraftConsentDeletionUndo,
+    onUndo: (Long) -> Unit,
+    onExpire: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accessibilityManager = LocalAccessibilityManager.current
+    val timeoutMillis =
+        remember(accessibilityManager) {
+            accessibilityManager?.calculateRecommendedTimeoutMillis(
+                originalTimeoutMillis = UNDO_SNACKBAR_MILLIS,
+                containsIcons = false,
+                containsText = true,
+                containsControls = true,
+            ) ?: UNDO_SNACKBAR_MILLIS
+        }
+    LaunchedEffect(undo.token) {
+        delay(timeoutMillis)
+        onExpire(undo.token)
+    }
+    Snackbar(
+        modifier =
+            modifier
+                .padding(start = Spacing.medium, end = Spacing.medium, bottom = Spacing.large)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+        action = {
+            TextButton(
+                onClick = { onUndo(undo.token) },
+                colors = ButtonDefaults.textButtonColors(contentColor = SnackbarDefaults.actionColor),
+            ) {
+                Text("실행 취소")
+            }
+        },
+    ) {
+        Text(if (undo.count == 1) "삭제했어요" else "${undo.count}건 삭제했어요")
     }
 }

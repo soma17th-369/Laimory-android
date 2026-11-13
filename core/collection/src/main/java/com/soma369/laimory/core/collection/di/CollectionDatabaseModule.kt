@@ -7,6 +7,7 @@ import com.soma369.laimory.core.collection.database.MIGRATION_1_2
 import com.soma369.laimory.core.collection.database.MIGRATION_2_3
 import com.soma369.laimory.core.collection.database.MIGRATION_3_4
 import com.soma369.laimory.core.collection.database.MIGRATION_4_5
+import com.soma369.laimory.core.collection.database.MIGRATION_5_6
 import com.soma369.laimory.core.collection.database.OngoingLocationSegmentDao
 import com.soma369.laimory.core.collection.database.SourceItemDao
 import dagger.Module
@@ -26,7 +27,7 @@ internal object CollectionDatabaseModule {
     ): CollectionDatabase =
         Room
             .databaseBuilder(context, CollectionDatabase::class.java, CollectionDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
 
     @Provides

@@ -34,7 +34,18 @@ data class DraftConsentUiState(
      * 생성 시도마다 다시 판정한다.
      */
     val isMapRenderAllowed: Boolean = false,
+    /**
+     * 제출용 스냅샷이 확정돼 있다. 이때는 지우지 않는다 — 확정된 스냅샷은 메모리에 항목을 들고
+     * 있어서, 기기에서 지워도 그대로 전송된다.
+     */
+    val isPreparationLocked: Boolean = false,
+    /** 실행 취소할 수 있는 삭제 묶음. null 이면 스낵바가 없다. */
+    val deletionUndo: DraftConsentDeletionUndo? = null,
 ) : UiState {
+    /** 알림·위치 항목을 기기에서 지울 수 있는지. 완성된 날(읽기 전용)에도 지울 수 있다. */
+    val canDelete: Boolean
+        get() = content != null && !isSubmitting && !isPreparationLocked
+
     /** 제외와 위치 전송 여부를 반영한 실제 전송 예정 건수. */
     val includedTotal: Int
         get() {

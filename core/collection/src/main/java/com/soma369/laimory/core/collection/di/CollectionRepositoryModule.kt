@@ -1,6 +1,8 @@
 package com.soma369.laimory.core.collection.di
 
+import com.soma369.laimory.core.collection.repository.SourceItemDeletionRepositoryImpl
 import com.soma369.laimory.core.collection.repository.SourceItemRepositoryImpl
+import com.soma369.laimory.core.domain.repository.SourceItemDeletionRepository
 import com.soma369.laimory.core.domain.repository.SourceItemRepository
 import dagger.Binds
 import dagger.Module
@@ -14,4 +16,8 @@ internal abstract class CollectionRepositoryModule {
     @Binds
     @Singleton
     abstract fun bindSourceItemRepository(impl: SourceItemRepositoryImpl): SourceItemRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSourceItemDeletionRepository(impl: SourceItemDeletionRepositoryImpl): SourceItemDeletionRepository
 }
