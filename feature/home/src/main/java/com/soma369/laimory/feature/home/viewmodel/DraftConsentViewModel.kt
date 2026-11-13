@@ -108,6 +108,14 @@ class DraftConsentViewModel
         private val undoExcludedRawIds = mutableSetOf<String>()
         private var nextUndoToken = 1L
 
+        /**
+         * 지웠지만 아직 스냅샷에 남아 있는 rawId. 화면에서 먼저 뺀다.
+         *
+         * 스냅샷은 홈이 수집 테이블을 다시 읽어 새로 만들어야 바뀌어서 지운 뒤 잠시 늦는다. 새 스냅샷에서
+         * 사라지면 걷어 낸다 — 묘비가 있어 같은 항목이 다시 들어오지 않는다.
+         */
+        private val hiddenRawIds = mutableSetOf<String>()
+
         init {
             safeLaunch {
                 // 제출용이 확정돼 있으면 그것을 본다 — 확정 뒤에는 수집이 갱신돼도 보낼 것이
@@ -126,6 +134,7 @@ class DraftConsentViewModel
                             // 지운 알림 본문을 메모리에 남기지 않는다. 계정 경계에서도 이 길로 온다.
                             undoItems.clear()
                             undoExcludedRawIds.clear()
+                            hiddenRawIds.clear()
                             updateState { DraftConsentUiState() }
                         }
 
@@ -134,7 +143,8 @@ class DraftConsentViewModel
                         snapshot.revision != activeSnapshot?.revision -> {
                             activeSnapshot = snapshot
                             pruneResolvedAddresses(snapshot)
-                            updateState { copy(content = snapshot.toConsentContent(resolvedAddresses)) }
+                            pruneHiddenRawIds(snapshot)
+                            updateState { copy(content = snapshot.toConsentContent(resolvedAddresses, hiddenRawIds)) }
                             applyLocationConsent(snapshot)
                         }
                     }
@@ -223,7 +233,13 @@ class DraftConsentViewModel
                     if (deleted.isEmpty()) return
                     undoItems += deleted
                     deleted.mapNotNullTo(undoExcludedRawIds) { item -> item.rawId.takeIf { it in excludedBefore } }
-                    updateState { copy(deletionUndo = DraftConsentDeletionUndo(token = nextUndoToken++, count = undoItems.size)) }
+                    deleted.mapTo(hiddenRawIds, SourceItem::rawId)
+                    updateState {
+                        copy(
+                            content = activeSnapshot?.toConsentContent(resolvedAddresses, hiddenRawIds) ?: content,
+                            deletionUndo = DraftConsentDeletionUndo(token = nextUndoToken++, count = undoItems.size),
+                        )
+                    }
                 }.onFailure(::handleFailure)
         }
 
@@ -233,8 +249,15 @@ class DraftConsentViewModel
             val excluded = undoExcludedRawIds.toSet()
             endDeletionUndo()
             runCatching { restoreSourceItems(items) }
-                .onSuccess { sessionStore.restoreExcluded(excluded) }
-                .onFailure(::handleFailure)
+                .onSuccess {
+                    sessionStore.restoreExcluded(excluded)
+                    // 스냅샷이 아직 지우기 전 것이면 바로 다시 보인다. 이미 새로 만들어졌으면 복원분을 다시 읽을 때 돌아온다.
+                    if (hiddenRawIds.removeAll(items.mapTo(mutableSetOf(), SourceItem::rawId))) {
+                        activeSnapshot?.let { snapshot ->
+                            updateState { copy(content = snapshot.toConsentContent(resolvedAddresses, hiddenRawIds)) }
+                        }
+                    }
+                }.onFailure(::handleFailure)
         }
 
         private fun endDeletionUndo() {
@@ -366,8 +389,15 @@ class DraftConsentViewModel
                 // 늦게 도착한 이전 판의 결과는 버린다. 지금 화면의 스냅샷과 맞지 않는다.
                 val snapshot = activeSnapshot?.takeIf { it.revision == revision } ?: return@safeLaunch
                 resolvedAddresses += resolved
-                updateState { copy(content = snapshot.toConsentContent(resolvedAddresses)) }
+                updateState { copy(content = snapshot.toConsentContent(resolvedAddresses, hiddenRawIds)) }
             }
+        }
+
+        /** 새 스냅샷에서 사라진 것은 더 숨길 필요가 없다. */
+        private fun pruneHiddenRawIds(snapshot: DraftConsentSelectionSnapshot) {
+            if (hiddenRawIds.isEmpty()) return
+            val alive = snapshot.selection.items.mapTo(mutableSetOf()) { it.rawId }
+            hiddenRawIds.retainAll(alive)
         }
 
         /** 사라진 항목의 주소만 걷어 낸다. 갱신마다 비우면 수집이 돌 때마다 `Geocoder` 를 때린다. */

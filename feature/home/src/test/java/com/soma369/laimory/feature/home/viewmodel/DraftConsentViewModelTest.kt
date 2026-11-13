@@ -51,6 +51,7 @@ import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
+import com.soma369.laimory.feature.home.state.DraftConsentUiContent
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -102,6 +103,62 @@ class DraftConsentViewModelTest {
 
             assertEquals(listOf("n-2"), sourceItemStore.items.map { it.rawId })
             assertEquals(1, viewModel.state.value.deletionUndo?.count)
+        }
+
+    @Test
+    fun `지운 카드는 홈이 스냅샷을 다시 만들기 전에 목록과 건수에서 바로 빠진다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(notificationItem("n-1"), notificationItem("n-2"), stayItem("stay")))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteItem("n-1"))
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteItem("stay"))
+            runCurrent()
+
+            val content = viewModel.state.value.content!!
+            assertEquals(listOf("n-2"), content.itemKeysOf(DraftConsentTypeGroup.NOTIFICATION))
+            assertEquals(1, content.summaryOf(DraftConsentTypeGroup.NOTIFICATION)?.sentCount)
+            assertEquals(emptyList<String>(), content.itemKeysOf(DraftConsentTypeGroup.LOCATION))
+            assertTrue(content.locationMarkers.isEmpty())
+            assertEquals(1, content.sentTotal)
+        }
+
+    @Test
+    fun `스냅샷이 아직 지우기 전 것이면 실행 취소로 바로 다시 보인다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(notificationItem("n-1"), notificationItem("n-2")))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteItem("n-1"))
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.UndoDeletion(viewModel.state.value.deletionUndo!!.token))
+            runCurrent()
+
+            assertEquals(listOf("n-1", "n-2"), viewModel.state.value.content!!.itemKeysOf(DraftConsentTypeGroup.NOTIFICATION).sorted())
+        }
+
+    @Test
+    fun `새 스냅샷에서 사라지면 숨김을 걷어 되돌린 항목이 다시 들어오면 보인다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(notificationItem("n-1"), notificationItem("n-2")))
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteItem("n-1"))
+            runCurrent()
+            // 홈이 지운 뒤의 저장소를 다시 읽었다.
+            resnapshot()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.UndoDeletion(viewModel.state.value.deletionUndo!!.token))
+            runCurrent()
+            assertEquals(listOf("n-2"), viewModel.state.value.content!!.itemKeysOf(DraftConsentTypeGroup.NOTIFICATION))
+            // 홈이 복원분을 다시 읽으면 돌아온다.
+            resnapshot()
+            runCurrent()
+
+            assertEquals(listOf("n-1", "n-2"), viewModel.state.value.content!!.itemKeysOf(DraftConsentTypeGroup.NOTIFICATION).sorted())
         }
 
     @Test
@@ -777,6 +834,10 @@ class DraftConsentViewModelTest {
         val selection = DraftSourceItemSelectionPolicy().select(window, items).getOrThrow()
         sessionStore.updateSelection(recordDate = date, zone = zone, window = window, selection = selection)
     }
+
+    /** 상세 화면에 보이는 그 유형 카드의 rawId. */
+    private fun DraftConsentUiContent.itemKeysOf(group: DraftConsentTypeGroup): List<String> =
+        summaryOf(group)?.sections.orEmpty().flatMap { section -> section.items.map { it.key } }
 
     /** 홈이 수집 관찰로 저장소의 지금 목록을 다시 스냅샷으로 만든다. */
     private fun resnapshot() {
