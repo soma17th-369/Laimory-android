@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- debug 전용 도구 문구. 개발자만 보는 화면이라 번역하지 않는다. -->
+<resources>
+    <string name="debug_change_api_origin" translatable="false">서버 바꾸기</string>
+</resources>

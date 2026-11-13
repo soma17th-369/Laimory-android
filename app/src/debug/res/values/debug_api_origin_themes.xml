@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        서버 선택 화면(`apiorigin.DebugApiOriginActivity`). 화면은 비워 두고 다이얼로그만 띄운다.
+
+        `windowIsFloating` 이 핵심이다. 전체 화면 창이면 시스템 표시줄의 모양을 이 창이 정하는데,
+        `Theme.Translucent` 는 표시줄 배경을 검정으로 그려 위아래 바가 까맣게 바뀐다. 떠 있는 창은
+        표시줄을 정하지 않으므로 뒤에 있는 런처·앱 화면의 표시줄이 그대로 남는다.
+    -->
+    <style name="Theme.Laimory.DebugApiOrigin" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>
