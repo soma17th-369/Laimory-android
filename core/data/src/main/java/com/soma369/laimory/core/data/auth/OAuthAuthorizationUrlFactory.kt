@@ -1,19 +1,21 @@
 package com.soma369.laimory.core.data.auth
 
-import com.soma369.laimory.core.data.BuildConfig
+import com.soma369.laimory.core.data.di.ApiBaseUrl
 import com.soma369.laimory.core.domain.model.auth.SocialLoginProvider
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import javax.inject.Inject
 
-/** 앱 빌드의 서버 origin에 제공자별 OAuth 시작 경로와 challenge를 결합한다. */
+/** 이 프로세스가 붙는 서버 origin에 제공자별 OAuth 시작 경로와 challenge를 결합한다. */
 internal class OAuthAuthorizationUrlFactory
     @Inject
-    constructor() {
+    constructor(
+        @ApiBaseUrl private val baseUrl: String,
+    ) {
         fun create(
             provider: SocialLoginProvider,
             challenge: String,
         ): String =
-            BuildConfig.BASE_URL.toHttpUrl()
+            baseUrl.toHttpUrl()
                 .newBuilder()
                 .addPathSegments("oauth2/authorization")
                 .addPathSegment(provider.pathSegment)

@@ -57,3 +57,11 @@ annotation class S3Client
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class PublishedTermsBaseUrl
+
+/**
+ * 이 프로세스가 붙는 서버의 도메인 루트(`https://host/`). API baseUrl·OAuth 시작 주소·로그인 콜백 host 가
+ * 모두 이 값에서 나온다. 기본은 빌드 값이고 debug 만 콜드 스타트에서 고른 값으로 바뀐다([ApiOriginModule]).
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ApiBaseUrl

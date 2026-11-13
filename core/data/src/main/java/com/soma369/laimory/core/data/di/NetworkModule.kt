@@ -146,7 +146,8 @@ object NetworkModule {
     fun providePublicRetrofit(
         @PublicClient okHttpClient: OkHttpClient,
         json: Json,
-    ): Retrofit = buildRetrofit(ApiPrefix.publicBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+        @ApiBaseUrl baseUrl: String,
+    ): Retrofit = buildRetrofit(ApiPrefix.publicBaseUrl(baseUrl, BuildConfig.API_APP_VERSION), okHttpClient, json)
 
     @Provides
     @Singleton
@@ -154,7 +155,8 @@ object NetworkModule {
     fun provideAuthSessionRetrofit(
         @AuthSessionClient okHttpClient: OkHttpClient,
         json: Json,
-    ): Retrofit = buildRetrofit(ApiPrefix.publicBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+        @ApiBaseUrl baseUrl: String,
+    ): Retrofit = buildRetrofit(ApiPrefix.publicBaseUrl(baseUrl, BuildConfig.API_APP_VERSION), okHttpClient, json)
 
     @Provides
     @Singleton
@@ -162,7 +164,8 @@ object NetworkModule {
     fun provideAuthRetrofit(
         @AuthenticatedClient okHttpClient: OkHttpClient,
         json: Json,
-    ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+        @ApiBaseUrl baseUrl: String,
+    ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(baseUrl, BuildConfig.API_APP_VERSION), okHttpClient, json)
 
     @Provides
     @Singleton
@@ -170,7 +173,8 @@ object NetworkModule {
     fun provideSensitiveAuthRetrofit(
         @SensitiveAuthenticatedClient okHttpClient: OkHttpClient,
         json: Json,
-    ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(BuildConfig.BASE_URL, BuildConfig.API_APP_VERSION), okHttpClient, json)
+        @ApiBaseUrl baseUrl: String,
+    ): Retrofit = buildRetrofit(ApiPrefix.authBaseUrl(baseUrl, BuildConfig.API_APP_VERSION), okHttpClient, json)
 
     /**
      * S3 presigned 업로드 전용 OkHttpClient.
