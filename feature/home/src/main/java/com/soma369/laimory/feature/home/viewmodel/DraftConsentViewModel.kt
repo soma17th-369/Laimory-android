@@ -116,6 +116,15 @@ class DraftConsentViewModel
          */
         private val hiddenRawIds = mutableSetOf<String>()
 
+        /**
+         * 삭제 결과를 받아도 되는 구간의 번호. 화면을 떠나거나 스냅샷이 폐기되면 오른다.
+         *
+         * 지우기는 DB 를 기다리는 동안 다른 intent·흐름이 묶음을 끝낼 수 있다(앱 묶음 삭제는 따로 돈다).
+         * 시작할 때 이 번호와 계정 세션을 잡아 두고, 끝났을 때 바뀌었으면 결과를 묶음과 화면에 넣지 않는다.
+         * 끝낸 묶음이 되살아나면 화면 밖에서 타이머 없이 지운 본문이 Activity 범위 VM 에 남는다.
+         */
+        private var deletionBoundary = 0L
+
         init {
             safeLaunch {
                 // 제출용이 확정돼 있으면 그것을 본다 — 확정 뒤에는 수집이 갱신돼도 보낼 것이
@@ -132,6 +141,7 @@ class DraftConsentViewModel
                             activeSnapshot = null
                             clearResolvedAddresses()
                             // 지운 알림 본문을 메모리에 남기지 않는다. 계정 경계에서도 이 길로 온다.
+                            deletionBoundary++
                             undoItems.clear()
                             undoExcludedRawIds.clear()
                             hiddenRawIds.clear()
@@ -174,7 +184,10 @@ class DraftConsentViewModel
                 is DraftConsentUiIntent.DeleteNotificationApp -> confirmNotificationAppDeletion(intent.packageName)
                 is DraftConsentUiIntent.UndoDeletion -> undoDeletion(intent.token)
                 is DraftConsentUiIntent.ExpireDeletionUndo -> if (intent.token == state.value.deletionUndo?.token) endDeletionUndo()
-                DraftConsentUiIntent.EndDeletionUndo -> endDeletionUndo()
+                DraftConsentUiIntent.EndDeletionUndo -> {
+                    deletionBoundary++
+                    endDeletionUndo()
+                }
             }
         }
 
@@ -197,6 +210,8 @@ class DraftConsentViewModel
         private fun confirmNotificationAppDeletion(packageName: String) {
             if (!state.value.canDelete) return
             val snapshot = activeSnapshot ?: return
+            val boundary = deletionBoundary
+            val account = sessionStore.accountSession.value
             safeLaunch {
                 val appItems =
                     getSourceItemsInWindow(snapshot.window).filter { item ->
@@ -215,9 +230,10 @@ class DraftConsentViewModel
                         ),
                     )
                 if (result != DialogResult.Primary) return@safeLaunch
-                // 다이얼로그를 보는 사이 제출이 확정됐거나 다른 스냅샷으로 바뀌었으면 지우지 않는다.
+                // 다이얼로그를 보는 사이 제출이 확정됐거나, 다른 스냅샷·화면·계정으로 바뀌었으면 지우지 않는다.
                 if (!state.value.canDelete || activeSnapshot?.window != snapshot.window) return@safeLaunch
-                delete(appItems.map(SourceItem::rawId))
+                if (!isDeletionScopeAlive(boundary, account)) return@safeLaunch
+                delete(appItems.map(SourceItem::rawId), boundary, account)
             }
         }
 
@@ -226,9 +242,16 @@ class DraftConsentViewModel
          *
          * 화면에서 사라지는 것은 수집 관찰이 홈 스냅샷을 다시 만들면서다. 제외 집합에서도 그때 걷힌다.
          */
-        private suspend fun delete(rawIds: List<String>) {
+        private suspend fun delete(
+            rawIds: List<String>,
+            boundary: Long = deletionBoundary,
+            account: Long = sessionStore.accountSession.value,
+        ) {
             val excludedBefore = sessionStore.excludedRawIds.value
-            runCatching { deleteSourceItems(rawIds) }
+            val result = runCatching { deleteSourceItems(rawIds) }
+            // 기다리는 사이 화면을 떠났거나 계정이 바뀌었으면 끝난 묶음을 다시 열지 않는다. 기기에서는 지워졌다.
+            if (!isDeletionScopeAlive(boundary, account)) return
+            result
                 .onSuccess { deleted ->
                     if (deleted.isEmpty()) return
                     undoItems += deleted
@@ -259,6 +282,11 @@ class DraftConsentViewModel
                     }
                 }.onFailure(::handleFailure)
         }
+
+        private fun isDeletionScopeAlive(
+            boundary: Long,
+            account: Long,
+        ): Boolean = boundary == deletionBoundary && account == sessionStore.accountSession.value
 
         private fun endDeletionUndo() {
             undoItems.clear()

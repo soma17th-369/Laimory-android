@@ -340,6 +340,48 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `앱 묶음 지우기를 기다리는 사이 화면을 떠나면 끝낸 묶음을 다시 열지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(notificationItem("kakao-1"), notificationItem("kakao-2")))
+            messageHelper.twoButtonResult = DialogResult.Primary
+            val gate = CompletableDeferred<Unit>()
+            sourceItemStore.deleteGate = gate
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteNotificationApp("kakao"))
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.EndDeletionUndo)
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            // 기기에서는 지워졌지만 화면 밖에서 묶음이 되살아나지 않는다.
+            assertTrue(sourceItemStore.items.isEmpty())
+            assertNull(viewModel.state.value.deletionUndo)
+        }
+
+    @Test
+    fun `지우기를 기다리는 사이 계정이 바뀌면 이전 계정의 묶음을 만들지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(notificationItem("n-1"), notificationItem("n-2")))
+            val gate = CompletableDeferred<Unit>()
+            sourceItemStore.deleteGate = gate
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteItem("n-1"))
+            runCurrent()
+
+            sessionStore.clearAll()
+            runCurrent()
+            gate.complete(Unit)
+            runCurrent()
+
+            assertNull(viewModel.state.value.deletionUndo)
+            assertNull(viewModel.state.value.content)
+        }
+
+    @Test
     fun `앱 묶음 지우기를 취소하면 아무것도 지우지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             browse(listOf(notificationItem("kakao-1")))
@@ -876,7 +918,11 @@ class DraftConsentViewModelTest {
         SourceItemDeletionRepository {
         val items = mutableListOf<SourceItem>()
 
+        /** 두면 지우기가 이것이 끝날 때까지 DB 응답을 기다린다. */
+        var deleteGate: CompletableDeferred<Unit>? = null
+
         override suspend fun delete(rawIds: Collection<String>): List<SourceItem> {
+            deleteGate?.await()
             val deleted = items.filter { it.rawId in rawIds }
             items.removeAll(deleted)
             return deleted
