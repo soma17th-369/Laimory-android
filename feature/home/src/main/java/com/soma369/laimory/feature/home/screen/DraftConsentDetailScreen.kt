@@ -340,7 +340,8 @@ private fun DetailBody(
  *
  * 목록 끝이 아니라 화면 아래에 고정한다 — 알림이 많으면 끝까지 내려야 보인다. 지우는 동작이라 눈에 덜 띄게
  * 왼쪽에 글자 크기 버튼으로만 두고 구분선도 없다 — 바 전체가 눌리면 스크롤하다 닿기 쉽다. 글자는 버튼 안쪽
- * 여백만큼 덜 들여 목록 카드 왼쪽 끝과 맞춘다.
+ * 여백만큼 덜 들여 목록 카드 왼쪽 끝과 맞춘다. 위아래 여백은 두지 않는다 — 버튼 최소 터치 높이(48dp)가 곧 바
+ * 높이다.
  */
 @Composable
 private fun DeleteAllBar(onClick: () -> Unit) {
@@ -348,7 +349,7 @@ private fun DeleteAllBar(onClick: () -> Unit) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = Spacing.small, vertical = Spacing.small),
+                .padding(horizontal = Spacing.small),
         contentAlignment = Alignment.CenterStart,
     ) {
         TextButton(onClick = onClick) {
