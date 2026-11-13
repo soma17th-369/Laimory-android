@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.soma369.laimory.core.data.di.ApiBaseUrl
 import com.soma369.laimory.core.data.helper.MessageHelperImpl
 import com.soma369.laimory.core.data.helper.NavigationHelperImpl
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
@@ -135,6 +136,13 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var homeOverlayTurn: HomeOverlayTurn
+
+    /** 이 프로세스가 붙은 서버. 로그인 콜백 host 가 여기서 나온다 — 빌드 값이 아니라 debug 에서 고른 서버일 수 있다. */
+    @Inject
+    @field:ApiBaseUrl
+    lateinit var apiBaseUrl: String
+
+    private val authCallbackHost: String by lazy { authCallbackHostOf(apiBaseUrl) }
 
     /**
      * 저장된 화면 모드. `null` 은 아직 읽기 전이다.
@@ -397,7 +405,7 @@ class MainActivity : ComponentActivity() {
             AuthTabIntent
                 .Builder()
                 .build()
-                .launch(authTabLauncher, url.toUri(), BuildConfig.AUTH_CALLBACK_HOST, AUTH_CALLBACK_PATH)
+                .launch(authTabLauncher, url.toUri(), authCallbackHost, AUTH_CALLBACK_PATH)
             authTabAuthorizationUrl = url
             true
         } catch (_: ActivityNotFoundException) {
@@ -459,7 +467,7 @@ class MainActivity : ComponentActivity() {
         uri: String,
         via: String,
     ): Boolean {
-        val callback = uri.toSocialLoginCallbackOrNull() ?: return false
+        val callback = uri.toSocialLoginCallbackOrNull(authCallbackHost) ?: return false
         Logger.i(LogDomain.AUTH, "소셜 로그인 콜백 수신($via)")
         socialLoginCallbackHandler.handle(callback)
         return true
