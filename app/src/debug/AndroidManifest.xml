@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application>
         <!--
@@ -23,9 +24,32 @@
         <activity
             android:name=".MainActivity"
             android:exported="true">
+            <!-- debug 런처는 서버 선택 화면(`apiorigin.DebugApiOriginActivity`)이다. main 의 런처 등록만 지운다. -->
+            <intent-filter tools:node="remove">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
             <!-- Android 13 이하 legacy. 이게 없으면 HC 권한 상태가 무효 처리된다. -->
             <intent-filter>
                 <action android:name="androidx.health.connect.action.SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+
+            <!--
+                콜드 스타트에서 고를 수 있는 다른 서버(`apiorigin.DebugApiOrigin`)의 로그인 콜백. 서버는 콜백을
+                요청 host 로 돌려준다. 검증(autoVerify)은 그 도메인의 assetlinks.json 에 debug 앱이 있어야 통과하고,
+                host 별로 따로 판정되므로 실패해도 main 의 dev host 검증에는 영향이 없다.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="https"
+                    android:host="api.laimory.app"
+                    android:path="/auth/app" />
             </intent-filter>
         </activity>
 
@@ -40,6 +64,18 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
             </intent-filter>
         </activity-alias>
+
+
+        <!-- 새 프로세스에서 런처로 켤 때 API 서버를 먼저 고른다. debug 에만 선언한다. -->
+        <activity
+            android:name=".apiorigin.DebugApiOriginActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>
