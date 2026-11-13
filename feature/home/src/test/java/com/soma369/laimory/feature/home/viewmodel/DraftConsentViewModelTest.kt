@@ -382,6 +382,58 @@ class DraftConsentViewModelTest {
         }
 
     @Test
+    fun `하단 모두 지우기는 확인하면 기록 범위 안 알림을 모두 지우고 다른 유형은 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(notificationItem("kakao-1"), notificationItem("slack-1", packageName = "slack"), stayItem("stay")))
+            // 전송 상한 때문에 화면 목록에 없는 알림도 지운다.
+            sourceItemStore.items += notificationItem("kakao-hidden")
+            messageHelper.twoButtonResult = DialogResult.Primary
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteAllOfGroup(DraftConsentTypeGroup.NOTIFICATION))
+            runCurrent()
+
+            assertEquals("알림 3건을 모두 기기에서 지울까요?", messageHelper.twoButtonRequests.single().title)
+            assertEquals(listOf("stay"), sourceItemStore.items.map { it.rawId })
+            assertEquals(3, viewModel.state.value.deletionUndo?.count)
+        }
+
+    @Test
+    fun `위치 모두 지우기는 체류와 이동을 함께 지우고 실행 취소로 전부 돌아온다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(stayItem("stay"), movementItem("move"), notificationItem("n-1")))
+            messageHelper.twoButtonResult = DialogResult.Primary
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteAllOfGroup(DraftConsentTypeGroup.LOCATION))
+            runCurrent()
+            assertEquals("위치 2건을 모두 기기에서 지울까요?", messageHelper.twoButtonRequests.single().title)
+            assertEquals(listOf("n-1"), sourceItemStore.items.map { it.rawId })
+
+            viewModel.sendIntent(DraftConsentUiIntent.UndoDeletion(viewModel.state.value.deletionUndo!!.token))
+            runCurrent()
+
+            assertEquals(setOf("stay", "move", "n-1"), sourceItemStore.items.mapTo(mutableSetOf()) { it.rawId })
+        }
+
+    @Test
+    fun `지울 수 없는 유형의 모두 지우기는 다이얼로그 없이 무시한다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            browse(listOf(calendarItem("cal"), notificationItem("n-1")))
+            messageHelper.twoButtonResult = DialogResult.Primary
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(DraftConsentUiIntent.DeleteAllOfGroup(DraftConsentTypeGroup.CALENDAR))
+            runCurrent()
+
+            assertTrue(messageHelper.twoButtonRequests.isEmpty())
+            assertEquals(2, sourceItemStore.items.size)
+        }
+
+    @Test
     fun `앱 묶음 지우기를 취소하면 아무것도 지우지 않는다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             browse(listOf(notificationItem("kakao-1")))

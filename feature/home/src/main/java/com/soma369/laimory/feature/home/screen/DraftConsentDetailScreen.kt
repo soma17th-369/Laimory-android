@@ -148,6 +148,7 @@ private fun DraftConsentDetailContent(
         deletionUndo = state.deletionUndo,
         onDeleteItem = { itemKey -> onIntent(DraftConsentUiIntent.DeleteItem(itemKey)) },
         onDeleteNotificationApp = { packageName -> onIntent(DraftConsentUiIntent.DeleteNotificationApp(packageName)) },
+        onDeleteAll = { group -> onIntent(DraftConsentUiIntent.DeleteAllOfGroup(group)) },
         onUndoDeletion = { token -> onIntent(DraftConsentUiIntent.UndoDeletion(token)) },
         onExpireDeletionUndo = { token -> onIntent(DraftConsentUiIntent.ExpireDeletionUndo(token)) },
     )
@@ -171,40 +172,34 @@ private fun DraftConsentDetailScreen(
     deletionUndo: DraftConsentDeletionUndo? = null,
     onDeleteItem: (String) -> Unit = {},
     onDeleteNotificationApp: (String) -> Unit = {},
+    onDeleteAll: (DraftConsentTypeGroup) -> Unit = {},
     onUndoDeletion: (Long) -> Unit = {},
     onExpireDeletionUndo: (Long) -> Unit = {},
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        DetailBody(
-            innerPadding = innerPadding,
-            summary = summary,
-            title = title,
-            onBack = onBack,
-            excludedRawIds = excludedRawIds,
-            locationMarkers = locationMarkers,
-            isMapRenderAllowed = isMapRenderAllowed,
-            isLocationIncluded = isLocationIncluded,
-            isLocationToggleEnabled = isLocationToggleEnabled,
-            isReadOnly = isReadOnly,
-            onToggleItem = onToggleItem,
-            onToggleLocation = onToggleLocation,
-            onDeleteItem = onDeleteItem.takeIf { canDelete && summary?.group in DELETABLE_GROUPS },
-            onDeleteNotificationApp = onDeleteNotificationApp.takeIf { canDelete },
-        )
-        // 공용 스낵바 호스트는 쓰지 않는다. 연달아 지우면 한 스낵바의 건수만 바뀌어야 하는데, 호스트는
-        // 스낵바를 줄 세워 하나씩 띄운다.
-        deletionUndo?.let { undo ->
-            DeletionUndoSnackbar(
-                undo = undo,
-                onUndo = onUndoDeletion,
-                onExpire = onExpireDeletionUndo,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(innerPadding),
-            )
-        }
-    }
+    val isDeletable = canDelete && summary?.group in DELETABLE_GROUPS
+    DetailBody(
+        innerPadding = innerPadding,
+        summary = summary,
+        title = title,
+        onBack = onBack,
+        excludedRawIds = excludedRawIds,
+        locationMarkers = locationMarkers,
+        isMapRenderAllowed = isMapRenderAllowed,
+        isLocationIncluded = isLocationIncluded,
+        isLocationToggleEnabled = isLocationToggleEnabled,
+        isReadOnly = isReadOnly,
+        onToggleItem = onToggleItem,
+        onToggleLocation = onToggleLocation,
+        onDeleteItem = onDeleteItem.takeIf { isDeletable },
+        onDeleteNotificationApp = onDeleteNotificationApp.takeIf { canDelete },
+        onDeleteAll =
+            summary
+                ?.takeIf { isDeletable && it.sections.any { section -> section.items.isNotEmpty() } }
+                ?.let { { onDeleteAll(it.group) } },
+        deletionUndo = deletionUndo,
+        onUndoDeletion = onUndoDeletion,
+        onExpireDeletionUndo = onExpireDeletionUndo,
+    )
 }
 
 @Composable
@@ -223,6 +218,10 @@ private fun DetailBody(
     onToggleLocation: () -> Unit,
     onDeleteItem: ((String) -> Unit)?,
     onDeleteNotificationApp: ((String) -> Unit)?,
+    onDeleteAll: (() -> Unit)?,
+    deletionUndo: DraftConsentDeletionUndo?,
+    onUndoDeletion: (Long) -> Unit,
+    onExpireDeletionUndo: (Long) -> Unit,
 ) {
     Column(
         modifier =
@@ -275,49 +274,86 @@ private fun DetailBody(
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding =
-                PaddingValues(
-                    start = Spacing.extraLarge,
-                    end = Spacing.extraLarge,
-                    top = Spacing.medium,
-                    bottom = Spacing.extraLarge,
-                ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.small),
-        ) {
-            item(key = "notice") {
-                val excludedCount =
-                    summary.sections.sumOf { section -> section.items.count { it.key in excludedRawIds } }
-                // 한 줄에는 건수만 둔다. 조작법·주의는 `i` 를 눌러 본다 — 다 적으면 목록보다 안내가 먼저 읽힌다.
-                Row(
-                    modifier = Modifier.padding(bottom = Spacing.small),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = summary.countLabel(includedCount = summary.sentCount - excludedCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    InfoTooltipIcon(
-                        label = "전송 안내",
-                        guide = detailGuide(group = summary.group, isReadOnly = isReadOnly, canDelete = onDeleteItem != null),
-                        // 바로 위가 앱 바라 위로 띄우면 상태 표시줄까지 덮는다.
-                        showsBelow = true,
+        // 목록과 스낵바를 한 상자에 둔다. 스낵바가 아래 `모두 지우기` 를 덮지 않고 그 바로 위에 뜬다.
+        Box(modifier = Modifier.weight(1f)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding =
+                    PaddingValues(
+                        start = Spacing.extraLarge,
+                        end = Spacing.extraLarge,
+                        top = Spacing.medium,
+                        bottom = Spacing.extraLarge,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(Spacing.small),
+            ) {
+                item(key = "notice") {
+                    val excludedCount =
+                        summary.sections.sumOf { section -> section.items.count { it.key in excludedRawIds } }
+                    // 한 줄에는 건수만 둔다. 조작법·주의는 `i` 를 눌러 본다 — 다 적으면 목록보다 안내가 먼저 읽힌다.
+                    Row(
+                        modifier = Modifier.padding(bottom = Spacing.small),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = summary.countLabel(includedCount = summary.sentCount - excludedCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        InfoTooltipIcon(
+                            label = "전송 안내",
+                            guide = detailGuide(group = summary.group, isReadOnly = isReadOnly, canDelete = onDeleteItem != null),
+                            // 바로 위가 앱 바라 위로 띄우면 상태 표시줄까지 덮는다.
+                            showsBelow = true,
+                        )
+                    }
+                }
+                summary.sections.forEach { section ->
+                    sectionItems(
+                        group = summary.group,
+                        section = section,
+                        excludedRawIds = excludedRawIds,
+                        markerOrders = markerOrders,
+                        onToggleItem = itemToggle,
+                        onDeleteItem = onDeleteItem,
+                        onDeleteNotificationApp = onDeleteNotificationApp,
                     )
                 }
             }
-            summary.sections.forEach { section ->
-                sectionItems(
-                    group = summary.group,
-                    section = section,
-                    excludedRawIds = excludedRawIds,
-                    markerOrders = markerOrders,
-                    onToggleItem = itemToggle,
-                    onDeleteItem = onDeleteItem,
-                    onDeleteNotificationApp = onDeleteNotificationApp,
+            // 공용 스낵바 호스트는 쓰지 않는다. 연달아 지우면 한 스낵바의 건수만 바뀌어야 하는데, 호스트는
+            // 스낵바를 줄 세워 하나씩 띄운다.
+            deletionUndo?.let { undo ->
+                DeletionUndoSnackbar(
+                    undo = undo,
+                    onUndo = onUndoDeletion,
+                    onExpire = onExpireDeletionUndo,
+                    modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
+        }
+        onDeleteAll?.let { DeleteAllBar(onClick = it) }
+    }
+}
+
+/**
+ * 상세 맨 아래 고정 `모두 지우기`. 기록 범위 안의 이 유형을 한 번에 지운다(확인 다이얼로그를 거친다).
+ *
+ * 목록 끝이 아니라 화면 아래에 고정한다 — 알림이 많으면 끝까지 내려야 보인다. 지우는 동작이라 눈에 덜 띄게
+ * 왼쪽에 글자 크기 버튼으로만 두고 구분선도 없다 — 바 전체가 눌리면 스크롤하다 닿기 쉽다. 글자는 버튼 안쪽
+ * 여백만큼 덜 들여 목록 카드 왼쪽 끝과 맞춘다. 위아래 여백은 두지 않는다 — 버튼 최소 터치 높이(48dp)가 곧 바
+ * 높이다.
+ */
+@Composable
+private fun DeleteAllBar(onClick: () -> Unit) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.small),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        TextButton(onClick = onClick) {
+            Text(text = "모두 지우기", style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -453,7 +489,7 @@ private fun LazyListScope.sectionItems(
                     appName = sectionTitle,
                     packageName = section.iconPackageName,
                     count = section.items.size,
-                    onDeleteAll =
+                    onDelete =
                         section.iconPackageName?.let { packageName ->
                             onDeleteNotificationApp?.let { delete -> { delete(packageName) } }
                         },
@@ -546,7 +582,7 @@ private fun NotificationSectionHeader(
     appName: String,
     packageName: String?,
     count: Int,
-    onDeleteAll: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
 ) {
     Row(
         modifier =
@@ -567,14 +603,15 @@ private fun NotificationSectionHeader(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (onDeleteAll != null) {
+        if (onDelete != null) {
             Spacer(modifier = Modifier.weight(1f))
             TextButton(
-                onClick = onDeleteAll,
+                onClick = onDelete,
                 // 버튼이 묶음마다 하나씩이라 문구만으로는 어느 앱인지 모른다. 낭독에는 앱 이름을 붙인다.
-                modifier = Modifier.semantics { contentDescription = "$appName 알림 모두 지우기" },
+                // `모두 지우기` 는 아래 고정 버튼(유형 전체)이 쓴다.
+                modifier = Modifier.semantics { contentDescription = "$appName 알림 지우기" },
             ) {
-                Text(text = "모두 지우기", style = MaterialTheme.typography.labelLarge)
+                Text(text = "지우기", style = MaterialTheme.typography.labelLarge)
             }
         }
     }

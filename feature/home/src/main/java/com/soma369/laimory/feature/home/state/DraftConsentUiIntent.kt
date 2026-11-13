@@ -51,6 +51,14 @@ sealed interface DraftConsentUiIntent : UiIntent {
         val packageName: String,
     ) : DraftConsentUiIntent
 
+    /**
+     * 기록 범위 안의 한 유형(알림·위치)을 모두 지운다(하단 `모두 지우기`). 확인 다이얼로그를 먼저 띄운다.
+     * 지울 수 없는 유형은 무시된다.
+     */
+    data class DeleteAllOfGroup(
+        val group: DraftConsentTypeGroup,
+    ) : DraftConsentUiIntent
+
     /** 스낵바 `실행 취소`. [token] 이 지금 묶음과 다르면 무시된다. */
     data class UndoDeletion(
         val token: Long,

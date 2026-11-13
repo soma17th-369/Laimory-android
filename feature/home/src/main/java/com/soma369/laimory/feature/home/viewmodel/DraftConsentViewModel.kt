@@ -23,6 +23,7 @@ import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
 import com.soma369.laimory.core.domain.usecase.RestoreSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
+import com.soma369.laimory.feature.home.component.label
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSelectionSnapshot
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
@@ -182,6 +183,7 @@ class DraftConsentViewModel
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
                 is DraftConsentUiIntent.DeleteItem -> deleteItem(intent.itemKey)
                 is DraftConsentUiIntent.DeleteNotificationApp -> confirmNotificationAppDeletion(intent.packageName)
+                is DraftConsentUiIntent.DeleteAllOfGroup -> confirmGroupDeletion(intent.group)
                 is DraftConsentUiIntent.UndoDeletion -> undoDeletion(intent.token)
                 is DraftConsentUiIntent.ExpireDeletionUndo -> if (intent.token == state.value.deletionUndo?.token) endDeletionUndo()
                 DraftConsentUiIntent.EndDeletionUndo -> {
@@ -199,30 +201,48 @@ class DraftConsentViewModel
             delete(listOf(itemKey))
         }
 
+        /** 한 앱의 알림을 모두 지운다(앱 묶음 머리 `지우기`). */
+        private fun confirmNotificationAppDeletion(packageName: String) =
+            confirmWindowDeletion(
+                matches = { item -> (item.payload as? NotificationPayload)?.packageName == packageName },
+                title = { items ->
+                    val appName = (items.maxBy(SourceItem::startAt).payload as NotificationPayload).appName
+                    "$appName 알림 ${items.size}건을 기기에서 지울까요?"
+                },
+            )
+
+        /** 한 유형(알림·위치)을 모두 지운다(하단 `모두 지우기`). */
+        private fun confirmGroupDeletion(group: DraftConsentTypeGroup) {
+            if (group.memberTypes.any { it !in DELETABLE_TYPES }) return
+            confirmWindowDeletion(
+                matches = { item -> item.itemType in group.memberTypes },
+                title = { items -> "${group.label()} ${items.size}${group.countUnit}을 모두 기기에서 지울까요?" },
+            )
+        }
+
         /**
-         * 한 앱의 알림을 모두 지운다.
+         * 기록 범위에서 [matches] 에 드는 것을 확인받고 지운다.
          *
-         * 지우는 범위는 **기록 범위 안의 그 앱 알림 전부**다. 화면 목록이 아니라 기기에서 다시 읽는다 —
+         * 지우는 범위는 **기록 범위 안의 해당 항목 전부**다. 화면 목록이 아니라 기기에서 다시 읽는다 —
          * 목록은 전송 상한이 걸려 있어 상한을 넘긴 알림이 빠져 있다. 다이얼로그 건수도 같은 목록으로 센다.
          *
          * 다이얼로그는 응답까지 기다리므로 intent 처리를 막지 않게 따로 띄운다.
          */
-        private fun confirmNotificationAppDeletion(packageName: String) {
+        private fun confirmWindowDeletion(
+            matches: (SourceItem) -> Boolean,
+            title: (List<SourceItem>) -> String,
+        ) {
             if (!state.value.canDelete) return
             val snapshot = activeSnapshot ?: return
             val boundary = deletionBoundary
             val account = sessionStore.accountSession.value
             safeLaunch {
-                val appItems =
-                    getSourceItemsInWindow(snapshot.window).filter { item ->
-                        (item.payload as? NotificationPayload)?.packageName == packageName
-                    }
-                if (appItems.isEmpty()) return@safeLaunch
-                val appName = (appItems.maxBy(SourceItem::startAt).payload as NotificationPayload).appName
+                val targets = getSourceItemsInWindow(snapshot.window).filter(matches)
+                if (targets.isEmpty()) return@safeLaunch
                 val result =
                     messageHelper.showTwoButtonDialog(
                         DialogRequest.TwoButton(
-                            title = "$appName 알림 ${appItems.size}건을 기기에서 지울까요?",
+                            title = title(targets),
                             body = DEVICE_ONLY_NOTICE,
                             primaryLabel = "지우기",
                             secondaryLabel = "취소",
@@ -233,7 +253,7 @@ class DraftConsentViewModel
                 // 다이얼로그를 보는 사이 제출이 확정됐거나, 다른 스냅샷·화면·계정으로 바뀌었으면 지우지 않는다.
                 if (!state.value.canDelete || activeSnapshot?.window != snapshot.window) return@safeLaunch
                 if (!isDeletionScopeAlive(boundary, account)) return@safeLaunch
-                delete(appItems.map(SourceItem::rawId), boundary, account)
+                delete(targets.map(SourceItem::rawId), boundary, account)
             }
         }
 
