@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
@@ -339,19 +338,20 @@ private fun DetailBody(
 /**
  * 상세 맨 아래 고정 `모두 지우기`. 기록 범위 안의 이 유형을 한 번에 지운다(확인 다이얼로그를 거친다).
  *
- * 목록 끝이 아니라 화면 아래에 고정한다 — 알림이 많으면 끝까지 내려야 보인다. 노티스타 저장 목록과 같은 자리다.
+ * 목록 끝이 아니라 화면 아래에 고정한다 — 알림이 많으면 끝까지 내려야 보인다. 지우는 동작이라 눈에 덜 띄게
+ * 왼쪽에 글자 크기 버튼으로만 두고 구분선도 없다 — 바 전체가 눌리면 스크롤하다 닿기 쉽다. 글자는 버튼 안쪽
+ * 여백만큼 덜 들여 목록 카드 왼쪽 끝과 맞춘다.
  */
 @Composable
 private fun DeleteAllBar(onClick: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        TextButton(
-            onClick = onClick,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.extraLarge, vertical = Spacing.small),
-        ) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.small, vertical = Spacing.small),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        TextButton(onClick = onClick) {
             Text(text = "모두 지우기", style = MaterialTheme.typography.labelLarge)
         }
     }
