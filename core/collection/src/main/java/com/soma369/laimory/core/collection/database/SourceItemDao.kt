@@ -55,7 +55,7 @@ internal interface SourceItemDao {
     suspend fun upsertAll(entities: List<SourceItemEntity>): Int {
         var insertedCount = 0
         val resolved =
-            entities.map { entity ->
+            entities.filterNot { isDeleted(it) }.map { entity ->
                 val existingRawId = findRawId(entity.itemType, entity.sourceName, entity.sourceKey)
                 if (existingRawId == null) {
                     insertedCount++
@@ -105,4 +105,89 @@ internal interface SourceItemDao {
 
     @Query("DELETE FROM source_item WHERE itemType = :itemType")
     suspend fun deleteByItemType(itemType: String)
+
+    /**
+     * 불변 이벤트를 저장하되 사용자가 지운 자연키는 건너뛴다. 남은 것은 [insertOrIgnore] 와 같다.
+     *
+     * @return 새로 저장된 아이템 수
+     */
+    @Transaction
+    suspend fun addAll(entities: List<SourceItemEntity>): Int =
+        insertOrIgnore(entities.filterNot { isDeleted(it) }).count { rowId -> rowId != IGNORED_ROW_ID }
+
+    @Query("SELECT * FROM source_item WHERE rawId IN (:rawIds)")
+    suspend fun findByRawIds(rawIds: Collection<String>): List<SourceItemEntity>
+
+    @Query("DELETE FROM source_item WHERE rawId IN (:rawIds)")
+    suspend fun deleteByRawIds(rawIds: Collection<String>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTombstones(tombstones: List<DeletedSourceItemEntity>)
+
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM deleted_source_item " +
+            "WHERE itemType = :itemType AND sourceName = :sourceName AND sourceKey = :sourceKey)",
+    )
+    suspend fun isDeleted(
+        itemType: String,
+        sourceName: String,
+        sourceKey: String,
+    ): Boolean
+
+    @Query("DELETE FROM deleted_source_item WHERE itemType = :itemType AND sourceName = :sourceName AND sourceKey = :sourceKey")
+    suspend fun deleteTombstone(
+        itemType: String,
+        sourceName: String,
+        sourceKey: String,
+    )
+
+    /**
+     * 아이템을 지우고 같은 자연키로 묘비를 남긴다. 실행 취소에 쓰도록 지운 행을 돌려준다.
+     *
+     * 없는 rawId 는 조용히 건너뛴다 — 지우는 사이 보존 기간 작업이 먼저 지웠을 수 있다.
+     */
+    @Transaction
+    suspend fun deleteWithTombstones(
+        rawIds: Collection<String>,
+        deletedAtUtc: Long,
+    ): List<SourceItemEntity> {
+        if (rawIds.isEmpty()) return emptyList()
+        val deleted = findByRawIds(rawIds)
+        if (deleted.isEmpty()) return emptyList()
+        insertTombstones(
+            deleted.map { entity ->
+                DeletedSourceItemEntity(
+                    itemType = entity.itemType,
+                    sourceName = entity.sourceName,
+                    sourceKey = entity.sourceKey,
+                    startAtUtc = entity.startAtUtc,
+                    endAtUtc = entity.endAtUtc,
+                    deletedAtUtc = deletedAtUtc,
+                )
+            },
+        )
+        deleteByRawIds(deleted.map(SourceItemEntity::rawId))
+        return deleted
+    }
+
+    /** 실행 취소. 묘비를 걷고 지웠던 행을 그대로 되돌린다. */
+    @Transaction
+    suspend fun restore(entities: List<SourceItemEntity>) {
+        if (entities.isEmpty()) return
+        entities.forEach { entity -> deleteTombstone(entity.itemType, entity.sourceName, entity.sourceKey) }
+        insertOrReplace(entities)
+    }
+
+    /** 묘비도 원래 행과 같은 규칙([deleteExpired])으로 보존 기간이 지나면 지운다. */
+    @Query(
+        "DELETE FROM deleted_source_item " +
+            "WHERE (endAtUtc IS NULL AND startAtUtc < :cutoffUtc) " +
+            "OR (endAtUtc IS NOT NULL AND endAtUtc <= :cutoffUtc)",
+    )
+    suspend fun deleteExpiredTombstones(cutoffUtc: Long): Int
 }
+
+private suspend fun SourceItemDao.isDeleted(entity: SourceItemEntity): Boolean =
+    isDeleted(entity.itemType, entity.sourceName, entity.sourceKey)
+
+private const val IGNORED_ROW_ID = -1L
