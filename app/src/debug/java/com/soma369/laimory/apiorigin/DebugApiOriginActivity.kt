@@ -14,6 +14,9 @@ import com.soma369.laimory.MainActivity
  * 창이 그 위를 덮는다. debug 매니페스트에만 선언하고 main 의 런처 intent-filter 를 지운다 — release·qa 는
  * 지금처럼 [MainActivity] 가 런처다.
  *
+ * 아이콘을 길게 누른 "서버 바꾸기" 바로가기([ACTION_CHOOSE])로 들어오면 프로세스가 살아 있어도 다시 묻는다 —
+ * 위치 수집·알림 리스너가 프로세스를 붙잡고 있어, 이것 없이는 강제 중지해야 서버를 바꿀 수 있다.
+ *
  * 앱은 이 화면 전에도 마지막으로 고른 서버로 이미 시작해 있다(푸시 등록 등은 Application 에서 돈다). 그래서
  * **다른 서버를 고르면 저장하고 프로세스를 다시 시작한다** — 주소만 바꾸면 한 프로세스에 두 서버의 상태가
  * 섞인다. 같은 서버면 그대로 넘긴다. 알림·App Link 진입과 백그라운드 작업은 이 화면을 거치지 않고 마지막
@@ -23,8 +26,8 @@ class DebugApiOriginActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (intent.getBooleanExtra(EXTRA_RESTARTED, false)) decidedInProcess = true
-        // 이미 고른 프로세스에서 런처를 다시 누르면 묻지 않는다.
-        if (decidedInProcess) {
+        // 이미 고른 프로세스에서 런처를 다시 누르면 묻지 않는다. 바로가기로 들어온 것은 바꾸려는 것이라 묻는다.
+        if (decidedInProcess && intent.action != ACTION_CHOOSE) {
             openMain()
             return
         }
@@ -79,5 +82,8 @@ class DebugApiOriginActivity : Activity() {
         var decidedInProcess = false
 
         const val EXTRA_RESTARTED = "com.soma369.laimory.apiorigin.RESTARTED"
+
+        /** "서버 바꾸기" 바로가기(`res/xml/debug_shortcuts.xml`)의 action. */
+        const val ACTION_CHOOSE = "com.soma369.laimory.apiorigin.CHOOSE"
     }
 }

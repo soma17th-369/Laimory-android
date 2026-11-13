@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    debug 앱 아이콘을 길게 누르면 나오는 "서버 바꾸기". 앱이 켜져 있어도 서버 선택을 다시 띄운다.
+
+    위치 수집(포그라운드 서비스)·알림 리스너가 프로세스를 붙잡고 있어 최근 앱에서 밀어도 프로세스가 남는다.
+    런처로는 새 프로세스일 때만 묻기 때문에, 이 바로가기가 없으면 서버를 바꾸려고 강제 중지해야 한다.
+
+    targetPackage 는 매니페스트 placeholder 가 먹지 않아 debug applicationId 를 그대로 적는다.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:shortcutId="debug_change_api_origin"
+        android:shortcutShortLabel="@string/debug_change_api_origin">
+        <intent
+            android:action="com.soma369.laimory.apiorigin.CHOOSE"
+            android:targetClass="com.soma369.laimory.apiorigin.DebugApiOriginActivity"
+            android:targetPackage="com.soma369.laimory.debug" />
+    </shortcut>
+</shortcuts>

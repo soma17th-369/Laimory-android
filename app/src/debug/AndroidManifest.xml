@@ -75,6 +75,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- 아이콘 길게 누르기 → "서버 바꾸기". 정적 바로가기는 런처 Activity 에 붙어야 한다. -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/debug_shortcuts" />
         </activity>
     </application>
 
