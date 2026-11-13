@@ -2,22 +2,33 @@ package com.soma369.laimory.feature.home.viewmodel
 
 import com.soma369.laimory.core.domain.coordinator.DraftTaskCoordinator
 import com.soma369.laimory.core.domain.coordinator.TermsAgreementCoordinator
+import com.soma369.laimory.core.domain.helper.MessageHelper
 import com.soma369.laimory.core.domain.helper.NavigationHelper
+import com.soma369.laimory.core.domain.message.DialogActionStyle
+import com.soma369.laimory.core.domain.message.DialogRequest
+import com.soma369.laimory.core.domain.message.DialogResult
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.MovementPayload
+import com.soma369.laimory.core.domain.model.collection.NotificationPayload
+import com.soma369.laimory.core.domain.model.collection.SourceItem
 import com.soma369.laimory.core.domain.model.collection.StayPayload
 import com.soma369.laimory.core.domain.model.terms.TermStage
 import com.soma369.laimory.core.domain.model.timeline.LocationMapKeyGate
 import com.soma369.laimory.core.domain.navigation.DraftConsentDetailPage
 import com.soma369.laimory.core.domain.usecase.CreateTimelineDraftUseCase
+import com.soma369.laimory.core.domain.usecase.DeleteSourceItemsUseCase
+import com.soma369.laimory.core.domain.usecase.GetSourceItemsInWindowUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveMovementAddressesUseCase
 import com.soma369.laimory.core.domain.usecase.ResolveStayAddressUseCase
+import com.soma369.laimory.core.domain.usecase.RestoreSourceItemsUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetDisplayTermsUseCase
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
 import com.soma369.laimory.feature.home.draft.DraftConsentPreparation
 import com.soma369.laimory.feature.home.draft.DraftConsentSelectionSnapshot
 import com.soma369.laimory.feature.home.draft.DraftConsentSessionStore
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
+import com.soma369.laimory.feature.home.state.DraftConsentDeletionUndo
+import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftConsentUiIntent
 import com.soma369.laimory.feature.home.state.DraftConsentUiSideEffect
 import com.soma369.laimory.feature.home.state.DraftConsentUiState
@@ -49,6 +60,10 @@ class DraftConsentViewModel
         private val getDisplayTerms: GetDisplayTermsUseCase,
         private val resolveStayAddress: ResolveStayAddressUseCase,
         private val resolveMovementAddresses: ResolveMovementAddressesUseCase,
+        private val deleteSourceItems: DeleteSourceItemsUseCase,
+        private val restoreSourceItems: RestoreSourceItemsUseCase,
+        private val getSourceItemsInWindow: GetSourceItemsInWindowUseCase,
+        private val messageHelper: MessageHelper,
         mapKeyGate: LocationMapKeyGate,
     ) : BaseMviViewModel<DraftConsentUiState, DraftConsentUiIntent, DraftConsentUiSideEffect>(
             DraftConsentUiState(),
@@ -82,12 +97,24 @@ class DraftConsentViewModel
          */
         private val attemptedAddressRawIds = mutableSetOf<String>()
 
+        /**
+         * 지금 묶음에서 지운 아이템. 실행 취소 때 그대로 되돌린다.
+         *
+         * 화면 상태에는 건수만 싣는다 — 알림 본문 같은 지운 내용을 상태로 들고 다니지 않는다.
+         */
+        private val undoItems = mutableListOf<SourceItem>()
+
+        /** 지울 때 전송에서 빠져 있던 것. 되돌리면 다시 뺀다. */
+        private val undoExcludedRawIds = mutableSetOf<String>()
+        private var nextUndoToken = 1L
+
         init {
             safeLaunch {
                 // 제출용이 확정돼 있으면 그것을 본다 — 확정 뒤에는 수집이 갱신돼도 보낼 것이
                 // 바뀌지 않아야 한다. 확정 전에는 홈이 상시로 유지하는 것을 본다.
                 combine(sessionStore.preparation, sessionStore.selection) { preparation, browsing ->
                     activePreparation = preparation
+                    updateState { copy(isPreparationLocked = preparation != null) }
                     preparation?.snapshot ?: browsing
                 }.collect { snapshot ->
                     when {
@@ -96,6 +123,9 @@ class DraftConsentViewModel
                         snapshot == null -> {
                             activeSnapshot = null
                             clearResolvedAddresses()
+                            // 지운 알림 본문을 메모리에 남기지 않는다. 계정 경계에서도 이 길로 온다.
+                            undoItems.clear()
+                            undoExcludedRawIds.clear()
                             updateState { DraftConsentUiState() }
                         }
 
@@ -130,7 +160,87 @@ class DraftConsentViewModel
                 DraftConsentUiIntent.ToggleLocationInclusion -> toggleLocationInclusion()
                 is DraftConsentUiIntent.OpenTypeDetail -> openTypeDetail(intent)
                 DraftConsentUiIntent.CloseTypeDetail -> navigationHelper.navigateToBack()
+                is DraftConsentUiIntent.DeleteItem -> deleteItem(intent.itemKey)
+                is DraftConsentUiIntent.DeleteNotificationApp -> confirmNotificationAppDeletion(intent.packageName)
+                is DraftConsentUiIntent.UndoDeletion -> undoDeletion(intent.token)
+                is DraftConsentUiIntent.ExpireDeletionUndo -> if (intent.token == state.value.deletionUndo?.token) endDeletionUndo()
+                DraftConsentUiIntent.EndDeletionUndo -> endDeletionUndo()
             }
+        }
+
+        /** 카드 밀기. 지금 스냅샷에 있는 알림·위치 항목만 지운다. */
+        private suspend fun deleteItem(itemKey: String) {
+            if (!state.value.canDelete) return
+            val item = activeSnapshot?.selection?.items?.firstOrNull { it.rawId == itemKey } ?: return
+            if (item.itemType !in DELETABLE_TYPES) return
+            delete(listOf(itemKey))
+        }
+
+        /**
+         * 한 앱의 알림을 모두 지운다.
+         *
+         * 지우는 범위는 **기록 범위 안의 그 앱 알림 전부**다. 화면 목록이 아니라 기기에서 다시 읽는다 —
+         * 목록은 전송 상한이 걸려 있어 상한을 넘긴 알림이 빠져 있다. 다이얼로그 건수도 같은 목록으로 센다.
+         *
+         * 다이얼로그는 응답까지 기다리므로 intent 처리를 막지 않게 따로 띄운다.
+         */
+        private fun confirmNotificationAppDeletion(packageName: String) {
+            if (!state.value.canDelete) return
+            val snapshot = activeSnapshot ?: return
+            safeLaunch {
+                val appItems =
+                    getSourceItemsInWindow(snapshot.window).filter { item ->
+                        (item.payload as? NotificationPayload)?.packageName == packageName
+                    }
+                if (appItems.isEmpty()) return@safeLaunch
+                val appName = (appItems.maxBy(SourceItem::startAt).payload as NotificationPayload).appName
+                val result =
+                    messageHelper.showTwoButtonDialog(
+                        DialogRequest.TwoButton(
+                            title = "$appName 알림 ${appItems.size}건을 기기에서 지울까요?",
+                            body = DEVICE_ONLY_NOTICE,
+                            primaryLabel = "지우기",
+                            secondaryLabel = "취소",
+                            primaryStyle = DialogActionStyle.DESTRUCTIVE,
+                        ),
+                    )
+                if (result != DialogResult.Primary) return@safeLaunch
+                // 다이얼로그를 보는 사이 제출이 확정됐거나 다른 스냅샷으로 바뀌었으면 지우지 않는다.
+                if (!state.value.canDelete || activeSnapshot?.window != snapshot.window) return@safeLaunch
+                delete(appItems.map(SourceItem::rawId))
+            }
+        }
+
+        /**
+         * 지우고 지금 묶음에 더한다. 지운 것이 없으면(이미 만료돼 사라졌으면) 스낵바를 건드리지 않는다.
+         *
+         * 화면에서 사라지는 것은 수집 관찰이 홈 스냅샷을 다시 만들면서다. 제외 집합에서도 그때 걷힌다.
+         */
+        private suspend fun delete(rawIds: List<String>) {
+            val excludedBefore = sessionStore.excludedRawIds.value
+            runCatching { deleteSourceItems(rawIds) }
+                .onSuccess { deleted ->
+                    if (deleted.isEmpty()) return
+                    undoItems += deleted
+                    deleted.mapNotNullTo(undoExcludedRawIds) { item -> item.rawId.takeIf { it in excludedBefore } }
+                    updateState { copy(deletionUndo = DraftConsentDeletionUndo(token = nextUndoToken++, count = undoItems.size)) }
+                }.onFailure(::handleFailure)
+        }
+
+        private suspend fun undoDeletion(token: Long) {
+            if (token != state.value.deletionUndo?.token) return
+            val items = undoItems.toList()
+            val excluded = undoExcludedRawIds.toSet()
+            endDeletionUndo()
+            runCatching { restoreSourceItems(items) }
+                .onSuccess { sessionStore.restoreExcluded(excluded) }
+                .onFailure(::handleFailure)
+        }
+
+        private fun endDeletionUndo() {
+            undoItems.clear()
+            undoExcludedRawIds.clear()
+            updateState { copy(deletionUndo = null) }
         }
 
         private fun toggleItemInclusion(intent: DraftConsentUiIntent.ToggleItemInclusion) {
@@ -286,6 +396,12 @@ class DraftConsentViewModel
 
             /** 이어 붙일 새 항목이 없을 때 서버가 주는 코드. */
             const val APPEND_NO_NEW_ITEMS = -1013
+
+            /** 기기에서 지울 수 있는 유형. 원본이 Laimory 로컬 DB 에만 있는 것들이다. */
+            val DELETABLE_TYPES =
+                DraftConsentTypeGroup.NOTIFICATION.memberTypes + DraftConsentTypeGroup.LOCATION.memberTypes
+
+            const val DEVICE_ONLY_NOTICE = "기기에서만 지워요. 이미 만든 기록은 그대로예요."
 
             const val AGREEMENT_REQUIRED_MESSAGE = "동의가 다시 필요해요."
             const val NO_NEW_ITEMS_MESSAGE = "이미 이 날 기록에 담긴 항목이에요. 새로 추가할 것이 없어요."

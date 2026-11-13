@@ -141,6 +141,17 @@ class DraftConsentSessionStore
         }
 
         /**
+         * 지웠다가 되돌린 항목의 제외를 다시 건다.
+         *
+         * 지우면 [updateSelection] 이 사라진 항목을 제외 집합에서 걷어 낸다. 되돌린 항목이 그대로
+         * 돌아오면 사용자가 뺐던 것이 전송에 다시 실린다.
+         */
+        fun restoreExcluded(rawIds: Set<String>) {
+            if (rawIds.isEmpty()) return
+            mutableExcludedRawIds.update { excluded -> excluded + rawIds }
+        }
+
+        /**
          * 위치 전송을 한 번에 켜고 끈다.
          *
          * 끌 때 그 시점 위치 항목을 제외 집합에 넣지 않는다 — 그러면 뒤에 수집된 위치가 샌다.

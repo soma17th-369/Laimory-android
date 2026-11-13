@@ -35,4 +35,32 @@ sealed interface DraftConsentUiIntent : UiIntent {
 
     /** 유형 상세 화면에서 동의 화면으로 복귀한다. 준비 상태는 유지된다. */
     data object CloseTypeDetail : DraftConsentUiIntent
+
+    /**
+     * 알림·위치 항목 하나를 기기에서 지운다(카드 밀기).
+     *
+     * 전송 제외와 다르다 — 제외는 이번 전송에서만 빠지고, 삭제는 기기 저장분이 사라진다.
+     * 제출용 스냅샷이 확정된 동안에는 무시된다.
+     */
+    data class DeleteItem(
+        val itemKey: String,
+    ) : DraftConsentUiIntent
+
+    /** 기록 범위 안의 한 앱 알림을 모두 지운다. 확인 다이얼로그를 먼저 띄운다. */
+    data class DeleteNotificationApp(
+        val packageName: String,
+    ) : DraftConsentUiIntent
+
+    /** 스낵바 `실행 취소`. [token] 이 지금 묶음과 다르면 무시된다. */
+    data class UndoDeletion(
+        val token: Long,
+    ) : DraftConsentUiIntent
+
+    /** 스낵바 시간이 다 됐다. 묶음이 끝나 더는 되돌릴 수 없다. */
+    data class ExpireDeletionUndo(
+        val token: Long,
+    ) : DraftConsentUiIntent
+
+    /** 상세 화면을 떠났다. 진행 중인 묶음을 끝낸다. */
+    data object EndDeletionUndo : DraftConsentUiIntent
 }
