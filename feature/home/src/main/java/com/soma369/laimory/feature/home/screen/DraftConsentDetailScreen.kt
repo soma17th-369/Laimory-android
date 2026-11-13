@@ -71,6 +71,7 @@ import com.soma369.laimory.core.ui.component.LaimoryTopAppBar
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
 import com.soma369.laimory.feature.home.component.DraftConsentLocationMap
+import com.soma369.laimory.feature.home.component.InfoTooltipIcon
 import com.soma369.laimory.feature.home.component.iconRes
 import com.soma369.laimory.feature.home.component.label
 import com.soma369.laimory.feature.home.state.ConsentLocationMarker
@@ -286,33 +287,21 @@ private fun DetailBody(
             item(key = "notice") {
                 val excludedCount =
                     summary.sections.sumOf { section -> section.items.count { it.key in excludedRawIds } }
-                val label = summary.countLabel(includedCount = summary.sentCount - excludedCount)
-                val canDelete = onDeleteItem != null
-                Text(
-                    text =
-                        when {
-                            // 만드는 중이거나 이미 만든 날이다. 지금 기기에 모인 것을 보여 주므로 보낸 것과 다를 수 있다.
-                            // 지울 수는 있다. 이미 만든 기록까지 지워진다고 오해하지 않게 기기에서만 지운다고 밝힌다.
-                            isReadOnly ->
-                                "보낸 내용과 다를 수 있어요. $label · 지금 기기에 모인 항목이고, 전송 선택은 바꿀 수 없어요. " +
-                                    "흐리게 표시된 항목은 전송에서 뺀 항목이에요." +
-                                    if (canDelete) " 왼쪽으로 밀면 지울 수 있어요. $DEVICE_ONLY_NOTICE" else ""
-
-                            summary.group == DraftConsentTypeGroup.PHOTO ->
-                                "$label · 아래 사진이 그대로 서버로 전송돼요. 사진은 홈 사진 선택에서 변경할 수 있어요."
-
-                            summary.group == DraftConsentTypeGroup.LOCATION ->
-                                "$label · 지도 핀을 누르면 장소와 포함 여부가 보이고, 말풍선을 한 번 더 누르면 바뀌어요. 핀 번호는 아래 목록과 같아요." +
-                                    if (canDelete) " $SWIPE_TO_DELETE_NOTICE" else ""
-
-                            else ->
-                                "$label · 항목을 누르면 전송에서 제외하거나 다시 포함할 수 있어요. 흐리게 표시된 항목은 전송되지 않아요." +
-                                    if (canDelete) " $SWIPE_TO_DELETE_NOTICE" else ""
-                        },
+                // 한 줄에는 건수만 둔다. 조작법·주의는 `i` 를 눌러 본다 — 다 적으면 목록보다 안내가 먼저 읽힌다.
+                Row(
                     modifier = Modifier.padding(bottom = Spacing.small),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = summary.countLabel(includedCount = summary.sentCount - excludedCount),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    InfoTooltipIcon(
+                        label = "전송 안내",
+                        guide = detailGuide(group = summary.group, isReadOnly = isReadOnly, canDelete = onDeleteItem != null),
+                    )
+                }
             }
             summary.sections.forEach { section ->
                 sectionItems(
@@ -328,6 +317,44 @@ private fun DetailBody(
         }
     }
 }
+
+/**
+ * 상세 안내 말풍선의 문구. 한 문장씩 줄을 나눈다.
+ *
+ * 완성된 날은 지금 기기에 모인 것을 보여 주므로 보낸 것과 다를 수 있다. 그래도 지울 수는 있어서,
+ * 이미 만든 기록까지 지워진다고 오해하지 않게 기기에서만 지운다고 밝힌다.
+ */
+private fun detailGuide(
+    group: DraftConsentTypeGroup,
+    isReadOnly: Boolean,
+    canDelete: Boolean,
+): String =
+    buildList {
+        when {
+            isReadOnly -> {
+                add("보낸 내용과 다를 수 있어요. 지금 기기에 모인 항목이에요.")
+                add("전송 선택은 바꿀 수 없어요. 흐리게 표시된 항목은 전송에서 뺀 항목이에요.")
+                if (canDelete) add("왼쪽으로 밀면 지울 수 있어요. $DEVICE_ONLY_NOTICE")
+            }
+
+            group == DraftConsentTypeGroup.PHOTO -> {
+                add("아래 사진이 그대로 서버로 전송돼요.")
+                add("사진은 홈 사진 선택에서 변경할 수 있어요.")
+            }
+
+            group == DraftConsentTypeGroup.LOCATION -> {
+                add("지도 핀을 누르면 장소와 포함 여부가 보이고, 말풍선을 한 번 더 누르면 바뀌어요.")
+                add("핀 번호는 아래 목록과 같아요.")
+                if (canDelete) add(SWIPE_TO_DELETE_NOTICE)
+            }
+
+            else -> {
+                add("항목을 누르면 전송에서 제외하거나 다시 포함할 수 있어요.")
+                add("흐리게 표시된 항목은 전송되지 않아요.")
+                if (canDelete) add(SWIPE_TO_DELETE_NOTICE)
+            }
+        }
+    }.joinToString(separator = "\n")
 
 /**
  * 지도 핀과 목록을 잇는 번호 배지.
