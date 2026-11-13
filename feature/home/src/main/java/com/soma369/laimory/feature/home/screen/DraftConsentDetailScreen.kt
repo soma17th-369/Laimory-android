@@ -31,16 +31,18 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxDefaults
+import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -300,6 +302,8 @@ private fun DetailBody(
                     InfoTooltipIcon(
                         label = "전송 안내",
                         guide = detailGuide(group = summary.group, isReadOnly = isReadOnly, canDelete = onDeleteItem != null),
+                        // 바로 위가 앱 바라 위로 띄우면 상태 표시줄까지 덮는다.
+                        showsBelow = true,
                     )
                 }
             }
@@ -1080,17 +1084,23 @@ private fun SwipeToDeleteBox(
         content()
         return
     }
-    val state = rememberSwipeToDismissBoxState()
-    // 지우면 이 카드가 목록에서 빠지며 이 효과도 취소된다. 밀린 채 남아 있으면 지우지 못한 것이라 되돌린다.
-    LaunchedEffect(state.currentValue) {
-        if (state.currentValue != SwipeToDismissBoxValue.EndToStart) return@LaunchedEffect
+    // 저장 가능한 기본 상태(rememberSwipeToDismissBoxState)는 쓰지 않는다. 목록이 항목 키별로 상태를
+    // 보관해 두므로, 실행 취소로 같은 키가 돌아오면 밀린 채 되살아나 또 지워진다.
+    val positionalThreshold = SwipeToDismissBoxDefaults.positionalThreshold
+    val state = remember { SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, positionalThreshold) }
+    val currentOnDelete by rememberUpdatedState(onDelete)
+    // 지우기는 여기서 한 번만 부른다. SwipeToDismissBox 의 onDismiss 는 콜백이 바뀔 때마다 다시 불려,
+    // 밀린 채 다시 그려지면 같은 항목을 또 지운다. 지우면 카드가 목록에서 빠지며 이 효과도 취소된다.
+    // 밀린 채 남아 있으면 지우지 못한 것이라 되돌린다.
+    LaunchedEffect(state.settledValue) {
+        if (state.settledValue != SwipeToDismissBoxValue.EndToStart) return@LaunchedEffect
+        currentOnDelete()
         delay(SWIPE_RESET_DELAY_MILLIS)
         state.reset()
     }
     SwipeToDismissBox(
         state = state,
         enableDismissFromStartToEnd = false,
-        onDismiss = { value -> if (value == SwipeToDismissBoxValue.EndToStart) onDelete() },
         backgroundContent = {
             if (state.dismissDirection == SwipeToDismissBoxValue.EndToStart) DeleteSwipeBackground()
         },
