@@ -145,6 +145,10 @@ internal interface SourceItemDao {
      * 아이템을 지우고 같은 자연키로 묘비를 남긴다. 실행 취소에 쓰도록 지운 행을 돌려준다.
      *
      * 없는 rawId 는 조용히 건너뛴다 — 지우는 사이 보존 기간 작업이 먼저 지웠을 수 있다.
+     *
+     * rawId 는 [MAX_BIND_ARGS] 개씩 나눠 조회하고 지운다. 앱 묶음 삭제는 기록 범위의 그 앱 알림 전부라
+     * 1,000건을 넘을 수 있는데, `IN (...)` 하나에 다 펼치면 바인딩 한도(999)가 있는 기기에서
+     * `too many SQL variables` 로 트랜잭션 전체가 실패한다. 나눠도 한 트랜잭션이라 전부 지워지거나 하나도 안 지워진다.
      */
     @Transaction
     suspend fun deleteWithTombstones(
@@ -152,7 +156,7 @@ internal interface SourceItemDao {
         deletedAtUtc: Long,
     ): List<SourceItemEntity> {
         if (rawIds.isEmpty()) return emptyList()
-        val deleted = findByRawIds(rawIds)
+        val deleted = rawIds.distinct().chunked(MAX_BIND_ARGS).flatMap { chunk -> findByRawIds(chunk) }
         if (deleted.isEmpty()) return emptyList()
         insertTombstones(
             deleted.map { entity ->
@@ -166,7 +170,7 @@ internal interface SourceItemDao {
                 )
             },
         )
-        deleteByRawIds(deleted.map(SourceItemEntity::rawId))
+        deleted.map(SourceItemEntity::rawId).chunked(MAX_BIND_ARGS).forEach { chunk -> deleteByRawIds(chunk) }
         return deleted
     }
 
@@ -191,3 +195,6 @@ private suspend fun SourceItemDao.isDeleted(entity: SourceItemEntity): Boolean =
     isDeleted(entity.itemType, entity.sourceName, entity.sourceKey)
 
 private const val IGNORED_ROW_ID = -1L
+
+/** `IN (...)` 한 번에 펼칠 rawId 수. SQLite 3.32 미만의 바인딩 한도 999 보다 작게 둔다. */
+private const val MAX_BIND_ARGS = 900

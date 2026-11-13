@@ -85,6 +85,25 @@ internal class SourceItemDeletionRepositoryImplTest {
         }
 
     @Test
+    fun 바인딩_한도를_넘는_묶음도_한_번에_지우고_되돌린다() =
+        runTest {
+            // 앱 묶음 삭제는 기록 범위의 그 앱 알림 전부라 999개 바인딩 한도를 넘을 수 있다.
+            val rawIds = (1..BULK_COUNT).map { "raw-$it" }
+            repository.addAll(rawIds.map { notification(it, sourceKey = "key-$it") })
+
+            val deleted = deletion.delete(rawIds)
+
+            assertEquals(BULK_COUNT, deleted.size)
+            assertTrue(repository.observeAll().first().isEmpty())
+            // 묘비도 전부 남아 같은 키로는 다시 들어오지 않는다.
+            assertEquals(0, repository.addAll(rawIds.map { notification("$it-again", sourceKey = "key-$it") }))
+
+            deletion.restore(deleted)
+
+            assertEquals(rawIds.toSet(), repository.observeAll().first().mapTo(mutableSetOf(), SourceItem::rawId))
+        }
+
+    @Test
     fun 없는_rawId_는_건너뛴다() =
         runTest {
             assertTrue(deletion.delete(listOf("missing")).isEmpty())
@@ -101,7 +120,10 @@ internal class SourceItemDeletionRepositoryImplTest {
             assertEquals(1, repository.addAll(listOf(notification("raw-again"))))
         }
 
-    private fun notification(rawId: String): SourceItem =
+    private fun notification(
+        rawId: String,
+        sourceKey: String = "notification-key",
+    ): SourceItem =
         SourceItem(
             rawId = rawId,
             startAt = EVENT_TIME,
@@ -116,7 +138,7 @@ internal class SourceItemDeletionRepositoryImplTest {
                     collectReason = NotificationPayload.CollectReason.APP,
                 ),
             sourceName = SourceName.NOTIFICATION_LISTENER,
-            sourceKey = "notification-key",
+            sourceKey = sourceKey,
             collectedAt = EVENT_TIME,
         )
 
@@ -135,5 +157,6 @@ internal class SourceItemDeletionRepositoryImplTest {
     private companion object {
         val EVENT_TIME: Instant = Instant.parse("2026-11-01T03:00:00Z")
         val NOW: Instant = Instant.parse("2026-11-13T00:00:00Z")
+        const val BULK_COUNT = 1_200
     }
 }
