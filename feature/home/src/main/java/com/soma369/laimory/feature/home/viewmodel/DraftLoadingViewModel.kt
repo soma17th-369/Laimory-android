@@ -8,6 +8,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsCreditEntryPoint
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskFailureReason
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.ui.base.BaseMviViewModel
@@ -18,6 +19,7 @@ import com.soma369.laimory.feature.home.draft.DraftSubmission
 import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureMessages
+import com.soma369.laimory.feature.home.draft.DraftTaskFailureMessages
 import com.soma369.laimory.feature.home.loading.DraftLoadingAction
 import com.soma369.laimory.feature.home.loading.DraftLoadingNotice
 import com.soma369.laimory.feature.home.loading.DraftLoadingStage
@@ -338,11 +340,22 @@ class DraftLoadingViewModel
                     )
 
                 is DraftTaskTrackingState.Failed ->
-                    DraftLoadingNotice(
-                        message = "초안을 만들지 못했어요. 다시 시도해주세요.",
-                        primaryAction = DraftLoadingAction("다시 만들기", DraftLoadingUiIntent.Discard),
-                        secondaryAction = null,
-                    )
+                    when (reason) {
+                        // 같은 기록으로 다시 만들어도 결과가 같아 `다시 만들기` 를 권하지 않는다.
+                        DraftTaskFailureReason.NO_EVENTS ->
+                            DraftLoadingNotice(
+                                message = DraftTaskFailureMessages.NO_EVENTS,
+                                primaryAction = DraftLoadingAction("확인", DraftLoadingUiIntent.Discard),
+                                secondaryAction = null,
+                            )
+
+                        else ->
+                            DraftLoadingNotice(
+                                message = DraftTaskFailureMessages.OTHER,
+                                primaryAction = DraftLoadingAction("다시 만들기", DraftLoadingUiIntent.Discard),
+                                secondaryAction = null,
+                            )
+                    }
 
                 is DraftTaskTrackingState.Unavailable ->
                     DraftLoadingNotice(

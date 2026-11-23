@@ -9,6 +9,7 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsEvent
 import com.soma369.laimory.core.domain.model.collection.SourceItemRetentionConfig
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskCompletion
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskFailureReason
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.navigation.CreditPage
 import com.soma369.laimory.core.domain.navigation.Page
@@ -16,6 +17,7 @@ import com.soma369.laimory.feature.home.draft.DraftLoadingSession
 import com.soma369.laimory.feature.home.draft.DraftLoadingSessionStore
 import com.soma369.laimory.feature.home.draft.DraftSubmission
 import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
+import com.soma369.laimory.feature.home.draft.DraftTaskFailureMessages
 import com.soma369.laimory.feature.home.loading.DraftLoadingStage
 import com.soma369.laimory.feature.home.loading.DraftLoadingStageState
 import com.soma369.laimory.feature.home.loading.DraftLoadingUiIntent
@@ -213,6 +215,43 @@ class DraftLoadingViewModelTest {
         }
 
     @Test
+    fun `기록 부족으로 실패하면 다시 만들기를 권하지 않고 확인을 누르면 정리한 뒤 돌아간다`() =
+        loadingTest {
+            coordinator.emit(DraftTaskTrackingState.Processing(task))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            coordinator.emit(DraftTaskTrackingState.Failed(task, DraftTaskFailureReason.NO_EVENTS))
+            runCurrent()
+
+            val notice = viewModel.state.value.notice
+            assertEquals(DraftTaskFailureMessages.NO_EVENTS, notice?.message)
+            assertEquals("확인", notice?.primaryAction?.label)
+            assertNull(notice?.secondaryAction)
+
+            viewModel.sendIntent(notice!!.primaryAction!!.intent)
+            runCurrent()
+
+            assertEquals(1, coordinator.discardCount)
+            assertEquals(1, navigationHelper.backCount)
+        }
+
+    @Test
+    fun `그 밖의 실패는 지금처럼 다시 만들기를 권한다`() =
+        loadingTest {
+            coordinator.emit(DraftTaskTrackingState.Processing(task))
+            val viewModel = createViewModel()
+            runCurrent()
+
+            coordinator.emit(DraftTaskTrackingState.Failed(task, DraftTaskFailureReason.AI_REPORTED_FAILURE))
+            runCurrent()
+
+            val notice = viewModel.state.value.notice
+            assertEquals(DraftTaskFailureMessages.OTHER, notice?.message)
+            assertEquals("다시 만들기", notice?.primaryAction?.label)
+        }
+
+    @Test
     fun `요청이 무응답으로 끝나면 사유와 홈으로 버튼을 보여 주고 누르면 확인한 채 돌아간다`() =
         loadingTest {
             submissionStore.begin(date, requestedAt)
@@ -368,7 +407,11 @@ class DraftLoadingViewModelTest {
 
         override fun continueWaiting() = Unit
 
-        override suspend fun discard() = Unit
+        var discardCount = 0
+
+        override suspend fun discard() {
+            discardCount++
+        }
     }
 
     private companion object {

@@ -32,6 +32,7 @@ import com.soma369.laimory.core.domain.model.timeline.DailyRecordStatus
 import com.soma369.laimory.core.domain.model.timeline.DailyTimeline
 import com.soma369.laimory.core.domain.model.timeline.DraftPhotoLimitExceededException
 import com.soma369.laimory.core.domain.model.timeline.DraftSourceItemSelection
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskFailureReason
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskUnavailableReason
 import com.soma369.laimory.core.domain.model.timeline.MonthlyDailyRecord
@@ -75,6 +76,7 @@ import com.soma369.laimory.feature.home.draft.DraftSubmission
 import com.soma369.laimory.feature.home.draft.DraftSubmissionStore
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureKind
 import com.soma369.laimory.feature.home.draft.DraftSubmitFailureMessages
+import com.soma369.laimory.feature.home.draft.DraftTaskFailureMessages
 import com.soma369.laimory.feature.home.draft.toLoadingSession
 import com.soma369.laimory.feature.home.state.DraftConsentTypeGroup
 import com.soma369.laimory.feature.home.state.DraftCreateEmptyReason
@@ -2074,7 +2076,11 @@ class HomeViewModel
                     alignedState.copy(
                         draftStatus = DraftCreationStatus.FAILED,
                         draftRetryMode = DraftRetryMode.NEW_DRAFT,
-                        draftMessage = "초안을 만들지 못했어요. 다시 시도해주세요.",
+                        draftMessage =
+                            when (trackingState.reason) {
+                                DraftTaskFailureReason.NO_EVENTS -> DraftTaskFailureMessages.NO_EVENTS
+                                else -> DraftTaskFailureMessages.OTHER
+                            },
                     )
 
                 is DraftTaskTrackingState.RetryableError ->
