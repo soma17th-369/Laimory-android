@@ -2,6 +2,7 @@ package com.soma369.laimory.core.domain.model.analytics
 
 import com.soma369.laimory.core.domain.exception.ApiException
 import com.soma369.laimory.core.domain.exception.HandledException
+import com.soma369.laimory.core.domain.model.timeline.DraftTaskFailureReason
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.net.SocketTimeoutException
@@ -29,5 +30,18 @@ class AnalyticsFailureCodeTest {
         assertEquals(AnalyticsFailureCode.NETWORK, AnalyticsFailureCode.from(ApiException.NetworkException()))
         assertEquals(AnalyticsFailureCode.TIMEOUT, AnalyticsFailureCode.from(SocketTimeoutException()))
         assertEquals(AnalyticsFailureCode.AUTH, AnalyticsFailureCode.from(ApiException.UnauthorizedException()))
+    }
+
+    @Test
+    fun `생성 실패 사유 중 기록 부족만 입력 부족으로 가르고 나머지는 서버 실패로 본다`() {
+        assertEquals(AnalyticsFailureCode.INSUFFICIENT_EVENT, AnalyticsFailureCode.from(DraftTaskFailureReason.NO_EVENTS))
+        listOf(
+            DraftTaskFailureReason.AI_REPORTED_FAILURE,
+            DraftTaskFailureReason.AI_DISPATCH_FAILURE,
+            DraftTaskFailureReason.FINALIZE_FAILURE,
+        ).forEach { reason ->
+            assertEquals(AnalyticsFailureCode.SERVER, AnalyticsFailureCode.from(reason))
+        }
+        assertEquals(AnalyticsFailureCode.UNKNOWN, AnalyticsFailureCode.from(DraftTaskFailureReason.UNKNOWN))
     }
 }

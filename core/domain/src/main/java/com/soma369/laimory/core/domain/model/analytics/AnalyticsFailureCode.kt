@@ -46,7 +46,7 @@ enum class AnalyticsFailureCode {
         /** 서버가 보고한 생성 실패 사유. 사용자가 바꿀 수 있는 입력 부족만 따로 가른다. */
         fun from(reason: DraftTaskFailureReason): AnalyticsFailureCode =
             when (reason) {
-                DraftTaskFailureReason.STAGING_DATA_MISSING -> INSUFFICIENT_EVENT
+                DraftTaskFailureReason.NO_EVENTS -> INSUFFICIENT_EVENT
                 DraftTaskFailureReason.AI_REPORTED_FAILURE,
                 DraftTaskFailureReason.AI_DISPATCH_FAILURE,
                 DraftTaskFailureReason.FINALIZE_FAILURE,
