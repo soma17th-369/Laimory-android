@@ -40,10 +40,16 @@ sealed interface AnalyticsEvent {
         val trigger: AnalyticsReadyTrigger,
     ) : AnalyticsEvent
 
-    /** 생성 버튼을 눌러 준비를 시작했다. 범위 오류 같은 입력 가드는 통과한 뒤다. */
+    /**
+     * 생성 버튼을 눌러 준비를 시작했다. 범위 오류 같은 입력 가드는 통과한 뒤다.
+     *
+     * [tutorialFlowId] 는 이 시작이 홈 튜토리얼 회차 뒤 첫 만들기일 때 그 회차 토큰이다 — 튜토리얼에서 만들기까지 이어 셀 수 있다.
+     * 튜토리얼을 거치지 않았거나 그 회차가 이미 만들기로 이어졌으면 null 이다.
+     */
     data class TimelineCreateStarted(
         val recordDayRelation: AnalyticsRecordDayRelation,
         val recordDate: LocalDate,
+        val tutorialFlowId: String? = null,
     ) : AnalyticsEvent
 
     /** 준비를 시작했지만 생성 요청까지 가지 않고 멈췄다. 이유마다 고칠 곳이 다르다. */

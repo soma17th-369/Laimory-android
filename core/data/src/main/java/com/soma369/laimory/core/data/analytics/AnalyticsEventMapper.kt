@@ -152,7 +152,11 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
             payload(
                 name = "timeline_create_started",
                 recordDate = recordDate,
-                strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
+                strings =
+                    buildMap {
+                        put(PARAM_RECORD_DAY_RELATION, recordDayRelation.paramValue)
+                        tutorialFlowId?.let { put(PARAM_TUTORIAL_FLOW_ID, it) }
+                    },
             )
         is AnalyticsEvent.TimelineCreateStopped ->
             payload(

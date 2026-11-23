@@ -115,6 +115,12 @@ class AnalyticsEventMapperTest {
                     setOf("record_date"),
                 ),
                 Expectation(
+                    AnalyticsEvent.TimelineCreateStarted(today, date, tutorialFlowId = TUTORIAL_FLOW_ID),
+                    "timeline_create_started",
+                    setOf("record_day_relation", "tutorial_flow_id"),
+                    setOf("record_date"),
+                ),
+                Expectation(
                     AnalyticsEvent.TimelineCreateStopped(AnalyticsCreateStopReason.NO_DATA, today, date),
                     "timeline_create_stopped",
                     setOf("reason", "record_day_relation"),

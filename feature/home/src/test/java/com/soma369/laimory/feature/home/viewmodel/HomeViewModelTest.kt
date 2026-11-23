@@ -3318,6 +3318,41 @@ class HomeViewModelTest {
             assertEquals(listOf(AnalyticsTutorialStep.HOME_DATE), viewedSteps())
         }
 
+    @Test
+    fun `튜토리얼을 닫은 뒤 첫 만들기 시작에만 그 회차 토큰을 싣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(1), count = 1)
+            sourceRepository.items.value = listOf(todayItem("a"))
+            confirmDialog.answer = ConfirmAnswer.CANCEL
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation(AnalyticsTutorialExitVia.BUTTON))
+            runCurrent()
+
+            createDraft(viewModel)
+            createDraft(viewModel)
+
+            val begin = tutorialEvents().first() as AnalyticsEvent.TutorialBegin
+            assertEquals(
+                listOf(begin.flowId, null),
+                analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateStarted>().map { it.tutorialFlowId },
+            )
+        }
+
+    @Test
+    fun `튜토리얼을 거치지 않은 만들기 시작에는 회차 토큰이 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("a"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertNull(analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateStarted>().single().tutorialFlowId)
+        }
+
     private fun tutorialEvents(): List<AnalyticsEvent> =
         analyticsHelper.logged.filter {
             it is AnalyticsEvent.TutorialBegin ||

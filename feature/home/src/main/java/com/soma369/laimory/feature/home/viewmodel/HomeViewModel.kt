@@ -1402,7 +1402,13 @@ class HomeViewModel
                 ) {
                     // 다이얼로그에서 사진을 고르고 돌아온 것은 같은 만들기의 이어짐이다. 시작을 두 번 세지 않는다.
                     if (!isResume) {
-                        analyticsHelper.log(AnalyticsEvent.TimelineCreateStarted(dayRelation, recordDate))
+                        analyticsHelper.log(
+                            AnalyticsEvent.TimelineCreateStarted(
+                                recordDayRelation = dayRelation,
+                                recordDate = recordDate,
+                                tutorialFlowId = tutorialAnalytics.takeFlowIdForCreate(),
+                            ),
+                        )
                         isReviewStartPending = true
                     }
                     val isAutoCollectionIncomplete = awaitAutoCollection()

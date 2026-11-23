@@ -148,6 +148,34 @@ class AnalyticsTutorialSessionTest {
         assertEquals(0, action?.cardsViewed)
     }
 
+    @Test
+    fun `닫힌 회차도 첫 만들기에 한 번만 토큰을 넘긴다`() {
+        session.begin(AnalyticsTutorialEntryMode.FIRST_RUN, stepCount = 7)
+        session.complete()
+
+        assertEquals("flow-1", session.takeFlowIdForCreate())
+        assertNull(session.takeFlowIdForCreate())
+    }
+
+    @Test
+    fun `새 회차를 열면 만들기에 넘길 토큰도 새 회차 것이다`() {
+        session.begin(AnalyticsTutorialEntryMode.FIRST_RUN, stepCount = 7)
+        session.skip(AnalyticsTutorialStep.HOME_DATE, AnalyticsTutorialExitVia.BUTTON)
+        session.begin(AnalyticsTutorialEntryMode.REPLAY, stepCount = 6)
+
+        assertEquals("flow-2", session.takeFlowIdForCreate())
+    }
+
+    @Test
+    fun `회차가 없었거나 끊겼으면 만들기에 넘길 토큰이 없다`() {
+        assertNull(session.takeFlowIdForCreate())
+
+        session.begin(AnalyticsTutorialEntryMode.FIRST_RUN, stepCount = 4)
+        session.abandon()
+
+        assertNull(session.takeFlowIdForCreate())
+    }
+
     private class TickingClock : Clock() {
         private var now = Instant.parse("2026-11-23T03:00:00Z")
 

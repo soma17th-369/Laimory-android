@@ -18,6 +18,9 @@ class AnalyticsTutorialSession(
 ) {
     private var flow: Flow? = null
 
+    /** 아직 만들기로 이어지지 않은 마지막 회차 토큰. 완료 · 건너뛰기로 회차가 닫혀도 남는다. */
+    private var flowIdForCreate: String? = null
+
     /** 회차가 진행 중인지. */
     val isActive: Boolean
         get() = flow != null
@@ -29,6 +32,7 @@ class AnalyticsTutorialSession(
     ): AnalyticsEvent.TutorialBegin {
         val started = Flow(id = newFlowId(), entryMode = entryMode, startedAtMillis = clock.millis())
         flow = started
+        flowIdForCreate = started.id
         return AnalyticsEvent.TutorialBegin(started.id, tutorial, entryMode, stepCount)
     }
 
@@ -80,9 +84,18 @@ class AnalyticsTutorialSession(
         return AnalyticsEvent.TutorialSkip(current.id, current.entryMode, step, via, current.elapsedMillis())
     }
 
+    /**
+     * 만들기를 시작했다. 마지막 회차가 아직 만들기로 이어지지 않았으면 그 토큰을 돌려주고 쓴 것으로 표시한다.
+     *
+     * 튜토리얼은 `완료` · `건너뛰기` 로 닫힌 **뒤에** 사용자가 만들기를 누르므로 닫힌 회차도 돌려준다.
+     * 한 회차는 만들기 한 번에만 이어진다 — 그 뒤 만들기는 튜토리얼과 무관한 것으로 null 이다.
+     */
+    fun takeFlowIdForCreate(): String? = flowIdForCreate.also { flowIdForCreate = null }
+
     /** 완료 · 건너뛰기 없이 회차가 끊겼다(화면을 떠나 코치마크를 거둠). 보내는 것은 없다. */
     fun abandon() {
         flow = null
+        flowIdForCreate = null
     }
 
     private fun close(): Flow? = flow.also { flow = null }
