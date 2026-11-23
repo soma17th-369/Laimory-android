@@ -101,6 +101,7 @@ import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCa
 import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
 import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.GetTutorialEntryModeUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.RecommendTutorialDatesUseCase
@@ -3353,6 +3354,19 @@ class HomeViewModelTest {
             assertNull(analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateStarted>().single().tutorialFlowId)
         }
 
+    @Test
+    fun `처음부터 따라 하기로 다시 시작하면 추천 시트 회차를 다시 보기로 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.restartAll()
+            createViewModel()
+            runCurrent()
+
+            val begin = tutorialEvents().first() as AnalyticsEvent.TutorialBegin
+            assertEquals(AnalyticsTutorialEntryMode.REPLAY, begin.entryMode)
+            // 처음 볼 때처럼 추천 날짜 장부터 짚는다.
+            assertEquals(HomeCoachmarkStep.entries.size + 1, begin.stepCount)
+        }
+
     private fun tutorialEvents(): List<AnalyticsEvent> =
         analyticsHelper.logged.filter {
             it is AnalyticsEvent.TutorialBegin ||
@@ -3439,6 +3453,7 @@ class HomeViewModelTest {
             observeDefaultRecordRange = ObserveDefaultRecordRangeUseCase(defaultRangeRepository),
             setDefaultRecordRange = SetDefaultRecordRangeUseCase(defaultRangeRepository),
             observeTutorialSeen = ObserveTutorialSeenUseCase(tutorialRepository),
+            getTutorialEntryMode = GetTutorialEntryModeUseCase(tutorialRepository),
             markTutorialSeen = MarkTutorialSeenUseCase(tutorialRepository),
             recommendTutorialDates = RecommendTutorialDatesUseCase(photoSource, calendarSource),
             homeOverlayTurn = homeOverlayTurn,
@@ -3455,13 +3470,24 @@ class HomeViewModelTest {
 
         override fun observeSeen(tutorial: Tutorial): Flow<Boolean> = this.seen
 
+        var restarted = false
+
         override suspend fun markSeen(tutorial: Tutorial) {
             seen.value = true
+            restarted = false
         }
 
         override suspend fun resetAll() {
             seen.value = false
+            restarted = false
         }
+
+        override suspend fun restartAll() {
+            seen.value = false
+            restarted = true
+        }
+
+        override suspend fun isRestarted(tutorial: Tutorial): Boolean = restarted
     }
 
     private class FakeDefaultRecordRangeRepository : DefaultRecordRangeRepository {

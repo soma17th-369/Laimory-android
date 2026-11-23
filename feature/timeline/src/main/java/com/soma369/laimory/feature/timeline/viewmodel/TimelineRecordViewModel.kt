@@ -46,6 +46,7 @@ import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventPlaceUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.GetTutorialEntryModeUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
@@ -106,6 +107,7 @@ class TimelineRecordViewModel
         private val takeTimelineEditLogUseCase: TakeTimelineEditLogUseCase,
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val observeTutorialSeen: ObserveTutorialSeenUseCase,
+        private val getTutorialEntryMode: GetTutorialEntryModeUseCase,
         private val markTutorialSeen: MarkTutorialSeenUseCase,
         private val tutorialReplayRequests: TutorialReplayRequests,
         private val clock: Clock,
@@ -299,7 +301,7 @@ class TimelineRecordViewModel
                         combine(state, isScreenVisible, hasFinishedTutorial) { current, isVisible, hasFinished ->
                             isVisible && !hasFinished && current.isRequestedRecord() && current.canStartCoachmark
                         }.first { it }
-                        startCoachmark(AnalyticsTutorialEntryMode.FIRST_RUN, TimelineCoachmarkStep.entries)
+                        startCoachmark(getTutorialEntryMode(Tutorial.TIMELINE), TimelineCoachmarkStep.entries)
                         // 화면을 떠나 거뒀으면 다음에 열 때 다시 짚는다. 마치면 위 막음이 다시 시작하지 않게 한다.
                         state.first { it.coachmark == null }
                     }
@@ -326,11 +328,17 @@ class TimelineRecordViewModel
                 }
             }
 
-        /** 새 회차로 코치마크를 [steps] 첫 단계부터 짚는다. */
+        /**
+         * 새 회차로 코치마크를 [steps] 첫 단계부터 짚는다.
+         *
+         * 이미 짚고 있으면 그대로 둔다. 보지 않은 계정이 초안에서 다시 보기를 고르면 다시 보기가 편집 모드로 바꾸는 순간 첫
+         * 짚기 조건도 함께 맞는다 — 둘 다 시작하면 앞 회차가 완료 · 건너뛰기 없이 덮여 끊긴 회차로 잘못 남는다.
+         */
         private fun startCoachmark(
             entryMode: AnalyticsTutorialEntryMode,
             steps: List<TimelineCoachmarkStep>,
         ) {
+            if (state.value.coachmark != null) return
             logTutorial(tutorialAnalytics.begin(entryMode, stepCount = steps.size))
             updateState { copy(coachmark = steps.first(), coachmarkSteps = steps) }
             logTutorial(tutorialAnalytics.stepViewed(steps.first().analyticsStep))

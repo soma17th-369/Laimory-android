@@ -57,6 +57,10 @@ class TutorialResetViewModelTest {
             failure?.let { throw it }
             resetCount++
         }
+
+        override suspend fun restartAll() = Unit
+
+        override suspend fun isRestarted(tutorial: Tutorial): Boolean = false
     }
 
     private class RecordingNavigationHelper : NavigationHelper {

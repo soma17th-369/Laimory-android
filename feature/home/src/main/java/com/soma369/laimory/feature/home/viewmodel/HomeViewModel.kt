@@ -70,6 +70,7 @@ import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCa
 import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
 import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.GetTutorialEntryModeUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.RecommendTutorialDatesUseCase
@@ -171,6 +172,7 @@ class HomeViewModel
         private val observeDefaultRecordRange: ObserveDefaultRecordRangeUseCase,
         private val setDefaultRecordRange: SetDefaultRecordRangeUseCase,
         private val observeTutorialSeen: ObserveTutorialSeenUseCase,
+        private val getTutorialEntryMode: GetTutorialEntryModeUseCase,
         private val markTutorialSeen: MarkTutorialSeenUseCase,
         private val recommendTutorialDates: RecommendTutorialDatesUseCase,
         private val homeOverlayTurn: HomeOverlayTurn,
@@ -733,8 +735,9 @@ class HomeViewModel
                 val recommendation = recommendDates()
                 // 계산하는 사이 다른 창이 떴으면 처음부터 다시 기다린다.
                 if (!state.value.canShowTutorial) return showDateRecommendation()
+                val entryMode = getTutorialEntryMode(Tutorial.HOME)
                 homeOverlayTurn.setTutorialActive(true)
-                logTutorial(tutorialAnalytics.begin(AnalyticsTutorialEntryMode.FIRST_RUN, stepCount = FIRST_RUN_STEP_COUNT))
+                logTutorial(tutorialAnalytics.begin(entryMode, stepCount = FIRST_RUN_STEP_COUNT))
                 updateState { copy(dateRecommendation = recommendation) }
                 logTutorial(tutorialAnalytics.stepViewed(AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION))
                 // 계산하는 사이 사진 접근이 바뀌었으면 바뀐 접근으로 다시 센다.
@@ -2225,7 +2228,7 @@ class HomeViewModel
         }
 
         private companion object {
-            /** 처음 보는 홈 튜토리얼이 짚을 장의 수 — 추천 날짜 장 하나와 코치마크 단계들. */
+            /** 추천 날짜 장부터 뜨는 홈 튜토리얼(처음 · 처음부터 따라 하기)이 짚을 장의 수 — 추천 날짜 장 하나와 코치마크 단계들. */
             val FIRST_RUN_STEP_COUNT = HomeCoachmarkStep.entries.size + 1
 
             /** 이어 붙일 새 항목이 없을 때(-1013) 안내. 로딩 화면도 같은 문구를 쓴다. */
