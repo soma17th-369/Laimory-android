@@ -1036,7 +1036,7 @@ class AnalyticsEventMapperTest {
     @Test
     fun `추천한 날을 고른 방법 전송값을 고정한다`() =
         assertWireValues(
-            mapOf(AnalyticsTutorialPickMethod.CARD to "card"),
+            mapOf(AnalyticsTutorialPickMethod.CARD to "card", AnalyticsTutorialPickMethod.BUTTON to "button"),
             AnalyticsTutorialPickMethod.entries,
             "pick_method",
         ) { recommendationAction(pick = AnalyticsTutorialDatePick(rank = 1, method = it)) }

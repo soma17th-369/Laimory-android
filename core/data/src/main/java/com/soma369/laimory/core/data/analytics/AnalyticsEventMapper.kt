@@ -886,6 +886,7 @@ private val AnalyticsTutorialPickMethod.paramValue: String
     get() =
         when (this) {
             AnalyticsTutorialPickMethod.CARD -> "card"
+            AnalyticsTutorialPickMethod.BUTTON -> "button"
         }
 
 private val AnalyticsTutorialPhotoAccess.paramValue: String
