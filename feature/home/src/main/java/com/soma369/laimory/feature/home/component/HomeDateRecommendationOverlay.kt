@@ -81,6 +81,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPickMethod
 import com.soma369.laimory.core.domain.model.tutorial.RecommendedRecordDate
 import com.soma369.laimory.core.ui.theme.LaimoryTheme
 import com.soma369.laimory.core.ui.theme.Spacing
@@ -99,8 +100,9 @@ import com.soma369.laimory.core.ui.R as UiR
  * 홈 튜토리얼의 첫 장 — 최근 한 달 중 사진을 많이 찍은 날을 추천해 첫 타임라인을 만들어 볼 날을 고르게 한다.
  *
  * 화면 전체를 검게 덮고 그 위에 날짜 카드를 대각선으로 겹쳐 쌓는다. 뒤 카드일수록 오른쪽 아래로 밀리고 살짝 기운다. 앞 카드를
- * 왼쪽으로 넘기면 왼쪽 위로 기울며 비켜나고 다음 카드가 앞으로 온다. 오른쪽으로 넘기면 앞서 본 카드가 돌아온다. 카드를 누르면 그
- * 날을 고른다.
+ * 왼쪽으로 넘기면 왼쪽 위로 기울며 비켜나고 다음 카드가 앞으로 온다. 오른쪽으로 넘기면 앞서 본 카드가 돌아온다. 카드를 누르거나
+ * 카드 아래 `M월 d일로 만들어 보기` 를 누르면 그 날을 고른다 — 카드는 넘기는 대상이라 누를 수 있다는 게 잘 드러나지 않아, 앞 카드의
+ * 날짜를 따라 바뀌는 버튼을 주 버튼으로 둔다.
  *
  * 추천은 날짜까지만 하고, 사진은 그 날 홈 사진 카드에서 사용자가 고른다. 추천이 없으면 그 사실과 `다른 날 직접 고르기` ·
  * `건너뛰기` 만 남는다. 사진을 못 읽어 비었으면(권한 없음 · 일부만 허용) 허용 버튼을 앞에 둔다 — 허용하고 돌아오면 이 화면
@@ -110,7 +112,7 @@ import com.soma369.laimory.core.ui.R as UiR
 @Composable
 internal fun HomeDateRecommendationOverlay(
     recommendation: HomeDateRecommendation,
-    onPickDate: (LocalDate) -> Unit,
+    onPickDate: (LocalDate, AnalyticsTutorialPickMethod) -> Unit,
     onPickOtherDate: () -> Unit,
     onRequestPhotoAccess: () -> Unit,
     onSkip: () -> Unit,
@@ -152,13 +154,17 @@ internal fun HomeDateRecommendationOverlay(
 @Composable
 private fun HomeDateRecommendationContent(
     recommendation: HomeDateRecommendation,
-    onPickDate: (LocalDate) -> Unit,
+    onPickDate: (LocalDate, AnalyticsTutorialPickMethod) -> Unit,
     onPickOtherDate: () -> Unit,
     onRequestPhotoAccess: () -> Unit,
     onSkip: () -> Unit,
     onCardViewed: (Int) -> Unit = {},
 ) {
     val suggestedAccess = recommendation.suggestedPhotoAccess
+    // 버튼이 고를 카드. 넘기기를 정한 순간 바뀐다 — 카드가 날아가는 동안 버튼 날짜와 점 줄이 어긋나지 않게 한다.
+    // 권한을 허용하고 다시 센 추천은 다른 날들이라 첫 카드로 돌아간다(더미와 같은 키).
+    var targetIndex by rememberSaveable(recommendation.dates.map { it.date }) { mutableIntStateOf(0) }
+    val targetDate = recommendation.dates.getOrNull(targetIndex)?.date
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.large),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -181,8 +187,8 @@ private fun HomeDateRecommendationContent(
                         suggestedAccess == HomeRecommendationPhotoAccess.LIMITED ->
                             "허용한 사진 중에는 최근 한 달에 찍은 사진이 없어요. 사진을 더 허용하면 많이 찍은 날을 골라 드려요."
                         recommendation.dates.isEmpty() -> "최근 한 달 동안 찍은 사진을 찾지 못했어요. 만들어 볼 날을 직접 골라 주세요."
-                        recommendation.dates.size == 1 -> "최근 한 달 중 사진을 가장 많이 찍은 날이에요. 눌러서 골라 주세요."
-                        else -> "최근 한 달 중 사진을 많이 찍은 날이에요. 넘겨 보고 눌러서 골라 주세요."
+                        recommendation.dates.size == 1 -> "최근 한 달 중 사진을 가장 많이 찍은 날이에요."
+                        else -> "최근 한 달 중 사진을 많이 찍은 날이에요. 넘겨 보고 만들어 볼 날을 골라 주세요."
                     },
                 style = MaterialTheme.typography.bodyMedium,
                 color = OnDimVariant,
@@ -190,13 +196,28 @@ private fun HomeDateRecommendationContent(
         }
 
         if (recommendation.dates.isNotEmpty()) {
-            RecommendedDateDeck(dates = recommendation.dates, onPickDate = onPickDate, onCardViewed = onCardViewed)
+            RecommendedDateDeck(
+                dates = recommendation.dates,
+                onPickDate = { onPickDate(it, AnalyticsTutorialPickMethod.CARD) },
+                onCardViewed = onCardViewed,
+                onTargetChanged = { targetIndex = it },
+            )
         }
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.small),
         ) {
+            // 추천이 있으면 권한 버튼은 없다(추천이 비었을 때만 허용을 권한다). 채운 버튼이 둘 뜨는 일은 없다.
+            if (targetDate != null) {
+                Button(
+                    onClick = { onPickDate(targetDate, AnalyticsTutorialPickMethod.BUTTON) },
+                    modifier = Modifier.fillMaxWidth().height(ButtonHeight),
+                    shape = RoundedCornerShape(ButtonCornerRadius),
+                ) {
+                    Text(text = recommendedDateButtonLabel(targetDate), style = MaterialTheme.typography.titleMedium)
+                }
+            }
             if (suggestedAccess != null) {
                 Button(
                     onClick = onRequestPhotoAccess,
@@ -237,6 +258,7 @@ private fun RecommendedDateDeck(
     dates: List<RecommendedRecordDate>,
     onPickDate: (LocalDate) -> Unit,
     onCardViewed: (Int) -> Unit,
+    onTargetChanged: (Int) -> Unit,
 ) {
     // 권한을 허용하고 다시 센 추천은 다른 날들이다. 처음 카드부터 보여 준다.
     var current by rememberSaveable(dates.map { it.date }) { mutableIntStateOf(0) }
@@ -262,6 +284,8 @@ private fun RecommendedDateDeck(
     // 점 줄이 가리킬 카드. 넘기기를 정한 순간 바뀐다 — 앞 카드는 날아간 뒤에야 [current] 가 바뀌어, [current] 를 따르면
     // 다음으로 갈 때만 점이 늦게 움직인다.
     var indicatorTarget by remember { mutableStateOf<Int?>(null) }
+    val currentOnTargetChanged by rememberUpdatedState(onTargetChanged)
+    LaunchedEffect(indicatorTarget ?: current) { currentOnTargetChanged(indicatorTarget ?: current) }
     var isDragging by remember { mutableStateOf(false) }
 
     suspend fun settle() =
@@ -706,6 +730,11 @@ internal fun recommendedCountLabel(date: RecommendedRecordDate): String =
 
 private val RecommendedDateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 EEEE", Locale.KOREA)
 
+private val RecommendedButtonDateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일", Locale.KOREA)
+
+/** 추천 날짜 장의 주 버튼 문구. 요일은 붙이지 않는다 — 카드에 이미 크게 있다. */
+internal fun recommendedDateButtonLabel(date: LocalDate): String = "${date.format(RecommendedButtonDateFormat)}로 만들어 보기"
+
 /** 덮개 위 글씨. 테마와 상관없이 검은 덮개 위라 밝은 색으로 고정한다. */
 private val OnDim = Color.White
 private val OnDimVariant = Color.White.copy(alpha = 0.72f)
@@ -767,7 +796,7 @@ private val PreviewDates =
 @Composable
 private fun HomeDateRecommendationLightPreview() {
     LaimoryTheme {
-        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), {}, {}, {}, {})
+        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), { _, _ -> }, {}, {}, {})
     }
 }
 
@@ -775,7 +804,15 @@ private fun HomeDateRecommendationLightPreview() {
 @Composable
 private fun HomeDateRecommendationDarkPreview() {
     LaimoryTheme(darkTheme = true) {
-        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), {}, {}, {}, {})
+        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates), { _, _ -> }, {}, {}, {})
+    }
+}
+
+@Preview(name = "추천 날짜 - 하나", showBackground = true, backgroundColor = 0xFF333333)
+@Composable
+private fun HomeDateRecommendationSinglePreview() {
+    LaimoryTheme {
+        HomeDateRecommendationContent(HomeDateRecommendation(PreviewDates.take(1)), { _, _ -> }, {}, {}, {})
     }
 }
 
@@ -783,7 +820,7 @@ private fun HomeDateRecommendationDarkPreview() {
 @Composable
 private fun HomeDateRecommendationEmptyPreview() {
     LaimoryTheme {
-        HomeDateRecommendationContent(HomeDateRecommendation(emptyList()), {}, {}, {}, {})
+        HomeDateRecommendationContent(HomeDateRecommendation(emptyList()), { _, _ -> }, {}, {}, {})
     }
 }
 
@@ -791,6 +828,6 @@ private fun HomeDateRecommendationEmptyPreview() {
 @Composable
 private fun HomeDateRecommendationNoAccessPreview() {
     LaimoryTheme {
-        HomeDateRecommendationContent(HomeDateRecommendation(emptyList(), HomeRecommendationPhotoAccess.NONE), {}, {}, {}, {})
+        HomeDateRecommendationContent(HomeDateRecommendation(emptyList(), HomeRecommendationPhotoAccess.NONE), { _, _ -> }, {}, {}, {})
     }
 }
