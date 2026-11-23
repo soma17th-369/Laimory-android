@@ -302,4 +302,62 @@ sealed interface AnalyticsEvent {
         val packageAmount: Int,
         val billingState: AnalyticsBillingState,
     ) : AnalyticsEvent
+
+    /**
+     * 튜토리얼 첫 장이 보였다. 회차([flowId])당 1회.
+     *
+     * [flowId] 는 회차를 잇는 무작위 토큰이다 — 사람도 기기도 가리키지 않는다. 앱을 꺼서 끊긴 회차는 따로 보내지 않는다.
+     * 이 이벤트가 있고 [TutorialComplete] · [TutorialSkip] 이 없는 회차로 센다. [stepCount] 는 이 회차가 짚을 장의 수다.
+     */
+    data class TutorialBegin(
+        val flowId: String,
+        val tutorial: AnalyticsTutorial,
+        val entryMode: AnalyticsTutorialEntryMode,
+        val stepCount: Int,
+    ) : AnalyticsEvent
+
+    /** 튜토리얼의 장이 보였다. 회차마다 장별로 한 번. */
+    data class TutorialStepViewed(
+        val flowId: String,
+        val entryMode: AnalyticsTutorialEntryMode,
+        val step: AnalyticsTutorialStep,
+    ) : AnalyticsEvent
+
+    /**
+     * 홈 추천 날짜 장에서 행동을 골랐다. 고를 때마다.
+     *
+     * [pick] 은 추천한 날을 골랐을 때만 있다. [cardsViewed] 는 그때까지 앞에 와 본 카드 수다(넘겨 본 정도).
+     */
+    data class TutorialDateRecommendationAction(
+        val flowId: String,
+        val entryMode: AnalyticsTutorialEntryMode,
+        val action: AnalyticsTutorialRecommendationAction,
+        val recommendedCount: Int,
+        val photoAccess: AnalyticsTutorialPhotoAccess,
+        val pick: AnalyticsTutorialDatePick?,
+        val cardsViewed: Int,
+    ) : AnalyticsEvent {
+        init {
+            require((action == AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED) == (pick != null)) {
+                "추천한 날을 고른 행동에만 고른 내용이 있다"
+            }
+        }
+    }
+
+    /** 마지막 장에서 `완료` 를 눌렀다. [durationMs] 는 첫 장이 보인 뒤 끝날 때까지다. */
+    data class TutorialComplete(
+        val flowId: String,
+        val tutorial: AnalyticsTutorial,
+        val entryMode: AnalyticsTutorialEntryMode,
+        val durationMs: Long,
+    ) : AnalyticsEvent
+
+    /** [step] 에서 건너뛰어 튜토리얼을 끝냈다. */
+    data class TutorialSkip(
+        val flowId: String,
+        val entryMode: AnalyticsTutorialEntryMode,
+        val step: AnalyticsTutorialStep,
+        val via: AnalyticsTutorialExitVia,
+        val durationMs: Long,
+    ) : AnalyticsEvent
 }
