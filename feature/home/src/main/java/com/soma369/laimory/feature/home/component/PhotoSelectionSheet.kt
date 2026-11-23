@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
 import com.soma369.laimory.core.ui.R
 import com.soma369.laimory.core.ui.component.coachmark.LaimoryCoachmark
 import com.soma369.laimory.core.ui.component.coachmark.coachmarkTarget
@@ -222,7 +223,8 @@ internal fun PhotoSelectionSheet(
             position = sheetStep.ordinal + 1,
             total = HomeCoachmarkStep.entries.size,
             onNext = { onIntent(HomeUiIntent.NextCoachmark) },
-            onSkip = { onIntent(HomeUiIntent.SkipCoachmark) },
+            onSkip = { onIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON)) },
+            onBack = { onIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BACK)) },
         )
     }
 

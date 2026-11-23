@@ -18,6 +18,15 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsFailureCode
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsItemCounts
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsRecordDayRelation
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorial
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialDatePick
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPhotoAccess
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPickMethod
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialRecommendationAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialSession
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialStep
 import com.soma369.laimory.core.domain.model.collection.CollectionLabAccessGate
 import com.soma369.laimory.core.domain.model.collection.ItemType
 import com.soma369.laimory.core.domain.model.collection.PhotoCandidate
@@ -270,6 +279,9 @@ class HomeViewModel
         /** 튜토리얼이 연 사진 시트가 닫히면 이을 코치마크 단계. 시트 단계를 마치고 직접 고르는 동안에도 들고 있다. */
         private var coachmarkAfterPhotoSheet: HomeCoachmarkStep? = null
 
+        /** 홈 튜토리얼 회차의 분석 상태. 추천 시트나 코치마크가 처음 뜰 때 회차를 열고, 완료 · 건너뛰기로 닫는다. */
+        private val tutorialAnalytics = AnalyticsTutorialSession(AnalyticsTutorial.HOME, clock)
+
         init {
             observeSummary()
             observeCalendar()
@@ -412,9 +424,12 @@ class HomeViewModel
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
                 is HomeUiIntent.PickRecommendedDate -> pickRecommendedDate(intent.date)
                 HomeUiIntent.PickOtherRecommendedDate -> pickOtherRecommendedDate()
-                HomeUiIntent.SkipDateRecommendation -> skipDateRecommendation()
+                is HomeUiIntent.ViewRecommendedCard -> tutorialAnalytics.recommendedCardViewed(intent.index)
+                HomeUiIntent.RequestRecommendationPhotoAccess ->
+                    logRecommendationAction(AnalyticsTutorialRecommendationAction.REQUEST_PHOTO_ACCESS)
+                is HomeUiIntent.SkipDateRecommendation -> skipDateRecommendation(intent.via)
                 HomeUiIntent.NextCoachmark -> nextCoachmark()
-                HomeUiIntent.SkipCoachmark -> finishHomeTutorial()
+                is HomeUiIntent.SkipCoachmark -> skipCoachmark(intent.via)
                 HomeUiIntent.RetryDraft -> retryDraft()
                 HomeUiIntent.ContinueWaiting -> draftTaskCoordinator.continueWaiting()
                 HomeUiIntent.StartNewDraft -> startNewDraft()
@@ -719,7 +734,9 @@ class HomeViewModel
                 // 계산하는 사이 다른 창이 떴으면 처음부터 다시 기다린다.
                 if (!state.value.canShowTutorial) return showDateRecommendation()
                 homeOverlayTurn.setTutorialActive(true)
+                logTutorial(tutorialAnalytics.begin(AnalyticsTutorialEntryMode.FIRST_RUN, stepCount = FIRST_RUN_STEP_COUNT))
                 updateState { copy(dateRecommendation = recommendation) }
+                logTutorial(tutorialAnalytics.stepViewed(AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION))
                 // 계산하는 사이 사진 접근이 바뀌었으면 바뀐 접근으로 다시 센다.
                 if (photoAccess != null && photoAccess != recommendation.photoAccess) refreshRecommendation()
             } catch (e: CancellationException) {
@@ -797,6 +814,7 @@ class HomeViewModel
                     }.first { it }
                     if (!tutorialReplayRequests.consume(Tutorial.HOME)) return@collectLatest
                     homeOverlayTurn.setTutorialActive(true)
+                    logTutorial(tutorialAnalytics.begin(AnalyticsTutorialEntryMode.REPLAY, stepCount = HomeCoachmarkStep.entries.size))
                     startHomeCoachmark()
                 }
             }
@@ -813,6 +831,13 @@ class HomeViewModel
          * 시작한다.
          */
         private fun pickRecommendedDate(date: LocalDate) {
+            val rank = state.value.dateRecommendation?.dates?.indexOfFirst { it.date == date }?.takeIf { it >= 0 }
+            if (rank != null) {
+                logRecommendationAction(
+                    AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED,
+                    pick = AnalyticsTutorialDatePick(rank = rank + 1, method = AnalyticsTutorialPickMethod.CARD),
+                )
+            }
             if (!closeDateRecommendation()) return
             val current = state.value
             val canMove =
@@ -836,6 +861,7 @@ class HomeViewModel
             showDatePicker()
             // 피커를 열지 못했으면(만드는 중) 시트를 그대로 둔다.
             if (state.value.datePicker == null) return
+            logRecommendationAction(AnalyticsTutorialRecommendationAction.PICK_OTHER_DATE)
             recommendationBehindPicker = recommendation
             updateState { copy(dateRecommendation = null) }
         }
@@ -847,9 +873,42 @@ class HomeViewModel
             updateState { copy(dateRecommendation = recommendation) }
         }
 
-        /** 추천 시트의 `건너뛰기`. 코치마크 없이 홈 튜토리얼을 마친다. 튜토리얼을 끝내는 길은 이것뿐이다. */
-        private fun skipDateRecommendation() {
-            if (closeDateRecommendation()) finishHomeTutorial()
+        /** 추천 시트의 `건너뛰기` · 뒤로가기. 코치마크 없이 홈 튜토리얼을 마친다. 튜토리얼을 끝내는 길은 이것뿐이다. */
+        private fun skipDateRecommendation(via: AnalyticsTutorialExitVia) {
+            if (state.value.dateRecommendation == null) return
+            logRecommendationAction(AnalyticsTutorialRecommendationAction.SKIP)
+            logTutorial(tutorialAnalytics.skip(AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION, via))
+            closeDateRecommendation()
+            finishHomeTutorial()
+        }
+
+        /** 코치마크의 `건너뛰기` · 뒤로가기. 지금 단계에서 건너뛴 것으로 남기고 홈 튜토리얼을 마친다. */
+        private fun skipCoachmark(via: AnalyticsTutorialExitVia) {
+            val step = state.value.homeCoachmark ?: return
+            logTutorial(tutorialAnalytics.skip(step.analyticsStep, via))
+            finishHomeTutorial()
+        }
+
+        /** 추천 시트에서 고른 행동을 남긴다. 그때 보이던 추천의 카드 수와 사진 접근을 함께 싣는다. */
+        private fun logRecommendationAction(
+            action: AnalyticsTutorialRecommendationAction,
+            pick: AnalyticsTutorialDatePick? = null,
+        ) {
+            val recommendation = state.value.dateRecommendation ?: return
+            logTutorial(
+                tutorialAnalytics.dateRecommendationAction(
+                    action = action,
+                    recommendedCount = recommendation.dates.size,
+                    photoAccess = recommendation.photoAccess.analyticsValue,
+                    pick = pick,
+                ),
+            )
+        }
+
+        /** 튜토리얼 이벤트를 보낸다. 회차가 없어 만들지 않았으면(null) 아무것도 하지 않는다. */
+        private fun logTutorial(event: AnalyticsEvent?) {
+            event ?: return
+            safeLaunch { analyticsHelper.log(event) }
         }
 
         /**
@@ -870,25 +929,32 @@ class HomeViewModel
             startHomeCoachmark()
         }
 
-        private fun startHomeCoachmark() {
-            updateState { copy(homeCoachmark = HomeCoachmarkStep.entries.first()) }
+        private fun startHomeCoachmark() = showHomeCoachmark(HomeCoachmarkStep.entries.first())
+
+        /** 코치마크 [step] 을 띄우고 보인 것으로 남긴다. 단계를 띄우는 길은 모두 이것을 거친다. */
+        private fun showHomeCoachmark(step: HomeCoachmarkStep) {
+            updateState { copy(homeCoachmark = step) }
+            logTutorial(tutorialAnalytics.stepViewed(step.analyticsStep))
         }
 
         private fun nextCoachmark() {
             val step = state.value.homeCoachmark ?: return
             val next = HomeCoachmarkStep.entries.getOrNull(step.ordinal + 1)
             when {
-                next == null -> finishHomeTutorial()
+                next == null -> {
+                    logTutorial(tutorialAnalytics.complete())
+                    finishHomeTutorial()
+                }
                 next.isInPhotoSheet && state.value.isInputLocked ->
                     // 사진을 바꿀 수 없는 날은 시트를 열지 않고 시트 단계를 건너뛴다.
-                    updateState { copy(homeCoachmark = HomeCoachmarkStep.entries.first { it > step && !it.isInPhotoSheet }) }
+                    showHomeCoachmark(HomeCoachmarkStep.entries.first { it > step && !it.isInPhotoSheet })
                 step == HomeCoachmarkStep.PHOTO -> openPhotoSheetInTutorial(sheetStep = next)
                 // 시트 단계를 마쳤다. 코치마크를 걷고 직접 고르게 한다 — 시트가 닫히면 이어 간다.
                 step.isInPhotoSheet && !next.isInPhotoSheet -> {
                     coachmarkAfterPhotoSheet = next
                     updateState { copy(homeCoachmark = null) }
                 }
-                else -> updateState { copy(homeCoachmark = next) }
+                else -> showHomeCoachmark(next)
             }
         }
 
@@ -900,7 +966,7 @@ class HomeViewModel
          */
         private fun openPhotoSheetInTutorial(sheetStep: HomeCoachmarkStep) {
             coachmarkAfterPhotoSheet = HomeCoachmarkStep.entries.first { it > sheetStep && !it.isInPhotoSheet }
-            updateState { copy(homeCoachmark = sheetStep) }
+            showHomeCoachmark(sheetStep)
             startPhotoSelection()
         }
 
@@ -908,7 +974,7 @@ class HomeViewModel
         private fun resumeCoachmarkAfterPhotoSheet() {
             val step = coachmarkAfterPhotoSheet ?: return
             coachmarkAfterPhotoSheet = null
-            updateState { copy(homeCoachmark = step) }
+            showHomeCoachmark(step)
         }
 
         /**
@@ -2153,6 +2219,9 @@ class HomeViewModel
         }
 
         private companion object {
+            /** 처음 보는 홈 튜토리얼이 짚을 장의 수 — 추천 날짜 장 하나와 코치마크 단계들. */
+            val FIRST_RUN_STEP_COUNT = HomeCoachmarkStep.entries.size + 1
+
             /** 이어 붙일 새 항목이 없을 때(-1013) 안내. 로딩 화면도 같은 문구를 쓴다. */
             const val NO_NEW_ITEMS_MESSAGE = DraftSubmitFailureMessages.NO_NEW_ITEMS
 
@@ -2182,3 +2251,23 @@ class HomeViewModel
             const val AUTO_COLLECTION_TIMEOUT_MILLIS = 10_000L
         }
     }
+
+/** 코치마크 단계의 분석 장. 화면 단계와 따로 두어 전송값을 고정한다. */
+private val HomeCoachmarkStep.analyticsStep: AnalyticsTutorialStep
+    get() =
+        when (this) {
+            HomeCoachmarkStep.DATE -> AnalyticsTutorialStep.HOME_DATE
+            HomeCoachmarkStep.PHOTO -> AnalyticsTutorialStep.HOME_PHOTO
+            HomeCoachmarkStep.PHOTO_SHEET_LIST -> AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST
+            HomeCoachmarkStep.PHOTO_SHEET_DONE -> AnalyticsTutorialStep.HOME_PHOTO_SHEET_DONE
+            HomeCoachmarkStep.SOURCES -> AnalyticsTutorialStep.HOME_SOURCES
+            HomeCoachmarkStep.CREATE -> AnalyticsTutorialStep.HOME_CREATE
+        }
+
+private val HomeRecommendationPhotoAccess.analyticsValue: AnalyticsTutorialPhotoAccess
+    get() =
+        when (this) {
+            HomeRecommendationPhotoAccess.FULL -> AnalyticsTutorialPhotoAccess.FULL
+            HomeRecommendationPhotoAccess.LIMITED -> AnalyticsTutorialPhotoAccess.LIMITED
+            HomeRecommendationPhotoAccess.NONE -> AnalyticsTutorialPhotoAccess.NONE
+        }
