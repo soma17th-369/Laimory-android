@@ -427,7 +427,7 @@ class HomeViewModel
                 HomeUiIntent.OpenCredits -> openCredits(AnalyticsCreditEntryPoint.CREATE_CONFIRM_BALANCE)
                 HomeUiIntent.PickPhotosForCreate -> pickPhotosForCreate()
                 is HomeUiIntent.PermissionEvent -> logPermission(intent.event)
-                is HomeUiIntent.PickRecommendedDate -> pickRecommendedDate(intent.date)
+                is HomeUiIntent.PickRecommendedDate -> pickRecommendedDate(intent.date, intent.method)
                 HomeUiIntent.PickOtherRecommendedDate -> pickOtherRecommendedDate()
                 is HomeUiIntent.ViewRecommendedCard -> tutorialAnalytics.recommendedCardViewed(intent.index)
                 HomeUiIntent.RequestRecommendationPhotoAccess ->
@@ -837,12 +837,15 @@ class HomeViewModel
          * 추천한 날을 골랐다. 날짜 피커에서 다른 날을 고른 것과 같다 — 그 날과 기본 범위로 확정한다. 그 날 위에서 코치마크를
          * 시작한다.
          */
-        private fun pickRecommendedDate(date: LocalDate) {
+        private fun pickRecommendedDate(
+            date: LocalDate,
+            method: AnalyticsTutorialPickMethod,
+        ) {
             val rank = state.value.dateRecommendation?.dates?.indexOfFirst { it.date == date }?.takeIf { it >= 0 }
             if (rank != null) {
                 logRecommendationAction(
                     AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED,
-                    pick = AnalyticsTutorialDatePick(rank = rank + 1, method = AnalyticsTutorialPickMethod.CARD),
+                    pick = AnalyticsTutorialDatePick(rank = rank + 1, method = method),
                 )
             }
             if (!closeDateRecommendation()) return

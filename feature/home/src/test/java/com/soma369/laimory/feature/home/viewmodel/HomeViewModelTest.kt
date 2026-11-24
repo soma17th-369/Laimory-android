@@ -2669,7 +2669,7 @@ class HomeViewModelTest {
             val viewModel = createViewModel()
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.CARD))
             runCurrent()
 
             val state = viewModel.state.value
@@ -2690,7 +2690,7 @@ class HomeViewModelTest {
             photoSource.captured = capturedPhotosOn(picked, count = 1)
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.CARD))
             runCurrent()
 
             val visited = mutableListOf<HomeCoachmarkStep>()
@@ -2719,7 +2719,7 @@ class HomeViewModelTest {
             photoSource.captured = capturedPhotosOn(picked, count = 1)
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.CARD))
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON))
@@ -2880,7 +2880,7 @@ class HomeViewModelTest {
             photoSource.captured = capturedPhotosOn(picked, count = 2)
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.CARD))
             runCurrent()
 
             viewModel.sendIntent(HomeUiIntent.RefreshToday)
@@ -3182,7 +3182,7 @@ class HomeViewModelTest {
 
             viewModel.sendIntent(HomeUiIntent.ViewRecommendedCard(0))
             viewModel.sendIntent(HomeUiIntent.ViewRecommendedCard(1))
-            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(today.minusDays(3)))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(today.minusDays(3), AnalyticsTutorialPickMethod.CARD))
             runCurrent()
 
             val action = tutorialEvents().filterIsInstance<AnalyticsEvent.TutorialDateRecommendationAction>().single()
@@ -3196,6 +3196,25 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `카드 아래 날짜 버튼으로 고르면 카드와 같이 그 날로 옮기고 버튼으로 고른 것으로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(3)
+            photoSource.captured = capturedPhotosOn(picked, count = 2)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.BUTTON))
+            runCurrent()
+
+            assertEquals(picked, viewModel.state.value.selectedDate)
+            assertEquals(HomeCoachmarkStep.entries.first(), viewModel.state.value.homeCoachmark)
+            val action = tutorialEvents().filterIsInstance<AnalyticsEvent.TutorialDateRecommendationAction>().single()
+            assertEquals(AnalyticsTutorialPickMethod.BUTTON, action.pick?.method)
+            assertEquals(1, action.pick?.rank)
+        }
+
+    @Test
     fun `코치마크를 끝까지 넘기면 모든 장을 한 번씩 본 것으로 남기고 완료를 남긴다`() =
         runTest(mainDispatcherRule.testDispatcher) {
             tutorialRepository.seen.value = false
@@ -3204,7 +3223,7 @@ class HomeViewModelTest {
             photoSource.candidates = photoSource.captured
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.CARD))
             runCurrent()
 
             repeat(HomeCoachmarkStep.entries.size) {
@@ -3311,7 +3330,7 @@ class HomeViewModelTest {
             photoSource.captured = capturedPhotosOn(picked, count = 1)
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.CARD))
             viewModel.sendIntent(HomeUiIntent.NextCoachmark)
             runCurrent()
 
@@ -3448,7 +3467,7 @@ class HomeViewModelTest {
         photoSource.candidates = photoSource.captured
         val viewModel = createViewModel()
         runCurrent()
-        viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+        viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked, AnalyticsTutorialPickMethod.CARD))
         runCurrent()
         viewModel.sendIntent(HomeUiIntent.NextCoachmark)
         runCurrent()
