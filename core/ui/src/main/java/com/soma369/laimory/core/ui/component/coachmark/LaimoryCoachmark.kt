@@ -66,6 +66,7 @@ import kotlinx.coroutines.delay
  * @param targetKeys 짚을 자리. 여럿이면 모두를 덮는 사각형 하나로 뚫는다.
  * @param holeShape 구멍 모양. 둥근 버튼은 [CoachmarkHoleShape.CIRCLE] 로 뚫는다.
  * @param position 이 단계의 순번(1부터). [total] 과 함께 `n / N` 으로 보인다.
+ * @param onBack 뒤로가기. 기본은 [onSkip] 과 같다 — 건너뛴 경로를 나눠 세려면 따로 넘긴다.
  */
 @Composable
 fun LaimoryCoachmark(
@@ -77,6 +78,7 @@ fun LaimoryCoachmark(
     onNext: () -> Unit,
     onSkip: () -> Unit,
     holeShape: CoachmarkHoleShape = CoachmarkHoleShape.ROUNDED_RECT,
+    onBack: () -> Unit = onSkip,
 ) {
     LaunchedEffect(targetKeys) { state.bringIntoView(targetKeys) }
     // 열리거나 단계가 바뀐 직후의 누름은 버린다. 앞 화면(시트 항목 등)을 누른 손이나 빠른 연타가 막 뜬 단계를 읽기도 전에 넘기는
@@ -92,7 +94,7 @@ fun LaimoryCoachmark(
     val guardedNext = { if (acceptsTap) currentOnNext() }
     val guardedSkip = { if (acceptsTap) currentOnSkip() }
     Dialog(
-        onDismissRequest = onSkip,
+        onDismissRequest = onBack,
         properties =
             DialogProperties(
                 dismissOnClickOutside = false,

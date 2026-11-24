@@ -45,11 +45,46 @@ class TutorialRepositoryImplTest {
         }
 
     @Test
+    fun `다시 시작하면 보지 않은 것이 되고 다시 시작했다고 남는다`() =
+        runTest {
+            repository.markSeen(Tutorial.HOME)
+
+            repository.restartAll()
+
+            assertFalse(repository.observeSeen(Tutorial.HOME).first())
+            assertTrue(repository.isRestarted(Tutorial.HOME))
+            assertTrue(repository.isRestarted(Tutorial.TIMELINE))
+        }
+
+    @Test
+    fun `다시 시작한 튜토리얼을 마치면 그 튜토리얼의 표시만 걷힌다`() =
+        runTest {
+            repository.restartAll()
+
+            repository.markSeen(Tutorial.HOME)
+
+            assertFalse(repository.isRestarted(Tutorial.HOME))
+            assertTrue(repository.isRestarted(Tutorial.TIMELINE))
+        }
+
+    @Test
+    fun `초기화는 다시 시작한 표시도 걷어 처음 보는 것으로 돌린다`() =
+        runTest {
+            repository.restartAll()
+
+            repository.resetAll()
+
+            assertFalse(repository.isRestarted(Tutorial.HOME))
+            assertFalse(repository.observeSeen(Tutorial.HOME).first())
+        }
+
+    @Test
     fun `읽지 못하면 본 것으로 본다`() =
         runTest {
             val broken = TutorialRepositoryImpl(BrokenDataStore())
 
             assertTrue(broken.observeSeen(Tutorial.HOME).first())
+            assertFalse(broken.isRestarted(Tutorial.HOME))
         }
 
     private class InMemoryPreferencesDataStore : DataStore<Preferences> {

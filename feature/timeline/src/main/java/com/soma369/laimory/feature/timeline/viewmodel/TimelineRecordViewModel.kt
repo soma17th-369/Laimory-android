@@ -21,6 +21,11 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSna
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorial
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialSession
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialStep
 import com.soma369.laimory.core.domain.model.timeline.DailyRecordReadOutcome
 import com.soma369.laimory.core.domain.model.timeline.DraftTaskTrackingState
 import com.soma369.laimory.core.domain.model.timeline.PlaceCandidate
@@ -41,6 +46,7 @@ import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventPlaceUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.GetTutorialEntryModeUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
@@ -101,6 +107,7 @@ class TimelineRecordViewModel
         private val takeTimelineEditLogUseCase: TakeTimelineEditLogUseCase,
         private val observeUserProfileUseCase: ObserveUserProfileUseCase,
         private val observeTutorialSeen: ObserveTutorialSeenUseCase,
+        private val getTutorialEntryMode: GetTutorialEntryModeUseCase,
         private val markTutorialSeen: MarkTutorialSeenUseCase,
         private val tutorialReplayRequests: TutorialReplayRequests,
         private val clock: Clock,
@@ -188,6 +195,9 @@ class TimelineRecordViewModel
         /** 이번에 튜토리얼을 마쳤다. 봤다는 기록이 저장돼 돌아오기 전에 다시 시작하지 않게 막는다. */
         private val hasFinishedTutorial = MutableStateFlow(false)
 
+        /** 타임라인 튜토리얼 회차의 분석 상태. 코치마크를 띄울 때 열고 완료 · 건너뛰기로 닫는다. 화면을 떠나 거두면 버린다. */
+        private val tutorialAnalytics = AnalyticsTutorialSession(AnalyticsTutorial.TIMELINE, clock)
+
         init {
             observeTutorial()
             observeTutorialReplay()
@@ -225,7 +235,7 @@ class TimelineRecordViewModel
                 TimelineRecordUiIntent.RetryLoad -> requestedRecordDate?.let(::loadRecord)
                 TimelineRecordUiIntent.Leave -> leave()
                 TimelineRecordUiIntent.NextCoachmark -> nextCoachmark()
-                TimelineRecordUiIntent.SkipCoachmark -> finishTutorial()
+                is TimelineRecordUiIntent.SkipCoachmark -> skipTutorial(intent.via)
                 TimelineRecordUiIntent.NavigateBack ->
                     navigateBack()
                 TimelineRecordUiIntent.RequestSave -> openEmotionSheet()
@@ -291,9 +301,7 @@ class TimelineRecordViewModel
                         combine(state, isScreenVisible, hasFinishedTutorial) { current, isVisible, hasFinished ->
                             isVisible && !hasFinished && current.isRequestedRecord() && current.canStartCoachmark
                         }.first { it }
-                        updateState {
-                            copy(coachmark = TimelineCoachmarkStep.entries.first(), coachmarkSteps = TimelineCoachmarkStep.entries)
-                        }
+                        startCoachmark(getTutorialEntryMode(Tutorial.TIMELINE), TimelineCoachmarkStep.entries)
                         // 화면을 떠나 거뒀으면 다음에 열 때 다시 짚는다. 마치면 위 막음이 다시 시작하지 않게 한다.
                         state.first { it.coachmark == null }
                     }
@@ -316,15 +324,50 @@ class TimelineRecordViewModel
                     switchMode(TimelineRecordMode.EDIT)
                     val steps =
                         if (isSaved) TimelineCoachmarkStep.entries - TimelineCoachmarkStep.SAVE else TimelineCoachmarkStep.entries
-                    updateState { copy(coachmark = steps.first(), coachmarkSteps = steps) }
+                    startCoachmark(AnalyticsTutorialEntryMode.REPLAY, steps)
                 }
             }
+
+        /**
+         * 새 회차로 코치마크를 [steps] 첫 단계부터 짚는다.
+         *
+         * 이미 짚고 있으면 그대로 둔다. 보지 않은 계정이 초안에서 다시 보기를 고르면 다시 보기가 편집 모드로 바꾸는 순간 첫
+         * 짚기 조건도 함께 맞는다 — 둘 다 시작하면 앞 회차가 완료 · 건너뛰기 없이 덮여 끊긴 회차로 잘못 남는다.
+         */
+        private fun startCoachmark(
+            entryMode: AnalyticsTutorialEntryMode,
+            steps: List<TimelineCoachmarkStep>,
+        ) {
+            if (state.value.coachmark != null) return
+            logTutorial(tutorialAnalytics.begin(entryMode, stepCount = steps.size))
+            updateState { copy(coachmark = steps.first(), coachmarkSteps = steps) }
+            logTutorial(tutorialAnalytics.stepViewed(steps.first().analyticsStep))
+        }
+
+        /** 튜토리얼 이벤트를 보낸다. 회차가 없어 만들지 않았으면(null) 아무것도 하지 않는다. */
+        private fun logTutorial(event: AnalyticsEvent?) {
+            event ?: return
+            safeLaunch { analyticsHelper.log(event) }
+        }
 
         private fun nextCoachmark() {
             val current = state.value
             val step = current.coachmark ?: return
             val next = current.coachmarkSteps.getOrNull(current.coachmarkSteps.indexOf(step) + 1)
-            if (next == null) finishTutorial() else updateState { copy(coachmark = next) }
+            if (next == null) {
+                logTutorial(tutorialAnalytics.complete())
+                finishTutorial()
+            } else {
+                updateState { copy(coachmark = next) }
+                logTutorial(tutorialAnalytics.stepViewed(next.analyticsStep))
+            }
+        }
+
+        /** 코치마크의 `건너뛰기` · 뒤로가기. 지금 단계에서 건너뛴 것으로 남기고 마친다. */
+        private fun skipTutorial(via: AnalyticsTutorialExitVia) {
+            val step = state.value.coachmark ?: return
+            logTutorial(tutorialAnalytics.skip(step.analyticsStep, via))
+            finishTutorial()
         }
 
         /** 끝까지 봤든 중간에 건너뛰었든 다시 띄우지 않는다. */
@@ -343,6 +386,8 @@ class TimelineRecordViewModel
             // 기록을 못 불러와 받아 가지 못한 다시 보기 요청이 다음에 연 다른 기록에서 뜨지 않게 버린다.
             tutorialReplayRequests.consume(Tutorial.TIMELINE)
             updateState { copy(coachmark = null) }
+            // 짚던 회차는 끊긴 것이다. 다음에 다시 짚으면 새 회차다.
+            tutorialAnalytics.abandon()
             flushMemoSaved()
         }
 
@@ -359,6 +404,7 @@ class TimelineRecordViewModel
                 loadJob?.cancel()
                 requestedRecordDate = null
                 updateState { copy(content = TimelineRecordUiContent.Unavailable, memoEditor = null, coachmark = null) }
+                tutorialAnalytics.abandon()
                 isScreenVisible.value = true
                 return
             }
@@ -389,6 +435,7 @@ class TimelineRecordViewModel
                         pendingPlaces = emptyMap(),
                     )
                 }
+                tutorialAnalytics.abandon()
             }
             requestedRecordDate = recordDate
             isScreenVisible.value = true
@@ -1405,3 +1452,13 @@ private fun placeSheetEventLabel(
     val time = startAt.format(PlaceSheetTimeFormatter) + (endAt?.let { " ~ " + it.format(PlaceSheetTimeFormatter) } ?: "")
     return if (title.isBlank()) time else "$time · $title"
 }
+
+/** 코치마크 단계의 분석 장. 화면 단계와 따로 두어 전송값을 고정한다. */
+private val TimelineCoachmarkStep.analyticsStep: AnalyticsTutorialStep
+    get() =
+        when (this) {
+            TimelineCoachmarkStep.EVENT -> AnalyticsTutorialStep.TIMELINE_EVENT
+            TimelineCoachmarkStep.MEMO -> AnalyticsTutorialStep.TIMELINE_MEMO
+            TimelineCoachmarkStep.ADD_EVENT -> AnalyticsTutorialStep.TIMELINE_ADD_EVENT
+            TimelineCoachmarkStep.SAVE -> AnalyticsTutorialStep.TIMELINE_SAVE
+        }

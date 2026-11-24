@@ -63,6 +63,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.domain.model.timeline.TimelineEventType
 import com.soma369.laimory.core.domain.model.timeline.TimelineItemType
@@ -196,7 +197,8 @@ private fun TimelineRecordContent(
             position = state.coachmarkSteps.indexOf(step) + 1,
             total = state.coachmarkSteps.size,
             onNext = { onIntent(TimelineRecordUiIntent.NextCoachmark) },
-            onSkip = { onIntent(TimelineRecordUiIntent.SkipCoachmark) },
+            onSkip = { onIntent(TimelineRecordUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON)) },
+            onBack = { onIntent(TimelineRecordUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BACK)) },
             // 이벤트 더하기는 둥근 떠 있는 버튼이라 원으로 뚫는다.
             holeShape = if (step == TimelineCoachmarkStep.ADD_EVENT) CoachmarkHoleShape.CIRCLE else CoachmarkHoleShape.ROUNDED_RECT,
         )

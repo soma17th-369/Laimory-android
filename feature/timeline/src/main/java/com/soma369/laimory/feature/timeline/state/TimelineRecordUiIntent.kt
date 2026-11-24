@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.timeline.state
 
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsEntryPoint
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
 import com.soma369.laimory.core.domain.model.timeline.TimelineEmotion
 import com.soma369.laimory.core.ui.base.UiIntent
 import java.time.LocalDate
@@ -22,8 +23,10 @@ sealed interface TimelineRecordUiIntent : UiIntent {
     /** 코치마크의 다음 단계. 마지막 단계에서 보내면 타임라인 튜토리얼을 마친다. */
     data object NextCoachmark : TimelineRecordUiIntent
 
-    /** 코치마크의 `건너뛰기` · 뒤로가기. 타임라인 튜토리얼을 마친다. */
-    data object SkipCoachmark : TimelineRecordUiIntent
+    /** 코치마크의 `건너뛰기` · 뒤로가기([via]). 타임라인 튜토리얼을 마친다. */
+    data class SkipCoachmark(
+        val via: AnalyticsTutorialExitVia,
+    ) : TimelineRecordUiIntent
 
     /** 저장 CTA — 곧바로 저장하지 않고 감정 선택 시트를 연다. */
     data object RequestSave : TimelineRecordUiIntent

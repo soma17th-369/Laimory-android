@@ -32,6 +32,14 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorial
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialDatePick
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPhotoAccess
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPickMethod
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialRecommendationAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialStep
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
@@ -104,6 +112,12 @@ class AnalyticsEventMapperTest {
                     AnalyticsEvent.TimelineCreateStarted(today, date),
                     "timeline_create_started",
                     setOf("record_day_relation"),
+                    setOf("record_date"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TimelineCreateStarted(today, date, tutorialFlowId = TUTORIAL_FLOW_ID),
+                    "timeline_create_started",
+                    setOf("record_day_relation", "tutorial_flow_id"),
                     setOf("record_date"),
                 ),
                 Expectation(
@@ -308,6 +322,47 @@ class AnalyticsEventMapperTest {
                     "credit_package_clicked",
                     setOf("billing_state"),
                     setOf("package_amount"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TutorialBegin(TUTORIAL_FLOW_ID, AnalyticsTutorial.HOME, AnalyticsTutorialEntryMode.FIRST_RUN, 7),
+                    "tutorial_begin",
+                    setOf("tutorial_flow_id", "tutorial", "entry_mode"),
+                    setOf("step_count"),
+                ),
+                Expectation(
+                    tutorialStepViewed(),
+                    "tutorial_step_viewed",
+                    setOf("tutorial_flow_id", "tutorial", "entry_mode", "step"),
+                    setOf("step_index"),
+                ),
+                Expectation(
+                    recommendationAction(),
+                    "tutorial_date_recommendation_action",
+                    setOf("tutorial_flow_id", "tutorial", "entry_mode", "action", "photo_access", "pick_method"),
+                    setOf("recommended_count", "cards_viewed", "picked_rank"),
+                ),
+                Expectation(
+                    recommendationAction(AnalyticsTutorialRecommendationAction.SKIP, pick = null),
+                    "tutorial_date_recommendation_action",
+                    setOf("tutorial_flow_id", "tutorial", "entry_mode", "action", "photo_access"),
+                    setOf("recommended_count", "cards_viewed"),
+                ),
+                Expectation(
+                    AnalyticsEvent.TutorialComplete(
+                        TUTORIAL_FLOW_ID,
+                        AnalyticsTutorial.TIMELINE,
+                        AnalyticsTutorialEntryMode.REPLAY,
+                        12_000L,
+                    ),
+                    "tutorial_complete",
+                    setOf("tutorial_flow_id", "tutorial", "entry_mode"),
+                    setOf("duration_ms"),
+                ),
+                Expectation(
+                    tutorialSkip(),
+                    "tutorial_skip",
+                    setOf("tutorial_flow_id", "tutorial", "entry_mode", "step", "via"),
+                    setOf("step_index", "duration_ms"),
                 ),
             )
 
@@ -872,6 +927,168 @@ class AnalyticsEventMapperTest {
             "billing_state",
         ) { AnalyticsEvent.CreditPackageClicked(packageAmount = 10, it) }
 
+    @Test
+    fun `튜토리얼 이벤트는 회차 토큰과 종류와 진입 방식을 그대로 싣는다`() {
+        val payload =
+            AnalyticsEvent.TutorialBegin(TUTORIAL_FLOW_ID, AnalyticsTutorial.HOME, AnalyticsTutorialEntryMode.FIRST_RUN, 7).toPayload()
+
+        assertEquals(TUTORIAL_FLOW_ID, payload.strings["tutorial_flow_id"])
+        assertEquals("home", payload.strings["tutorial"])
+        assertEquals(7L, payload.counts["step_count"])
+    }
+
+    @Test
+    fun `장의 튜토리얼과 고정 위치를 장에서 꺼내 싣는다`() {
+        val payload = tutorialStepViewed(AnalyticsTutorialStep.TIMELINE_ADD_EVENT).toPayload()
+
+        assertEquals("timeline", payload.strings["tutorial"])
+        assertEquals(2L, payload.counts["step_index"])
+    }
+
+    @Test
+    fun `장의 위치는 튜토리얼마다 0부터 센다`() {
+        assertEquals(
+            listOf(0, 1, 2, 3, 4, 5, 6),
+            AnalyticsTutorialStep.entries.filter { it.tutorial == AnalyticsTutorial.HOME }.map { it.index },
+        )
+        assertEquals(
+            listOf(0, 1, 2, 3),
+            AnalyticsTutorialStep.entries.filter { it.tutorial == AnalyticsTutorial.TIMELINE }.map { it.index },
+        )
+    }
+
+    @Test
+    fun `추천 날짜 장 행동은 늘 홈이고 고른 순위와 카드 수를 싣는다`() {
+        val payload = recommendationAction().toPayload()
+
+        assertEquals("home", payload.strings["tutorial"])
+        assertEquals(2L, payload.counts["picked_rank"])
+        assertEquals(3L, payload.counts["recommended_count"])
+        assertEquals(2L, payload.counts["cards_viewed"])
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `추천한 날을 고른 행동에 고른 내용이 없으면 만들 수 없다`() {
+        recommendationAction(AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED, pick = null)
+    }
+
+    @Test
+    fun `건너뛰기에 장과 경로와 걸린 시간을 싣는다`() {
+        val payload = tutorialSkip().toPayload()
+
+        assertEquals("photo_sheet_list", payload.strings["step"])
+        assertEquals("back", payload.strings["via"])
+        assertEquals(3L, payload.counts["step_index"])
+        assertEquals(4_500L, payload.counts["duration_ms"])
+    }
+
+    @Test
+    fun `튜토리얼 종류 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(AnalyticsTutorial.HOME to "home", AnalyticsTutorial.TIMELINE to "timeline"),
+            AnalyticsTutorial.entries,
+            "tutorial",
+        ) { AnalyticsEvent.TutorialBegin(TUTORIAL_FLOW_ID, it, AnalyticsTutorialEntryMode.FIRST_RUN, 4) }
+
+    @Test
+    fun `튜토리얼 장 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION to "date_recommendation",
+                AnalyticsTutorialStep.HOME_DATE to "date",
+                AnalyticsTutorialStep.HOME_PHOTO to "photo",
+                AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST to "photo_sheet_list",
+                AnalyticsTutorialStep.HOME_PHOTO_SHEET_DONE to "photo_sheet_done",
+                AnalyticsTutorialStep.HOME_SOURCES to "sources",
+                AnalyticsTutorialStep.HOME_CREATE to "create",
+                AnalyticsTutorialStep.TIMELINE_EVENT to "event",
+                AnalyticsTutorialStep.TIMELINE_MEMO to "memo",
+                AnalyticsTutorialStep.TIMELINE_ADD_EVENT to "add_event",
+                AnalyticsTutorialStep.TIMELINE_SAVE to "save",
+            ),
+            AnalyticsTutorialStep.entries,
+            "step",
+        ) { tutorialStepViewed(it) }
+
+    @Test
+    fun `튜토리얼 진입 방식 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(AnalyticsTutorialEntryMode.FIRST_RUN to "first_run", AnalyticsTutorialEntryMode.REPLAY to "replay"),
+            AnalyticsTutorialEntryMode.entries,
+            "entry_mode",
+        ) { AnalyticsEvent.TutorialBegin(TUTORIAL_FLOW_ID, AnalyticsTutorial.HOME, it, 7) }
+
+    @Test
+    fun `추천 날짜 장 행동 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED to "pick_recommended",
+                AnalyticsTutorialRecommendationAction.PICK_OTHER_DATE to "pick_other_date",
+                AnalyticsTutorialRecommendationAction.REQUEST_PHOTO_ACCESS to "request_photo_access",
+                AnalyticsTutorialRecommendationAction.SKIP to "skip",
+            ),
+            AnalyticsTutorialRecommendationAction.entries,
+            "action",
+        ) { action ->
+            recommendationAction(action, pick = datePick.takeIf { action == AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED })
+        }
+
+    @Test
+    fun `추천한 날을 고른 방법 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(AnalyticsTutorialPickMethod.CARD to "card"),
+            AnalyticsTutorialPickMethod.entries,
+            "pick_method",
+        ) { recommendationAction(pick = AnalyticsTutorialDatePick(rank = 1, method = it)) }
+
+    @Test
+    fun `추천 사진 접근 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(
+                AnalyticsTutorialPhotoAccess.FULL to "full",
+                AnalyticsTutorialPhotoAccess.LIMITED to "limited",
+                AnalyticsTutorialPhotoAccess.NONE to "none",
+            ),
+            AnalyticsTutorialPhotoAccess.entries,
+            "photo_access",
+        ) { recommendationAction(photoAccess = it) }
+
+    @Test
+    fun `건너뛴 경로 전송값을 고정한다`() =
+        assertWireValues(
+            mapOf(AnalyticsTutorialExitVia.BUTTON to "button", AnalyticsTutorialExitVia.BACK to "back"),
+            AnalyticsTutorialExitVia.entries,
+            "via",
+        ) { tutorialSkip(via = it) }
+
+    private val datePick = AnalyticsTutorialDatePick(rank = 2, method = AnalyticsTutorialPickMethod.CARD)
+
+    private fun tutorialStepViewed(step: AnalyticsTutorialStep = AnalyticsTutorialStep.HOME_DATE) =
+        AnalyticsEvent.TutorialStepViewed(TUTORIAL_FLOW_ID, AnalyticsTutorialEntryMode.FIRST_RUN, step)
+
+    private fun recommendationAction(
+        action: AnalyticsTutorialRecommendationAction = AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED,
+        photoAccess: AnalyticsTutorialPhotoAccess = AnalyticsTutorialPhotoAccess.FULL,
+        pick: AnalyticsTutorialDatePick? = datePick,
+    ) = AnalyticsEvent.TutorialDateRecommendationAction(
+        flowId = TUTORIAL_FLOW_ID,
+        entryMode = AnalyticsTutorialEntryMode.FIRST_RUN,
+        action = action,
+        recommendedCount = 3,
+        photoAccess = photoAccess,
+        pick = pick,
+        cardsViewed = 2,
+    )
+
+    private fun tutorialSkip(via: AnalyticsTutorialExitVia = AnalyticsTutorialExitVia.BACK) =
+        AnalyticsEvent.TutorialSkip(
+            flowId = TUTORIAL_FLOW_ID,
+            entryMode = AnalyticsTutorialEntryMode.FIRST_RUN,
+            step = AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST,
+            via = via,
+            durationMs = 4_500L,
+        )
+
     private val generalReminder = AnalyticsReminderCopy(AnalyticsReminderKind.GENERAL, "오늘 하루 어때나요?")
 
     private fun updatePromptAction(
@@ -971,4 +1188,8 @@ class AnalyticsEventMapperTest {
         val strings: Set<String>,
         val counts: Set<String> = emptySet(),
     )
+
+    private companion object {
+        const val TUTORIAL_FLOW_ID = "tu_3b8e1d"
+    }
 }

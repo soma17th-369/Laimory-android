@@ -33,7 +33,7 @@ import com.soma369.laimory.core.domain.usecase.auth.ObserveSignedInAccountUseCas
 import com.soma369.laimory.core.domain.usecase.credit.GetRemainingCreditsUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
-import com.soma369.laimory.core.domain.usecase.tutorial.ResetTutorialsUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.RestartTutorialsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.WithdrawAccountUseCase
@@ -73,7 +73,7 @@ class SettingsViewModel
         private val getRemainingCredits: GetRemainingCreditsUseCase,
         private val creditBalanceStore: CreditBalanceStore,
         private val analyticsHelper: AnalyticsHelper,
-        private val resetTutorials: ResetTutorialsUseCase,
+        private val restartTutorials: RestartTutorialsUseCase,
         private val tutorialReplayRequests: TutorialReplayRequests,
         private val getDailyRecords: GetDailyRecordsUseCase,
     ) : BaseMviViewModel<SettingsUiState, SettingsUiIntent, SettingsUiSideEffect>(SettingsUiState()) {
@@ -230,10 +230,13 @@ class SettingsViewModel
             updateState { if (usageGuide == null) this else copy(usageGuide = target) }
         }
 
-        /** 봤다는 기록을 모두 지우고 홈으로 간다. 홈이 기록을 관찰하고 있어 추천 날짜 시트부터 다시 띄운다. */
+        /**
+         * 봤다는 기록을 모두 지우고 홈으로 간다. 홈이 기록을 관찰하고 있어 추천 날짜 시트부터 다시 띄운다.
+         * 다시 시작한 것으로 표시해 두 회차(홈 → 타임라인)가 분석에서 다시 보기로 들어간다.
+         */
         private suspend fun replayFullTutorial() {
             updateState { copy(usageGuide = null) }
-            resetTutorials()
+            restartTutorials()
             navigationHelper.replaceRoot(HomePage)
         }
 

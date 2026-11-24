@@ -65,7 +65,7 @@ import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.notice.HasNewNoticeUseCase
 import com.soma369.laimory.core.domain.usecase.push.UnregisterCurrentPushInstallationUseCase
 import com.soma369.laimory.core.domain.usecase.terms.GetPublicTermLinksUseCase
-import com.soma369.laimory.core.domain.usecase.tutorial.ResetTutorialsUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.RestartTutorialsUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RefreshUserProfileUseCase
 import com.soma369.laimory.core.domain.usecase.user.RequestAccountWithdrawalUseCase
@@ -585,7 +585,7 @@ class SettingsViewModelTest {
             analyticsHelper = analyticsHelper,
             getRemainingCredits = GetRemainingCreditsUseCase(creditRepository),
             creditBalanceStore = creditBalanceStore,
-            resetTutorials = ResetTutorialsUseCase(tutorialRepository),
+            restartTutorials = RestartTutorialsUseCase(tutorialRepository),
             tutorialReplayRequests = tutorialReplayRequests,
             getDailyRecords = GetDailyRecordsUseCase(recordRepository, messageHelper),
         )
@@ -1046,7 +1046,7 @@ class SettingsViewModelTest {
     @Test
     fun `홈 화면 둘러보기는 봤다는 기록을 두고 홈으로 가며 다시 보기를 요청한다`() =
         runTest {
-            tutorialRepository.resetCount = 0
+            tutorialRepository.restartCount = 0
             val viewModel = createViewModel()
             viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
             runCurrent()
@@ -1057,11 +1057,11 @@ class SettingsViewModelTest {
             assertNull(viewModel.state.value.usageGuide)
             assertEquals(Tutorial.HOME, tutorialReplayRequests.pending.value)
             assertEquals(HomePage, navigationHelper.replacedRoot)
-            assertEquals(0, tutorialRepository.resetCount)
+            assertEquals(0, tutorialRepository.restartCount)
         }
 
     @Test
-    fun `처음부터 따라 하기는 봤다는 기록을 지우고 홈으로 간다`() =
+    fun `처음부터 따라 하기는 다시 시작한 것으로 봤다는 기록을 지우고 홈으로 간다`() =
         runTest {
             val viewModel = createViewModel()
             viewModel.sendIntent(SettingsUiIntent.UsageGuideClicked)
@@ -1071,7 +1071,8 @@ class SettingsViewModelTest {
             runCurrent()
 
             assertNull(viewModel.state.value.usageGuide)
-            assertEquals(1, tutorialRepository.resetCount)
+            assertEquals(1, tutorialRepository.restartCount)
+            assertEquals(0, tutorialRepository.resetCount)
             assertEquals(HomePage, navigationHelper.replacedRoot)
             assertNull(tutorialReplayRequests.pending.value)
         }
@@ -1111,9 +1112,17 @@ class SettingsViewModelTest {
 
         override suspend fun markSeen(tutorial: Tutorial) = Unit
 
+        var restartCount = 0
+
         override suspend fun resetAll() {
             resetCount++
         }
+
+        override suspend fun restartAll() {
+            restartCount++
+        }
+
+        override suspend fun isRestarted(tutorial: Tutorial): Boolean = false
     }
 
     /** 사용 방법이 기록 목록만 읽는다. 나머지는 부르지 않는다. */

@@ -53,6 +53,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
 import com.soma369.laimory.core.ui.LocalSnackbarHostState
 import com.soma369.laimory.core.ui.appicon.rememberAppIcon
 import com.soma369.laimory.core.ui.component.LaimoryDropdownMenu
@@ -282,7 +283,8 @@ private fun HomeContent(
             position = step.ordinal + 1,
             total = HomeCoachmarkStep.entries.size,
             onNext = { onIntent(HomeUiIntent.NextCoachmark) },
-            onSkip = { onIntent(HomeUiIntent.SkipCoachmark) },
+            onSkip = { onIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON)) },
+            onBack = { onIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BACK)) },
         )
     }
 
@@ -312,8 +314,13 @@ private fun HomeContent(
             onPickOtherDate = { onIntent(HomeUiIntent.PickOtherRecommendedDate) },
             // 홈 사진 카드와 같은 길이다 — 고지를 띄운 뒤 요청하고, 일부 허용이면 사진을 다시 고르게 한다. 돌아오면 복귀
             // 갱신이 추천을 다시 센다.
-            onRequestPhotoAccess = { onRequestPermission(DataPermission.PHOTO) },
-            onSkip = { onIntent(HomeUiIntent.SkipDateRecommendation) },
+            onRequestPhotoAccess = {
+                onIntent(HomeUiIntent.RequestRecommendationPhotoAccess)
+                onRequestPermission(DataPermission.PHOTO)
+            },
+            onSkip = { onIntent(HomeUiIntent.SkipDateRecommendation(AnalyticsTutorialExitVia.BUTTON)) },
+            onBack = { onIntent(HomeUiIntent.SkipDateRecommendation(AnalyticsTutorialExitVia.BACK)) },
+            onCardViewed = { onIntent(HomeUiIntent.ViewRecommendedCard(it)) },
         )
     }
 

@@ -1,5 +1,6 @@
 package com.soma369.laimory.feature.home.state
 
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
 import com.soma369.laimory.core.ui.base.UiIntent
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
@@ -210,14 +211,31 @@ sealed interface HomeUiIntent : UiIntent {
     /** 추천 날짜 시트의 `다른 날 직접 고르기`. 시트를 닫고 날짜 피커를 연다. 피커를 닫으면 코치마크를 시작한다. */
     data object PickOtherRecommendedDate : HomeUiIntent
 
-    /** 추천 날짜 시트의 `건너뛰기` · 바깥 누름 · 뒤로가기. 코치마크 없이 홈 튜토리얼을 마치고 다시 띄우지 않는다. */
-    data object SkipDateRecommendation : HomeUiIntent
+    /** 추천 날짜 시트에서 [index] 번째 카드(0부터)가 앞에 왔다. 넘겨 본 정도를 세는 데만 쓴다. */
+    data class ViewRecommendedCard(
+        val index: Int,
+    ) : HomeUiIntent
+
+    /** 추천 날짜 시트의 `사진 권한 허용하기` · `사진 더 허용하기`. 요청 자체는 화면이 권한 흐름으로 한다 — 이것은 세기만 한다. */
+    data object RequestRecommendationPhotoAccess : HomeUiIntent
+
+    /** 추천 날짜 시트의 `건너뛰기` · 뒤로가기([via]). 코치마크 없이 홈 튜토리얼을 마치고 다시 띄우지 않는다. */
+    data class SkipDateRecommendation(
+        val via: AnalyticsTutorialExitVia,
+    ) : HomeUiIntent
+
+    /** 사진 시트가 튜토리얼 코치마크 [step] 을 실제로 그렸다. 장 노출을 세기만 한다 — 시트 단계는 짚을 사진이 있을 때만 그려진다. */
+    data class ViewPhotoSheetCoachmark(
+        val step: HomeCoachmarkStep,
+    ) : HomeUiIntent
 
     /** 코치마크의 다음 단계. 마지막 단계에서 보내면 홈 튜토리얼을 마친다. */
     data object NextCoachmark : HomeUiIntent
 
-    /** 코치마크의 `건너뛰기` · 뒤로가기. 홈 튜토리얼을 마친다. */
-    data object SkipCoachmark : HomeUiIntent
+    /** 코치마크의 `건너뛰기` · 뒤로가기([via]). 홈 튜토리얼을 마친다. */
+    data class SkipCoachmark(
+        val via: AnalyticsTutorialExitVia,
+    ) : HomeUiIntent
 
     /** 홈 카드에서 연 권한 요청과 그 결과. 분석에 기록한다. */
     data class PermissionEvent(

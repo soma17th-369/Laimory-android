@@ -10,6 +10,7 @@ import com.soma369.laimory.core.domain.repository.TutorialRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
@@ -17,7 +18,7 @@ import javax.inject.Inject
 /**
  * 튜토리얼을 봤는지 앱 설정 저장소에 둔다. 이 기기에서 한 번 본 안내라 로그아웃해도 남는다.
  *
- * 키는 튜토리얼마다 하나다. 저장한 적이 없으면 보지 않은 것이다.
+ * 키는 튜토리얼마다 봤음 · 다시 시작함 두 개다. 저장한 적이 없으면 보지 않았고 다시 시작하지도 않은 것이다.
  */
 internal class TutorialRepositoryImpl
     @Inject
@@ -32,13 +33,41 @@ internal class TutorialRepositoryImpl
                 .distinctUntilChanged()
 
         override suspend fun markSeen(tutorial: Tutorial) {
-            dataStore.edit { preferences -> preferences[tutorial.seenKey] = true }
+            dataStore.edit { preferences ->
+                preferences[tutorial.seenKey] = true
+                preferences.remove(tutorial.restartedKey)
+            }
         }
 
         override suspend fun resetAll() {
-            dataStore.edit { preferences -> Tutorial.entries.forEach { preferences.remove(it.seenKey) } }
+            dataStore.edit { preferences ->
+                Tutorial.entries.forEach {
+                    preferences.remove(it.seenKey)
+                    preferences.remove(it.restartedKey)
+                }
+            }
         }
+
+        override suspend fun restartAll() {
+            dataStore.edit { preferences ->
+                Tutorial.entries.forEach {
+                    preferences.remove(it.seenKey)
+                    preferences[it.restartedKey] = true
+                }
+            }
+        }
+
+        /** 읽기 실패는 다시 시작하지 않은 것으로 떨어뜨린다. 분석의 진입 구분에만 쓰는 값이다. */
+        override suspend fun isRestarted(tutorial: Tutorial): Boolean =
+            try {
+                dataStore.data.first()[tutorial.restartedKey] == true
+            } catch (_: IOException) {
+                false
+            }
 
         private val Tutorial.seenKey: Preferences.Key<Boolean>
             get() = booleanPreferencesKey("tutorial_seen_${name.lowercase()}")
+
+        private val Tutorial.restartedKey: Preferences.Key<Boolean>
+            get() = booleanPreferencesKey("tutorial_restarted_${name.lowercase()}")
     }

@@ -30,6 +30,13 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsReminderKind
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorial
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPhotoAccess
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPickMethod
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialRecommendationAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialStep
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptAction
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdatePromptType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsUpdateScope
@@ -96,6 +103,17 @@ private const val PARAM_STAY_MS = "stay_ms"
 private const val PARAM_REMAINING_CREDITS = "remaining_credits"
 private const val PARAM_PACKAGE_AMOUNT = "package_amount"
 private const val PARAM_BILLING_STATE = "billing_state"
+private const val PARAM_TUTORIAL_FLOW_ID = "tutorial_flow_id"
+private const val PARAM_TUTORIAL = "tutorial"
+private const val PARAM_STEP = "step"
+private const val PARAM_STEP_COUNT = "step_count"
+private const val PARAM_RECOMMENDED_COUNT = "recommended_count"
+private const val PARAM_PHOTO_ACCESS = "photo_access"
+private const val PARAM_PICKED_RANK = "picked_rank"
+private const val PARAM_PICK_METHOD = "pick_method"
+private const val PARAM_CARDS_VIEWED = "cards_viewed"
+private const val PARAM_VIA = "via"
+private const val PARAM_DURATION_MS = "duration_ms"
 
 /**
  * 도메인 이벤트를 전송 형태로 바꾼다. **버킷 밖에서 한 번만** 한다 — 버킷을 바꿔도 이름과 속성은
@@ -134,7 +152,11 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
             payload(
                 name = "timeline_create_started",
                 recordDate = recordDate,
-                strings = mapOf(PARAM_RECORD_DAY_RELATION to recordDayRelation.paramValue),
+                strings =
+                    buildMap {
+                        put(PARAM_RECORD_DAY_RELATION, recordDayRelation.paramValue)
+                        tutorialFlowId?.let { put(PARAM_TUTORIAL_FLOW_ID, it) }
+                    },
             )
         is AnalyticsEvent.TimelineCreateStopped ->
             payload(
@@ -391,7 +413,68 @@ internal fun AnalyticsEvent.toPayload(): AnalyticsPayload =
                 strings = mapOf(PARAM_BILLING_STATE to billingState.paramValue),
                 counts = mapOf(PARAM_PACKAGE_AMOUNT to packageAmount.toLong()),
             )
+        is AnalyticsEvent.TutorialBegin ->
+            payload(
+                name = "tutorial_begin",
+                strings = tutorialStrings(flowId, tutorial, entryMode),
+                counts = mapOf(PARAM_STEP_COUNT to stepCount.toLong()),
+            )
+        is AnalyticsEvent.TutorialStepViewed ->
+            payload(
+                name = "tutorial_step_viewed",
+                strings = tutorialStrings(flowId, step.tutorial, entryMode) + (PARAM_STEP to step.paramValue),
+                counts = mapOf(PARAM_STEP_INDEX to step.index.toLong()),
+            )
+        is AnalyticsEvent.TutorialDateRecommendationAction ->
+            payload(
+                name = "tutorial_date_recommendation_action",
+                strings =
+                    tutorialStrings(flowId, AnalyticsTutorial.HOME, entryMode) +
+                        mapOf(
+                            PARAM_ACTION to action.paramValue,
+                            PARAM_PHOTO_ACCESS to photoAccess.paramValue,
+                        ) +
+                        pick?.let { mapOf(PARAM_PICK_METHOD to it.method.paramValue) }.orEmpty(),
+                counts =
+                    mapOf(
+                        PARAM_RECOMMENDED_COUNT to recommendedCount.toLong(),
+                        PARAM_CARDS_VIEWED to cardsViewed.toLong(),
+                    ) + pick?.let { mapOf(PARAM_PICKED_RANK to it.rank.toLong()) }.orEmpty(),
+            )
+        is AnalyticsEvent.TutorialComplete ->
+            payload(
+                name = "tutorial_complete",
+                strings = tutorialStrings(flowId, tutorial, entryMode),
+                counts = mapOf(PARAM_DURATION_MS to durationMs),
+            )
+        is AnalyticsEvent.TutorialSkip ->
+            payload(
+                name = "tutorial_skip",
+                strings =
+                    tutorialStrings(flowId, step.tutorial, entryMode) +
+                        mapOf(
+                            PARAM_STEP to step.paramValue,
+                            PARAM_VIA to via.paramValue,
+                        ),
+                counts =
+                    mapOf(
+                        PARAM_STEP_INDEX to step.index.toLong(),
+                        PARAM_DURATION_MS to durationMs,
+                    ),
+            )
     }
+
+/** 튜토리얼 이벤트가 모두 싣는 회차 · 종류 · 진입 방식. */
+private fun tutorialStrings(
+    flowId: String,
+    tutorial: AnalyticsTutorial,
+    entryMode: AnalyticsTutorialEntryMode,
+): Map<String, String> =
+    mapOf(
+        PARAM_TUTORIAL_FLOW_ID to flowId,
+        PARAM_TUTORIAL to tutorial.paramValue,
+        PARAM_ENTRY_MODE to entryMode.paramValue,
+    )
 
 private const val STAGE_INITIAL = "initial"
 private const val STAGE_FINAL = "final"
@@ -758,4 +841,64 @@ private val AnalyticsBillingState.paramValue: String
         when (this) {
             AnalyticsBillingState.COMING_SOON -> "coming_soon"
             AnalyticsBillingState.AVAILABLE -> "available"
+        }
+
+private val AnalyticsTutorial.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsTutorial.HOME -> "home"
+            AnalyticsTutorial.TIMELINE -> "timeline"
+        }
+
+private val AnalyticsTutorialStep.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION -> "date_recommendation"
+            AnalyticsTutorialStep.HOME_DATE -> "date"
+            AnalyticsTutorialStep.HOME_PHOTO -> "photo"
+            AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST -> "photo_sheet_list"
+            AnalyticsTutorialStep.HOME_PHOTO_SHEET_DONE -> "photo_sheet_done"
+            AnalyticsTutorialStep.HOME_SOURCES -> "sources"
+            AnalyticsTutorialStep.HOME_CREATE -> "create"
+            AnalyticsTutorialStep.TIMELINE_EVENT -> "event"
+            AnalyticsTutorialStep.TIMELINE_MEMO -> "memo"
+            AnalyticsTutorialStep.TIMELINE_ADD_EVENT -> "add_event"
+            AnalyticsTutorialStep.TIMELINE_SAVE -> "save"
+        }
+
+private val AnalyticsTutorialEntryMode.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsTutorialEntryMode.FIRST_RUN -> "first_run"
+            AnalyticsTutorialEntryMode.REPLAY -> "replay"
+        }
+
+private val AnalyticsTutorialRecommendationAction.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED -> "pick_recommended"
+            AnalyticsTutorialRecommendationAction.PICK_OTHER_DATE -> "pick_other_date"
+            AnalyticsTutorialRecommendationAction.REQUEST_PHOTO_ACCESS -> "request_photo_access"
+            AnalyticsTutorialRecommendationAction.SKIP -> "skip"
+        }
+
+private val AnalyticsTutorialPickMethod.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsTutorialPickMethod.CARD -> "card"
+        }
+
+private val AnalyticsTutorialPhotoAccess.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsTutorialPhotoAccess.FULL -> "full"
+            AnalyticsTutorialPhotoAccess.LIMITED -> "limited"
+            AnalyticsTutorialPhotoAccess.NONE -> "none"
+        }
+
+private val AnalyticsTutorialExitVia.paramValue: String
+    get() =
+        when (this) {
+            AnalyticsTutorialExitVia.BUTTON -> "button"
+            AnalyticsTutorialExitVia.BACK -> "back"
         }

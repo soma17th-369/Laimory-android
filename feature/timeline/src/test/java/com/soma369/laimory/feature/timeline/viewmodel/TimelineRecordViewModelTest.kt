@@ -20,6 +20,10 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEditLog
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventSummary
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineEventTarget
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTimelineState
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorial
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialStep
 import com.soma369.laimory.core.domain.model.analytics.InstallAttribution
 import com.soma369.laimory.core.domain.model.timeline.ActiveDraftTask
 import com.soma369.laimory.core.domain.model.timeline.CreateTimelineEventCommand
@@ -53,6 +57,7 @@ import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventMemoUseCase
 import com.soma369.laimory.core.domain.usecase.UpdateTimelineEventPlaceUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.RecordTimelineEditUseCase
 import com.soma369.laimory.core.domain.usecase.analytics.TakeTimelineEditLogUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.GetTutorialEntryModeUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.user.ObserveUserProfileUseCase
@@ -1789,6 +1794,7 @@ class TimelineRecordViewModelTest {
             takeTimelineEditLogUseCase = TakeTimelineEditLogUseCase(editLogRepository),
             observeUserProfileUseCase = ObserveUserProfileUseCase(userProfileCoordinator),
             observeTutorialSeen = ObserveTutorialSeenUseCase(tutorialRepository),
+            getTutorialEntryMode = GetTutorialEntryModeUseCase(tutorialRepository),
             markTutorialSeen = MarkTutorialSeenUseCase(tutorialRepository),
             tutorialReplayRequests = tutorialReplayRequests,
             clock = clock,
@@ -2217,7 +2223,7 @@ class TimelineRecordViewModelTest {
             tutorialRepository.seen.value = false
             val viewModel = createLoadedViewModel()
 
-            viewModel.sendIntent(TimelineRecordUiIntent.SkipCoachmark)
+            viewModel.sendIntent(TimelineRecordUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON))
             advanceUntilIdle()
 
             assertNull(viewModel.state.value.coachmark)
@@ -2263,6 +2269,116 @@ class TimelineRecordViewModelTest {
             assertEquals(TimelineRecordMode.READ, viewModel.state.value.mode)
             assertNull(viewModel.state.value.coachmark)
         }
+
+    @Test
+    fun `코치마크를 끝까지 넘기면 처음 보는 회차의 모든 단계와 완료를 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createLoadedViewModel()
+
+            repeat(TimelineCoachmarkStep.entries.size) {
+                viewModel.sendIntent(TimelineRecordUiIntent.NextCoachmark)
+                advanceUntilIdle()
+            }
+
+            val events = tutorialEvents()
+            val begin = events.first() as AnalyticsEvent.TutorialBegin
+            assertEquals(AnalyticsTutorial.TIMELINE, begin.tutorial)
+            assertEquals(AnalyticsTutorialEntryMode.FIRST_RUN, begin.entryMode)
+            assertEquals(4, begin.stepCount)
+            assertEquals(AnalyticsTutorialStep.entries.filter { it.tutorial == AnalyticsTutorial.TIMELINE }, viewedSteps())
+            val complete = events.last() as AnalyticsEvent.TutorialComplete
+            assertEquals(begin.flowId, complete.flowId)
+        }
+
+    @Test
+    fun `코치마크를 뒤로가기로 닫으면 그 단계에서 건너뛴 것으로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createLoadedViewModel()
+            viewModel.sendIntent(TimelineRecordUiIntent.NextCoachmark)
+            advanceUntilIdle()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BACK))
+            advanceUntilIdle()
+
+            val skip = tutorialEvents().last() as AnalyticsEvent.TutorialSkip
+            assertEquals(AnalyticsTutorialStep.TIMELINE_MEMO, skip.step)
+            assertEquals(AnalyticsTutorialExitVia.BACK, skip.via)
+            assertTrue(tutorialEvents().none { it is AnalyticsEvent.TutorialComplete })
+        }
+
+    @Test
+    fun `화면을 떠나 거둔 회차는 끝을 남기지 않고 다시 짚을 때 새 회차를 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createLoadedViewModel()
+
+            viewModel.sendIntent(TimelineRecordUiIntent.Leave)
+            advanceUntilIdle()
+            viewModel.sendIntent(TimelineRecordUiIntent.Initialize(RECORD_DATE))
+            advanceUntilIdle()
+
+            val begins = tutorialEvents().filterIsInstance<AnalyticsEvent.TutorialBegin>()
+            assertEquals(2, begins.size)
+            assertTrue(begins[0].flowId != begins[1].flowId)
+            assertTrue(tutorialEvents().none { it is AnalyticsEvent.TutorialComplete || it is AnalyticsEvent.TutorialSkip })
+            assertEquals(listOf(AnalyticsTutorialStep.TIMELINE_EVENT, AnalyticsTutorialStep.TIMELINE_EVENT), viewedSteps())
+        }
+
+    @Test
+    fun `저장한 기록을 다시 보면 다시 보기 회차로 저장하기를 뺀 단계 수를 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialReplayRequests.request(Tutorial.TIMELINE)
+
+            createLoadedViewModel(record = timeline(status = DailyRecordStatus.SAVED))
+
+            val begin = tutorialEvents().first() as AnalyticsEvent.TutorialBegin
+            assertEquals(AnalyticsTutorialEntryMode.REPLAY, begin.entryMode)
+            assertEquals(3, begin.stepCount)
+        }
+
+    @Test
+    fun `보지 않은 계정이 초안에서 다시 보기를 골라도 회차는 하나만 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            tutorialReplayRequests.request(Tutorial.TIMELINE)
+            val viewModel = createLoadedViewModel()
+
+            repeat(TimelineCoachmarkStep.entries.size) {
+                viewModel.sendIntent(TimelineRecordUiIntent.NextCoachmark)
+                advanceUntilIdle()
+            }
+
+            val begins = tutorialEvents().filterIsInstance<AnalyticsEvent.TutorialBegin>()
+            assertEquals(1, begins.size)
+            val complete = tutorialEvents().last() as AnalyticsEvent.TutorialComplete
+            assertEquals(begins.single().flowId, complete.flowId)
+            assertNull(viewModel.state.value.coachmark)
+        }
+
+    @Test
+    fun `처음부터 따라 하기로 다시 시작한 뒤 초안에서 뜬 코치마크는 다시 보기 회차다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.restartAll()
+
+            createLoadedViewModel()
+
+            val begin = tutorialEvents().first() as AnalyticsEvent.TutorialBegin
+            assertEquals(AnalyticsTutorialEntryMode.REPLAY, begin.entryMode)
+            assertEquals(TimelineCoachmarkStep.entries.size, begin.stepCount)
+        }
+
+    private fun tutorialEvents(): List<AnalyticsEvent> =
+        analyticsHelper.logged.filter {
+            it is AnalyticsEvent.TutorialBegin ||
+                it is AnalyticsEvent.TutorialStepViewed ||
+                it is AnalyticsEvent.TutorialComplete ||
+                it is AnalyticsEvent.TutorialSkip
+        }
+
+    private fun viewedSteps(): List<AnalyticsTutorialStep> =
+        analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TutorialStepViewed>().map { it.step }
 
     @Test
     fun `저장한 기록을 다시 보면 편집 모드로 바꿔 저장하기를 뺀 단계를 짚는다`() =
@@ -2332,13 +2448,24 @@ class TimelineRecordViewModelTest {
 
         override fun observeSeen(tutorial: Tutorial): Flow<Boolean> = this.seen
 
+        var restarted = false
+
         override suspend fun markSeen(tutorial: Tutorial) {
             seen.value = true
+            restarted = false
         }
 
         override suspend fun resetAll() {
             seen.value = false
+            restarted = false
         }
+
+        override suspend fun restartAll() {
+            seen.value = false
+            restarted = true
+        }
+
+        override suspend fun isRestarted(tutorial: Tutorial): Boolean = restarted
     }
 
     private fun TestScope.createLoadedViewModel(record: DailyTimeline = timeline(events = listOf(event()))): TimelineRecordViewModel {

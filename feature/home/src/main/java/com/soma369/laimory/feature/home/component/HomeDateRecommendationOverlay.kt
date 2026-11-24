@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -113,9 +114,11 @@ internal fun HomeDateRecommendationOverlay(
     onPickOtherDate: () -> Unit,
     onRequestPhotoAccess: () -> Unit,
     onSkip: () -> Unit,
+    onBack: () -> Unit = onSkip,
+    onCardViewed: (Int) -> Unit = {},
 ) {
     Dialog(
-        onDismissRequest = onSkip,
+        onDismissRequest = onBack,
         properties =
             DialogProperties(
                 dismissOnClickOutside = false,
@@ -140,6 +143,7 @@ internal fun HomeDateRecommendationOverlay(
                 onPickOtherDate = onPickOtherDate,
                 onRequestPhotoAccess = onRequestPhotoAccess,
                 onSkip = onSkip,
+                onCardViewed = onCardViewed,
             )
         }
     }
@@ -152,6 +156,7 @@ private fun HomeDateRecommendationContent(
     onPickOtherDate: () -> Unit,
     onRequestPhotoAccess: () -> Unit,
     onSkip: () -> Unit,
+    onCardViewed: (Int) -> Unit = {},
 ) {
     val suggestedAccess = recommendation.suggestedPhotoAccess
     Column(
@@ -185,7 +190,7 @@ private fun HomeDateRecommendationContent(
         }
 
         if (recommendation.dates.isNotEmpty()) {
-            RecommendedDateDeck(dates = recommendation.dates, onPickDate = onPickDate)
+            RecommendedDateDeck(dates = recommendation.dates, onPickDate = onPickDate, onCardViewed = onCardViewed)
         }
 
         Column(
@@ -231,9 +236,13 @@ private fun HomeDateRecommendationContent(
 private fun RecommendedDateDeck(
     dates: List<RecommendedRecordDate>,
     onPickDate: (LocalDate) -> Unit,
+    onCardViewed: (Int) -> Unit,
 ) {
     // 권한을 허용하고 다시 센 추천은 다른 날들이다. 처음 카드부터 보여 준다.
     var current by rememberSaveable(dates.map { it.date }) { mutableIntStateOf(0) }
+    // 앞에 자리 잡은 카드를 알린다(넘겨 본 정도를 센다). 날아가는 중이 아니라 앞에 온 뒤라서 [indicatorTarget] 이 아닌 [current] 다.
+    val currentOnCardViewed by rememberUpdatedState(onCardViewed)
+    LaunchedEffect(current) { currentOnCardViewed(current) }
     val dragX = remember { Animatable(0f) }
     val dragY = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()

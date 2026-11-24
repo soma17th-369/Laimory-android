@@ -19,6 +19,13 @@ import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionState
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPermissionType
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsPromptContext
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsSourceGroup
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorial
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialEntryMode
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPhotoAccess
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPickMethod
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialRecommendationAction
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialStep
 import com.soma369.laimory.core.domain.model.collection.AutoCollectionResult
 import com.soma369.laimory.core.domain.model.collection.CalendarPayload
 import com.soma369.laimory.core.domain.model.collection.HealthPayload
@@ -94,6 +101,7 @@ import com.soma369.laimory.core.domain.usecase.analytics.LogPermissionEventUseCa
 import com.soma369.laimory.core.domain.usecase.credit.GetTimelineCreditUseCase
 import com.soma369.laimory.core.domain.usecase.settings.ObserveDefaultRecordRangeUseCase
 import com.soma369.laimory.core.domain.usecase.settings.SetDefaultRecordRangeUseCase
+import com.soma369.laimory.core.domain.usecase.tutorial.GetTutorialEntryModeUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.MarkTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.ObserveTutorialSeenUseCase
 import com.soma369.laimory.core.domain.usecase.tutorial.RecommendTutorialDatesUseCase
@@ -118,6 +126,7 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
+import com.soma369.laimory.feature.home.state.visiblePhotoSheetCoachmark
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -2713,7 +2722,7 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SkipCoachmark)
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON))
             runCurrent()
 
             assertNull(viewModel.state.value.homeCoachmark)
@@ -2835,7 +2844,7 @@ class HomeViewModelTest {
             viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SkipCoachmark)
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON))
             runCurrent()
             assertTrue(tutorialRepository.seen.value)
             assertTrue(viewModel.state.value.isPhotoSheetVisible)
@@ -3002,7 +3011,7 @@ class HomeViewModelTest {
             runCurrent()
             val before = viewModel.state.value.selectedDate
 
-            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation)
+            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation(AnalyticsTutorialExitVia.BUTTON))
             runCurrent()
 
             assertNull(viewModel.state.value.dateRecommendation)
@@ -3018,7 +3027,7 @@ class HomeViewModelTest {
             tutorialRepository.seen.value = false
             val viewModel = createViewModel()
             runCurrent()
-            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation)
+            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation(AnalyticsTutorialExitVia.BUTTON))
             runCurrent()
 
             tutorialRepository.resetAll()
@@ -3128,7 +3137,7 @@ class HomeViewModelTest {
             tutorialReplayRequests.request(Tutorial.HOME)
             runCurrent()
 
-            viewModel.sendIntent(HomeUiIntent.SkipCoachmark)
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON))
             runCurrent()
 
             assertNull(viewModel.state.value.homeCoachmark)
@@ -3137,6 +3146,299 @@ class HomeViewModelTest {
             // 추천 시트가 다시 뜨지 않는다.
             assertNull(viewModel.state.value.dateRecommendation)
         }
+
+    @Test
+    fun `추천 시트가 뜨면 처음 보는 회차를 열고 추천 장을 본 것으로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(2), count = 1)
+            createViewModel()
+            runCurrent()
+
+            val events = tutorialEvents()
+            val begin = events[0] as AnalyticsEvent.TutorialBegin
+            assertEquals(AnalyticsTutorial.HOME, begin.tutorial)
+            assertEquals(AnalyticsTutorialEntryMode.FIRST_RUN, begin.entryMode)
+            assertEquals(HomeCoachmarkStep.entries.size + 1, begin.stepCount)
+            assertEquals(
+                AnalyticsEvent.TutorialStepViewed(
+                    begin.flowId,
+                    AnalyticsTutorialEntryMode.FIRST_RUN,
+                    AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION,
+                ),
+                events[1],
+            )
+            assertEquals(2, events.size)
+        }
+
+    @Test
+    fun `추천한 날을 고르면 순위와 넘겨 본 카드 수를 남기고 코치마크 첫 단계를 본 것으로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val today = LocalDate.now(ZoneId.systemDefault())
+            photoSource.captured = capturedPhotosOn(today.minusDays(5), count = 4) + capturedPhotosOn(today.minusDays(3), count = 2)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.ViewRecommendedCard(0))
+            viewModel.sendIntent(HomeUiIntent.ViewRecommendedCard(1))
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(today.minusDays(3)))
+            runCurrent()
+
+            val action = tutorialEvents().filterIsInstance<AnalyticsEvent.TutorialDateRecommendationAction>().single()
+            assertEquals(AnalyticsTutorialRecommendationAction.PICK_RECOMMENDED, action.action)
+            assertEquals(2, action.pick?.rank)
+            assertEquals(AnalyticsTutorialPickMethod.CARD, action.pick?.method)
+            assertEquals(2, action.recommendedCount)
+            assertEquals(2, action.cardsViewed)
+            assertEquals(AnalyticsTutorialPhotoAccess.FULL, action.photoAccess)
+            assertEquals(AnalyticsTutorialStep.HOME_DATE, viewedSteps().last())
+        }
+
+    @Test
+    fun `코치마크를 끝까지 넘기면 모든 장을 한 번씩 본 것으로 남기고 완료를 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
+            photoSource.captured = capturedPhotosOn(picked, count = 1)
+            photoSource.candidates = photoSource.captured
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            runCurrent()
+
+            repeat(HomeCoachmarkStep.entries.size) {
+                viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+                runCurrent()
+                viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+                runCurrent()
+                // 시트 위 단계는 시트가 그린 때 화면이 알린다.
+                viewModel.state.value.visiblePhotoSheetCoachmark?.let {
+                    viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(it))
+                    runCurrent()
+                }
+                if (viewModel.state.value.homeCoachmark == null && homeOverlayTurn.isTutorialActive.value) {
+                    viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+                    runCurrent()
+                }
+            }
+
+            assertEquals(AnalyticsTutorialStep.entries.filter { it.tutorial == AnalyticsTutorial.HOME }, viewedSteps())
+            val events = tutorialEvents()
+            val complete = events.last() as AnalyticsEvent.TutorialComplete
+            assertEquals((events.first() as AnalyticsEvent.TutorialBegin).flowId, complete.flowId)
+            assertTrue(events.none { it is AnalyticsEvent.TutorialSkip })
+        }
+
+    @Test
+    fun `사진 시트 장은 시트가 코치마크를 그린 때에만 한 번 본 것으로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+
+            // 다음을 눌러도 권한을 확인하는 동안은 시트가 없다.
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            assertEquals(HomeCoachmarkStep.PHOTO_SHEET_LIST, viewModel.state.value.homeCoachmark)
+            assertFalse(AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST in viewedSteps())
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertFalse(AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST in viewedSteps())
+
+            // 다시 그려져(구성 변경 등) 또 알려도 한 번이다.
+            repeat(2) {
+                viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(HomeCoachmarkStep.PHOTO_SHEET_LIST))
+                runCurrent()
+            }
+            assertEquals(1, viewedSteps().count { it == AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST })
+            // 아직 띄우지 않은 다음 장의 알림은 받지 않는다.
+            viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(HomeCoachmarkStep.PHOTO_SHEET_DONE))
+            runCurrent()
+            assertFalse(AnalyticsTutorialStep.HOME_PHOTO_SHEET_DONE in viewedSteps())
+        }
+
+    @Test
+    fun `사진 권한을 거부해 시트가 코치마크를 그리지 않으면 시트 장을 본 것으로 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
+            runCurrent()
+            // 거부 안내 시트는 코치마크를 그리지 않는다. 늦게 온 알림이 있어도 세지 않는다.
+            viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(HomeCoachmarkStep.PHOTO_SHEET_LIST))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+
+            assertEquals(HomeCoachmarkStep.SOURCES, viewModel.state.value.homeCoachmark)
+            assertEquals(
+                listOf(
+                    AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION,
+                    AnalyticsTutorialStep.HOME_DATE,
+                    AnalyticsTutorialStep.HOME_PHOTO,
+                    AnalyticsTutorialStep.HOME_SOURCES,
+                ),
+                viewedSteps(),
+            )
+        }
+
+    @Test
+    fun `뒤로가기로 추천 시트를 닫으면 건너뛴 행동과 추천 장 건너뛰기를 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(1), count = 1)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation(AnalyticsTutorialExitVia.BACK))
+            runCurrent()
+
+            val events = tutorialEvents()
+            val action = events.filterIsInstance<AnalyticsEvent.TutorialDateRecommendationAction>().single()
+            assertEquals(AnalyticsTutorialRecommendationAction.SKIP, action.action)
+            val skip = events.last() as AnalyticsEvent.TutorialSkip
+            assertEquals(AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION, skip.step)
+            assertEquals(AnalyticsTutorialExitVia.BACK, skip.via)
+        }
+
+    @Test
+    fun `코치마크에서 건너뛰면 그 단계에서 건너뛴 것으로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
+            photoSource.captured = capturedPhotosOn(picked, count = 1)
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BUTTON))
+            runCurrent()
+
+            val skip = tutorialEvents().last() as AnalyticsEvent.TutorialSkip
+            assertEquals(AnalyticsTutorialStep.HOME_PHOTO, skip.step)
+            assertEquals(AnalyticsTutorialExitVia.BUTTON, skip.via)
+            // 회차가 닫혀 늦게 온 입력은 남기지 않는다.
+            viewModel.sendIntent(HomeUiIntent.SkipCoachmark(AnalyticsTutorialExitVia.BACK))
+            runCurrent()
+            assertEquals(1, tutorialEvents().count { it is AnalyticsEvent.TutorialSkip })
+        }
+
+    @Test
+    fun `추천 시트에서 사진 권한을 요청하면 그때의 접근과 추천 수를 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.RefreshPhotos(hasAccess = false))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.RequestRecommendationPhotoAccess)
+            runCurrent()
+
+            val action = tutorialEvents().filterIsInstance<AnalyticsEvent.TutorialDateRecommendationAction>().single()
+            assertEquals(AnalyticsTutorialRecommendationAction.REQUEST_PHOTO_ACCESS, action.action)
+            assertEquals(AnalyticsTutorialPhotoAccess.NONE, action.photoAccess)
+            assertEquals(0, action.recommendedCount)
+            assertEquals(0, action.cardsViewed)
+            assertNull(action.pick)
+        }
+
+    @Test
+    fun `다른 날 직접 고르기를 남기고 피커를 닫았다 다시 열어도 추천 장은 다시 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(2), count = 3)
+            val viewModel = createViewModel()
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.PickOtherRecommendedDate)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.DismissDatePicker)
+            runCurrent()
+
+            val actions = tutorialEvents().filterIsInstance<AnalyticsEvent.TutorialDateRecommendationAction>()
+            assertEquals(listOf(AnalyticsTutorialRecommendationAction.PICK_OTHER_DATE), actions.map { it.action })
+            assertEquals(listOf(AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION), viewedSteps())
+        }
+
+    @Test
+    fun `홈 화면 둘러보기는 다시 보기 회차로 열고 추천 장 없이 코치마크부터 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            createViewModel()
+            runCurrent()
+
+            tutorialReplayRequests.request(Tutorial.HOME)
+            runCurrent()
+
+            val begin = tutorialEvents().first() as AnalyticsEvent.TutorialBegin
+            assertEquals(AnalyticsTutorialEntryMode.REPLAY, begin.entryMode)
+            assertEquals(HomeCoachmarkStep.entries.size, begin.stepCount)
+            assertEquals(listOf(AnalyticsTutorialStep.HOME_DATE), viewedSteps())
+        }
+
+    @Test
+    fun `튜토리얼을 닫은 뒤 첫 만들기 시작에만 그 회차 토큰을 싣는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.seen.value = false
+            photoSource.captured = capturedPhotosOn(LocalDate.now(ZoneId.systemDefault()).minusDays(1), count = 1)
+            sourceRepository.items.value = listOf(todayItem("a"))
+            confirmDialog.answer = ConfirmAnswer.CANCEL
+            val viewModel = createViewModel()
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.SkipDateRecommendation(AnalyticsTutorialExitVia.BUTTON))
+            runCurrent()
+
+            createDraft(viewModel)
+            createDraft(viewModel)
+
+            val begin = tutorialEvents().first() as AnalyticsEvent.TutorialBegin
+            assertEquals(
+                listOf(begin.flowId, null),
+                analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateStarted>().map { it.tutorialFlowId },
+            )
+        }
+
+    @Test
+    fun `튜토리얼을 거치지 않은 만들기 시작에는 회차 토큰이 없다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            sourceRepository.items.value = listOf(todayItem("a"))
+            confirmDialog.answer = ConfirmAnswer.HOLD
+            val viewModel = createViewModel()
+            runCurrent()
+
+            createDraft(viewModel)
+
+            assertNull(analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TimelineCreateStarted>().single().tutorialFlowId)
+        }
+
+    @Test
+    fun `처음부터 따라 하기로 다시 시작하면 추천 시트 회차를 다시 보기로 연다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            tutorialRepository.restartAll()
+            createViewModel()
+            runCurrent()
+
+            val begin = tutorialEvents().first() as AnalyticsEvent.TutorialBegin
+            assertEquals(AnalyticsTutorialEntryMode.REPLAY, begin.entryMode)
+            // 처음 볼 때처럼 추천 날짜 장부터 짚는다.
+            assertEquals(HomeCoachmarkStep.entries.size + 1, begin.stepCount)
+        }
+
+    private fun tutorialEvents(): List<AnalyticsEvent> =
+        analyticsHelper.logged.filter {
+            it is AnalyticsEvent.TutorialBegin ||
+                it is AnalyticsEvent.TutorialStepViewed ||
+                it is AnalyticsEvent.TutorialDateRecommendationAction ||
+                it is AnalyticsEvent.TutorialComplete ||
+                it is AnalyticsEvent.TutorialSkip
+        }
+
+    private fun viewedSteps(): List<AnalyticsTutorialStep> =
+        analyticsHelper.logged.filterIsInstance<AnalyticsEvent.TutorialStepViewed>().map { it.step }
 
     /** 추천한 날을 골라 코치마크를 사진 단계까지 넘긴다. 그 날 사진 한 장이 시트 후보로 있다. */
     private fun TestScope.startCoachmarkAtPhotoStep(): HomeViewModel {
@@ -3212,6 +3514,7 @@ class HomeViewModelTest {
             observeDefaultRecordRange = ObserveDefaultRecordRangeUseCase(defaultRangeRepository),
             setDefaultRecordRange = SetDefaultRecordRangeUseCase(defaultRangeRepository),
             observeTutorialSeen = ObserveTutorialSeenUseCase(tutorialRepository),
+            getTutorialEntryMode = GetTutorialEntryModeUseCase(tutorialRepository),
             markTutorialSeen = MarkTutorialSeenUseCase(tutorialRepository),
             recommendTutorialDates = RecommendTutorialDatesUseCase(photoSource, calendarSource),
             homeOverlayTurn = homeOverlayTurn,
@@ -3228,13 +3531,24 @@ class HomeViewModelTest {
 
         override fun observeSeen(tutorial: Tutorial): Flow<Boolean> = this.seen
 
+        var restarted = false
+
         override suspend fun markSeen(tutorial: Tutorial) {
             seen.value = true
+            restarted = false
         }
 
         override suspend fun resetAll() {
             seen.value = false
+            restarted = false
         }
+
+        override suspend fun restartAll() {
+            seen.value = false
+            restarted = true
+        }
+
+        override suspend fun isRestarted(tutorial: Tutorial): Boolean = restarted
     }
 
     private class FakeDefaultRecordRangeRepository : DefaultRecordRangeRepository {
