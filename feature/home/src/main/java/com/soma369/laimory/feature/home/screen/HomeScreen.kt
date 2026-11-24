@@ -310,7 +310,7 @@ private fun HomeContent(
     state.dateRecommendation?.let { recommendation ->
         HomeDateRecommendationOverlay(
             recommendation = recommendation,
-            onPickDate = { onIntent(HomeUiIntent.PickRecommendedDate(it)) },
+            onPickDate = { date, method -> onIntent(HomeUiIntent.PickRecommendedDate(date, method)) },
             onPickOtherDate = { onIntent(HomeUiIntent.PickOtherRecommendedDate) },
             // 홈 사진 카드와 같은 길이다 — 고지를 띄운 뒤 요청하고, 일부 허용이면 사진을 다시 고르게 한다. 돌아오면 복귀
             // 갱신이 추천을 다시 센다.
