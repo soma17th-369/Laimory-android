@@ -31,9 +31,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +62,7 @@ import com.soma369.laimory.feature.home.state.HomeUiState
 import com.soma369.laimory.feature.home.state.MAX_PHOTO_SELECTION
 import com.soma369.laimory.feature.home.state.isInputLocked
 import com.soma369.laimory.feature.home.state.isPhotoSelectionFull
+import com.soma369.laimory.feature.home.state.visiblePhotoSheetCoachmark
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -214,8 +217,11 @@ internal fun PhotoSelectionSheet(
 
     // 홈 튜토리얼이 연 시트면 고르는 곳과 닫는 곳을 짚는다. 시트 안에서 그려야 코치마크 창이 시트 창보다 위에 뜬다.
     // 짚을 사진이 없으면(거부 · 빈 범위 · 불러오는 중) 띄우지 않는다 — 시트를 닫으면 홈 코치마크가 이어진다.
-    val sheetStep = state.homeCoachmark?.takeIf { it.isInPhotoSheet }
-    if (sheetStep != null && !isReadOnly && !state.isPhotoAccessDenied && !state.isPhotoLoading && state.availablePhotos.isNotEmpty()) {
+    val sheetStep = state.visiblePhotoSheetCoachmark
+    if (sheetStep != null) {
+        // 그린 때 장 노출을 알린다. 시트 단계는 띄우기로 정한 때가 아니라 여기서 센다(같은 장은 회차마다 한 번).
+        val currentOnIntent by rememberUpdatedState(onIntent)
+        LaunchedEffect(sheetStep) { currentOnIntent(HomeUiIntent.ViewPhotoSheetCoachmark(sheetStep)) }
         LaimoryCoachmark(
             state = coachmarkState,
             targetKeys = listOf(if (sheetStep == HomeCoachmarkStep.PHOTO_SHEET_LIST) COACHMARK_SHEET_PHOTOS else COACHMARK_SHEET_DONE),

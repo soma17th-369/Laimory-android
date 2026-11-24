@@ -126,6 +126,7 @@ import com.soma369.laimory.feature.home.state.HomeUiIntent
 import com.soma369.laimory.feature.home.state.HomeUiSideEffect
 import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
+import com.soma369.laimory.feature.home.state.visiblePhotoSheetCoachmark
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -3200,6 +3201,7 @@ class HomeViewModelTest {
             tutorialRepository.seen.value = false
             val picked = LocalDate.now(ZoneId.systemDefault()).minusDays(2)
             photoSource.captured = capturedPhotosOn(picked, count = 1)
+            photoSource.candidates = photoSource.captured
             val viewModel = createViewModel()
             runCurrent()
             viewModel.sendIntent(HomeUiIntent.PickRecommendedDate(picked))
@@ -3210,6 +3212,11 @@ class HomeViewModelTest {
                 runCurrent()
                 viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
                 runCurrent()
+                // 시트 위 단계는 시트가 그린 때 화면이 알린다.
+                viewModel.state.value.visiblePhotoSheetCoachmark?.let {
+                    viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(it))
+                    runCurrent()
+                }
                 if (viewModel.state.value.homeCoachmark == null && homeOverlayTurn.isTutorialActive.value) {
                     viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
                     runCurrent()
@@ -3221,6 +3228,60 @@ class HomeViewModelTest {
             val complete = events.last() as AnalyticsEvent.TutorialComplete
             assertEquals((events.first() as AnalyticsEvent.TutorialBegin).flowId, complete.flowId)
             assertTrue(events.none { it is AnalyticsEvent.TutorialSkip })
+        }
+
+    @Test
+    fun `사진 시트 장은 시트가 코치마크를 그린 때에만 한 번 본 것으로 남긴다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+
+            // 다음을 눌러도 권한을 확인하는 동안은 시트가 없다.
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            assertEquals(HomeCoachmarkStep.PHOTO_SHEET_LIST, viewModel.state.value.homeCoachmark)
+            assertFalse(AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST in viewedSteps())
+
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = true))
+            runCurrent()
+            assertFalse(AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST in viewedSteps())
+
+            // 다시 그려져(구성 변경 등) 또 알려도 한 번이다.
+            repeat(2) {
+                viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(HomeCoachmarkStep.PHOTO_SHEET_LIST))
+                runCurrent()
+            }
+            assertEquals(1, viewedSteps().count { it == AnalyticsTutorialStep.HOME_PHOTO_SHEET_LIST })
+            // 아직 띄우지 않은 다음 장의 알림은 받지 않는다.
+            viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(HomeCoachmarkStep.PHOTO_SHEET_DONE))
+            runCurrent()
+            assertFalse(AnalyticsTutorialStep.HOME_PHOTO_SHEET_DONE in viewedSteps())
+        }
+
+    @Test
+    fun `사진 권한을 거부해 시트가 코치마크를 그리지 않으면 시트 장을 본 것으로 남기지 않는다`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val viewModel = startCoachmarkAtPhotoStep()
+            viewModel.sendIntent(HomeUiIntent.NextCoachmark)
+            runCurrent()
+            viewModel.sendIntent(HomeUiIntent.ResolvePhotoAccess(granted = false))
+            runCurrent()
+            // 거부 안내 시트는 코치마크를 그리지 않는다. 늦게 온 알림이 있어도 세지 않는다.
+            viewModel.sendIntent(HomeUiIntent.ViewPhotoSheetCoachmark(HomeCoachmarkStep.PHOTO_SHEET_LIST))
+            runCurrent()
+
+            viewModel.sendIntent(HomeUiIntent.DismissPhotoSheet)
+            runCurrent()
+
+            assertEquals(HomeCoachmarkStep.SOURCES, viewModel.state.value.homeCoachmark)
+            assertEquals(
+                listOf(
+                    AnalyticsTutorialStep.HOME_DATE_RECOMMENDATION,
+                    AnalyticsTutorialStep.HOME_DATE,
+                    AnalyticsTutorialStep.HOME_PHOTO,
+                    AnalyticsTutorialStep.HOME_SOURCES,
+                ),
+                viewedSteps(),
+            )
         }
 
     @Test

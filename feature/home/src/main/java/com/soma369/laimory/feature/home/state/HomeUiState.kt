@@ -221,6 +221,21 @@ internal val HomeUiState.isInputLocked: Boolean
     get() = isSubmitting || timelineButtonStatus.isInputLocked
 
 /**
+ * 사진 시트가 지금 그리는 튜토리얼 코치마크 단계. 시트 단계라도 짚을 사진이 없으면(거부 · 불러오는 중 · 빈 범위 · 읽기 전용) 그리지
+ * 않아 null 이다 — 그때는 시트를 닫으면 홈 코치마크가 이어진다. 시트가 그리는 조건과 장 노출을 세는 조건이 같아야 해 한곳에 둔다.
+ */
+internal val HomeUiState.visiblePhotoSheetCoachmark: HomeCoachmarkStep?
+    get() =
+        homeCoachmark?.takeIf {
+            it.isInPhotoSheet &&
+                isPhotoSheetVisible &&
+                !isInputLocked &&
+                !isPhotoAccessDenied &&
+                !isPhotoLoading &&
+                availablePhotos.isNotEmpty()
+        }
+
+/**
  * 홈 CTA 가 보여 줄 변형. 버튼 모양은 시안대로 셋이고, 여기서 바뀌는 것은 고르는 근거뿐이다.
  *
  * 1. 고른 날짜의 작업이 생성 중이면 제작중 — 지금 도는 작업이 지난 조회보다 앞선다.

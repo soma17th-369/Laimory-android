@@ -116,6 +116,7 @@ import com.soma369.laimory.feature.home.state.recordRange
 import com.soma369.laimory.feature.home.state.refreshSourceSummary
 import com.soma369.laimory.feature.home.state.timelineButtonStatus
 import com.soma369.laimory.feature.home.state.toCreateConfirm
+import com.soma369.laimory.feature.home.state.visiblePhotoSheetCoachmark
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -430,6 +431,7 @@ class HomeViewModel
                 HomeUiIntent.RequestRecommendationPhotoAccess ->
                     logRecommendationAction(AnalyticsTutorialRecommendationAction.REQUEST_PHOTO_ACCESS)
                 is HomeUiIntent.SkipDateRecommendation -> skipDateRecommendation(intent.via)
+                is HomeUiIntent.ViewPhotoSheetCoachmark -> logPhotoSheetCoachmarkViewed(intent.step)
                 HomeUiIntent.NextCoachmark -> nextCoachmark()
                 is HomeUiIntent.SkipCoachmark -> skipCoachmark(intent.via)
                 HomeUiIntent.RetryDraft -> retryDraft()
@@ -934,9 +936,20 @@ class HomeViewModel
 
         private fun startHomeCoachmark() = showHomeCoachmark(HomeCoachmarkStep.entries.first())
 
-        /** 코치마크 [step] 을 띄우고 보인 것으로 남긴다. 단계를 띄우는 길은 모두 이것을 거친다. */
+        /**
+         * 코치마크 [step] 을 띄우고 보인 것으로 남긴다. 단계를 띄우는 길은 모두 이것을 거친다.
+         *
+         * 사진 시트 위 단계는 여기서 세지 않는다. 시트는 권한 확인 뒤에 열리고, 열려도 짚을 사진이 없으면(거부 · 불러오는 중 · 빈 범위)
+         * 코치마크를 그리지 않는다 — 시트가 실제로 그린 때 [logPhotoSheetCoachmarkViewed] 로 센다.
+         */
         private fun showHomeCoachmark(step: HomeCoachmarkStep) {
             updateState { copy(homeCoachmark = step) }
+            if (!step.isInPhotoSheet) logTutorial(tutorialAnalytics.stepViewed(step.analyticsStep))
+        }
+
+        /** 사진 시트가 코치마크 [step] 을 그렸다. 지금 그릴 단계가 아니면(늦게 온 알림) 세지 않는다. 회차마다 장별로 한 번이다. */
+        private fun logPhotoSheetCoachmarkViewed(step: HomeCoachmarkStep) {
+            if (state.value.visiblePhotoSheetCoachmark != step) return
             logTutorial(tutorialAnalytics.stepViewed(step.analyticsStep))
         }
 

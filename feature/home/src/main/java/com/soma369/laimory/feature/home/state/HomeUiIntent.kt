@@ -224,6 +224,11 @@ sealed interface HomeUiIntent : UiIntent {
         val via: AnalyticsTutorialExitVia,
     ) : HomeUiIntent
 
+    /** 사진 시트가 튜토리얼 코치마크 [step] 을 실제로 그렸다. 장 노출을 세기만 한다 — 시트 단계는 짚을 사진이 있을 때만 그려진다. */
+    data class ViewPhotoSheetCoachmark(
+        val step: HomeCoachmarkStep,
+    ) : HomeUiIntent
+
     /** 코치마크의 다음 단계. 마지막 단계에서 보내면 홈 튜토리얼을 마친다. */
     data object NextCoachmark : HomeUiIntent
 
