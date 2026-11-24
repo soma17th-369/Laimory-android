@@ -48,11 +48,12 @@ internal fun DraftTaskStatusResponse.toDomain(): DraftTaskSnapshot {
 private fun DraftTaskStatusResponse.invalidShape(): Nothing =
     throw ApiException.UnknownException("초안 작업 응답 필드가 status=$status 계약과 일치하지 않습니다")
 
+/** 서버가 FAILED `error` 로 내려 주는 코드는 `-1008` · `-1009` · `-1011` · `-1022` 뿐이다(`-1010` 은 서버 결번). */
 private fun Int?.toFailureReason(): DraftTaskFailureReason =
     when (this) {
         -1008 -> DraftTaskFailureReason.AI_REPORTED_FAILURE
         -1009 -> DraftTaskFailureReason.AI_DISPATCH_FAILURE
-        -1010 -> DraftTaskFailureReason.STAGING_DATA_MISSING
         -1011 -> DraftTaskFailureReason.FINALIZE_FAILURE
+        -1022 -> DraftTaskFailureReason.NO_EVENTS
         else -> DraftTaskFailureReason.UNKNOWN
     }

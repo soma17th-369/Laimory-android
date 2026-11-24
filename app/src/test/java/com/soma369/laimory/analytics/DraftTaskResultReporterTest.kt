@@ -31,15 +31,15 @@ class DraftTaskResultReporterTest {
 
     @Test
     fun `실패는 기록 날짜와 사건 수를 싣지 않는다`() {
-        val (_, event) = DraftTaskTrackingState.Failed(task, DraftTaskFailureReason.STAGING_DATA_MISSING).toCreateResult()!!
+        val (_, event) = DraftTaskTrackingState.Failed(task, DraftTaskFailureReason.NO_EVENTS).toCreateResult()!!
 
         assertNull(event.recordDate)
         assertNull(event.eventCount)
     }
 
     @Test
-    fun `입력 부족 실패는 따로 가른다`() {
-        val (_, event) = DraftTaskTrackingState.Failed(task, DraftTaskFailureReason.STAGING_DATA_MISSING).toCreateResult()!!
+    fun `기록 부족 실패는 따로 가른다`() {
+        val (_, event) = DraftTaskTrackingState.Failed(task, DraftTaskFailureReason.NO_EVENTS).toCreateResult()!!
 
         assertEquals(AnalyticsFailureCode.INSUFFICIENT_EVENT, event.failureCode)
     }

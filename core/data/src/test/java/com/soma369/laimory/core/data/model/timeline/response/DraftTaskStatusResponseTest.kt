@@ -103,6 +103,16 @@ class DraftTaskStatusResponseTest {
     }
 
     @Test
+    fun `FAILED의 -1022는 기록 부족으로 가른다`() {
+        assertEquals(DraftTaskFailureReason.NO_EVENTS, decode("""{"status":"FAILED","error":-1022}""").failure)
+    }
+
+    @Test
+    fun `서버 결번인 -1010은 미지 코드로 처리한다`() {
+        assertEquals(DraftTaskFailureReason.UNKNOWN, decode("""{"status":"FAILED","error":-1010}""").failure)
+    }
+
+    @Test
     fun `FAILED의 error가 누락되거나 올바른 오류 코드가 아니면 UNKNOWN으로 처리한다`() {
         listOf(
             """{"status":"FAILED"}""",
