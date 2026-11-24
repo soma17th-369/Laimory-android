@@ -1,6 +1,7 @@
 package com.soma369.laimory.feature.home.state
 
 import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialExitVia
+import com.soma369.laimory.core.domain.model.analytics.AnalyticsTutorialPickMethod
 import com.soma369.laimory.core.ui.base.UiIntent
 import com.soma369.laimory.core.ui.permission.DataPermissionEvent
 import com.soma369.laimory.core.ui.permission.DataSourceStatus
@@ -206,6 +207,8 @@ sealed interface HomeUiIntent : UiIntent {
     /** 추천 날짜 시트에서 날을 골랐다. 날짜 피커에서 고른 것처럼 그 날과 기본 범위로 홈을 옮기고 코치마크를 시작한다. */
     data class PickRecommendedDate(
         val date: LocalDate,
+        /** 카드를 눌렀는지, 카드 아래 날짜 버튼을 눌렀는지. 고르는 동작은 같고 세기만 나눈다. */
+        val method: AnalyticsTutorialPickMethod,
     ) : HomeUiIntent
 
     /** 추천 날짜 시트의 `다른 날 직접 고르기`. 시트를 닫고 날짜 피커를 연다. 피커를 닫으면 코치마크를 시작한다. */
