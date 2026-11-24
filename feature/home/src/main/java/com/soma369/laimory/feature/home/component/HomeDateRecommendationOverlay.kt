@@ -25,14 +25,17 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -131,22 +134,30 @@ internal fun HomeDateRecommendationOverlay(
         // 창 기본 어둡게 하기 대신 직접 칠한다 — 코치마크와 같은 농도로 맞춘다.
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect { window?.setDimAmount(0f) }
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = DIM_ALPHA))
-                    .windowInsetsPadding(WindowInsets.safeDrawing),
-            contentAlignment = Alignment.Center,
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = DIM_ALPHA)),
         ) {
-            HomeDateRecommendationContent(
-                recommendation = recommendation,
-                onPickDate = onPickDate,
-                onPickOtherDate = onPickOtherDate,
-                onRequestPhotoAccess = onRequestPhotoAccess,
-                onSkip = onSkip,
-                onCardViewed = onCardViewed,
-            )
+            // 세로가 모자라면(작은 화면 · 큰 글꼴) 덮개 안에서 스크롤해 아래 버튼까지 닿게 한다. 넉넉하면 가운데에 둔다.
+            // 스크롤 영역은 창 전체다 — 스크롤은 제 영역 밖을 잘라, 좁게 두면 왼쪽 위로 날아가는 카드가 중간에 잘린다.
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .heightIn(min = maxHeight)
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(vertical = Spacing.large),
+                contentAlignment = Alignment.Center,
+            ) {
+                HomeDateRecommendationContent(
+                    recommendation = recommendation,
+                    onPickDate = onPickDate,
+                    onPickOtherDate = onPickOtherDate,
+                    onRequestPhotoAccess = onRequestPhotoAccess,
+                    onSkip = onSkip,
+                    onCardViewed = onCardViewed,
+                )
+            }
         }
     }
 }
